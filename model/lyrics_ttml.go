@@ -2,12 +2,13 @@ package model
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/xml"
 	"errors"
 	"io"
 	"math"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -672,11 +673,11 @@ func (p *ttmlParser) buildMetadataLyrics(kind string, langOrder []string, entrie
 			continue
 		}
 
-		sort.SliceStable(resolved, func(i, j int) bool {
-			if resolved[i].order != resolved[j].order {
-				return resolved[i].order < resolved[j].order
+		slices.SortStableFunc(resolved, func(a, b ttmlResolvedMetadataLine) int {
+			if a.order != b.order {
+				return cmp.Compare(a.order, b.order)
 			}
-			return resolved[i].seq < resolved[j].seq
+			return cmp.Compare(a.seq, b.seq)
 		})
 
 		lines := make([]Line, len(resolved))

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -119,8 +120,8 @@ func SetLogLevels(levels map[string]string) {
 	for k, v := range levels {
 		logLevels = append(logLevels, levelPath{path: k, level: ParseLogLevel(v)})
 	}
-	sort.Slice(logLevels, func(i, j int) bool {
-		return logLevels[i].path > logLevels[j].path
+	slices.SortFunc(logLevels, func(a, b levelPath) int {
+		return cmp.Compare(b.path, a.path)
 	})
 }
 

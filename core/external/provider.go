@@ -1,11 +1,12 @@
 package external
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -162,8 +163,8 @@ func (e *provider) populateAlbumInfo(ctx context.Context, album auxAlbum) (auxAl
 
 	images, err := e.ag.GetAlbumImages(ctx, albumName, album.AlbumArtist, album.MbzAlbumID)
 	if err == nil && len(images) > 0 {
-		sort.Slice(images, func(i, j int) bool {
-			return images[i].Size > images[j].Size
+		slices.SortFunc(images, func(a, b agents.ExternalImage) int {
+			return cmp.Compare(b.Size, a.Size)
 		})
 
 		album.LargeImageUrl = images[0].URL
@@ -524,7 +525,7 @@ func (e *provider) callGetImage(ctx context.Context, agent agents.ArtistImageRet
 	if err != nil {
 		return
 	}
-	sort.Slice(images, func(i, j int) bool { return images[i].Size > images[j].Size })
+	slices.SortFunc(images, func(a, b agents.ExternalImage) int { return cmp.Compare(b.Size, a.Size) })
 
 	if len(images) >= 1 {
 		artist.LargeImageUrl = images[0].URL

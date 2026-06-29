@@ -1,12 +1,12 @@
 package scanner
 
 import (
+	"cmp"
 	"context"
 	"io/fs"
 	"maps"
 	"path"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/navidrome/navidrome/conf"
@@ -195,7 +195,7 @@ func fullReadDir(ctx context.Context, dir fs.ReadDirFile) []fs.DirEntry {
 		}
 		prevErrStr = err.Error()
 	}
-	sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].Name() < allEntries[j].Name() })
+	slices.SortFunc(allEntries, func(a, b fs.DirEntry) int { return cmp.Compare(a.Name(), b.Name()) })
 	return allEntries
 }
 

@@ -17,6 +17,10 @@ inputs:
     description: 'Docker Hub password'
     required: false
     default: ''
+  extra_images:
+    description: 'Additional docker/metadata-action image entries'
+    required: false
+    default: ''
 outputs:
   tags:
     description: 'Docker image tags'
@@ -79,6 +83,7 @@ runs:
         images: |
           name=${{env.DOCKER_HUB_REPO}},enable=${{env.DOCKER_HUB_ENABLED}}
           name=ghcr.io/${{ github.repository }}
+          ${{ inputs.extra_images }}
         tags: |
           type=ref,event=pr
           type=semver,pattern={{version}}

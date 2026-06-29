@@ -1,16 +1,12 @@
-const keyHandlers = (audioInstance, playerState) => {
+const keyHandlers = (audioInstance, queue, current) => {
   const nextSong = () => {
-    const idx = playerState.queue.findIndex(
-      (item) => item.uuid === playerState.current.uuid,
-    )
-    return idx !== null ? playerState.queue[idx + 1] : null
+    const idx = queue.findIndex((item) => item.uuid === current?.uuid)
+    return idx >= 0 ? queue[idx + 1] : null
   }
 
   const prevSong = () => {
-    const idx = playerState.queue.findIndex(
-      (item) => item.uuid === playerState.current.uuid,
-    )
-    return idx !== null ? playerState.queue[idx - 1] : null
+    const idx = queue.findIndex((item) => item.uuid === current?.uuid)
+    return idx >= 0 ? queue[idx - 1] : null
   }
 
   return {
@@ -26,7 +22,9 @@ const keyHandlers = (audioInstance, playerState) => {
       if (!e.metaKey && prevSong()) audioInstance && audioInstance.playPrev()
     },
     CURRENT_SONG: () => {
-      window.location.href = `#/album/${playerState.current?.song.albumId}/show`
+      if (current?.song?.albumId) {
+        window.location.href = `#/album/${current.song.albumId}/show`
+      }
     },
     NEXT_SONG: (e) => {
       if (!e.metaKey && nextSong()) audioInstance && audioInstance.playNext()

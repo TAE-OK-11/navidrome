@@ -1,7 +1,7 @@
 import { SelectInput, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import { AUTO_THEME_ID } from '../consts'
-import themes from '../themes'
+import { THEME_CHOICES } from '../themes'
 import { HelpMsg } from './HelpMsg'
 import { docsUrl, openInNewTab } from '../utils'
 import { changeTheme } from '../actions'
@@ -18,11 +18,7 @@ export const SelectTheme = (props) => {
       name: 'Auto',
     },
   ]
-  themeChoices.push(
-    ...Object.keys(themes).map((key) => {
-      return { id: key, name: themes[key].themeName }
-    }),
-  )
+  themeChoices.push(...THEME_CHOICES)
   themeChoices.push({
     id: helpKey,
     name: <HelpMsg caption={'Create your own'} />,

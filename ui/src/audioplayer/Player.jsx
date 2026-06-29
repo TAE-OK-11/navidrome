@@ -35,12 +35,27 @@ import keyHandlers from './keyHandlers'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { detectBrowserProfile, decisionService } from '../transcode'
 
+const isMobileUserAgent =
+  typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent,
+  )
+
 const Player = () => {
   const theme = useCurrentTheme()
+  const muiTheme = useMemo(() => createMuiTheme(theme), [theme])
   const translate = useTranslate()
   const playerTheme = theme.player?.theme || 'dark'
   const dataProvider = useDataProvider()
   const playerState = useSelector((state) => state.player)
+  const playerAutoPlay = playerState.autoPlay
+  const playerClear = playerState.clear
+  const playerCurrent = playerState.current
+  const playerMode = playerState.mode
+  const playerPlayIndex = playerState.playIndex
+  const playerQueue = playerState.queue
+  const playerSavedPlayIndex = playerState.savedPlayIndex
+  const playerVolume = playerState.volume
   const dispatch = useDispatch()
   const [currentTrackId, setCurrentTrackId] = useState(null)
   const [heartbeatTrackId, setHeartbeatTrackId] = useState(null)
@@ -49,10 +64,7 @@ const Player = () => {
   const stoppedRef = useRef(false)
   const [audioInstance, setAudioInstance] = useState(null)
   const isDesktop = useMediaQuery('(min-width:810px)')
-  const isMobilePlayer =
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent,
-    )
+  const isMobilePlayer = isMobileUserAgent
 
   const { authenticated } = useAuthState()
 
@@ -112,10 +124,10 @@ const Player = () => {
 
   // Pre-fetch transcode decisions for next 2-3 songs when queue or position changes
   useEffect(() => {
-    if (!playerState.queue.length) return
+    if (!playerQueue.length) return
 
-    const currentIdx = playerState.savedPlayIndex || 0
-    const nextSongIds = playerState.queue
+    const currentIdx = playerSavedPlayIndex || 0
+    const nextSongIds = playerQueue
       .slice(currentIdx + 1, currentIdx + 4)
       .filter((item) => !item.isRadio)
       .map((item) => item.trackId)
@@ -123,10 +135,10 @@ const Player = () => {
     if (nextSongIds.length > 0) {
       decisionService.prefetchDecisions(nextSongIds)
     }
-  }, [playerState.queue, playerState.savedPlayIndex])
+  }, [playerQueue, playerSavedPlayIndex])
 
-  const visible = authenticated && playerState.queue.length > 0
-  const isRadio = playerState.current?.isRadio || false
+  const visible = authenticated && playerQueue.length > 0
+  const isRadio = playerCurrent?.isRadio || false
   const classes = useStyle({
     isRadio,
     visible,
@@ -163,24 +175,31 @@ const Player = () => {
 
   useEffect(() => {
     if (gainNode) {
-      const current = playerState.current || {}
+      const current = playerCurrent || {}
       const song = current.song || {}
 
       const numericGain = calculateGain(gainInfo, song)
       gainNode.gain.setValueAtTime(numericGain, context.currentTime)
     }
-  }, [audioInstance, context, gainNode, playerState, gainInfo])
+  }, [audioInstance, context, gainNode, playerCurrent, gainInfo])
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      if (playerState.current?.uuid && audioInstance && !audioInstance.paused) {
+      if (
+        playerStateRef.current?.current?.uuid &&
+        audioInstance &&
+        !audioInstance.paused
+      ) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
 
     const handlePageHide = () => {
-      if (currentTrackIdRef.current && !playerState.current?.isRadio) {
+      if (
+        currentTrackIdRef.current &&
+        !playerStateRef.current?.current?.isRadio
+      ) {
         stoppedRef.current = true
         try {
           subsonic.reportPlaybackKeepalive(
@@ -200,13 +219,13 @@ const Player = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('pagehide', handlePageHide)
     }
-  }, [playerState, audioInstance])
+  }, [audioInstance])
 
   const defaultOptions = useMemo(
     () => ({
       theme: playerTheme,
       bounds: 'body',
-      playMode: playerState.mode,
+      playMode: playerMode,
       mode: 'full',
       loadAudioErrorPlayNext: false,
       autoPlayInitLoadPlayList: true,
@@ -236,27 +255,36 @@ const Player = () => {
       locale: locale(translate),
       sortableOptions: { delay: 200, delayOnTouchOnly: true },
     }),
-    [gainInfo, isDesktop, playerTheme, translate, playerState.mode],
+    [gainInfo, isDesktop, playerTheme, translate, playerMode],
   )
 
   const options = useMemo(() => {
-    const current = playerState.current || {}
+    const current = playerCurrent || {}
     return {
       ...defaultOptions,
-      audioLists: playerState.queue.map((item) => item),
-      playIndex: playerState.playIndex,
+      audioLists: playerQueue,
+      playIndex: playerPlayIndex,
       autoPlay:
-        playerState.queue.length > 0 &&
-        playerState.autoPlay !== false &&
-        (playerState.clear || playerState.playIndex === 0),
-      clearPriorAudioLists: playerState.clear,
+        playerQueue.length > 0 &&
+        playerAutoPlay !== false &&
+        (playerClear || playerPlayIndex === 0),
+      clearPriorAudioLists: playerClear,
       extendsContent: (
         <PlayerToolbar id={current.trackId} isRadio={current.isRadio} />
       ),
-      defaultVolume: isMobilePlayer ? 1 : playerState.volume,
+      defaultVolume: isMobilePlayer ? 1 : playerVolume,
       showMediaSession: !current.isRadio,
     }
-  }, [playerState, defaultOptions, isMobilePlayer])
+  }, [
+    defaultOptions,
+    isMobilePlayer,
+    playerAutoPlay,
+    playerClear,
+    playerCurrent,
+    playerPlayIndex,
+    playerQueue,
+    playerVolume,
+  ])
 
   const onAudioListsChange = useCallback(
     (_, audioLists, audioInfo) => dispatch(syncQueue(audioInfo, audioLists)),
@@ -275,6 +303,11 @@ const Player = () => {
   const onAudioVolumeChange = useCallback(
     // sqrt to compensate for the logarithmic volume
     (volume) => dispatch(setVolume(Math.sqrt(volume))),
+    [dispatch],
+  )
+
+  const onPlayModeChange = useCallback(
+    (mode) => dispatch(setPlayMode(mode)),
     [dispatch],
   )
 
@@ -377,11 +410,11 @@ const Player = () => {
       decisionService.invalidateAll()
 
       // Pre-fetch decisions for upcoming songs with fresh tokens
-      const currentIdx = playerState.queue.findIndex(
+      const currentIdx = playerQueue.findIndex(
         (item) => item.uuid === currentPlayId,
       )
       if (currentIdx >= 0) {
-        const nextSongIds = playerState.queue
+        const nextSongIds = playerQueue
           .slice(currentIdx + 1, currentIdx + 4)
           .filter((item) => !item.isRadio)
           .map((item) => item.trackId)
@@ -390,7 +423,7 @@ const Player = () => {
         }
       }
     },
-    [playerState.queue],
+    [playerQueue],
   )
 
   const onBeforeDestroy = useCallback(() => {
@@ -414,8 +447,8 @@ const Player = () => {
   }
 
   const handlers = useMemo(
-    () => keyHandlers(audioInstance, playerState),
-    [audioInstance, playerState],
+    () => keyHandlers(audioInstance, playerQueue, playerCurrent),
+    [audioInstance, playerQueue, playerCurrent],
   )
 
   useEffect(() => {
@@ -454,7 +487,7 @@ const Player = () => {
   }, [audioInstance])
 
   return (
-    <ThemeProvider theme={createMuiTheme(theme)}>
+    <ThemeProvider theme={muiTheme}>
       <ReactJkMusicPlayer
         {...options}
         className={classes.player}
@@ -464,7 +497,7 @@ const Player = () => {
         onAudioPlay={onAudioPlay}
         onAudioPlayTrackChange={onAudioPlayTrackChange}
         onAudioPause={onAudioPause}
-        onPlayModeChange={(mode) => dispatch(setPlayMode(mode))}
+        onPlayModeChange={onPlayModeChange}
         onAudioEnded={onAudioEnded}
         onCoverClick={onCoverClick}
         onAudioError={onAudioError}

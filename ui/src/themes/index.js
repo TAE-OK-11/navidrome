@@ -21,7 +21,7 @@ import MoonbaseBravoTheme from './moonbaseBravo'
 import TokyoNightLightTheme from './tokyoNightLight'
 import TokyoNightTheme from './tokyoNight'
 
-export default {
+const themes = {
   // Classic default themes
   LightTheme,
   DarkTheme,
@@ -48,3 +48,17 @@ export default {
   TokyoNightLightTheme,
   TokyoNightTheme,
 }
+
+export const THEME_KEYS = Object.keys(themes)
+
+export const THEME_CHOICES = THEME_KEYS.map((key) => ({
+  id: key,
+  name: themes[key].themeName,
+}))
+
+export const findThemeKeyByDisplayName = (displayName) =>
+  THEME_KEYS.find((key) => themes[key].themeName === displayName)
+
+export const getTheme = (key) => themes[key]
+
+export default themes

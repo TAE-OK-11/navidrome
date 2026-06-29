@@ -377,31 +377,68 @@ var formatOutputMap = map[string]string{
 }
 
 // defaultCommands is used to detect whether a user has customized their transcoding command.
-var defaultCommands = func() map[string]string {
-	m := make(map[string]string, len(consts.DefaultTranscodings))
+var defaultCommands = func() map[string]map[string]struct{} {
+	m := make(map[string]map[string]struct{}, len(consts.DefaultTranscodings))
 	for _, t := range consts.DefaultTranscodings {
-		m[t.TargetFormat] = t.Command
+		addDefaultCommand(m, t.TargetFormat, t.Command)
+	}
+	for format, commands := range legacyDefaultCommands {
+		for _, command := range commands {
+			addDefaultCommand(m, format, command)
+		}
 	}
 	return m
 }()
 
 // isDefaultCommand returns true if the command matches the known default for this format.
 func isDefaultCommand(format, command string) bool {
-	return defaultCommands[format] == command
+	commands, ok := defaultCommands[format]
+	if !ok {
+		return false
+	}
+	_, ok = commands[command]
+	return ok
+}
+
+func addDefaultCommand(commands map[string]map[string]struct{}, format, command string) {
+	if commands[format] == nil {
+		commands[format] = map[string]struct{}{}
+	}
+	commands[format][command] = struct{}{}
+}
+
+var legacyDefaultCommands = map[string][]string{
+	"mp3": {
+		"ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -f mp3 -",
+		"ffmpeg -ss %t -i %s -map 0:a:0 -b:a %bk -v 0 -f mp3 -",
+	},
+	"opus": {
+		"ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a libopus -f opus -",
+		"ffmpeg -ss %t -i %s -map 0:a:0 -b:a %bk -v 0 -c:a libopus -f opus -",
+	},
+	"aac": {
+		"ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a aac -f adts -",
+		"ffmpeg -ss %t -i %s -map 0:a:0 -b:a %bk -v 0 -c:a aac -f adts -",
+		"ffmpeg -i %s -ss %t -map 0:a:0 -b:a %bk -v 0 -c:a aac -f ipod -movflags frag_keyframe+empty_moov -",
+	},
+	"flac": {
+		"ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -v 0 -c:a flac -f flac -",
+		"ffmpeg -ss %t -i %s -map 0:a:0 -v 0 -c:a flac -f flac -",
+	},
 }
 
 // buildDynamicArgs programmatically constructs ffmpeg arguments for known formats,
 // including all transcoding parameters (bitrate, sample rate, channels).
 func buildDynamicArgs(opts TranscodeOptions) []string {
 	cmdPath, _ := ffmpegCmd()
-	args := []string{cmdPath}
+	args := []string{cmdPath, "-nostdin", "-hide_banner"}
 
 	if opts.Offset > 0 {
 		args = append(args, "-ss", strconv.Itoa(opts.Offset))
 	}
 
 	args = append(args, "-i", opts.FilePath)
-	args = append(args, "-map", "0:a:0")
+	args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn")
 
 	// Preserve source tags. -map_metadata 0 copies format-level tags (MP3/FLAC);
 	// -map_metadata 0:s:a:0 copies tags from the first audio stream (OPUS/OGG).
@@ -419,6 +456,7 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 		args = append(args, "-b:a", strconv.Itoa(opts.BitRate)+"k")
 	}
 	args = injectDynamicAudioFlags(args, opts)
+	args = injectFFmpegThreads(args)
 
 	args = append(args, "-v", "0")
 
@@ -428,6 +466,18 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 
 	args = append(args, "-")
 	return args
+}
+
+func injectFFmpegThreads(args []string) []string {
+	threads := strings.TrimSpace(os.Getenv("FFMPEG_THREADS"))
+	if threads == "" || strings.EqualFold(threads, "auto") {
+		return args
+	}
+	n, err := strconv.Atoi(threads)
+	if err != nil || n < 1 {
+		return args
+	}
+	return injectBeforeOutput(args, "-threads", strconv.Itoa(n))
 }
 
 // buildTemplateArgs handles user-customized command templates, with dynamic injection

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +33,7 @@ func TestFFmpeg(t *testing.T) {
 
 var _ = Describe("ffmpeg", func() {
 	BeforeEach(func() {
+		_ = os.Unsetenv("FFMPEG_THREADS")
 		_, _ = ffmpegCmd()
 		ffmpegPath = "ffmpeg"
 		ffmpegErr = nil
@@ -82,16 +84,19 @@ var _ = Describe("ffmpeg", func() {
 
 	Describe("isDefaultCommand", func() {
 		It("returns true for known default mp3 command", func() {
-			Expect(isDefaultCommand("mp3", "ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -f mp3 -")).To(BeTrue())
+			Expect(isDefaultCommand("mp3", "ffmpeg -nostdin -hide_banner -ss %t -i %s -map 0:a:0 -vn -sn -dn -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -f mp3 -")).To(BeTrue())
 		})
 		It("returns true for known default opus command", func() {
-			Expect(isDefaultCommand("opus", "ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a libopus -f opus -")).To(BeTrue())
+			Expect(isDefaultCommand("opus", "ffmpeg -nostdin -hide_banner -ss %t -i %s -map 0:a:0 -vn -sn -dn -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a libopus -f opus -")).To(BeTrue())
 		})
 		It("returns true for known default aac command", func() {
-			Expect(isDefaultCommand("aac", "ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a aac -f adts -")).To(BeTrue())
+			Expect(isDefaultCommand("aac", "ffmpeg -nostdin -hide_banner -ss %t -i %s -map 0:a:0 -vn -sn -dn -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -c:a aac -f adts -")).To(BeTrue())
 		})
 		It("returns true for known default flac command", func() {
-			Expect(isDefaultCommand("flac", "ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -v 0 -c:a flac -f flac -")).To(BeTrue())
+			Expect(isDefaultCommand("flac", "ffmpeg -nostdin -hide_banner -ss %t -i %s -map 0:a:0 -vn -sn -dn -map_metadata 0 -map_metadata 0:s:a:0 -v 0 -c:a flac -f flac -")).To(BeTrue())
+		})
+		It("returns true for legacy unmodified defaults", func() {
+			Expect(isDefaultCommand("mp3", "ffmpeg -ss %t -i %s -map 0:a:0 -map_metadata 0 -map_metadata 0:s:a:0 -b:a %bk -v 0 -f mp3 -")).To(BeTrue())
 		})
 		It("returns false for a custom command", func() {
 			Expect(isDefaultCommand("mp3", "ffmpeg -i %s -b:a %bk -custom-flag -f mp3 -")).To(BeFalse())
@@ -111,8 +116,8 @@ var _ = Describe("ffmpeg", func() {
 				Channels:   2,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg", "-i", "/music/file.flac",
-				"-map", "0:a:0",
+				"ffmpeg", "-nostdin", "-hide_banner", "-i", "/music/file.flac",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "libmp3lame",
 				"-b:a", "256k",
@@ -131,8 +136,8 @@ var _ = Describe("ffmpeg", func() {
 				SampleRate: 48000,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg", "-i", "/music/file.dsf",
-				"-map", "0:a:0",
+				"ffmpeg", "-nostdin", "-hide_banner", "-i", "/music/file.dsf",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "flac",
 				"-ar", "48000",
@@ -149,8 +154,8 @@ var _ = Describe("ffmpeg", func() {
 				BitRate:  128,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg", "-i", "/music/file.flac",
-				"-map", "0:a:0",
+				"ffmpeg", "-nostdin", "-hide_banner", "-i", "/music/file.flac",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "libopus",
 				"-b:a", "128k",
@@ -168,10 +173,10 @@ var _ = Describe("ffmpeg", func() {
 				Offset:   30,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg",
+				"ffmpeg", "-nostdin", "-hide_banner",
 				"-ss", "30",
 				"-i", "/music/file.mp3",
-				"-map", "0:a:0",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "libmp3lame",
 				"-b:a", "192k",
@@ -188,8 +193,8 @@ var _ = Describe("ffmpeg", func() {
 				BitRate:  256,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg", "-i", "/music/file.flac",
-				"-map", "0:a:0",
+				"ffmpeg", "-nostdin", "-hide_banner", "-i", "/music/file.flac",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "aac",
 				"-b:a", "256k",
@@ -206,8 +211,8 @@ var _ = Describe("ffmpeg", func() {
 				BitDepth: 24,
 			})
 			Expect(args).To(Equal([]string{
-				"ffmpeg", "-i", "/music/file.dsf",
-				"-map", "0:a:0",
+				"ffmpeg", "-nostdin", "-hide_banner", "-i", "/music/file.dsf",
+				"-map", "0:a:0", "-vn", "-sn", "-dn",
 				"-map_metadata", "0", "-map_metadata", "0:s:a:0",
 				"-c:a", "flac",
 				"-sample_fmt", "s32",
@@ -249,6 +254,19 @@ var _ = Describe("ffmpeg", func() {
 			Entry("aac", "aac", 256),
 			Entry("opus", "opus", 128),
 		)
+
+		It("applies FFMPEG_THREADS when set", func() {
+			_ = os.Setenv("FFMPEG_THREADS", "1")
+			args := buildDynamicArgs(TranscodeOptions{
+				Format:   "mp3",
+				FilePath: "/music/file.flac",
+				BitRate:  192,
+			})
+			threadsIndex := slices.Index(args, "-threads")
+			Expect(threadsIndex).To(BeNumerically(">", -1))
+			Expect(args[threadsIndex+1]).To(Equal("1"))
+			Expect(threadsIndex).To(BeNumerically("<", slices.Index(args, "-v")))
+		})
 	})
 
 	Describe("bitDepthToSampleFmt", func() {

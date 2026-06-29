@@ -22,6 +22,7 @@ type MockFFmpeg struct {
 	Error            error
 	ProbeAudioResult *ffmpeg.AudioProbeResult
 	ProbeAvailable   bool
+	ProbeAudioCalls  atomic.Int64
 }
 
 func (ff *MockFFmpeg) IsAvailable() bool {
@@ -64,6 +65,7 @@ func (ff *MockFFmpeg) Probe(context.Context, []string) (string, error) {
 	return "", nil
 }
 func (ff *MockFFmpeg) ProbeAudioStream(context.Context, string) (*ffmpeg.AudioProbeResult, error) {
+	ff.ProbeAudioCalls.Add(1)
 	if ff.Error != nil {
 		return nil, ff.Error
 	}

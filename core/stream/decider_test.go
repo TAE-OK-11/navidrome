@@ -67,6 +67,20 @@ var _ = Describe("Decider", func() {
 				Expect(decision.TranscodeReasons).To(BeEmpty())
 			})
 
+			It("skips first-request ffprobe when scanner metadata is enough for direct play", func() {
+				mf := &model.MediaFile{ID: "1", Suffix: "mp3", Codec: "MP3", BitRate: 320, Channels: 2, SampleRate: 44100}
+				ff.Error = fmt.Errorf("ffprobe should not be called")
+				ci := &ClientInfo{
+					DirectPlayProfiles: []DirectPlayProfile{
+						{Containers: []string{"mp3"}, AudioCodecs: []string{"mp3"}, Protocols: []string{ProtocolHTTP}, MaxAudioChannels: 2},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanDirectPlay).To(BeTrue())
+				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
+			})
+
 			It("rejects direct play when container doesn't match", func() {
 				mf := withProbe(&model.MediaFile{ID: "1", Suffix: "flac", Codec: "FLAC", BitRate: 1000, Channels: 2})
 				ci := &ClientInfo{

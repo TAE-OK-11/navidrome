@@ -63,25 +63,41 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 		SourceUpdatedAt: mf.UpdatedAt,
 	}
 
-	var probe *ffmpeg.AudioProbeResult
-	if !opts.SkipProbe {
-		if !s.ff.IsProbeAvailable() {
-			log.Debug(ctx, "ffprobe not available, using tag metadata for transcode decision", "mediaID", mf.ID)
-		} else {
-			var err error
-			probe, err = s.ensureProbed(ctx, mf)
-			if err != nil {
-				return nil, err
-			}
-		}
+	// First decide from stored scanner metadata / cached probe data. This keeps
+	// common direct-play requests from paying a first-request ffprobe cost.
+	decision.SourceStream = buildSourceStream(mf, nil)
+	s.evaluateDecision(ctx, decision, clientInfo)
+	if decision.CanDirectPlay || opts.SkipProbe || mf.ProbeData != "" || !conf.Server.DevEnableMediaFileProbe {
+		return decision, nil
 	}
 
-	// Build source stream details (uses probe data if available)
-	decision.SourceStream = buildSourceStream(mf, probe)
+	if !s.ff.IsProbeAvailable() {
+		log.Debug(ctx, "ffprobe not available, using tag metadata for transcode decision", "mediaID", mf.ID)
+		return decision, nil
+	}
+
+	probe, err := s.ensureProbed(ctx, mf)
+	if err != nil {
+		return nil, err
+	}
+	if probe == nil {
+		return decision, nil
+	}
+
+	decision = &TranscodeDecision{
+		MediaID:         mf.ID,
+		SourceUpdatedAt: mf.UpdatedAt,
+		SourceStream:    buildSourceStream(mf, probe),
+	}
+	s.evaluateDecision(ctx, decision, clientInfo)
+	return decision, nil
+}
+
+func (s *deciderService) evaluateDecision(ctx context.Context, decision *TranscodeDecision, clientInfo *ClientInfo) {
 	src := &decision.SourceStream
 	lookup := newTranscodeLookup(ctx, s.ds)
 
-	log.Trace(ctx, "Making transcode decision", "mediaID", mf.ID, "container", src.Container,
+	log.Trace(ctx, "Making transcode decision", "mediaID", decision.MediaID, "container", src.Container,
 		"codec", src.Codec, "bitrate", src.Bitrate, "channels", src.Channels,
 		"sampleRate", src.SampleRate, "lossless", src.IsLossless, "client", clientInfo.Name)
 
@@ -106,8 +122,8 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 
 	// If direct play is possible, we're done
 	if decision.CanDirectPlay {
-		log.Debug(ctx, "Transcode decision: direct play", "mediaID", mf.ID, "container", src.Container, "codec", src.Codec)
-		return decision, nil
+		log.Debug(ctx, "Transcode decision: direct play", "mediaID", decision.MediaID, "container", src.Container, "codec", src.Codec)
+		return
 	}
 
 	// Try transcoding profiles (in order of preference)
@@ -125,7 +141,7 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 	}
 
 	if decision.CanTranscode {
-		log.Debug(ctx, "Transcode decision: transcode", "mediaID", mf.ID,
+		log.Debug(ctx, "Transcode decision: transcode", "mediaID", decision.MediaID,
 			"targetFormat", decision.TargetFormat, "targetBitrate", decision.TargetBitrate,
 			"targetChannels", decision.TargetChannels, "reasons", decision.TranscodeReasons)
 	}
@@ -133,11 +149,9 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 	// If neither direct play nor transcode is possible
 	if !decision.CanDirectPlay && !decision.CanTranscode {
 		decision.ErrorReason = "no compatible playback profile found"
-		log.Warn(ctx, "Transcode decision: no compatible profile", "mediaID", mf.ID,
+		log.Warn(ctx, "Transcode decision: no compatible profile", "mediaID", decision.MediaID,
 			"container", src.Container, "codec", src.Codec, "reasons", decision.TranscodeReasons)
 	}
-
-	return decision, nil
 }
 
 func buildSourceStream(mf *model.MediaFile, probe *ffmpeg.AudioProbeResult) Details {

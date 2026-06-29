@@ -330,7 +330,9 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 	defer p.measure(entry)()
 	p.state.changesDetected.Store(true)
 
-	// Collect artwork IDs to pre-cache after the transaction commits
+	// Collect artwork IDs only when pre-cache is enabled. On small servers this
+	// avoids per-folder slice growth during scans where the cache warmer is a noop.
+	preCacheArtwork := conf.Server.EnableArtworkPrecache && conf.Server.ImageCacheSize != "0"
 	var artworkIDs []model.ArtworkID
 
 	err := p.ds.WithTx(func(tx model.DataStore) error {
@@ -370,7 +372,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 				log.Error(p.ctx, "Scanner: Error adding artist to library", "lib", entry.job.lib.ID, "artist", entry.artists[i].Name, err)
 				return err
 			}
-			if entry.artists[i].Name != consts.UnknownArtist && entry.artists[i].Name != consts.VariousArtists {
+			if preCacheArtwork && entry.artists[i].Name != consts.UnknownArtist && entry.artists[i].Name != consts.VariousArtists {
 				artworkIDs = append(artworkIDs, entry.artists[i].CoverArtID())
 			}
 		}
@@ -382,7 +384,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 				log.Error(p.ctx, "Scanner: Error persisting album to DB", "folder", entry.path, "album", entry.albums[i], err)
 				return err
 			}
-			if entry.albums[i].Name != consts.UnknownAlbum {
+			if preCacheArtwork && entry.albums[i].Name != consts.UnknownAlbum {
 				artworkIDs = append(artworkIDs, entry.albums[i].CoverArtID())
 			}
 		}
@@ -422,7 +424,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 	}
 
 	// Pre-cache artwork after the transaction commits successfully
-	if err == nil {
+	if err == nil && len(artworkIDs) > 0 {
 		for _, artID := range artworkIDs {
 			entry.job.cw.PreCache(artID)
 		}

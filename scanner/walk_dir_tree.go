@@ -195,7 +195,9 @@ func fullReadDir(ctx context.Context, dir fs.ReadDirFile) []fs.DirEntry {
 		}
 		prevErrStr = err.Error()
 	}
-	slices.SortFunc(allEntries, func(a, b fs.DirEntry) int { return cmp.Compare(a.Name(), b.Name()) })
+	if len(allEntries) > 1 {
+		slices.SortFunc(allEntries, func(a, b fs.DirEntry) int { return cmp.Compare(a.Name(), b.Name()) })
+	}
 	return allEntries
 }
 

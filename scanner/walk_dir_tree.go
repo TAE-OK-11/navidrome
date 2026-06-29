@@ -146,6 +146,17 @@ func loadDir(ctx context.Context, job *scanJob, dirPath string, checker *IgnoreC
 			children = append(children, entryPath)
 			folder.numSubFolders++
 		} else {
+			name, ok := resolveEntryName(ctx, job.fs, dirPath, entry)
+			if !ok {
+				continue
+			}
+			isAudio := model.IsAudioFile(name)
+			isPlaylist := model.IsValidPlaylist(name)
+			isImage := model.IsImageFile(name)
+			if !isAudio && !isPlaylist && !isImage {
+				continue
+			}
+
 			fileInfo, err := entry.Info()
 			if err != nil {
 				log.Warn(ctx, "Scanner: Error getting fileInfo", "name", entry.Name(), err)
@@ -154,16 +165,12 @@ func loadDir(ctx context.Context, job *scanJob, dirPath string, checker *IgnoreC
 			if fileInfo.ModTime().After(folder.modTime) {
 				folder.modTime = fileInfo.ModTime()
 			}
-			name, ok := resolveEntryName(ctx, job.fs, dirPath, entry)
-			if !ok {
-				continue
-			}
 			switch {
-			case model.IsAudioFile(name):
+			case isAudio:
 				folder.audioFiles[entry.Name()] = entry
-			case model.IsValidPlaylist(name):
+			case isPlaylist:
 				folder.numPlaylists++
-			case model.IsImageFile(name):
+			case isImage:
 				folder.imageFiles[entry.Name()] = entry
 				folder.imagesUpdatedAt = utils.TimeNewest(folder.imagesUpdatedAt, fileInfo.ModTime(), folder.modTime)
 			}

@@ -60,6 +60,7 @@ func (j *fileHaunter) Scrub(c fscache.CacheAccessor) (keysToReap []string) {
 		if fileInfo.Size() == 0 {
 			log.Trace("Removing invalid empty file", "file", e.Name())
 			keysToReap = append(keysToReap, key)
+			return true
 		}
 
 		count++
@@ -72,6 +73,12 @@ func (j *fileHaunter) Scrub(c fscache.CacheAccessor) (keysToReap []string) {
 
 		return true
 	})
+
+	log.Trace("Current cache stats", "cache", j.name, "size", humanize.Bytes(size), "numItems", count)
+
+	if (j.maxItems <= 0 || count <= j.maxItems) && (j.maxSize <= 0 || size <= j.maxSize) {
+		return keysToReap
+	}
 
 	sort.Slice(okFiles, func(i, j int) bool {
 		iLastRead := okFiles[i].info.AccessTime()
@@ -93,8 +100,6 @@ func (j *fileHaunter) Scrub(c fscache.CacheAccessor) (keysToReap []string) {
 
 		return true
 	}
-
-	log.Trace("Current cache stats", "cache", j.name, "size", humanize.Bytes(size), "numItems", count)
 
 	if j.maxItems > 0 {
 		for count > j.maxItems {

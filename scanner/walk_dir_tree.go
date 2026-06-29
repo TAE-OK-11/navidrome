@@ -41,12 +41,16 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 				continue
 			}
 
-			// Create checker and push patterns from root to this folder
+			// Create checker and push parent patterns. walkFolder pushes the current
+			// folder, so pushing only parents avoids compiling the target .ndignore twice.
 			checker := newIgnoreChecker(job.fs)
-			err = checker.PushAllParents(ctx, folderPath)
-			if err != nil {
-				log.Error(ctx, "Scanner: Error pushing ignore patterns for target folder", "path", folderPath, err)
-				continue
+			parentPath := path.Dir(path.Clean(folderPath))
+			if folderPath != "." && folderPath != "" {
+				err = checker.PushAllParents(ctx, parentPath)
+				if err != nil {
+					log.Error(ctx, "Scanner: Error pushing ignore patterns for target folder", "path", folderPath, err)
+					continue
+				}
 			}
 
 			// Recursively walk this folder and all its children
@@ -72,6 +76,9 @@ func walkFolder(ctx context.Context, job *scanJob, currentFolder string, checker
 		return nil
 	}
 	for _, c := range children {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		err := walkFolder(ctx, job, c, checker, results)
 		if err != nil {
 			return err
@@ -118,13 +125,13 @@ func loadDir(ctx context.Context, job *scanJob, dirPath string, checker *IgnoreC
 	entries := fullReadDir(ctx, dirFile)
 	children = make([]string, 0, len(entries))
 	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return folder, children, ctx.Err()
+		}
 		entryPath := path.Join(dirPath, entry.Name())
 		if checker.ShouldIgnore(ctx, entryPath) {
 			log.Trace(ctx, "Scanner: Ignoring entry", "path", entryPath)
 			continue
-		}
-		if ctx.Err() != nil {
-			return folder, children, ctx.Err()
 		}
 		isDir, err := isDirOrSymlinkToDir(job.fs, dirPath, entry)
 		// Skip invalid symlinks

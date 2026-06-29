@@ -3,10 +3,11 @@ package cache
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,13 +26,6 @@ type httpDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-type requestData struct {
-	Method string
-	Header http.Header
-	URL    string
-	Body   *string
-}
-
 func NewHTTPClient(wrapped httpDoer, ttl time.Duration) *HTTPClient {
 	c := &HTTPClient{hc: wrapped, ttl: ttl}
 	c.cache = NewSimpleCache[string, string](Options{
@@ -42,17 +36,15 @@ func NewHTTPClient(wrapped httpDoer, ttl time.Duration) *HTTPClient {
 }
 
 func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
-	key := c.serializeReq(req)
+	key, cachedReq, err := c.cacheKeyAndRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	cached := true
 	start := time.Now()
 	respStr, err := c.cache.GetWithLoader(key, func(key string) (string, time.Duration, error) {
 		cached = false
-		req, err := c.deserializeReq(key)
-		if err != nil {
-			log.Trace(req.Context(), "CachedHTTPClient.Do", "key", key, err)
-			return "", 0, err
-		}
-		resp, err := c.hc.Do(req)
+		resp, err := c.hc.Do(cachedReq)
 		if err != nil {
 			log.Trace(req.Context(), "CachedHTTPClient.Do", "req", req, err)
 			return "", 0, err
@@ -67,34 +59,49 @@ func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return c.deserializeResponse(req, respStr)
 }
 
-func (c *HTTPClient) serializeReq(req *http.Request) string {
-	data := requestData{
-		Method: req.Method,
-		Header: req.Header,
-		URL:    req.URL.String(),
-	}
+func (c *HTTPClient) cacheKeyAndRequest(req *http.Request) (string, *http.Request, error) {
+	cachedReq := req.Clone(req.Context())
+	var body []byte
 	if req.Body != nil {
-		bodyData, _ := io.ReadAll(req.Body)
-		data.Body = new(base64.StdEncoding.EncodeToString(bodyData))
+		var err error
+		body, err = io.ReadAll(req.Body)
+		if err != nil {
+			return "", nil, err
+		}
+		_ = req.Body.Close()
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		cachedReq.Body = io.NopCloser(bytes.NewReader(body))
 	}
-	j, _ := json.Marshal(&data)
-	return string(j)
-}
 
-func (c *HTTPClient) deserializeReq(reqStr string) (*http.Request, error) {
-	var data requestData
-	_ = json.Unmarshal([]byte(reqStr), &data)
-	var body io.Reader
-	if data.Body != nil {
-		bodyStr, _ := base64.StdEncoding.DecodeString(*data.Body)
-		body = strings.NewReader(string(bodyStr))
+	var key strings.Builder
+	key.Grow(len(req.Method) + len(req.URL.String()) + 64)
+	key.WriteString(req.Method)
+	key.WriteByte(' ')
+	key.WriteString(req.URL.String())
+	key.WriteByte('\n')
+
+	if len(req.Header) > 0 {
+		headerNames := make([]string, 0, len(req.Header))
+		for name := range req.Header {
+			headerNames = append(headerNames, name)
+		}
+		sort.Strings(headerNames)
+		for _, name := range headerNames {
+			key.WriteString(strings.ToLower(name))
+			key.WriteByte(':')
+			values := append([]string(nil), req.Header[name]...)
+			sort.Strings(values)
+			key.WriteString(strings.Join(values, "\x00"))
+			key.WriteByte('\n')
+		}
 	}
-	req, err := http.NewRequest(data.Method, data.URL, body)
-	if err != nil {
-		return nil, err
+
+	if len(body) > 0 {
+		sum := sha256.Sum256(body)
+		key.WriteString("body-sha256:")
+		key.WriteString(hex.EncodeToString(sum[:]))
 	}
-	req.Header = data.Header
-	return req, nil
+	return key.String(), cachedReq, nil
 }
 
 func (c *HTTPClient) serializeResponse(resp *http.Response) string {

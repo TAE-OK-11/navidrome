@@ -3,6 +3,7 @@ package scanner
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io/fs"
 	"path"
 	"strings"
@@ -20,6 +21,7 @@ type IgnoreChecker struct {
 	patternStack    [][]string        // Stack of patterns for each folder level
 	currentPatterns []string          // Flattened current patterns
 	matcher         *ignore.GitIgnore // Compiled matcher for current patterns
+	patternCount    int
 }
 
 // newIgnoreChecker creates a new IgnoreChecker for the given filesystem.
@@ -35,7 +37,10 @@ func newIgnoreChecker(fsys fs.FS) *IgnoreChecker {
 func (ic *IgnoreChecker) Push(ctx context.Context, folder string) error {
 	patterns := ic.loadPatternsFromFolder(ctx, folder)
 	ic.patternStack = append(ic.patternStack, patterns)
-	ic.rebuildCurrentPatterns()
+	if len(patterns) > 0 {
+		ic.patternCount += len(patterns)
+		ic.rebuildCurrentPatterns()
+	}
 	return nil
 }
 
@@ -43,8 +48,12 @@ func (ic *IgnoreChecker) Push(ctx context.Context, folder string) error {
 // Use this when leaving a folder during directory tree traversal.
 func (ic *IgnoreChecker) Pop() {
 	if len(ic.patternStack) > 0 {
+		patterns := ic.patternStack[len(ic.patternStack)-1]
 		ic.patternStack = ic.patternStack[:len(ic.patternStack)-1]
-		ic.rebuildCurrentPatterns()
+		if len(patterns) > 0 {
+			ic.patternCount -= len(patterns)
+			ic.rebuildCurrentPatterns()
+		}
 	}
 }
 
@@ -62,6 +71,7 @@ func (ic *IgnoreChecker) PushAllParents(ctx context.Context, targetPath string) 
 	// Load patterns for root
 	patterns := ic.loadPatternsFromFolder(ctx, ".")
 	ic.patternStack = append(ic.patternStack, patterns)
+	ic.patternCount += len(patterns)
 
 	// Load patterns for each parent directory
 	currentPath := "."
@@ -73,6 +83,7 @@ func (ic *IgnoreChecker) PushAllParents(ctx context.Context, targetPath string) 
 		currentPath = path.Join(currentPath, part)
 		patterns = ic.loadPatternsFromFolder(ctx, currentPath)
 		ic.patternStack = append(ic.patternStack, patterns)
+		ic.patternCount += len(patterns)
 	}
 
 	// Rebuild and compile patterns only once at the end
@@ -107,15 +118,12 @@ func (ic *IgnoreChecker) loadPatternsFromFolder(ctx context.Context, folder stri
 	ignoreFilePath := path.Join(folder, consts.ScanIgnoreFile)
 	var patterns []string
 
-	// Check if .ndignore file exists
-	if _, err := fs.Stat(ic.fsys, ignoreFilePath); err != nil {
-		// No .ndignore file in this folder
-		return patterns
-	}
-
 	// Read and parse the .ndignore file
 	ignoreFile, err := ic.fsys.Open(ignoreFilePath)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return patterns
+		}
 		log.Warn(ctx, "Scanner: Error opening .ndignore file", "path", ignoreFilePath, err)
 		return patterns
 	}
@@ -146,7 +154,13 @@ func (ic *IgnoreChecker) loadPatternsFromFolder(ctx context.Context, folder stri
 
 // rebuildCurrentPatterns flattens the pattern stack into currentPatterns and recompiles the matcher.
 func (ic *IgnoreChecker) rebuildCurrentPatterns() {
-	ic.currentPatterns = make([]string, 0)
+	if ic.patternCount <= 0 {
+		ic.patternCount = 0
+		ic.currentPatterns = nil
+		ic.matcher = nil
+		return
+	}
+	ic.currentPatterns = make([]string, 0, ic.patternCount)
 	for _, patterns := range ic.patternStack {
 		ic.currentPatterns = append(ic.currentPatterns, patterns...)
 	}

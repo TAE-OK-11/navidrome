@@ -2,15 +2,13 @@
 
 Navidrome supports WebAssembly (Wasm) plugins for extending functionality. Plugins run in a secure sandbox and can provide metadata agents, scrobblers, lyrics providers, audio similarity, and other integrations through host services like scheduling, caching, task queues, WebSockets, and Subsonic API access.
 
-The plugin system is built on **[Extism](https://extism.org/)**, a cross-language framework for building WebAssembly plugins. You can write plugins in any language that Extism supports (Go, Rust, Python, TypeScript, and more) using their Plugin Development Kits (PDKs).
+The plugin system is built on **[Extism](https://extism.org/)**, a cross-language framework for building WebAssembly plugins. This fork focuses on Go and Rust plugins using their Plugin Development Kits (PDKs).
 
 **Essential Extism Resources:**
 - [Extism Documentation](https://extism.org/docs/overview) – Core concepts and architecture
 - [Plugin Development Kits (PDKs)](https://extism.org/docs/concepts/pdk) – Language-specific libraries for writing plugins
 - [Go PDK](https://github.com/extism/go-pdk) – Recommended for Go plugins with TinyGo
 - [Rust PDK](https://github.com/extism/rust-pdk) – For Rust plugins
-- [Python PDK](https://github.com/extism/python-pdk) – Experimental Python support
-- [JavaScript PDK](https://github.com/extism/js-pdk) – For TypeScript/JavaScript plugins
 
 ## Table of Contents
 
@@ -906,12 +904,10 @@ For more advanced access (listing keys, integer values), use the [Config](#confi
 
 ### Supported Languages
 
-Plugins can be written in any language that Extism supports. We recommend:
+Plugins in this fork should be written in Go or Rust. We recommend:
 
 - **Go** – Best overall experience with [TinyGo](https://tinygo.org/) and the [Go PDK](https://github.com/extism/go-pdk). Familiar syntax, excellent stdlib support.
 - **Rust** – Best for performance-critical plugins. Smallest binaries, excellent type safety. Uses the [Rust PDK](https://github.com/extism/rust-pdk).
-- **Python** – Best for rapid prototyping. Experimental support via [extism-py](https://github.com/extism/python-pdk). Note some limitations compared to compiled languages.
-- **TypeScript** – Experimental support via [extism-js](https://github.com/extism/js-pdk).
 
 ### Go with TinyGo (Recommended)
 
@@ -1020,18 +1016,6 @@ let libs = library::get_all_libraries()?;
 
 See [pdk/rust/README.md](pdk/rust/README.md) for detailed documentation.
 
-### Python (with extism-py)
-
-```bash
-# Build WebAssembly module (requires extism-py installed)
-extism-py plugin.wasm -o plugin.wasm *.py
-
-# Package as .ndp
-zip -j my-plugin.ndp manifest.json plugin.wasm
-```
-
-**For Python host services:** Copy functions from the `nd_host_*.py` files in `plugins/pdk/python/host/` into your `__init__.py` (see comments in those files for extism-py limitations).
-
 ### Using XTP CLI (Scaffolding)
 
 Bootstrap a new plugin from a schema:
@@ -1063,10 +1047,9 @@ See [examples/](examples/) for complete working plugins:
 |----------------------------------------------------------------|----------------|---------------|--------------------------------------------|--------------------------------|
 | [minimal](examples/minimal/)                                   | Go             | MetadataAgent | –                                          | Basic structure example        |
 | [wikimedia](examples/wikimedia/)                               | Go             | MetadataAgent | HTTP                                       | Wikidata/Wikipedia integration |
-| [coverartarchive-py](examples/coverartarchive-py/)             | Python         | MetadataAgent | HTTP                                       | Cover Art Archive              |
-| [coverartarchive-as](examples/coverartarchive-as/)             | AssemblyScript | MetadataAgent | HTTP                                       | Cover Art Archive              |
+| [coverartarchive-go](examples/coverartarchive-go/)             | Go             | MetadataAgent | HTTP                                       | Cover Art Archive              |
 | [webhook-rs](examples/webhook-rs/)                             | Rust           | Scrobbler     | HTTP                                       | HTTP webhooks                  |
-| [nowplaying-py](examples/nowplaying-py/)                       | Python         | Lifecycle     | Scheduler, SubsonicAPI                     | Periodic now-playing logger    |
+| [nowplaying-go](examples/nowplaying-go/)                       | Go             | Lifecycle     | Scheduler, SubsonicAPI                     | Periodic now-playing logger    |
 | [library-inspector-rs](examples/library-inspector-rs/)         | Rust           | Lifecycle     | Library, Scheduler                         | Periodic library stats logging |
 | [crypto-ticker](examples/crypto-ticker/)                       | Go             | Lifecycle     | WebSocket, Scheduler                       | Real-time crypto prices demo   |
 | [discord-rich-presence-rs](examples/discord-rich-presence-rs/) | Rust           | Scrobbler     | HTTP, WebSocket, Cache, Scheduler, Artwork | Discord integration            |

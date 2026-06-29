@@ -59,17 +59,20 @@ func (p *phaseMissingTracks) producer() ppl.Producer[*missingTracks] {
 }
 
 func (p *phaseMissingTracks) produce(put func(tracks *missingTracks)) error {
-	count := 0
+	totalCount := 0
+	var libCount int
 	var putIfMatched = func(mt missingTracks) {
 		if mt.pid != "" && len(mt.missing) > 0 {
 			log.Trace(p.ctx, "Scanner: Found missing tracks", "pid", mt.pid, "missing", "title", mt.missing[0].Title,
 				len(mt.missing), "matched", len(mt.matched), "lib", mt.lib.Name,
 			)
-			count++
+			libCount++
+			totalCount++
 			put(&mt)
 		}
 	}
 	for _, lib := range p.state.libraries {
+		libCount = 0
 		log.Debug(p.ctx, "Scanner: Checking missing tracks", "libraryId", lib.ID, "libraryName", lib.Name)
 		cursor, err := p.ds.MediaFile(p.ctx).GetMissingAndMatching(lib.ID)
 		if err != nil {
@@ -95,13 +98,14 @@ func (p *phaseMissingTracks) produce(put func(tracks *missingTracks)) error {
 			}
 		}
 		putIfMatched(mt)
-		if count == 0 {
+		if libCount == 0 {
 			log.Debug(p.ctx, "Scanner: No potential moves found", "libraryId", lib.ID, "libraryName", lib.Name)
 		} else {
-			log.Debug(p.ctx, "Scanner: Found potential moves", "libraryId", lib.ID, "count", count)
+			log.Debug(p.ctx, "Scanner: Found potential moves", "libraryId", lib.ID, "count", libCount)
 		}
 	}
 
+	log.Debug(p.ctx, "Scanner: Finished checking missing tracks", "count", totalCount)
 	return nil
 }
 

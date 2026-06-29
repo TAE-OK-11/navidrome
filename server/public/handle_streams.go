@@ -86,7 +86,7 @@ func (pub *Router) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(stream.Duration()), 'G', -1, 32))
 
 	n, err := stream.Serve(ctx, w, r)
-	if err != nil || n == 0 {
+	if err != nil || (n == 0 && r.Method != http.MethodHead) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }

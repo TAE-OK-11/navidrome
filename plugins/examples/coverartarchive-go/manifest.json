@@ -1,8 +1,8 @@
 {
-  "name": "Cover Art Archive (Python)",
+  "name": "Cover Art Archive (Go)",
   "author": "Navidrome",
   "version": "1.0.0",
-  "description": "Album cover art from the Cover Art Archive - Python example",
+  "description": "Album cover art from the Cover Art Archive - Go example",
   "website": "https://coverartarchive.org",
   "permissions": {
     "http": {

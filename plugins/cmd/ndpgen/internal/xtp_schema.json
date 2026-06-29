@@ -136,7 +136,6 @@
                 "zig",
                 "rust",
                 "go",
-                "python",
                 "c++"
               ]
             },

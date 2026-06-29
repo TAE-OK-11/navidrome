@@ -17,6 +17,26 @@ import (
 
 const fallbackBitrate = 256 // kbps
 
+var defaultTranscodingsByFormat = func() map[string]struct {
+	DefaultBitRate int
+	Command        string
+} {
+	defaults := make(map[string]struct {
+		DefaultBitRate int
+		Command        string
+	}, len(consts.DefaultTranscodings))
+	for _, dt := range consts.DefaultTranscodings {
+		defaults[dt.TargetFormat] = struct {
+			DefaultBitRate int
+			Command        string
+		}{
+			DefaultBitRate: dt.DefaultBitRate,
+			Command:        dt.Command,
+		}
+	}
+	return defaults
+}()
+
 // TranscodeDecider is the core service interface for making transcoding decisions
 type TranscodeDecider interface {
 	MakeDecision(ctx context.Context, mf *model.MediaFile, clientInfo *ClientInfo, opts TranscodeOptions) (*TranscodeDecision, error)
@@ -59,6 +79,7 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 	// Build source stream details (uses probe data if available)
 	decision.SourceStream = buildSourceStream(mf, probe)
 	src := &decision.SourceStream
+	lookup := newTranscodeLookup(ctx, s.ds)
 
 	log.Trace(ctx, "Making transcode decision", "mediaID", mf.ID, "container", src.Container,
 		"codec", src.Codec, "bitrate", src.Bitrate, "channels", src.Channels,
@@ -91,7 +112,7 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 
 	// Try transcoding profiles (in order of preference)
 	for _, profile := range clientInfo.TranscodingProfiles {
-		if ts, transcodeFormat := s.computeTranscodedStream(ctx, src, &profile, clientInfo); ts != nil {
+		if ts, transcodeFormat := s.computeTranscodedStream(ctx, lookup, src, &profile, clientInfo); ts != nil {
 			decision.CanTranscode = true
 			decision.TargetFormat = transcodeFormat
 			decision.TargetBitrate = ts.Bitrate
@@ -238,7 +259,7 @@ func (s *deciderService) checkDirectPlayProfile(src *Details, profile *DirectPla
 // Returns the stream details and the internal transcoding format (which may differ from the
 // response container when a codec fallback occurs, e.g., "mp4"→"aac").
 // Returns nil, "" if the profile cannot produce a valid output.
-func (s *deciderService) computeTranscodedStream(ctx context.Context, src *Details, profile *Profile, clientInfo *ClientInfo) (*Details, string) {
+func (s *deciderService) computeTranscodedStream(ctx context.Context, lookup *transcodeLookup, src *Details, profile *Profile, clientInfo *ClientInfo) (*Details, string) {
 	// Check protocol (only http for now)
 	if profile.Protocol != "" && !strings.EqualFold(profile.Protocol, ProtocolHTTP) {
 		log.Trace(ctx, "Skipping transcoding profile: unsupported protocol", "protocol", profile.Protocol)
@@ -251,7 +272,7 @@ func (s *deciderService) computeTranscodedStream(ctx context.Context, src *Detai
 	}
 
 	// Verify we have a transcoding command available (DB custom or built-in default)
-	if LookupTranscodeCommand(ctx, s.ds, targetFormat) == "" {
+	if lookup.commandFor(targetFormat) == "" {
 		log.Trace(ctx, "Skipping transcoding profile: no transcoding command available", "targetFormat", targetFormat)
 		return nil, ""
 	}
@@ -288,7 +309,7 @@ func (s *deciderService) computeTranscodedStream(ctx context.Context, src *Detai
 	}
 
 	// Determine target bitrate (all in kbps)
-	if ok := s.computeBitrate(ctx, src, targetFormat, targetIsLossless, clientInfo, ts); !ok {
+	if ok := s.computeBitrate(ctx, lookup, src, targetFormat, targetIsLossless, clientInfo, ts); !ok {
 		return nil, ""
 	}
 
@@ -310,33 +331,73 @@ func (s *deciderService) computeTranscodedStream(ctx context.Context, src *Detai
 // lookupDefaultBitrate returns the default bitrate for the given format.
 // It checks the DB first (for user-customized values), then falls back to
 // the built-in defaults, and finally to fallbackBitrate.
+type transcodeLookup struct {
+	ctx            context.Context
+	ds             model.DataStore
+	transcodings   map[string]*model.Transcoding
+	defaultBitrate map[string]int
+	command        map[string]string
+}
+
+func newTranscodeLookup(ctx context.Context, ds model.DataStore) *transcodeLookup {
+	return &transcodeLookup{
+		ctx:            ctx,
+		ds:             ds,
+		transcodings:   make(map[string]*model.Transcoding),
+		defaultBitrate: make(map[string]int),
+		command:        make(map[string]string),
+	}
+}
+
+func (l *transcodeLookup) transcoding(format string) *model.Transcoding {
+	if t, ok := l.transcodings[format]; ok {
+		return t
+	}
+	t, err := l.ds.Transcoding(l.ctx).FindByFormat(format)
+	if err != nil {
+		t = nil
+	}
+	l.transcodings[format] = t
+	return t
+}
+
+func (l *transcodeLookup) bitrate(format string) int {
+	if bitrate, ok := l.defaultBitrate[format]; ok {
+		return bitrate
+	}
+	bitrate := fallbackBitrate
+	if t := l.transcoding(format); t != nil && t.DefaultBitRate > 0 {
+		bitrate = t.DefaultBitRate
+	} else if dt, ok := defaultTranscodingsByFormat[format]; ok && dt.DefaultBitRate > 0 {
+		bitrate = dt.DefaultBitRate
+	}
+	l.defaultBitrate[format] = bitrate
+	return bitrate
+}
+
+func (l *transcodeLookup) commandFor(format string) string {
+	if command, ok := l.command[format]; ok {
+		return command
+	}
+	command := ""
+	if t := l.transcoding(format); t != nil && t.Command != "" {
+		command = t.Command
+	} else if dt, ok := defaultTranscodingsByFormat[format]; ok {
+		command = dt.Command
+	}
+	l.command[format] = command
+	return command
+}
+
 func lookupDefaultBitrate(ctx context.Context, ds model.DataStore, format string) int {
-	if t, err := ds.Transcoding(ctx).FindByFormat(format); err == nil && t.DefaultBitRate > 0 {
-		return t.DefaultBitRate
-	}
-	for _, dt := range consts.DefaultTranscodings {
-		if dt.TargetFormat == format && dt.DefaultBitRate > 0 {
-			return dt.DefaultBitRate
-		}
-	}
-	return fallbackBitrate
+	return newTranscodeLookup(ctx, ds).bitrate(format)
 }
 
 // LookupTranscodeCommand returns the ffmpeg command for the given format.
 // It checks the DB first (for user-customized commands), then falls back to
 // the built-in default command. Returns "" if the format is unknown.
 func LookupTranscodeCommand(ctx context.Context, ds model.DataStore, format string) string {
-	t, err := ds.Transcoding(ctx).FindByFormat(format)
-	if err == nil && t.Command != "" {
-		return t.Command
-	}
-	// Fall back to built-in defaults
-	for _, dt := range consts.DefaultTranscodings {
-		if dt.TargetFormat == format {
-			return dt.Command
-		}
-	}
-	return ""
+	return newTranscodeLookup(ctx, ds).commandFor(format)
 }
 
 // resolveTargetFormat determines the response container and internal target format
@@ -367,7 +428,7 @@ func resolveTargetFormat(profile *Profile) (responseContainer, targetFormat stri
 
 // computeBitrate determines the target bitrate for the transcoded stream.
 // Returns false if the profile should be rejected.
-func (s *deciderService) computeBitrate(ctx context.Context, src *Details, targetFormat string, targetIsLossless bool, clientInfo *ClientInfo, ts *Details) bool {
+func (s *deciderService) computeBitrate(ctx context.Context, lookup *transcodeLookup, src *Details, targetFormat string, targetIsLossless bool, clientInfo *ClientInfo, ts *Details) bool {
 	if src.IsLossless {
 		if !targetIsLossless {
 			if clientInfo.MaxTranscodingAudioBitrate > 0 {
@@ -375,7 +436,7 @@ func (s *deciderService) computeBitrate(ctx context.Context, src *Details, targe
 			} else if clientInfo.MaxAudioBitrate > 0 {
 				ts.Bitrate = clientInfo.MaxAudioBitrate
 			} else {
-				ts.Bitrate = lookupDefaultBitrate(ctx, s.ds, targetFormat)
+				ts.Bitrate = lookup.bitrate(targetFormat)
 			}
 		} else {
 			if clientInfo.MaxAudioBitrate > 0 && src.Bitrate > clientInfo.MaxAudioBitrate {

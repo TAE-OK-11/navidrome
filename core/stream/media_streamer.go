@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,24 @@ type streamJob struct {
 }
 
 func (j *streamJob) Key() string {
-	return fmt.Sprintf("%s.%s.%d.%d.%d.%d.%s.%d", j.mf.ID, j.mf.UpdatedAt.Format(time.RFC3339Nano), j.bitRate, j.sampleRate, j.bitDepth, j.channels, j.format, j.offset)
+	var b strings.Builder
+	b.Grow(len(j.mf.ID) + len(j.format) + 72)
+	b.WriteString(j.mf.ID)
+	b.WriteByte('.')
+	b.WriteString(strconv.FormatInt(j.mf.UpdatedAt.UnixNano(), 10))
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(j.bitRate))
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(j.sampleRate))
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(j.bitDepth))
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(j.channels))
+	b.WriteByte('.')
+	b.WriteString(j.format)
+	b.WriteByte('.')
+	b.WriteString(strconv.Itoa(j.offset))
+	return b.String()
 }
 
 // NewStream creates a Stream for the given MediaFile and Request. It handles both raw streaming (no transcoding)
@@ -141,6 +159,13 @@ type Stream struct {
 	io.Seeker
 }
 
+var streamCopyBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 128*1024)
+		return &buf
+	},
+}
+
 func (s *Stream) Seekable() bool      { return s.Seeker != nil }
 func (s *Stream) Duration() float32   { return s.mf.Duration }
 func (s *Stream) ContentType() string { return mime.TypeByExtension("." + s.format) }
@@ -176,7 +201,10 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	}
 
 	id := s.mf.ID
-	c, err := io.Copy(w, s)
+	bufPtr := streamCopyBufferPool.Get().(*[]byte)
+	defer streamCopyBufferPool.Put(bufPtr)
+
+	c, err := io.CopyBuffer(w, s, *bufPtr)
 	if err != nil {
 		log.Error(ctx, "Error sending transcoded file", "id", id, err)
 		if c == 0 {

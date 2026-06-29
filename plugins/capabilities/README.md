@@ -4,7 +4,7 @@ This directory contains the Go interface definitions for Navidrome plugin capabi
 
 1. **Go PDK packages** (`pdk/go/*/`) - Type-safe wrappers for Go plugin developers
 2. **Rust PDK crates** (`pdk/rust/*/`) - Type-safe wrappers for Rust plugin developers
-3. **XTP YAML schemas** (`*.yaml`) - Schema files for other [Extism plugin languages](https://extism.org/docs/concepts/pdk/) (TypeScript, Python, C#, Zig, C++, ...)
+3. **XTP YAML schemas** (`*.yaml`) - Schema files for other [Extism plugin languages](https://extism.org/docs/concepts/pdk/), with Go and Rust preferred in this fork
 
 ## For Go Plugin Developers
 
@@ -16,7 +16,7 @@ Rust developers should use the generated PDK crate in `plugins/pdk/rust/nd-pdk`.
 
 ## For Non-Go Plugin Developers
 
-If you're developing plugins in other languages (TypeScript, Rust, Python, C#, Zig, C++), you can use the XTP CLI to generate type-safe bindings from the YAML schema files in this directory.
+If you're developing Rust plugins, you can use the generated Rust PDK crate directly. For other Extism languages, the YAML schema files remain available, but this fork maintains Go and Rust examples and generated PDKs.
 
 ### Prerequisites
 
@@ -35,21 +35,9 @@ curl https://static.dylibso.com/cli/install.sh | bash
 Use the XTP CLI to generate plugin boilerplate from any capability schema:
 
 ```bash
-# TypeScript
-xtp plugin init --schema-file plugins/capabilities/metadata_agent.yaml \
-    --template typescript --path my-plugin
-
 # Rust
 xtp plugin init --schema-file plugins/capabilities/scrobbler.yaml \
     --template rust --path my-plugin
-
-# Python
-xtp plugin init --schema-file plugins/capabilities/lifecycle.yaml \
-    --template python --path my-plugin
-
-# C#
-xtp plugin init --schema-file plugins/capabilities/scheduler_callback.yaml \
-    --template csharp --path my-plugin
 
 # Go (alternative to using the PDK packages)
 xtp plugin init --schema-file plugins/capabilities/websocket_callback.yaml \

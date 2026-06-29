@@ -9,8 +9,8 @@ This folder contains example plugins demonstrating various capabilities and lang
 | [minimal](minimal/)                                   | Go       | MetadataAgent                                   | Basic plugin structure         |
 | [wikimedia](wikimedia/)                               | Go       | MetadataAgent                                   | Wikidata/Wikipedia metadata    |
 | [crypto-ticker](crypto-ticker/)                       | Go       | Scheduler, WebSocket, Cache                     | Real-time crypto prices (demo) |
-| [coverartarchive-py](coverartarchive-py/)             | Python   | MetadataAgent                                   | Cover Art Archive              |
-| [nowplaying-py](nowplaying-py/)                       | Python   | Scheduler, SubsonicAPI                          | Now playing logger             |
+| [coverartarchive-go](coverartarchive-go/)             | Go       | MetadataAgent                                   | Cover Art Archive              |
+| [nowplaying-go](nowplaying-go/)                       | Go       | Scheduler, SubsonicAPI                          | Now playing logger             |
 | [webhook-rs](webhook-rs/)                             | Rust     | Scrobbler                                       | HTTP webhook on scrobble       |
 | [library-inspector-rs](library-inspector-rs/)         | Rust     | Library, Scheduler                              | Periodic library stats logging |
 | [discord-rich-presence-rs](discord-rich-presence-rs/) | Rust     | Scrobbler, Scheduler, WebSocket, Cache, Artwork | Discord integration (Rust)     |
@@ -20,7 +20,6 @@ This folder contains example plugins demonstrating various capabilities and lang
 ### Prerequisites
 
 - **Go plugins:** [TinyGo](https://tinygo.org/getting-started/install/) 0.30+
-- **Python plugins:** [extism-py](https://github.com/extism/python-pdk)
 - **Rust plugins:** [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
 
 ### Build All Plugins
@@ -36,6 +35,7 @@ This creates `.ndp` package files for each plugin.
 ```bash
 make minimal.ndp
 make wikimedia.ndp
+make nowplaying-go.ndp
 make discord-rich-presence-rs.ndp
 ```
 
@@ -129,7 +129,6 @@ Available schemas in [../schemas/](../schemas/):
 ### Option 3: Different Language
 
 See language-specific examples:
-- **Python:** [coverartarchive-py](coverartarchive-py/)
 - **Rust:** [webhook-rs](webhook-rs/)
 
 ## Example Breakdown
@@ -158,12 +157,18 @@ Complex multi-capability plugin. Shows:
 - **Cache** – Connection state storage
 - **Artwork** – Getting album art URLs
 
-### Cover Art Archive (Python)
+### Cover Art Archive (Go)
 
-Python metadata agent. Shows:
-- extism-py plugin structure
+Go metadata agent. Shows:
 - HTTP requests
 - JSON handling
+
+### Now Playing Logger (Go)
+
+Go lifecycle and scheduler example. Shows:
+- Recurring tasks
+- Subsonic API host calls
+- Plugin configuration
 
 ### Webhook (Rust)
 

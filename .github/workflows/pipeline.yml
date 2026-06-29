@@ -289,8 +289,6 @@ jobs:
           hub_password: ${{ secrets.DOCKER_HUB_PASSWORD }}
           extra_images: |
             name=${{ env.JBS_NETWORKS_IMAGE }}
-          extra_ghcr_username: ${{ vars.JBS_NETWORKS_GHCR_USERNAME }}
-          extra_ghcr_token: ${{ secrets.JBS_NETWORKS_GHCR_TOKEN }}
 
       - name: Build Binaries
         uses: docker/build-push-action@v7
@@ -372,8 +370,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           extra_images: |
             name=${{ env.JBS_NETWORKS_IMAGE }}
-          extra_ghcr_username: ${{ vars.JBS_NETWORKS_GHCR_USERNAME }}
-          extra_ghcr_token: ${{ secrets.JBS_NETWORKS_GHCR_TOKEN }}
 
       - name: Create manifest list and push to ghcr.io
         working-directory: /tmp/digests

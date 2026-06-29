@@ -100,7 +100,7 @@ func Init(ctx context.Context) func() {
 		log.Fatal(ctx, "Invalid DB driver", "driver", Driver, err)
 	}
 	schemaEmpty := isSchemaEmpty(ctx, db)
-	hasSchemaChanges := hasPendingMigrations(ctx, db, migrationsFolder)
+	hasSchemaChanges := !schemaEmpty && hasPendingMigrations(ctx, db, migrationsFolder)
 	if !schemaEmpty && hasSchemaChanges {
 		log.Info(ctx, "Upgrading DB Schema to latest version")
 	}

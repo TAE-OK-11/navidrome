@@ -102,6 +102,7 @@ var (
 	songAntenna       = mf(model.MediaFile{ID: "1004", Title: "Antenna", ArtistID: "2", Artist: "Kraftwerk",
 		AlbumID:     "103",
 		Path:        p("kraft/radio/antenna.mp3"),
+		BPM:         new(0),
 		RGAlbumGain: new(1.0), RGAlbumPeak: new(2.0), RGTrackGain: new(3.0), RGTrackPeak: new(4.0),
 	})
 	songAntennaWithLyrics = mf(model.MediaFile{

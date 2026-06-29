@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/mattn/go-sqlite3"
 	"github.com/navidrome/navidrome/conf"
@@ -43,13 +44,17 @@ func Db() *sql.DB {
 		}
 		log.Debug("Opening DataBase", "dbPath", Path, "driver", Driver)
 		db, err := sql.Open(Driver, Path)
-		db.SetMaxOpenConns(max(4, runtime.NumCPU()))
 		if err != nil {
 			log.Fatal("Error opening database", err)
 		}
+		if db == nil {
+			log.Fatal("Error opening database: sql.Open returned nil DB")
+		}
+		db.SetMaxOpenConns(max(4, runtime.NumCPU()))
 		if conf.Server.DevOptimizeDB {
 			_, err = db.Exec("PRAGMA optimize=0x10002")
 			if err != nil {
+				fatalOnReadonlyDB("Error applying PRAGMA optimize", err)
 				log.Error("Error applying PRAGMA optimize", err)
 			}
 		}
@@ -73,6 +78,9 @@ func Close(ctx context.Context) {
 
 func Init(ctx context.Context) func() {
 	db := Db()
+	if db == nil {
+		log.Fatal(ctx, "Database initialization failed: nil DB")
+	}
 
 	// Disable foreign_keys to allow re-creating tables in migrations
 	_, err := db.ExecContext(ctx, "PRAGMA foreign_keys=off")
@@ -106,6 +114,7 @@ func Init(ctx context.Context) func() {
 		log.Debug(ctx, "Applying PRAGMA optimize after schema changes")
 		_, err = db.ExecContext(ctx, "PRAGMA optimize")
 		if err != nil {
+			fatalOnReadonlyDB("Error applying PRAGMA optimize after schema changes", err)
 			log.Error(ctx, "Error applying PRAGMA optimize", err)
 		}
 	}
@@ -129,20 +138,30 @@ func Optimize(ctx context.Context) {
 	var conns []*sql.Conn
 	for range numConns {
 		conn, err := Db().Conn(ctx)
-		conns = append(conns, conn)
 		if err != nil {
+			fatalOnReadonlyDB("Error getting connection from pool", err)
 			log.Error(ctx, "Error getting connection from pool", err)
 			continue
 		}
+		conns = append(conns, conn)
 		_, err = conn.ExecContext(ctx, "PRAGMA optimize;")
 		if err != nil {
+			fatalOnReadonlyDB("Error running PRAGMA optimize", err)
 			log.Error(ctx, "Error running PRAGMA optimize", err)
 		}
 	}
 
 	// Return all connections to the Connection Pool
 	for _, conn := range conns {
-		conn.Close()
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}
+}
+
+func fatalOnReadonlyDB(msg string, err error) {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "readonly database") {
+		log.Fatal(msg, err)
 	}
 }
 

@@ -975,17 +975,19 @@ var _ = Describe("MediaRepository", func() {
 	})
 
 	Describe("BPM and BitDepth nullable round-trip", func() {
-		It("stores nil BPM and BitDepth as NULL and retrieves them as nil", func() {
+		It("stores nil BPM as 0 for official compatibility and nil BitDepth as NULL", func() {
 			newID := id.NewRandom()
 			mf := model.MediaFile{LibraryID: 1, ID: newID, Path: "test/bpm-nil.mp3"}
 			Expect(mr.Put(&mf)).To(Succeed())
 
 			retrieved, err := mr.Get(newID)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(retrieved.BPM).To(BeNil())
+			Expect(retrieved.BPM).ToNot(BeNil())
+			Expect(*retrieved.BPM).To(Equal(0))
 			Expect(retrieved.BitDepth).To(BeNil())
 
-			// Also verify via raw SQL that the columns are truly NULL (not 0)
+			// Also verify via raw SQL that bpm is stored as 0, while bit_depth
+			// remains nullable because official compatibility only requires bpm.
 			db := GetDBXBuilder()
 			var row struct {
 				BPM      *int `db:"bpm"`
@@ -995,7 +997,8 @@ var _ = Describe("MediaRepository", func() {
 				Bind(dbx.Params{"id": newID}).
 				One(&row)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(row.BPM).To(BeNil(), "bpm should be stored as NULL in the database")
+			Expect(row.BPM).ToNot(BeNil(), "bpm should be stored as 0 in the database")
+			Expect(*row.BPM).To(Equal(0))
 			Expect(row.BitDepth).To(BeNil(), "bit_depth should be stored as NULL in the database")
 
 			_ = mr.Delete(newID)

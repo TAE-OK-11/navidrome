@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -65,7 +66,39 @@ func (m *dbMediaFile) PostMapArgs(args map[string]any) error {
 	args["search_normalized"] = normalizeForFTS(m.FullTitle(), m.Album, m.Artist, m.AlbumArtist)
 	args["tags"] = marshalTags(m.MediaFile.Tags)
 	args["participants"] = marshalParticipants(m.MediaFile.Participants)
+	normalizeMediaFileNumericArgs(args)
 	return nil
+}
+
+func normalizeMediaFileNumericArgs(args map[string]any) {
+	for _, col := range []string{
+		"bpm",
+		"duration",
+		"bit_rate",
+		"sample_rate",
+		"channels",
+		"disc_number",
+		"track_number",
+		"year",
+		"size",
+	} {
+		if isNilValue(args[col]) {
+			args[col] = 0
+		}
+	}
+}
+
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 type dbMediaFiles []dbMediaFile

@@ -21,6 +21,14 @@ inputs:
     description: 'Additional docker/metadata-action image entries'
     required: false
     default: ''
+  extra_ghcr_username:
+    description: 'Optional username for an additional GHCR login'
+    required: false
+    default: ''
+  extra_ghcr_token:
+    description: 'Optional token for an additional GHCR login'
+    required: false
+    default: ''
 outputs:
   tags:
     description: 'Docker image tags'
@@ -68,6 +76,14 @@ runs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ inputs.github_token }}
+
+    - name: Login to GitHub Container Registry for extra images
+      if: inputs.extra_ghcr_username != '' && inputs.extra_ghcr_token != ''
+      uses: docker/login-action@v4
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.extra_ghcr_username }}
+        password: ${{ inputs.extra_ghcr_token }}
 
     - name: Set up Docker Buildx
       id: buildx

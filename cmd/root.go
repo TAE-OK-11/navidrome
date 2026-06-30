@@ -194,8 +194,7 @@ func runInitialScan(ctx context.Context) func() error {
 		if err != nil {
 			return err
 		}
-		scanOnStartup := conf.Server.Scanner.Enabled && conf.Server.Scanner.ScanOnStartup
-		scanNeeded := scanOnStartup || inProgress || fullScanRequired == "1" || pidHasChanged
+		scanNeeded := conf.Server.Scanner.Enabled && (conf.Server.Scanner.ScanOnStartup || inProgress || fullScanRequired == "1")
 		time.Sleep(2 * time.Second) // Wait 2 seconds before the initial scan
 		if scanNeeded {
 			s := CreateScanner(ctx)

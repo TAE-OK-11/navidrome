@@ -148,7 +148,7 @@ func clientUniqueIDMiddleware(next http.Handler) http.Handler {
 				Path:     cmp.Or(conf.Server.BasePath, "/"),
 			}
 			http.SetCookie(w, c)
-		} else {
+		} else if r.Header.Get("Cookie") != "" {
 			// If clientUniqueId is not found in the header, check if it's present as a cookie
 			c, err := r.Cookie(consts.UIClientUniqueIDHeader)
 			if !errors.Is(err, http.ErrNoCookie) {
@@ -180,7 +180,14 @@ func realIPMiddleware(next http.Handler) http.Handler {
 	// The middleware is applied without a trusted reverse proxy to support other use-cases such as multiple clients
 	// behind a caching proxy. In this case, navidrome only uses the request's RemoteAddr for logging, so the security
 	// impact of reading the headers from untrusted sources is limited.
-	return middleware.RealIP(next)
+	realIP := middleware.RealIP(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(xForwardedFor) == "" && r.Header.Get(xRealIP) == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		realIP.ServeHTTP(w, r)
+	})
 }
 
 // reqToCtx creates a middleware that updates the request's context with a value computed from the request. A given key
@@ -230,6 +237,8 @@ var (
 	xForwardedHost   = http.CanonicalHeaderKey("X-Forwarded-Host")
 	xForwardedProto  = http.CanonicalHeaderKey("X-Forwarded-Proto")
 	xForwardedScheme = http.CanonicalHeaderKey("X-Forwarded-Scheme")
+	xForwardedFor    = http.CanonicalHeaderKey("X-Forwarded-For")
+	xRealIP          = http.CanonicalHeaderKey("X-Real-IP")
 )
 
 // serverAddress is a helper function that returns the scheme and host of the server

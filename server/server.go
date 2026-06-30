@@ -36,6 +36,8 @@ type Server struct {
 	insights metrics.Insights
 }
 
+const serverStartupGracePeriod = 10 * time.Millisecond
+
 func New(ds model.DataStore, broker events.Broker, insights metrics.Insights) *Server {
 	s := &Server{ds: ds, broker: broker, insights: insights}
 	initialSetup(ds)
@@ -119,7 +121,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	case err := <-errC:
 		log.Error(ctx, "Could not start server. Aborting", err)
 		return fmt.Errorf("starting server: %w", err)
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(serverStartupGracePeriod):
 		log.Info(ctx, "----> Navidrome server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled)
 	}
 

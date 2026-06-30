@@ -6,11 +6,10 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -31,22 +30,36 @@ import (
 
 func postFormToQueryParams(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hasFormBody(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB
 		err := r.ParseForm()
 		if err != nil {
 			sendError(w, r, newError(responses.ErrorGeneric, err.Error()))
 			return
 		}
-		var parts []string
-		for key, values := range r.Form {
-			for _, v := range values {
-				parts = append(parts, url.QueryEscape(key)+"="+url.QueryEscape(v))
-			}
-		}
-		r.URL.RawQuery = strings.Join(parts, "&")
+		r.URL.RawQuery = r.Form.Encode()
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func hasFormBody(r *http.Request) bool {
+	if r.Body == nil || r.Body == http.NoBody || r.ContentLength == 0 {
+		return false
+	}
+
+	switch r.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+	default:
+		return false
+	}
+
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	return strings.HasPrefix(contentType, "application/x-www-form-urlencoded")
 }
 
 func fromInternalOrProxyAuth(r *http.Request) (string, bool) {
@@ -91,7 +104,9 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 		ctx = request.WithUsername(ctx, username)
 		ctx = request.WithClient(ctx, client)
 		ctx = request.WithVersion(ctx, version)
-		log.Debug(ctx, "API: New request "+r.URL.Path, "username", username, "client", client, "version", version)
+		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Debug(ctx, "API: New request", "path", r.URL.Path, "username", username, "client", client, "version", version)
+		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -187,7 +202,8 @@ func validateCredentials(user *model.User, pass, token, salt, jwt string) error 
 		}
 		valid = pass == user.Password
 	case token != "":
-		t := fmt.Sprintf("%x", md5.Sum([]byte(user.Password+salt)))
+		sum := md5.Sum([]byte(user.Password + salt))
+		t := string(hex.AppendEncode(nil, sum[:]))
 		valid = t == token
 	}
 
@@ -232,28 +248,72 @@ func getPlayer(players core.Players) func(next http.Handler) http.Handler {
 	}
 }
 
+const canonicalUserAgentCacheLimit = 128
+
+var (
+	canonicalUserAgentCacheMu sync.RWMutex
+	canonicalUserAgentCache   = make(map[string]string, canonicalUserAgentCacheLimit)
+)
+
 func canonicalUserAgent(r *http.Request) string {
-	u := ua.Parse(r.Header.Get("user-agent"))
+	raw := r.Header.Get("user-agent")
+	if raw == "" {
+		return ""
+	}
+	canonicalUserAgentCacheMu.RLock()
+	cached, ok := canonicalUserAgentCache[raw]
+	canonicalUserAgentCacheMu.RUnlock()
+	if ok {
+		return cached
+	}
+
+	u := ua.Parse(raw)
 	userAgent := u.Name
 	if u.OS != "" {
 		userAgent = userAgent + "/" + u.OS
 	}
+
+	canonicalUserAgentCacheMu.Lock()
+	if cached, ok := canonicalUserAgentCache[raw]; ok {
+		canonicalUserAgentCacheMu.Unlock()
+		return cached
+	}
+	if len(canonicalUserAgentCache) >= canonicalUserAgentCacheLimit {
+		canonicalUserAgentCache = make(map[string]string, canonicalUserAgentCacheLimit)
+	}
+	canonicalUserAgentCache[raw] = userAgent
+	canonicalUserAgentCacheMu.Unlock()
 	return userAgent
 }
 
 func playerIDFromCookie(r *http.Request, userName string) string {
+	if r.Header.Get("Cookie") == "" {
+		return ""
+	}
 	cookieName := playerIDCookieName(userName)
 	var playerId string
 	if c, err := r.Cookie(cookieName); err == nil {
 		playerId = c.Value
-		log.Trace(r, "playerId found in cookies", "playerId", playerId)
+		if log.IsGreaterOrEqualTo(log.LevelTrace) {
+			log.Trace(r, "playerId found in cookies", "playerId", playerId)
+		}
 	}
 	return playerId
 }
 
 func playerIDCookieName(userName string) string {
-	cookieName := fmt.Sprintf("nd-player-%x", userName)
-	return cookieName
+	const prefix = "nd-player-"
+	const hextable = "0123456789abcdef"
+	cookieName := make([]byte, len(prefix)+len(userName)*2)
+	copy(cookieName, prefix)
+	pos := len(prefix)
+	for i := 0; i < len(userName); i++ {
+		c := userName[i]
+		cookieName[pos] = hextable[c>>4]
+		cookieName[pos+1] = hextable[c&0x0f]
+		pos += 2
+	}
+	return string(cookieName)
 }
 
 type contextKey string

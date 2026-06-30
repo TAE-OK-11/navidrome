@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,6 +76,19 @@ var _ = Describe("Middlewares", func() {
 			cp.ServeHTTP(w, r)
 
 			Expect(next.req.URL.Query().Get("a")).To(Equal("body"))
+		})
+		It("leaves non-form POST bodies unread", func() {
+			r := httptest.NewRequest("POST", "/ping?u=user&v=1.15&c=test", strings.NewReader(`{"id":"123"}`))
+			r.Header.Set("Content-Type", "application/json")
+			r = r.WithContext(log.NewContext(r.Context()))
+
+			cp := postFormToQueryParams(next)
+			cp.ServeHTTP(w, r)
+
+			body, err := io.ReadAll(next.req.Body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(body)).To(Equal(`{"id":"123"}`))
+			Expect(next.req.URL.Query().Get("u")).To(Equal("user"))
 		})
 	})
 

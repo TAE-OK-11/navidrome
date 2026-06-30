@@ -67,7 +67,8 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 	// common direct-play requests from paying a first-request ffprobe cost.
 	decision.SourceStream = buildSourceStream(mf, nil)
 	s.evaluateDecision(ctx, decision, clientInfo)
-	if decision.CanDirectPlay || opts.SkipProbe || mf.ProbeData != "" || !conf.Server.DevEnableMediaFileProbe {
+	if decision.CanDirectPlay || opts.SkipProbe || mf.ProbeData != "" || !conf.Server.DevEnableMediaFileProbe ||
+		hasSufficientContainerMetadata(mf, &decision.SourceStream) {
 		return decision, nil
 	}
 
@@ -184,6 +185,19 @@ func buildSourceStream(mf *model.MediaFile, probe *ffmpeg.AudioProbeResult) Deta
 	sd.IsLossless = isLosslessFormat(sd.Codec)
 
 	return sd
+}
+
+func hasSufficientContainerMetadata(mf *model.MediaFile, src *Details) bool {
+	if src == nil || mf.ProbeData != "" {
+		return false
+	}
+	if !isMPEG4AudioContainer(src.Container) || !isMPEG4AudioCodec(src.Codec) {
+		return false
+	}
+	if src.Bitrate <= 0 || src.SampleRate <= 0 || src.Channels <= 0 {
+		return false
+	}
+	return !strings.EqualFold(src.Codec, "alac") || src.BitDepth > 0
 }
 
 // applyServerOverride replaces the client-provided profiles with synthetic ones

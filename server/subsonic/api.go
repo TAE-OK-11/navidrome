@@ -383,7 +383,7 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 	if payload.Status == responses.StatusOK {
 		if log.IsGreaterOrEqualTo(log.LevelTrace) {
 			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK", "body", string(response))
-		} else {
+		} else if log.IsGreaterOrEqualTo(log.LevelDebug) {
 			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK")
 		}
 	} else {

@@ -81,6 +81,45 @@ var _ = Describe("Decider", func() {
 				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
 			})
 
+			It("skips first-request ffprobe for m4a AAC when scanner metadata is enough to transcode", func() {
+				mf := &model.MediaFile{ID: "1", Suffix: "m4a", Codec: "AAC", BitRate: 256, Channels: 2, SampleRate: 44100}
+				ff.Error = fmt.Errorf("ffprobe should not be called")
+				ci := &ClientInfo{
+					DirectPlayProfiles: []DirectPlayProfile{
+						{Containers: []string{"mp3"}, AudioCodecs: []string{"mp3"}, Protocols: []string{ProtocolHTTP}},
+					},
+					TranscodingProfiles: []Profile{
+						{Container: "mp3", AudioCodec: "mp3", Protocol: ProtocolHTTP},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanDirectPlay).To(BeFalse())
+				Expect(decision.CanTranscode).To(BeTrue())
+				Expect(decision.SourceStream.Codec).To(Equal("aac"))
+				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
+			})
+
+			It("skips first-request ffprobe for m4a ALAC when lossless scanner metadata is complete", func() {
+				mf := &model.MediaFile{ID: "1", Suffix: "m4a", Codec: "ALAC", BitRate: 1000, Channels: 2, SampleRate: 44100, BitDepth: new(int)}
+				*mf.BitDepth = 16
+				ff.Error = fmt.Errorf("ffprobe should not be called")
+				ci := &ClientInfo{
+					DirectPlayProfiles: []DirectPlayProfile{
+						{Containers: []string{"mp3"}, AudioCodecs: []string{"mp3"}, Protocols: []string{ProtocolHTTP}},
+					},
+					TranscodingProfiles: []Profile{
+						{Container: "mp3", AudioCodec: "mp3", Protocol: ProtocolHTTP},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanTranscode).To(BeTrue())
+				Expect(decision.SourceStream.Codec).To(Equal("alac"))
+				Expect(decision.SourceStream.BitDepth).To(Equal(16))
+				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
+			})
+
 			It("rejects direct play when container doesn't match", func() {
 				mf := withProbe(&model.MediaFile{ID: "1", Suffix: "flac", Codec: "FLAC", BitRate: 1000, Channels: 2})
 				ci := &ClientInfo{

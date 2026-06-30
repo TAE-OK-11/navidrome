@@ -35,6 +35,9 @@ func requestLogger(next http.Handler) http.Handler {
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r)
 		status := ww.Status()
+		if status < 400 && !log.IsGreaterOrEqualTo(log.LevelDebug) {
+			return
+		}
 
 		message := fmt.Sprintf("HTTP: %s %s://%s%s", r.Method, scheme, r.Host, r.RequestURI)
 		logArgs := []any{

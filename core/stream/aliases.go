@@ -54,7 +54,13 @@ var codecAliasGroups = func() map[string]string {
 // matchesWithAliases checks if a value matches any entry in candidates,
 // consulting the alias map for equivalent names.
 func matchesWithAliases(value string, candidates []string, aliases map[string]string) bool {
+	if len(candidates) == 0 {
+		return false
+	}
 	value = strings.ToLower(value)
+	if len(candidates) == 1 && strings.EqualFold(value, candidates[0]) {
+		return true
+	}
 	canonical := aliases[value]
 	for _, c := range candidates {
 		c = strings.ToLower(c)
@@ -82,7 +88,34 @@ func matchesCodec(codec string, codecs []string) bool {
 
 // IsAACCodec returns true if the given codec or container name resolves to AAC.
 func IsAACCodec(name string) bool {
-	return matchesCodec(name, []string{"aac"}) || matchesContainer(name, []string{"aac"})
+	return isAACName(name) || isMPEG4AudioContainer(name)
+}
+
+func isAACName(name string) bool {
+	switch strings.ToLower(name) {
+	case "aac", "adts":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMPEG4AudioContainer(name string) bool {
+	switch strings.ToLower(name) {
+	case "aac", "adts", "m4a", "mp4", "m4b", "m4p":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMPEG4AudioCodec(name string) bool {
+	switch strings.ToLower(name) {
+	case "aac", "adts", "alac":
+		return true
+	default:
+		return false
+	}
 }
 
 func containsIgnoreCase(slice []string, s string) bool {

@@ -82,7 +82,9 @@ func runNavidrome(ctx context.Context) {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(startServer(ctx))
 	g.Go(startSignaller(ctx))
-	g.Go(startScheduler(ctx))
+	if schedulerRequired() {
+		g.Go(startScheduler(ctx))
+	}
 	if conf.Server.Jukebox.Enabled {
 		g.Go(startPlaybackServer(ctx))
 	}
@@ -101,7 +103,9 @@ func runNavidrome(ctx context.Context) {
 	g.Go(runInitialScan(ctx))
 	if conf.Server.Scanner.Enabled {
 		g.Go(startScanWatcher(ctx))
-		g.Go(schedulePeriodicScan(ctx))
+		if conf.Server.Scanner.Schedule != "" {
+			g.Go(schedulePeriodicScan(ctx))
+		}
 	} else {
 		log.Warn(ctx, "Automatic Scanning is DISABLED")
 	}
@@ -109,6 +113,13 @@ func runNavidrome(ctx context.Context) {
 	if err := g.Wait(); err != nil {
 		log.Error("Fatal error in Navidrome. Aborting", err)
 	}
+}
+
+func schedulerRequired() bool {
+	return conf.Server.Plugins.Enabled ||
+		conf.Server.DevOptimizeDB ||
+		conf.Server.Backup.Schedule != "" ||
+		(conf.Server.Scanner.Enabled && conf.Server.Scanner.Schedule != "")
 }
 
 // mainContext returns a context that is cancelled when the process receives a signal to exit.

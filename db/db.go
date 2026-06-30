@@ -50,7 +50,7 @@ func Db() *sql.DB {
 		if db == nil {
 			log.Fatal("Error opening database: sql.Open returned nil DB")
 		}
-		db.SetMaxOpenConns(max(4, runtime.NumCPU()))
+		db.SetMaxOpenConns(maxOpenConns())
 		if conf.Server.DevOptimizeDB {
 			_, err = db.Exec("PRAGMA optimize=0x10002")
 			if err != nil {
@@ -60,6 +60,10 @@ func Db() *sql.DB {
 		}
 		return db
 	})
+}
+
+func maxOpenConns() int {
+	return max(2, min(16, runtime.GOMAXPROCS(0)*2))
 }
 
 func Close(ctx context.Context) {

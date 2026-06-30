@@ -36,6 +36,20 @@ var _ = Describe("MediaRepository", func() {
 		Expect(actual).To(Equal(&songAntenna))
 	})
 
+	It("gets lightweight mediafile data for streaming", func() {
+		actual, err := mr.GetForStreaming("1004")
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(actual.ID).To(Equal(songAntenna.ID))
+		Expect(actual.Title).To(Equal(songAntenna.Title))
+		Expect(actual.Artist).To(Equal(songAntenna.Artist))
+		Expect(actual.Path).To(Equal(songAntenna.Path))
+		Expect(actual.LibraryPath).To(Equal(songAntenna.LibraryPath))
+		Expect(actual.Suffix).To(Equal(songAntenna.Suffix))
+		Expect(actual.Duration).To(Equal(songAntenna.Duration))
+		Expect(actual.BitRate).To(Equal(songAntenna.BitRate))
+	})
+
 	It("returns ErrNotFound", func() {
 		_, err := mr.Get("56")
 		Expect(err).To(MatchError(model.ErrNotFound))

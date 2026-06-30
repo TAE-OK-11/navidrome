@@ -487,6 +487,7 @@ type MediaFileRepository interface {
 	Put(m *MediaFile) error
 	UpdateProbeData(id string, data string) error
 	Get(id string) (*MediaFile, error)
+	GetForStreaming(id string) (*MediaFile, error)
 	GetWithParticipants(id string) (*MediaFile, error)
 	GetAll(options ...QueryOptions) (MediaFiles, error)
 	// GetRandom returns up to options.Max media files in random order, applying the same

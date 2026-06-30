@@ -302,7 +302,7 @@ func (api *Router) GetTranscodeDecision(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get media file
-	mf, err := api.ds.MediaFile(ctx).Get(mediaID)
+	mf, err := api.ds.MediaFile(ctx).GetForStreaming(mediaID)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			return nil, newError(responses.ErrorDataNotFound, "media file not found: %s", mediaID)
@@ -376,8 +376,8 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 		return nil, nil
 	}
 
-	// Fetch the media file
-	mf, err := api.ds.MediaFile(ctx).Get(mediaID)
+	// Fetch only fields needed by stream setup.
+	mf, err := api.ds.MediaFile(ctx).GetForStreaming(mediaID)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			http.Error(w, "Not Found", http.StatusNotFound)

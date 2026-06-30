@@ -221,6 +221,39 @@ func (r *mediaFileRepository) Get(id string) (*model.MediaFile, error) {
 	return &res[0], nil
 }
 
+func (r *mediaFileRepository) GetForStreaming(id string) (*model.MediaFile, error) {
+	sq := r.newSelect().Columns(
+		"media_file.id",
+		"media_file.library_id",
+		"media_file.path",
+		"media_file.title",
+		"media_file.artist",
+		"media_file.suffix",
+		"media_file.duration",
+		"media_file.size",
+		"media_file.bit_rate",
+		"media_file.sample_rate",
+		"media_file.bit_depth",
+		"media_file.channels",
+		"media_file.codec",
+		"media_file.probe_data",
+		"media_file.updated_at",
+		"'{}' as participants",
+		"'{}' as tags",
+		"library.path as library_path",
+		"library.name as library_name",
+	).
+		LeftJoin("library on media_file.library_id = library.id").
+		Where(Eq{"media_file.id": id})
+	sq = r.applyLibraryFilter(sq)
+
+	var res dbMediaFile
+	if err := r.queryOne(sq, &res); err != nil {
+		return nil, err
+	}
+	return res.MediaFile, nil
+}
+
 func (r *mediaFileRepository) GetWithParticipants(id string) (*model.MediaFile, error) {
 	m, err := r.Get(id)
 	if err != nil {

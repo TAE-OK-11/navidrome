@@ -26,11 +26,6 @@ import (
 
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-
 		start := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r)
@@ -39,6 +34,10 @@ func requestLogger(next http.Handler) http.Handler {
 			return
 		}
 
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
 		message := fmt.Sprintf("HTTP: %s %s://%s%s", r.Method, scheme, r.Host, r.RequestURI)
 		logArgs := []any{
 			r.Context(),
@@ -205,6 +204,11 @@ func reqToCtx(key any, fn func(req *http.Request) any) func(http.Handler) http.H
 func serverAddressMiddleware(h http.Handler) http.Handler {
 	// Define a new handler function that will be returned by this middleware function.
 	fn := func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(xForwardedHost) == "" && r.Header.Get(xForwardedProto) == "" && r.Header.Get(xForwardedScheme) == "" {
+			h.ServeHTTP(w, r)
+			return
+		}
+
 		// Call the serverAddress function to get the scheme and host of the server
 		// handling the request. If a host is found, modify the request object to use
 		// that host and scheme instead of the original ones.

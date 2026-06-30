@@ -53,7 +53,7 @@ func doLogin(ds model.DataStore, username string, password string, w http.Respon
 		return
 	}
 	if user == nil {
-		log.Warn(r, "Unsuccessful login", "username", username, "request", r.Header)
+		log.Warn(r, "Unsuccessful login", "username", username, "remoteAddr", r.RemoteAddr)
 		_ = rest.RespondWithError(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}

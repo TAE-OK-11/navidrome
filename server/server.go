@@ -40,7 +40,9 @@ const serverStartupGracePeriod = 10 * time.Millisecond
 
 func New(ds model.DataStore, broker events.Broker, insights metrics.Insights) *Server {
 	s := &Server{ds: ds, broker: broker, insights: insights}
-	initialSetup(ds)
+	if err := initialSetup(ds); err != nil {
+		log.Fatal("Initial setup failed", err)
+	}
 	auth.Init(s.ds)
 	s.initRoutes()
 	s.mountAuthenticationRoutes()

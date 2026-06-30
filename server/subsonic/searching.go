@@ -2,7 +2,6 @@ package subsonic
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -84,8 +83,10 @@ func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderI
 	g.Go(callSearch(ctx, api.ds.Artist(ctx).Search, q, artistOpts, &artists))
 	err := g.Wait()
 	if err == nil {
-		log.Debug(ctx, fmt.Sprintf("Search resulted in %d songs, %d albums and %d artists",
-			len(mediaFiles), len(albums), len(artists)), "query", sp.query, "elapsedTime", time.Since(start))
+		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Debug(ctx, "Search completed", "songs", len(mediaFiles), "albums", len(albums), "artists", len(artists),
+				"query", sp.query, "elapsedTime", time.Since(start))
+		}
 	} else {
 		log.Warn(ctx, "Search was interrupted", "query", sp.query, "elapsedTime", time.Since(start), err)
 	}

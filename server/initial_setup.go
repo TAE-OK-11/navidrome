@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -14,9 +13,9 @@ import (
 	"github.com/navidrome/navidrome/model/id"
 )
 
-func initialSetup(ds model.DataStore) {
+func initialSetup(ds model.DataStore) error {
 	ctx := context.TODO()
-	_ = ds.WithTx(func(tx model.DataStore) error {
+	return ds.WithTx(func(tx model.DataStore) error {
 		if err := tx.Library(ctx).StoreMusicFolder(); err != nil {
 			return err
 		}
@@ -43,12 +42,12 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 	users := ds.User(context.TODO())
 	c, err := users.CountAll(model.QueryOptions{Filters: squirrel.Eq{"user_name": consts.DevInitialUserName}})
 	if err != nil {
-		panic(fmt.Sprintf("Could not access User table: %s", err))
+		return err
 	}
 	if c == 0 {
 		newID := id.NewRandom()
 		log.Warn("Creating initial admin user. This should only be used for development purposes!!",
-			"user", consts.DevInitialUserName, "password", initialPassword, "id", newID)
+			"user", consts.DevInitialUserName, "id", newID)
 		initialUser := model.User{
 			ID:          newID,
 			UserName:    consts.DevInitialUserName,

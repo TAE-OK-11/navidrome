@@ -3,7 +3,6 @@ package subsonic
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -109,11 +108,13 @@ func (api *Router) UpdatePlaylist(r *http.Request) (*responses.Subsonic, error) 
 	public := p.BoolPtr("public")
 
 	log.Debug(r, "Updating playlist", "id", playlistId)
-	if plsName != nil {
-		log.Trace(r, fmt.Sprintf("-- New Name: '%s'", *plsName))
+	if log.IsGreaterOrEqualTo(log.LevelTrace) {
+		if plsName != nil {
+			log.Trace(r, "Playlist new name", "name", *plsName)
+		}
+		log.Trace(r, "Playlist songs to add", "songIds", songsToAdd)
+		log.Trace(r, "Playlist song indexes to remove", "indexes", songIndexesToRemove)
 	}
-	log.Trace(r, fmt.Sprintf("-- Adding: '%v'", songsToAdd))
-	log.Trace(r, fmt.Sprintf("-- Removing: '%v'", songIndexesToRemove))
 
 	err = api.playlists.Update(r.Context(), playlistId, plsName, comment, public, songsToAdd, songIndexesToRemove)
 	if errors.Is(err, model.ErrNotAuthorized) {

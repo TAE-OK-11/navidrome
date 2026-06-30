@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/tests"
@@ -31,6 +32,22 @@ var _ = Describe("initial_setup", func() {
 			Expect(ur.CountAll()).To(Equal(int64(1)))
 			Expect(createInitialAdminUser(ds, "second")).To(BeNil())
 			Expect(ur.CountAll()).To(Equal(int64(1)))
+		})
+
+		It("returns an error instead of panicking when the user repository fails", func() {
+			repo := tests.CreateMockUserRepo()
+			repo.Error = errors.New("user table unavailable")
+			ds = &tests.MockDataStore{MockedUser: repo}
+
+			Expect(createInitialAdminUser(ds, "pass123")).To(MatchError("user table unavailable"))
+		})
+	})
+
+	Describe("initialSetup", func() {
+		It("returns setup errors instead of ignoring them", func() {
+			ds = &tests.MockDataStore{MockedProperty: &tests.MockedPropertyRepo{Error: errors.New("property store unavailable")}}
+
+			Expect(initialSetup(ds)).To(MatchError("property store unavailable"))
 		})
 	})
 })

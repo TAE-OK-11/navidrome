@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -116,6 +117,45 @@ var _ = Describe("LibraryRepository", func() {
 				Expect(savedLib.Name).To(Equal("New Library with ID"))
 				Expect(savedLib.Path).To(Equal("/music/new"))
 			})
+		})
+	})
+
+	Describe("StoreMusicFolder", func() {
+		It("skips updating the default library when the configured path is unchanged", func() {
+			libBefore, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = conn.NewQuery("update library set path = {:path}, updated_at = {:updated_at} where id = {:id}").
+					Bind(dbx.Params{"path": libBefore.Path, "updated_at": libBefore.UpdatedAt, "id": model.DefaultLibraryID}).
+					Execute()
+			})
+
+			conf.Server.MusicFolder = libBefore.Path
+			Expect(repo.StoreMusicFolder()).To(Succeed())
+
+			libAfter, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(libAfter.Path).To(Equal(libBefore.Path))
+			Expect(libAfter.UpdatedAt).To(Equal(libBefore.UpdatedAt))
+		})
+
+		It("updates the default library only when the configured path changes", func() {
+			libBefore, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = conn.NewQuery("update library set path = {:path}, updated_at = {:updated_at} where id = {:id}").
+					Bind(dbx.Params{"path": libBefore.Path, "updated_at": libBefore.UpdatedAt, "id": model.DefaultLibraryID}).
+					Execute()
+			})
+
+			time.Sleep(2 * time.Millisecond)
+			conf.Server.MusicFolder = libBefore.Path + "-updated"
+			Expect(repo.StoreMusicFolder()).To(Succeed())
+
+			libAfter, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(libAfter.Path).To(Equal(conf.Server.MusicFolder))
+			Expect(libAfter.UpdatedAt).To(BeTemporally(">", libBefore.UpdatedAt))
 		})
 	})
 

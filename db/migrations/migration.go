@@ -21,6 +21,10 @@ func notice(ctx context.Context, tx *sql.Tx, msg string) {
 
 // Call this in migrations that requires a full rescan
 func forceFullRescan(ctx context.Context, tx *sql.Tx) error {
+	if !isDBInitialized(ctx, tx) {
+		return nil
+	}
+
 	// If a full scan is required, most probably the query optimizer is outdated, so we run `analyze`.
 	if conf.Server.DevOptimizeDB {
 		_, err := tx.ExecContext(ctx, `ANALYZE;`)

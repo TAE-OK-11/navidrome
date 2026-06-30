@@ -186,7 +186,9 @@ func (r *libraryRepository) ScanEnd(id int) error {
 }
 
 func (r *libraryRepository) ScanInProgress() (bool, error) {
-	query := r.newSelect().Where(NotEq{"last_scan_started_at": time.Time{}})
+	query := r.newSelect().Where(Expr(`
+last_scan_started_at is not null
+and last_scan_started_at not in ('', '0000-00-00 00:00:00', '0001-01-01 00:00:00+00:00', '0001-01-01T00:00:00Z')`))
 	count, err := r.count(query)
 	return count > 0, err
 }

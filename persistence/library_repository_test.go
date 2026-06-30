@@ -177,6 +177,30 @@ var _ = Describe("LibraryRepository", func() {
 			Entry("sets FullScanInProgress to false for quick scan", false, false),
 		)
 
+		Context("ScanInProgress", func() {
+			It("does not treat a new library as an interrupted scan", func() {
+				inProgress, err := repo.ScanInProgress()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(inProgress).To(BeFalse())
+			})
+
+			It("detects an interrupted scan and clears it after ScanEnd", func() {
+				err := repo.ScanBegin(lib.ID, true)
+				Expect(err).ToNot(HaveOccurred())
+
+				inProgress, err := repo.ScanInProgress()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(inProgress).To(BeTrue())
+
+				err = repo.ScanEnd(lib.ID)
+				Expect(err).ToNot(HaveOccurred())
+
+				inProgress, err = repo.ScanInProgress()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(inProgress).To(BeFalse())
+			})
+		})
+
 		Context("ScanEnd", func() {
 			BeforeEach(func() {
 				err := repo.ScanBegin(lib.ID, true)

@@ -1,15 +1,20 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/klauspost/compress/zstd"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/consts"
@@ -232,6 +237,120 @@ var _ = Describe("middlewares", func() {
 		})
 	})
 
+	Describe("compressMiddleware", func() {
+		const responseBody = `{"data":"` + "0123456789abcdef0123456789abcdef" + `"}`
+
+		var handler http.Handler
+
+		BeforeEach(func() {
+			body := strings.Repeat(responseBody, 32)
+			handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+			})
+		})
+
+		It("prefers brotli over zstd and gzip", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("uses zstd when brotli is unavailable", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "zstd, gzip")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("honors Accept-Encoding q values", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br;q=0, zstd;q=0.5, gzip;q=0.1")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("chooses the highest accepted q value before server preference", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br;q=0.1, zstd;q=1, gzip;q=0.5")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("does not compress small responses", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec := httptest.NewRecorder()
+			smallHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"ok":true}`))
+			})
+
+			compressMiddleware()(smallHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+			Expect(rec.Body.String()).To(Equal(`{"ok":true}`))
+		})
+
+		It("does not compress range requests or audio responses", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			req.Header.Set("Range", "bytes=0-10")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+
+			req = httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec = httptest.NewRecorder()
+			audioHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "audio/mpeg")
+				_, _ = w.Write([]byte(strings.Repeat("audio", 256)))
+			})
+
+			compressMiddleware()(audioHandler).ServeHTTP(rec, req)
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+		})
+
+		It("does not break streaming flush support", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec := httptest.NewRecorder()
+			streamingHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, ok := w.(http.Flusher)
+				Expect(ok).To(BeTrue())
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache, no-transform")
+				_, _ = w.Write([]byte(strings.Repeat("event: ping\n", 64)))
+				w.(http.Flusher).Flush()
+			})
+
+			compressMiddleware()(streamingHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+			Expect(rec.Body.String()).To(ContainSubstring("event: ping"))
+		})
+	})
+
 	Describe("URLParamsMiddleware", func() {
 		var (
 			router      *chi.Mux
@@ -417,3 +536,18 @@ var _ = Describe("middlewares", func() {
 		})
 	})
 })
+
+func decodeBrotli(data []byte) string {
+	out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(data)))
+	Expect(err).NotTo(HaveOccurred())
+	return string(out)
+}
+
+func decodeZstd(data []byte) string {
+	reader, err := zstd.NewReader(bytes.NewReader(data))
+	Expect(err).NotTo(HaveOccurred())
+	defer reader.Close()
+	out, err := io.ReadAll(reader)
+	Expect(err).NotTo(HaveOccurred())
+	return string(out)
+}

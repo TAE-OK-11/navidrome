@@ -7,6 +7,7 @@ replace go.senan.xyz/taglib => github.com/deluan/go-taglib v0.0.0-20260619222856
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/andybalholm/brotli v1.2.2
 	github.com/andybalholm/cascadia v1.3.4
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/deluan/rest v0.0.0-20211102003136-6260bc399cbf
@@ -34,6 +35,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/kardianos/service v1.2.4
+	github.com/klauspost/compress v1.18.5
 	github.com/kr/pretty v0.3.1
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/mattn/go-sqlite3 v1.14.47

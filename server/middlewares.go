@@ -115,20 +115,6 @@ func secureMiddleware() func(http.Handler) http.Handler {
 	return sec.Handler
 }
 
-func compressMiddleware() func(http.Handler) http.Handler {
-	return middleware.Compress(
-		5,
-		"application/xml",
-		"application/json",
-		"application/javascript",
-		"text/html",
-		"text/plain",
-		"text/css",
-		"text/javascript",
-		"text/event-stream",
-	)
-}
-
 // clientUniqueIDMiddleware is a middleware that sets a unique client ID as a cookie if it's provided in the request header.
 // If the unique client ID is not in the header but present as a cookie, it adds the ID to the request context.
 func clientUniqueIDMiddleware(next http.Handler) http.Handler {

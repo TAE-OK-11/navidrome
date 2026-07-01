@@ -403,9 +403,9 @@ var _ = Describe("Middlewares", func() {
 				Expect(ok).To(BeFalse())
 			})
 
-			It("returns the playerId in the cookie", func() {
+			It("does not resend the same playerId cookie", func() {
 				cookieStr := w.Header().Get("Set-Cookie")
-				Expect(cookieStr).To(ContainSubstring(playerIDCookieName("someone") + "=123"))
+				Expect(cookieStr).To(BeEmpty())
 			})
 		})
 
@@ -542,4 +542,8 @@ func (mp *mockPlayers) Register(ctx context.Context, id, client, typ, ip string)
 		return nil, nil, errors.New(client)
 	}
 	return &model.Player{ID: id}, mp.transcoding, nil
+}
+
+func (mp *mockPlayers) RegisterFresh(ctx context.Context, id, client, typ, ip string) (*model.Player, *model.Transcoding, error) {
+	return mp.Register(ctx, id, client, typ, ip)
 }

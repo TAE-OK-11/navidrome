@@ -1,6 +1,7 @@
 package req
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,8 +18,19 @@ type Values struct {
 	query url.Values
 }
 
+type paramsContextKey struct{}
+
 func Params(r *http.Request) *Values {
+	if query, ok := r.Context().Value(paramsContextKey{}).(url.Values); ok {
+		return &Values{Request: r, query: query}
+	}
 	return &Values{Request: r, query: r.URL.Query()}
+}
+
+func WithParams(r *http.Request) (*http.Request, *Values) {
+	query := r.URL.Query()
+	r = r.WithContext(context.WithValue(r.Context(), paramsContextKey{}, query))
+	return r, &Values{Request: r, query: query}
 }
 
 var (
@@ -38,23 +50,23 @@ func (r *Values) String(param string) (string, error) {
 }
 
 func (r *Values) StringPtr(param string) *string {
-	var v *string
 	if _, exists := r.query[param]; exists {
-		v = new(r.query.Get(param))
+		v := r.query.Get(param)
+		return &v
 	}
-	return v
+	return nil
 }
 
 func (r *Values) BoolPtr(param string) *bool {
-	var v *bool
 	if _, exists := r.query[param]; exists {
-		v = new(parseBool(r.query.Get(param)))
+		v := parseBool(r.query.Get(param))
+		return &v
 	}
-	return v
+	return nil
 }
 
 func (r *Values) StringOr(param, def string) string {
-	v, _ := r.String(param)
+	v := r.query.Get(param)
 	if v == "" {
 		return def
 	}
@@ -70,7 +82,7 @@ func (r *Values) Strings(param string) ([]string, error) {
 }
 
 func (r *Values) TimeOr(param string, def time.Time) time.Time {
-	v, _ := r.String(param)
+	v := r.query.Get(param)
 	if v == "" || v == "-1" {
 		return def
 	}
@@ -124,19 +136,19 @@ func (r *Values) Int(param string) (int, error) {
 }
 
 func (r *Values) IntOr(param string, def int) int {
-	v, err := r.Int64(param)
-	if err != nil {
-		return def
-	}
-	return int(v)
+	return int(r.Int64Or(param, int64(def)))
 }
 
 func (r *Values) Int64Or(param string, def int64) int64 {
-	v, err := r.Int64(param)
+	v := r.query.Get(param)
+	if v == "" {
+		return def
+	}
+	value, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
 		return def
 	}
-	return v
+	return value
 }
 
 func (r *Values) Ints(param string) ([]int, error) {
@@ -163,16 +175,16 @@ func (r *Values) Bool(param string) (bool, error) {
 }
 
 func (r *Values) BoolOr(param string, def bool) bool {
-	v, err := r.Bool(param)
-	if err != nil {
+	v := r.query.Get(param)
+	if v == "" {
 		return def
 	}
-	return v
+	return parseBool(v)
 }
 
 func (r *Values) Float64Or(param string, def float64) float64 {
-	v, err := r.String(param)
-	if err != nil {
+	v := r.query.Get(param)
+	if v == "" {
 		return def
 	}
 	f, err := strconv.ParseFloat(v, 64)

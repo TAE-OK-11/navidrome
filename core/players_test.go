@@ -92,6 +92,32 @@ var _ = Describe("Players", func() {
 			Expect(repo.lastSaved).To(Equal(p))
 		})
 
+		It("reuses cached players by ID", func() {
+			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", UserId: "userid", UserAgent: "chrome", LastSeen: time.Time{}}
+			repo.add(plr)
+
+			_, _, err := players.Register(ctx, "123", "client", "chrome", "1.2.3.4")
+			Expect(err).ToNot(HaveOccurred())
+			p, _, err := players.Register(ctx, "123", "client", "chrome", "1.2.3.4")
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(p.ID).To(Equal("123"))
+			Expect(repo.getCalls).To(Equal(1))
+		})
+
+		It("reuses cached players by user, client, and user agent when no ID is provided", func() {
+			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", UserId: "userid", UserAgent: "chrome", LastSeen: time.Time{}}
+			repo.add(plr)
+
+			_, _, err := players.Register(ctx, "", "client", "chrome", "1.2.3.4")
+			Expect(err).ToNot(HaveOccurred())
+			p, _, err := players.Register(ctx, "", "client", "chrome", "1.2.3.4")
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(p.ID).To(Equal("123"))
+			Expect(repo.findMatchCalls).To(Equal(1))
+		})
+
 		It("finds player by ID and return its transcoding", func() {
 			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", LastSeen: time.Time{}, TranscodingId: "1"}
 			repo.add(plr)
@@ -123,8 +149,10 @@ var _ = Describe("Players", func() {
 
 type mockPlayerRepository struct {
 	model.PlayerRepository
-	lastSaved *model.Player
-	data      map[string]model.Player
+	lastSaved      *model.Player
+	data           map[string]model.Player
+	getCalls       int
+	findMatchCalls int
 }
 
 func (m *mockPlayerRepository) add(p *model.Player) {
@@ -135,6 +163,7 @@ func (m *mockPlayerRepository) add(p *model.Player) {
 }
 
 func (m *mockPlayerRepository) Get(id string) (*model.Player, error) {
+	m.getCalls++
 	if p, ok := m.data[id]; ok {
 		return &p, nil
 	}
@@ -142,6 +171,7 @@ func (m *mockPlayerRepository) Get(id string) (*model.Player, error) {
 }
 
 func (m *mockPlayerRepository) FindMatch(userId, client, userAgent string) (*model.Player, error) {
+	m.findMatchCalls++
 	for _, p := range m.data {
 		if p.Client == client && p.UserId == userId && p.UserAgent == userAgent {
 			return &p, nil

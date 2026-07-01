@@ -22,11 +22,26 @@ const (
 	compressionGzip   compressionEncoding = "gzip"
 )
 
+var compressionCandidates = [...]compressionEncoding{compressionBrotli, compressionZstd, compressionGzip}
+
 func compressMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			encoding := preferredCompressionEncoding(r.Header.Get("Accept-Encoding"))
-			if encoding == "" || skipCompressionRequest(r) {
+			if r.Method == http.MethodHead || r.Header.Get("Range") != "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			acceptEncoding := r.Header.Get("Accept-Encoding")
+			if acceptEncoding == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if isMediaResponsePath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			encoding := preferredCompressionEncoding(acceptEncoding)
+			if encoding == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -42,12 +57,11 @@ func compressMiddleware() func(http.Handler) http.Handler {
 }
 
 func preferredCompressionEncoding(acceptEncoding string) compressionEncoding {
-	candidates := []compressionEncoding{compressionBrotli, compressionZstd, compressionGzip}
 	var best compressionEncoding
 	bestQuality := 0.0
-	bestIndex := len(candidates)
+	bestIndex := len(compressionCandidates)
 
-	for i, candidate := range candidates {
+	for i, candidate := range compressionCandidates {
 		quality := acceptedEncodingQuality(acceptEncoding, string(candidate))
 		if quality > bestQuality || quality == bestQuality && quality > 0 && i < bestIndex {
 			best = candidate
@@ -98,8 +112,13 @@ func encodingQuality(params string) float64 {
 	return 1
 }
 
-func skipCompressionRequest(r *http.Request) bool {
-	return r.Method == http.MethodHead || r.Header.Get("Range") != ""
+func isMediaResponsePath(path string) bool {
+	path = strings.TrimSuffix(path, ".view")
+	return strings.HasSuffix(path, "/rest/stream") ||
+		strings.HasSuffix(path, "/rest/download") ||
+		strings.HasSuffix(path, "/rest/getTranscodeStream") ||
+		strings.HasSuffix(path, "/rest/getCoverArt") ||
+		strings.HasSuffix(path, "/rest/getAvatar")
 }
 
 type compressResponseWriter struct {

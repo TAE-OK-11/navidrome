@@ -19,6 +19,18 @@ func TestUtils(t *testing.T) {
 var _ = Describe("Request Helpers", func() {
 	var r *req.Values
 
+	Describe("WithParams", func() {
+		It("reuses parsed params from request context", func() {
+			request := httptest.NewRequest("GET", "/ping?a=123", nil)
+			request, r = req.WithParams(request)
+			request.URL.RawQuery = "a=456"
+
+			cached := req.Params(request)
+			Expect(r.String("a")).To(Equal("123"))
+			Expect(cached.String("a")).To(Equal("123"))
+		})
+	})
+
 	Describe("ParamString", func() {
 		BeforeEach(func() {
 			r = req.Params(httptest.NewRequest("GET", "/ping?a=123", nil))

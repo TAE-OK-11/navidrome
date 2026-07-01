@@ -331,6 +331,17 @@ var _ = Describe("middlewares", func() {
 			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
 		})
 
+		It("does not wrap known media endpoints", func() {
+			req := httptest.NewRequest(http.MethodGet, "/rest/stream.view", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+			Expect(rec.Body.String()).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
 		It("does not break streaming flush support", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "br")

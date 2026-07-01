@@ -76,29 +76,31 @@ func fromInternalOrProxyAuth(r *http.Request) (string, bool) {
 
 func checkRequiredParameters(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var requiredParameters []string
+		r, p := req.WithParams(r)
 
 		username, _ := fromInternalOrProxyAuth(r)
-		if username != "" {
-			requiredParameters = []string{"v", "c"}
-		} else {
-			requiredParameters = []string{"u", "v", "c"}
-		}
-
-		p := req.Params(r)
-		for _, param := range requiredParameters {
-			if _, err := p.String(param); err != nil {
+		if username == "" {
+			var err error
+			username, err = p.String("u")
+			if err != nil {
 				log.Warn(r, err)
 				sendError(w, r, err)
 				return
 			}
 		}
 
-		if username == "" {
-			username, _ = p.String("u")
+		version, err := p.String("v")
+		if err != nil {
+			log.Warn(r, err)
+			sendError(w, r, err)
+			return
 		}
-		client, _ := p.String("c")
-		version, _ := p.String("v")
+		client, err := p.String("c")
+		if err != nil {
+			log.Warn(r, err)
+			sendError(w, r, err)
+			return
+		}
 
 		ctx := r.Context()
 		ctx = request.WithUsername(ctx, username)
@@ -135,11 +137,14 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				}
 			} else {
 				p := req.Params(r)
-				username, _ := p.String("u")
-				pass, _ := p.String("p")
-				token, _ := p.String("t")
-				salt, _ := p.String("s")
-				jwt, _ := p.String("jwt")
+				username, _ := request.UsernameFrom(ctx)
+				if username == "" {
+					username = p.StringOr("u", "")
+				}
+				pass := p.StringOr("p", "")
+				token := p.StringOr("t", "")
+				salt := p.StringOr("s", "")
+				jwt := p.StringOr("jwt", "")
 
 				usr, err = ds.User(ctx).FindByUsernameWithPassword(username)
 				if errors.Is(err, context.Canceled) {
@@ -203,8 +208,7 @@ func validateCredentials(user *model.User, pass, token, salt, jwt string) error 
 		valid = pass == user.Password
 	case token != "":
 		sum := md5.Sum([]byte(user.Password + salt))
-		t := string(hex.AppendEncode(nil, sum[:]))
-		valid = t == token
+		valid = equalMD5Hex(token, sum)
 	}
 
 	if !valid {
@@ -213,16 +217,46 @@ func validateCredentials(user *model.User, pass, token, salt, jwt string) error 
 	return nil
 }
 
+func equalMD5Hex(token string, sum [md5.Size]byte) bool {
+	if len(token) != md5.Size*2 {
+		return false
+	}
+
+	var encoded [md5.Size * 2]byte
+	hex.Encode(encoded[:], sum[:])
+	var diff byte
+	for i := range encoded {
+		diff |= token[i] ^ encoded[i]
+	}
+	return diff == 0
+}
+
 func getPlayer(players core.Players) func(next http.Handler) http.Handler {
+	return getPlayerWithLookup(players, false)
+}
+
+func getFreshPlayer(players core.Players) func(next http.Handler) http.Handler {
+	return getPlayerWithLookup(players, true)
+}
+
+func getPlayerWithLookup(players core.Players, fresh bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			userName, _ := request.UsernameFrom(ctx)
 			client, _ := request.ClientFrom(ctx)
-			playerId := playerIDFromCookie(r, userName)
+			cookieName := playerIDCookieName(userName)
+			playerId := playerIDFromCookie(r, cookieName)
 			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 			userAgent := canonicalUserAgent(r)
-			player, trc, err := players.Register(ctx, playerId, client, userAgent, ip)
+			var player *model.Player
+			var trc *model.Transcoding
+			var err error
+			if fresh {
+				player, trc, err = players.RegisterFresh(ctx, playerId, client, userAgent, ip)
+			} else {
+				player, trc, err = players.Register(ctx, playerId, client, userAgent, ip)
+			}
 			if err != nil {
 				log.Error(ctx, "Could not register player", "username", userName, "client", client, err)
 			} else {
@@ -232,15 +266,17 @@ func getPlayer(players core.Players) func(next http.Handler) http.Handler {
 				}
 				r = r.WithContext(ctx)
 
-				cookie := &http.Cookie{ //nolint:gosec // Secure omitted: Navidrome may run over plain HTTP
-					Name:     playerIDCookieName(userName),
-					Value:    player.ID,
-					MaxAge:   consts.CookieExpiry,
-					HttpOnly: true,
-					SameSite: http.SameSiteStrictMode,
-					Path:     cmp.Or(conf.Server.BasePath, "/"),
+				if shouldSetPlayerCookie(r, cookieName, player.ID) {
+					cookie := &http.Cookie{ //nolint:gosec // Secure omitted: Navidrome may run over plain HTTP
+						Name:     cookieName,
+						Value:    player.ID,
+						MaxAge:   consts.CookieExpiry,
+						HttpOnly: true,
+						SameSite: http.SameSiteStrictMode,
+						Path:     cmp.Or(conf.Server.BasePath, "/"),
+					}
+					http.SetCookie(w, cookie)
 				}
-				http.SetCookie(w, cookie)
 			}
 
 			next.ServeHTTP(w, r)
@@ -286,11 +322,10 @@ func canonicalUserAgent(r *http.Request) string {
 	return userAgent
 }
 
-func playerIDFromCookie(r *http.Request, userName string) string {
+func playerIDFromCookie(r *http.Request, cookieName string) string {
 	if r.Header.Get("Cookie") == "" {
 		return ""
 	}
-	cookieName := playerIDCookieName(userName)
 	var playerId string
 	if c, err := r.Cookie(cookieName); err == nil {
 		playerId = c.Value
@@ -299,6 +334,14 @@ func playerIDFromCookie(r *http.Request, userName string) string {
 		}
 	}
 	return playerId
+}
+
+func shouldSetPlayerCookie(r *http.Request, cookieName, playerID string) bool {
+	if r.Header.Get("Cookie") == "" {
+		return true
+	}
+	c, err := r.Cookie(cookieName)
+	return err != nil || c.Value != playerID
 }
 
 func playerIDCookieName(userName string) string {

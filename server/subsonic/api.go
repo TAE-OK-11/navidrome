@@ -106,14 +106,16 @@ func (api *Router) routes() http.Handler {
 		// Lightweight system endpoints do not need player registration.
 		h(r, "ping", api.Ping)
 		h(r, "getLicense", api.GetLicense)
+		h(r, "getMusicFolders", api.GetMusicFolders)
+		h(r, "getGenres", api.GetGenres)
+		h(r, "getScanStatus", api.GetScanStatus)
+		h(r.With(adminOnly), "startScan", api.StartScan)
 
 		// Subsonic endpoints, grouped by controller
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
-			h(r, "getMusicFolders", api.GetMusicFolders)
 			h(r, "getIndexes", api.GetIndexes)
 			h(r, "getArtists", api.GetArtists)
-			h(r, "getGenres", api.GetGenres)
 			h(r, "getMusicDirectory", api.GetMusicDirectory)
 			h(r, "getArtist", api.GetArtist)
 			h(r, "getAlbum", api.GetAlbum)
@@ -176,14 +178,12 @@ func (api *Router) routes() http.Handler {
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
-			h(r, "getScanStatus", api.GetScanStatus)
-			h(r.With(adminOnly), "startScan", api.StartScan)
-		})
-		r.Group(func(r chi.Router) {
-			r.Use(getPlayer(api.players))
 			hr(r, "getAvatar", api.GetAvatar)
 			h(r, "getLyrics", api.GetLyrics)
 			h(r, "getLyricsBySongId", api.GetLyricsBySongId)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(getFreshPlayer(api.players))
 			hr(r, "stream", api.Stream)
 			hr(r, "download", api.Download)
 			hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
@@ -342,7 +342,7 @@ func sendResponse(w http.ResponseWriter, r *http.Request, payload *responses.Sub
 // (e.g. Retry-After) must set them before calling.
 func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *responses.Subsonic, status int) {
 	p := req.Params(r)
-	f, _ := p.String("f")
+	f := p.StringOr("f", "")
 	var response []byte
 	var err error
 	switch f {
@@ -351,7 +351,7 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 		wrapper := &responses.JsonWrapper{Subsonic: *payload}
 		response, err = json.Marshal(wrapper)
 	case "jsonp":
-		callback, _ := p.String("callback")
+		callback := p.StringOr("callback", "")
 		if !validJSIdentifier.MatchString(callback) {
 			log.Warn(r.Context(), "Invalid JSONP callback parameter", "callback", callback)
 			w.Header().Set("Content-Type", "application/json")

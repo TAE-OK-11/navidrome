@@ -103,12 +103,11 @@ func (api *Router) routes() http.Handler {
 		r.Use(authenticate(api.ds))
 		r.Use(server.UpdateLastAccessMiddleware(api.ds))
 
+		// Lightweight system endpoints do not need player registration.
+		h(r, "ping", api.Ping)
+		h(r, "getLicense", api.GetLicense)
+
 		// Subsonic endpoints, grouped by controller
-		r.Group(func(r chi.Router) {
-			r.Use(getPlayer(api.players))
-			h(r, "ping", api.Ping)
-			h(r, "getLicense", api.GetLicense)
-		})
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
 			h(r, "getMusicFolders", api.GetMusicFolders)

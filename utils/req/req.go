@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -13,10 +14,11 @@ import (
 
 type Values struct {
 	*http.Request
+	query url.Values
 }
 
 func Params(r *http.Request) *Values {
-	return &Values{r}
+	return &Values{Request: r, query: r.URL.Query()}
 }
 
 var (
@@ -28,7 +30,7 @@ func newError(err error, param string) error {
 	return fmt.Errorf("%w: '%s'", err, param)
 }
 func (r *Values) String(param string) (string, error) {
-	v := r.URL.Query().Get(param)
+	v := r.query.Get(param)
 	if v == "" {
 		return "", newError(ErrMissingParam, param)
 	}
@@ -37,16 +39,16 @@ func (r *Values) String(param string) (string, error) {
 
 func (r *Values) StringPtr(param string) *string {
 	var v *string
-	if _, exists := r.URL.Query()[param]; exists {
-		v = new(r.URL.Query().Get(param))
+	if _, exists := r.query[param]; exists {
+		v = new(r.query.Get(param))
 	}
 	return v
 }
 
 func (r *Values) BoolPtr(param string) *bool {
 	var v *bool
-	if _, exists := r.URL.Query()[param]; exists {
-		s := r.URL.Query().Get(param)
+	if _, exists := r.query[param]; exists {
+		s := r.query.Get(param)
 		v = new(strings.Contains("/true/on/1/", "/"+strings.ToLower(s)+"/"))
 	}
 	return v
@@ -61,7 +63,7 @@ func (r *Values) StringOr(param, def string) string {
 }
 
 func (r *Values) Strings(param string) ([]string, error) {
-	values := r.URL.Query()[param]
+	values := r.query[param]
 	if len(values) == 0 {
 		return nil, newError(ErrMissingParam, param)
 	}

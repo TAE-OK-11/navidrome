@@ -260,6 +260,16 @@ var _ = Describe("middlewares", func() {
 				Expect(recorder.Body.String()).To(Equal("OK"))
 				Expect(req.URL.RawQuery).To(ContainSubstring("user=1"))
 			})
+
+			It("does not re-encode query params without route params", func() {
+				middleware = URLParamsMiddleware(testHandler)
+
+				req, _ := http.NewRequest("GET", "/?z=2&a=1", nil)
+				middleware.ServeHTTP(recorder, req)
+
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+				Expect(req.URL.RawQuery).To(Equal("z=2&a=1"))
+			})
 		})
 
 		Context("when request has query parameters", func() {

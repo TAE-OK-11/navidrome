@@ -286,35 +286,46 @@ func serverAddress(r *http.Request) (scheme, host string) {
 	return scheme, host
 }
 
-// URLParamsMiddleware is a middleware function that decodes the query string of
-// the incoming HTTP request, adds the URL parameters from the routing context,
-// and re-encodes the modified query string.
+// URLParamsMiddleware exposes chi route params as query params with a ":" prefix.
 func URLParamsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Retrieve the routing context from the request context.
 		ctx := chi.RouteContext(r.Context())
-
-		// Parse the existing query string into a URL values map.
-		params, _ := url.ParseQuery(r.URL.RawQuery)
-
-		// Loop through each URL parameter in the routing context.
-		for i, key := range ctx.URLParams.Keys {
-			// Skip any wildcard URL parameter keys.
-			if strings.Contains(key, "*") {
-				continue
-			}
-
-			// Add the URL parameter key-value pair to the URL values map.
-			params.Add(":"+key, ctx.URLParams.Values[i])
+		if ctx == nil || len(ctx.URLParams.Keys) == 0 {
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		// Re-encode the URL values map as a query string and replace the
-		// existing query string in the request.
-		r.URL.RawQuery = params.Encode()
+		rawQuery, changed := rawQueryWithRouteParams(r.URL.RawQuery, ctx.URLParams.Keys, ctx.URLParams.Values)
+		if changed {
+			r.URL.RawQuery = rawQuery
+		}
 
-		// Call the next handler in the chain with the modified request and response.
 		next.ServeHTTP(w, r)
 	})
+}
+
+func rawQueryWithRouteParams(rawQuery string, keys, values []string) (string, bool) {
+	var params url.Values
+	changed := false
+
+	for i, key := range keys {
+		if strings.ContainsRune(key, '*') {
+			continue
+		}
+		if i >= len(values) {
+			continue
+		}
+		if params == nil {
+			params, _ = url.ParseQuery(rawQuery)
+		}
+		params.Add(":"+key, values[i])
+		changed = true
+	}
+
+	if !changed {
+		return rawQuery, false
+	}
+	return params.Encode(), true
 }
 
 func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http.Handler {

@@ -48,8 +48,7 @@ func (r *Values) StringPtr(param string) *string {
 func (r *Values) BoolPtr(param string) *bool {
 	var v *bool
 	if _, exists := r.query[param]; exists {
-		s := r.query.Get(param)
-		v = new(strings.Contains("/true/on/1/", "/"+strings.ToLower(s)+"/"))
+		v = new(parseBool(r.query.Get(param)))
 	}
 	return v
 }
@@ -160,7 +159,7 @@ func (r *Values) Bool(param string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.Contains("/true/on/1/", "/"+strings.ToLower(v)+"/"), nil
+	return parseBool(v), nil
 }
 
 func (r *Values) BoolOr(param string, def bool) bool {
@@ -181,4 +180,13 @@ func (r *Values) Float64Or(param string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+func parseBool(v string) bool {
+	switch strings.ToLower(v) {
+	case "true", "on", "1":
+		return true
+	default:
+		return false
+	}
 }

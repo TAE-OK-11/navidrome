@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -38,8 +39,9 @@ type players struct {
 const playerLookupCacheTTL = time.Second
 
 type playerLookupCache struct {
-	byID    sync.Map
-	byMatch sync.Map
+	byID            sync.Map
+	byMatch         sync.Map
+	lastSweepUnixNs atomic.Int64
 }
 
 type playerCacheEntry struct {
@@ -78,8 +80,6 @@ func (p *players) register(ctx context.Context, playerID, client, userAgent, ip 
 			if plr.Client != client {
 				p.cache.delete(playerID, matchKey)
 				playerID = ""
-			} else if useCache {
-				p.cache.put(playerID, matchKey, plr, nil)
 			}
 		}
 	}
@@ -157,7 +157,7 @@ func (c *playerLookupCache) getByID(playerID, client string) (*model.Player, *mo
 	if !ok {
 		return nil, nil, false
 	}
-	return c.playerFromEntry(value, client)
+	return c.playerFromEntry(value, client, time.Now())
 }
 
 func (c *playerLookupCache) getByMatch(matchKey string) (*model.Player, *model.Transcoding, bool) {
@@ -165,12 +165,12 @@ func (c *playerLookupCache) getByMatch(matchKey string) (*model.Player, *model.T
 	if !ok {
 		return nil, nil, false
 	}
-	return c.playerFromEntry(value, "")
+	return c.playerFromEntry(value, "", time.Now())
 }
 
-func (c *playerLookupCache) playerFromEntry(value any, client string) (*model.Player, *model.Transcoding, bool) {
+func (c *playerLookupCache) playerFromEntry(value any, client string, now time.Time) (*model.Player, *model.Transcoding, bool) {
 	entry := value.(playerCacheEntry)
-	if time.Now().After(entry.expires) || client != "" && entry.player.Client != client {
+	if now.After(entry.expires) || client != "" && entry.player.Client != client {
 		c.delete(entry.player.ID, entry.matchCacheKey)
 		return nil, nil, false
 	}
@@ -185,9 +185,11 @@ func (c *playerLookupCache) playerFromEntry(value any, client string) (*model.Pl
 }
 
 func (c *playerLookupCache) put(playerID, matchKey string, plr *model.Player, trc *model.Transcoding) {
+	now := time.Now()
+	c.sweep(now)
 	entry := playerCacheEntry{
 		player:        *plr,
-		expires:       time.Now().Add(playerLookupCacheTTL),
+		expires:       now.Add(playerLookupCacheTTL),
 		matchCacheKey: matchKey,
 	}
 	if trc != nil {
@@ -205,4 +207,21 @@ func (c *playerLookupCache) delete(playerID, matchKey string) {
 	if matchKey != "" {
 		c.byMatch.Delete(matchKey)
 	}
+}
+
+func (c *playerLookupCache) sweep(now time.Time) {
+	last := c.lastSweepUnixNs.Load()
+	if last != 0 && now.Sub(time.Unix(0, last)) < playerLookupCacheTTL {
+		return
+	}
+	if !c.lastSweepUnixNs.CompareAndSwap(last, now.UnixNano()) {
+		return
+	}
+	c.byID.Range(func(_, value any) bool {
+		entry := value.(playerCacheEntry)
+		if now.After(entry.expires) {
+			c.delete(entry.player.ID, entry.matchCacheKey)
+		}
+		return true
+	})
 }

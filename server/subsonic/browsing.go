@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -16,6 +17,30 @@ import (
 	"github.com/navidrome/navidrome/utils/req"
 	"github.com/navidrome/navidrome/utils/slice"
 )
+
+const genreResponseCacheTTL = time.Second
+
+type genreResponseCache struct {
+	mu      sync.Mutex
+	expires time.Time
+	value   *responses.Genres
+}
+
+func (c *genreResponseCache) get(now time.Time) (*responses.Genres, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.value == nil || now.After(c.expires) {
+		return nil, false
+	}
+	return c.value, true
+}
+
+func (c *genreResponseCache) put(now time.Time, value *responses.Genres) {
+	c.mu.Lock()
+	c.value = value
+	c.expires = now.Add(genreResponseCacheTTL)
+	c.mu.Unlock()
+}
 
 func (api *Router) GetMusicFolders(r *http.Request) (*responses.Subsonic, error) {
 	libraries := getUserAccessibleLibraries(r.Context())
@@ -261,6 +286,13 @@ func (api *Router) GetSong(r *http.Request) (*responses.Subsonic, error) {
 }
 
 func (api *Router) GetGenres(r *http.Request) (*responses.Subsonic, error) {
+	now := time.Now()
+	if genres, ok := api.genreCache.get(now); ok {
+		response := newResponse()
+		response.Genres = genres
+		return response, nil
+	}
+
 	ctx := r.Context()
 	genres, err := api.ds.Genre(ctx).GetAll(model.QueryOptions{Sort: "song_count, album_count, name desc", Order: "desc"})
 	if err != nil {
@@ -275,6 +307,7 @@ func (api *Router) GetGenres(r *http.Request) (*responses.Subsonic, error) {
 
 	response := newResponse()
 	response.Genres = toGenres(genres)
+	api.genreCache.put(now, response.Genres)
 	return response, nil
 }
 

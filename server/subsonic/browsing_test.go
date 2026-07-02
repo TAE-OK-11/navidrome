@@ -60,6 +60,27 @@ var _ = Describe("Browsing", func() {
 		})
 	})
 
+	Describe("GetGenres", func() {
+		It("reuses the short-lived genre response cache", func() {
+			genreRepo := ds.Genre(ctx).(*tests.MockedGenreRepo)
+			Expect(genreRepo.Put(&model.Genre{ID: "1", Name: "Rock"})).To(Succeed())
+
+			r := httptest.NewRequest("GET", "/rest/getGenres", nil)
+			r = r.WithContext(ctx)
+
+			first, err := api.GetGenres(r)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(first.Genres.Genre).To(HaveLen(1))
+
+			Expect(genreRepo.Put(&model.Genre{ID: "2", Name: "Jazz"})).To(Succeed())
+			second, err := api.GetGenres(r)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(second.Genres.Genre).To(HaveLen(1))
+			Expect(second.Genres).To(Equal(first.Genres))
+		})
+	})
+
 	Describe("GetIndexes", func() {
 		It("should validate user access to the specified musicFolderId", func() {
 			// Create mock user with access to library 1 only

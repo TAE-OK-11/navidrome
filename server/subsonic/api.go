@@ -55,6 +55,7 @@ type Router struct {
 	lyrics            lyricssvc.Lyrics
 	transcodeDecision stream.TranscodeDecider
 	sonic             *sonicsvc.Sonic
+	genreCache        genreResponseCache
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,

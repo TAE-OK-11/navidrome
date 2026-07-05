@@ -18,7 +18,7 @@ PDK_SOURCES := $(shell find ../pdk/go -name '*.go' 2>/dev/null)
 %.ndp: %.wasm %/manifest.json
 	@rm -f $@
 	@cp $< plugin.wasm
-	zip -j $@ $*/manifest.json plugin.wasm
+	go run ./package_ndp.go $@ $*/manifest.json plugin.wasm
 	@rm -f plugin.wasm
 	@mv $< $<.tmp && mv $<.tmp $<  # Touch wasm to ensure it's older than ndp
 

@@ -590,13 +590,13 @@ var _ = Describe("ffmpeg", func() {
 
 				// Use a command that generates audio indefinitely
 				// -f lavfi uses FFmpeg's built-in audio source
-				// -t 0 means no time limit (runs forever)
-				command := "ffmpeg -f lavfi -i sine=frequency=1000:duration=0 -f mp3 -"
+				// raw PCM avoids relying on optional encoders like mp3
+				command := "ffmpeg -f lavfi -i sine=frequency=1000 -f s16le -"
 
 				// The input file is not used here, but we need to provide a valid path to the Transcode function
 				stream, err := ff.Transcode(ctx, TranscodeOptions{
 					Command:  command,
-					Format:   "mp3",
+					Format:   "s16le",
 					FilePath: "tests/fixtures/test.mp3",
 					BitRate:  128,
 				})

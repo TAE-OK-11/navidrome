@@ -227,18 +227,27 @@ var _ = Describe("sqlRepository", func() {
 	Describe("applyLibraryFilter", func() {
 		var sq squirrel.SelectBuilder
 		var savedDB = r.db
+		var allLibraries model.Libraries
 
 		BeforeEach(func() {
 			sq = squirrel.Select("*").From("test_table")
-			// Add library 2 so a user granted only library 1 is a genuine strict subset.
+			// Add a test-only library so a user can be granted a genuine strict subset.
 			savedDB = r.db
 			r.db = GetDBXBuilder()
-			_, err := r.db.NewQuery("INSERT OR IGNORE INTO library (id, name, path) VALUES (2, 'Lib 2', '/lib2')").Execute()
+			_, err := r.db.NewQuery("INSERT OR IGNORE INTO library (id, name, path) VALUES (999002, 'Lib 999002', '/lib999002')").Execute()
 			Expect(err).ToNot(HaveOccurred())
+
+			var ids []int
+			err = r.queryAllSlice(squirrel.Select("id").From("library").OrderBy("id"), &ids)
+			Expect(err).ToNot(HaveOccurred())
+			allLibraries = make(model.Libraries, len(ids))
+			for i, id := range ids {
+				allLibraries[i] = model.Library{ID: id}
+			}
 		})
 
 		AfterEach(func() {
-			_, err := r.db.NewQuery("DELETE FROM library WHERE id = 2").Execute()
+			_, err := r.db.NewQuery("DELETE FROM library WHERE id = 999002").Execute()
 			Expect(err).ToNot(HaveOccurred())
 			r.db = savedDB
 		})
@@ -258,9 +267,9 @@ var _ = Describe("sqlRepository", func() {
 
 		Context("Regular User with a subset of libraries", func() {
 			BeforeEach(func() {
-				// Strict subset: granted lib 1, DB has libs 1 and 2, so the filter must apply.
+				// Strict subset: leave at least one library ungranted, so the filter must apply.
 				r.ctx = request.WithUser(context.Background(), model.User{
-					ID: "user123", IsAdmin: false, Libraries: model.Libraries{{ID: 1}},
+					ID: "user123", IsAdmin: false, Libraries: allLibraries[:len(allLibraries)-1],
 				})
 			})
 
@@ -298,7 +307,7 @@ var _ = Describe("sqlRepository", func() {
 			BeforeEach(func() {
 				// Granted every library in the DB, so the filter would exclude nothing.
 				r.ctx = request.WithUser(context.Background(), model.User{
-					ID: "alllibs", IsAdmin: false, Libraries: model.Libraries{{ID: 1}, {ID: 2}},
+					ID: "alllibs", IsAdmin: false, Libraries: allLibraries,
 				})
 			})
 

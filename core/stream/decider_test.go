@@ -81,6 +81,30 @@ var _ = Describe("Decider", func() {
 				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
 			})
 
+			It("uses complete scanner metadata without parsing cached probe data", func() {
+				mf := &model.MediaFile{
+					ID:         "1",
+					Suffix:     "m4a",
+					Codec:      "AAC",
+					BitRate:    256,
+					Channels:   2,
+					SampleRate: 48000,
+					ProbeData:  "{malformed",
+				}
+				ff.Error = fmt.Errorf("ffprobe should not be called")
+				ci := &ClientInfo{
+					DirectPlayProfiles: []DirectPlayProfile{
+						{Containers: []string{"m4a"}, AudioCodecs: []string{"aac"}, Protocols: []string{ProtocolHTTP}},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanDirectPlay).To(BeTrue())
+				Expect(decision.SourceStream.Codec).To(Equal("aac"))
+				Expect(decision.SourceStream.SampleRate).To(Equal(48000))
+				Expect(ff.ProbeAudioCalls.Load()).To(Equal(int64(0)))
+			})
+
 			It("skips first-request ffprobe for m4a AAC when scanner metadata is enough to transcode", func() {
 				mf := &model.MediaFile{ID: "1", Suffix: "m4a", Codec: "AAC", BitRate: 256, Channels: 2, SampleRate: 44100}
 				ff.Error = fmt.Errorf("ffprobe should not be called")

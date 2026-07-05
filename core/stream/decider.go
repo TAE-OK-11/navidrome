@@ -96,7 +96,6 @@ func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, 
 
 func (s *deciderService) evaluateDecision(ctx context.Context, decision *TranscodeDecision, clientInfo *ClientInfo) {
 	src := &decision.SourceStream
-	lookup := newTranscodeLookup(ctx, s.ds)
 
 	log.Trace(ctx, "Making transcode decision", "mediaID", decision.MediaID, "container", src.Container,
 		"codec", src.Codec, "bitrate", src.Bitrate, "channels", src.Channels,
@@ -128,6 +127,7 @@ func (s *deciderService) evaluateDecision(ctx context.Context, decision *Transco
 	}
 
 	// Try transcoding profiles (in order of preference)
+	lookup := newTranscodeLookup(ctx, s.ds)
 	for _, profile := range clientInfo.TranscodingProfiles {
 		if ts, transcodeFormat := s.computeTranscodedStream(ctx, lookup, src, &profile, clientInfo); ts != nil {
 			decision.CanTranscode = true
@@ -164,6 +164,15 @@ func buildSourceStream(mf *model.MediaFile, probe *ffmpeg.AudioProbeResult) Deta
 
 	// Use pre-parsed probe result, or fall back to parsing stored probe data
 	if probe == nil {
+		if hasCompleteScannerAudioMetadata(mf) {
+			sd.Codec = mf.AudioCodec()
+			sd.Bitrate = mf.BitRate
+			sd.SampleRate = mf.SampleRate
+			sd.BitDepth = gg.V(mf.BitDepth)
+			sd.Channels = mf.Channels
+			sd.IsLossless = isLosslessFormat(sd.Codec)
+			return sd
+		}
 		probe, _ = parseProbeData(mf.ProbeData)
 	}
 
@@ -185,6 +194,16 @@ func buildSourceStream(mf *model.MediaFile, probe *ffmpeg.AudioProbeResult) Deta
 	sd.IsLossless = isLosslessFormat(sd.Codec)
 
 	return sd
+}
+
+func hasCompleteScannerAudioMetadata(mf *model.MediaFile) bool {
+	if mf == nil || mf.BitRate <= 0 || mf.SampleRate <= 0 || mf.Channels <= 0 || mf.Codec == "" {
+		return false
+	}
+	if isMPEG4AudioContainer(mf.Suffix) && strings.EqualFold(mf.Codec, "alac") {
+		return mf.BitDepth != nil && *mf.BitDepth > 0
+	}
+	return true
 }
 
 func hasSufficientContainerMetadata(mf *model.MediaFile, src *Details) bool {

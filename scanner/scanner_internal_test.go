@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 
 	ppl "github.com/google/go-pipeline/pkg/pipeline"
+	"github.com/navidrome/navidrome/core/ffmpeg"
+	"github.com/navidrome/navidrome/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -94,5 +96,73 @@ var _ = Describe("runPhase", func() {
 		err := runPhase(ctx, phaseNum, phase)()
 		Expect(err).ToNot(HaveOccurred())
 		Expect(counter.Load()).To(Equal(int64(3)))
+	})
+})
+
+var _ = Describe("audio probe fallback helpers", func() {
+	Describe("mergeAudioProbeProperties", func() {
+		It("fills only missing audio properties", func() {
+			track := &model.MediaFile{Codec: "AAC"}
+			probe := &ffmpeg.AudioProbeResult{
+				Codec:      "aac",
+				BitRate:    256,
+				SampleRate: 48000,
+				BitDepth:   16,
+				Channels:   2,
+			}
+
+			mergeAudioProbeProperties(track, probe)
+
+			Expect(track.Codec).To(Equal("AAC"))
+			Expect(track.BitRate).To(Equal(256))
+			Expect(track.SampleRate).To(Equal(48000))
+			Expect(track.Channels).To(Equal(2))
+			Expect(*track.BitDepth).To(Equal(16))
+		})
+
+		It("does not overwrite values already read from tags", func() {
+			bitDepth := 24
+			track := &model.MediaFile{
+				Codec:      "ALAC",
+				BitRate:    900,
+				SampleRate: 44100,
+				BitDepth:   &bitDepth,
+				Channels:   2,
+			}
+			probe := &ffmpeg.AudioProbeResult{
+				Codec:      "aac",
+				BitRate:    256,
+				SampleRate: 48000,
+				BitDepth:   16,
+				Channels:   6,
+			}
+
+			mergeAudioProbeProperties(track, probe)
+
+			Expect(track.Codec).To(Equal("ALAC"))
+			Expect(track.BitRate).To(Equal(900))
+			Expect(track.SampleRate).To(Equal(44100))
+			Expect(track.Channels).To(Equal(2))
+			Expect(*track.BitDepth).To(Equal(24))
+		})
+	})
+
+	Describe("scannerProbePath", func() {
+		It("accepts local filesystem paths", func() {
+			probePath, ok := scannerProbePath("/music", "Album/track.m4a")
+			Expect(ok).To(BeTrue())
+			Expect(probePath).To(Equal("/music/Album/track.m4a"))
+		})
+
+		It("accepts file URLs", func() {
+			probePath, ok := scannerProbePath("file:///music", "Album/track.m4a")
+			Expect(ok).To(BeTrue())
+			Expect(probePath).To(Equal("/music/Album/track.m4a"))
+		})
+
+		It("skips non-local storage", func() {
+			_, ok := scannerProbePath("s3://bucket/music", "Album/track.m4a")
+			Expect(ok).To(BeFalse())
+		})
 	})
 })

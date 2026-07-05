@@ -3,11 +3,15 @@ package scanner
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"path"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +21,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/artwork"
+	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -273,6 +278,7 @@ const filesBatchSize = 200
 func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string]*model.MediaFile) error {
 	tracks := make([]model.MediaFile, 0, len(toImport))
 	uniqueTags := make(map[string]model.Tag, len(toImport))
+	var audioProbe ffmpeg.FFmpeg
 	for chunk := range slice.CollectChunks(maps.Keys(toImport), filesBatchSize) {
 		allInfo, err := entry.job.fs.ReadTags(chunk...)
 		if err != nil {
@@ -282,6 +288,12 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 		for filePath, info := range allInfo {
 			md := metadata.New(filePath, info)
 			track := md.ToMediaFile(entry.job.lib.ID, entry.id)
+			if needsAudioProbe(&track) {
+				if audioProbe == nil {
+					audioProbe = ffmpeg.New()
+				}
+				p.probeMissingAudioProperties(&track, entry.job.lib.Path, filePath, audioProbe)
+			}
 			tracks = append(tracks, track)
 			for _, t := range track.Tags.FlattenAll() {
 				uniqueTags[t.ID] = t
@@ -303,6 +315,61 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 	entry.tracks = tracks
 	entry.tags = slices.Collect(maps.Values(uniqueTags))
 	return nil
+}
+
+func (p *phaseFolders) probeMissingAudioProperties(track *model.MediaFile, libPath, filePath string, audioProbe ffmpeg.FFmpeg) {
+	if !conf.Server.DevEnableMediaFileProbe {
+		return
+	}
+	probePath, ok := scannerProbePath(libPath, filePath)
+	if !ok {
+		return
+	}
+	result, err := audioProbe.ProbeAudioStream(p.ctx, probePath)
+	if err != nil {
+		log.Debug(p.ctx, "Scanner: Skipping audio probe fallback", "path", filePath, err)
+		return
+	}
+	mergeAudioProbeProperties(track, result)
+	if data, err := json.Marshal(result); err == nil {
+		track.ProbeData = string(data)
+	}
+}
+
+func needsAudioProbe(track *model.MediaFile) bool {
+	return track.SampleRate <= 0 || track.BitRate <= 0 || track.Channels <= 0 || track.Codec == ""
+}
+
+func mergeAudioProbeProperties(track *model.MediaFile, result *ffmpeg.AudioProbeResult) {
+	if result == nil {
+		return
+	}
+	if track.SampleRate <= 0 && result.SampleRate > 0 {
+		track.SampleRate = result.SampleRate
+	}
+	if track.BitRate <= 0 && result.BitRate > 0 {
+		track.BitRate = result.BitRate
+	}
+	if track.Channels <= 0 && result.Channels > 0 {
+		track.Channels = result.Channels
+	}
+	if track.Codec == "" && result.Codec != "" {
+		track.Codec = strings.ToUpper(result.Codec)
+	}
+	if track.BitDepth == nil && result.BitDepth > 0 {
+		track.BitDepth = &result.BitDepth
+	}
+}
+
+func scannerProbePath(libPath, filePath string) (string, bool) {
+	u, err := url.Parse(libPath)
+	if err == nil && u.Scheme != "" {
+		if u.Scheme != storage.LocalSchemaID {
+			return "", false
+		}
+		return filepath.Join(u.Path, filePath), true
+	}
+	return filepath.Join(libPath, filePath), true
 }
 
 // createAlbumsFromMediaFiles groups the entry's tracks by album ID and creates albums

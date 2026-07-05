@@ -364,7 +364,7 @@ var _ = ndpdk.ComprehensiveNoParams
 			Expect(err).ToNot(HaveOccurred(), "go mod tidy (plugin) failed: %s", goTidyOutput)
 
 			// Build as WASM plugin - this validates the client code compiles correctly
-			buildCmd := exec.Command("go", "build", "-buildmode=c-shared", "-o", "plugin.wasm", ".")
+			buildCmd := exec.Command("go", "build", "-buildvcs=false", "-buildmode=c-shared", "-o", "plugin.wasm", ".")
 			buildCmd.Dir = pluginDir
 			buildCmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
 			buildOutput, err := buildCmd.CombinedOutput()

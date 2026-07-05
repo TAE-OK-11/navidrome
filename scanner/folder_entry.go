@@ -21,6 +21,7 @@ func newFolderEntry(job *scanJob, id, path string, updTime time.Time, hash strin
 		path:       path,
 		audioFiles: make(map[string]fs.DirEntry),
 		imageFiles: make(map[string]fs.DirEntry),
+		fileInfos:  make(map[string]fs.FileInfo),
 		albumIDMap: make(map[string]string),
 		updTime:    updTime,
 		prevHash:   hash,
@@ -37,6 +38,7 @@ type folderEntry struct {
 	updTime         time.Time // from DB
 	audioFiles      map[string]fs.DirEntry
 	imageFiles      map[string]fs.DirEntry
+	fileInfos       map[string]fs.FileInfo
 	numPlaylists    int
 	numSubFolders   int
 	imagesUpdatedAt time.Time
@@ -100,7 +102,7 @@ func (f *folderEntry) hash() string {
 	// Include audio files with their size and modtime
 	for _, key := range audioKeys {
 		_, _ = io.WriteString(h, key)
-		if info, err := f.audioFiles[key].Info(); err == nil {
+		if info, err := f.fileInfo(key, f.audioFiles[key]); err == nil {
 			_, _ = fmt.Fprintf(h, ":%d:%s", info.Size(), info.ModTime().UTC().String())
 		}
 	}
@@ -108,12 +110,19 @@ func (f *folderEntry) hash() string {
 	// Include image files with their size and modtime
 	for _, key := range imageKeys {
 		_, _ = io.WriteString(h, key)
-		if info, err := f.imageFiles[key].Info(); err == nil {
+		if info, err := f.fileInfo(key, f.imageFiles[key]); err == nil {
 			_, _ = fmt.Fprintf(h, ":%d:%s", info.Size(), info.ModTime().UTC().String())
 		}
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (f *folderEntry) fileInfo(name string, entry fs.DirEntry) (fs.FileInfo, error) {
+	if info, ok := f.fileInfos[name]; ok {
+		return info, nil
+	}
+	return entry.Info()
 }
 
 func mapKeys[K comparable, V any](m map[K]V) []K {

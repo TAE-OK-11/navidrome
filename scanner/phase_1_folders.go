@@ -238,7 +238,7 @@ func (p *phaseFolders) processFolder(entry *folderEntry) (*folderEntry, error) {
 		if !foundInDB || p.state.fullScan {
 			filesToImport[fullPath] = dbTrack
 		} else {
-			info, err := af.Info()
+			info, err := entry.fileInfo(afPath, af)
 			if err != nil {
 				log.Warn(p.ctx, "Scanner: Error getting file info", "folder", entry.path, "file", af.Name(), err)
 				p.state.sendWarning(fmt.Sprintf("Error getting file info for %s/%s: %v", entry.path, af.Name(), err))

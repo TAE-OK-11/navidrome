@@ -168,10 +168,12 @@ func loadDir(ctx context.Context, job *scanJob, dirPath string, checker *IgnoreC
 			switch {
 			case isAudio:
 				folder.audioFiles[entry.Name()] = entry
+				folder.fileInfos[entry.Name()] = fileInfo
 			case isPlaylist:
 				folder.numPlaylists++
 			case isImage:
 				folder.imageFiles[entry.Name()] = entry
+				folder.fileInfos[entry.Name()] = fileInfo
 				folder.imagesUpdatedAt = utils.TimeNewest(folder.imagesUpdatedAt, fileInfo.ModTime(), folder.modTime)
 			}
 		}

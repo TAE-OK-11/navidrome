@@ -112,7 +112,8 @@ func (api *Router) GetLyrics(r *http.Request) (*responses.Subsonic, error) {
 
 	var lyricsText strings.Builder
 	for _, line := range mainLyric.Line {
-		lyricsText.WriteString(line.Value + "\n")
+		lyricsText.WriteString(line.Value)
+		lyricsText.WriteByte('\n')
 	}
 	lyricsResponse.Value = lyricsText.String()
 

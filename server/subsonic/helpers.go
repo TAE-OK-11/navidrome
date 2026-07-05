@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -309,17 +310,35 @@ func artistRefs(participants model.ParticipantList) []responses.ArtistID3Ref {
 }
 
 func fakePath(mf model.MediaFile) string {
-	builder := strings.Builder{}
+	albumArtist := sanitizeSlashes(mf.AlbumArtist)
+	album := sanitizeSlashes(mf.FullAlbumName())
+	title := sanitizeSlashes(mf.FullTitle())
 
-	builder.WriteString(fmt.Sprintf("%s/%s/", sanitizeSlashes(mf.AlbumArtist), sanitizeSlashes(mf.FullAlbumName())))
+	builder := strings.Builder{}
+	builder.Grow(len(albumArtist) + len(album) + len(title) + len(mf.Suffix) + 12)
+	builder.WriteString(albumArtist)
+	builder.WriteByte('/')
+	builder.WriteString(album)
+	builder.WriteByte('/')
 	if mf.DiscNumber != 0 {
-		builder.WriteString(fmt.Sprintf("%02d-", mf.DiscNumber))
+		writeTwoDigit(&builder, mf.DiscNumber)
+		builder.WriteByte('-')
 	}
 	if mf.TrackNumber != 0 {
-		builder.WriteString(fmt.Sprintf("%02d - ", mf.TrackNumber))
+		writeTwoDigit(&builder, mf.TrackNumber)
+		builder.WriteString(" - ")
 	}
-	builder.WriteString(fmt.Sprintf("%s.%s", sanitizeSlashes(mf.FullTitle()), mf.Suffix))
+	builder.WriteString(title)
+	builder.WriteByte('.')
+	builder.WriteString(mf.Suffix)
 	return builder.String()
+}
+
+func writeTwoDigit(builder *strings.Builder, n int) {
+	if n >= 0 && n < 10 {
+		builder.WriteByte('0')
+	}
+	builder.WriteString(strconv.Itoa(n))
 }
 
 func sanitizeSlashes(target string) string {

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"reflect"
-	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -317,23 +317,40 @@ func (r sqlRepository) executeSQL(sq Sqlizer) (int64, error) {
 	return c, err
 }
 
-var placeholderRegex = regexp.MustCompile(`\?`)
-
 func (r sqlRepository) toSQL(sq Sqlizer) (string, dbx.Params, error) {
 	query, args, err := sq.ToSql()
 	if err != nil {
 		return "", nil, err
 	}
-	// Replace query placeholders with named params
-	params := make(dbx.Params, len(args))
+	return bindSQLParams(query, args), sqlParams(args), nil
+}
+
+func bindSQLParams(query string, args []any) string {
+	if len(args) == 0 {
+		return query
+	}
+	var builder strings.Builder
+	builder.Grow(len(query) + len(args)*4)
 	counter := 0
-	result := placeholderRegex.ReplaceAllStringFunc(query, func(_ string) string {
-		p := fmt.Sprintf("p%d", counter)
-		params[p] = args[counter]
+	for i := range len(query) {
+		if query[i] != '?' {
+			builder.WriteByte(query[i])
+			continue
+		}
+		builder.WriteString("{:p")
+		builder.WriteString(strconv.Itoa(counter))
+		builder.WriteByte('}')
 		counter++
-		return "{:" + p + "}"
-	})
-	return result, params, nil
+	}
+	return builder.String()
+}
+
+func sqlParams(args []any) dbx.Params {
+	params := make(dbx.Params, len(args))
+	for i, arg := range args {
+		params["p"+strconv.Itoa(i)] = arg
+	}
+	return params
 }
 
 func (r sqlRepository) queryOne(sq Sqlizer, response any) error {

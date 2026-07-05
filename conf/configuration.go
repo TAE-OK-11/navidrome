@@ -883,7 +883,7 @@ func setViperDefaults() {
 	viper.SetDefault("devartworkthrottlebuffered", true)
 	viper.SetDefault("devartistinfotimetolive", consts.ArtistInfoTimeToLive)
 	viper.SetDefault("devalbuminfotimetolive", consts.AlbumInfoTimeToLive)
-	viper.SetDefault("devexternalscanner", true)
+	viper.SetDefault("devexternalscanner", false)
 	viper.SetDefault("devscannerthreads", min(5, max(1, runtime.NumCPU())))
 	viper.SetDefault("devselectivewatcher", true)
 	viper.SetDefault("devinsightsinitialdelay", consts.InsightsInitialDelay)

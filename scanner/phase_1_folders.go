@@ -287,7 +287,7 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 		for filePath, info := range allInfo {
 			md := metadata.New(filePath, info)
 			track := md.ToMediaFile(entry.job.lib.ID, entry.id)
-			if needsAudioProbe(&track) {
+			if conf.Server.DevEnableMediaFileProbe && needsAudioProbe(&track) {
 				if audioProbe == nil {
 					audioProbe = ffmpeg.New()
 				}
@@ -317,9 +317,6 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 }
 
 func (p *phaseFolders) probeMissingAudioProperties(track *model.MediaFile, libPath, filePath string, audioProbe ffmpeg.FFmpeg) {
-	if !conf.Server.DevEnableMediaFileProbe {
-		return
-	}
 	probePath, ok := scannerProbePath(libPath, filePath)
 	if !ok {
 		return

@@ -32,7 +32,10 @@ func Db() *sql.DB {
 	return singleton.GetInstance(func() *sql.DB {
 		sql.Register(Driver, &sqlite3.SQLiteDriver{
 			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-				return conn.RegisterFunc("SEEDEDRAND", hasher.HashFunc(), false)
+				if err := conn.RegisterFunc("SEEDEDRAND", hasher.HashFunc(), false); err != nil {
+					return err
+				}
+				return configureSQLiteConn(conn)
 			},
 		})
 		Path = conf.Server.DbPath
@@ -50,7 +53,9 @@ func Db() *sql.DB {
 		if db == nil {
 			log.Fatal("Error opening database: sql.Open returned nil DB")
 		}
-		db.SetMaxOpenConns(maxOpenConns())
+		maxConns := maxOpenConns()
+		db.SetMaxOpenConns(maxConns)
+		db.SetMaxIdleConns(maxConns)
 		if conf.Server.DevOptimizeDB {
 			_, err = db.Exec("PRAGMA optimize=0x10002")
 			if err != nil {
@@ -64,6 +69,15 @@ func Db() *sql.DB {
 
 func maxOpenConns() int {
 	return max(2, min(16, runtime.GOMAXPROCS(0)*2))
+}
+
+func configureSQLiteConn(conn *sqlite3.SQLiteConn) error {
+	_, err := conn.Exec(`
+		PRAGMA temp_store=MEMORY;
+		PRAGMA mmap_size=134217728;
+		PRAGMA cache_spill=OFF;
+	`, nil)
+	return err
 }
 
 func Close(ctx context.Context) {

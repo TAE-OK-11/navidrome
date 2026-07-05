@@ -3,8 +3,6 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"sync/atomic"
 	"time"
 
@@ -237,7 +235,7 @@ func (s *scannerImpl) runGC(ctx context.Context, state *scanState) func() error 
 				// For selective scans, extract library IDs to scope GC operations
 				var libraryIDs []int
 				if state.isSelectiveScan() {
-					libraryIDs = slices.Collect(maps.Keys(state.targets))
+					libraryIDs = mapKeys(state.targets)
 					log.Debug(ctx, "Scanner: Running selective GC", "libraryIDs", libraryIDs)
 				}
 

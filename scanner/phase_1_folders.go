@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -477,7 +476,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 			groupedMissingTracks := slice.ToMap(entry.missingTracks, func(mf *model.MediaFile) (string, struct{}) {
 				return mf.AlbumID, struct{}{}
 			})
-			albumsToUpdate := slices.Collect(maps.Keys(groupedMissingTracks))
+			albumsToUpdate := mapKeys(groupedMissingTracks)
 			err = albumRepo.Touch(albumsToUpdate...)
 			if err != nil {
 				log.Error(p.ctx, "Scanner: Error touching album", "folder", entry.path, "albums", albumsToUpdate, err)

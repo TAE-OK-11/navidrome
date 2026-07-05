@@ -116,8 +116,8 @@ func (f *folderEntry) hash() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func mapKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
+func mapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
 	for key := range m {
 		keys = append(keys, key)
 	}

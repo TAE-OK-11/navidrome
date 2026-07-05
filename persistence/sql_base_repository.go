@@ -14,6 +14,7 @@ import (
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
+	"github.com/lann/builder"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -252,6 +253,9 @@ func (r sqlRepository) userSeesAllLibraries(visible []int) bool {
 	user := loggedUser(r.ctx)
 	if user.IsAdmin || user.ID == invalidUserId {
 		return true // visible is the whole library table
+	}
+	if len(visible) == 0 {
+		return false
 	}
 	total, err := NewLibraryRepository(r.ctx, r.db).CountAll()
 	if err != nil || total == 0 {
@@ -496,12 +500,16 @@ func (r sqlRepository) count(countQuery SelectBuilder, options ...model.QueryOpt
 	countQuery = countQuery.
 		RemoveColumns().Columns("count(distinct " + r.tableName + ".id) as count").
 		RemoveOffset().RemoveLimit().
-		OrderBy(r.tableName + ".id"). // To remove any ORDER BY clause that could slow down the query
 		From(r.tableName)
+	countQuery = removeOrderBy(countQuery)
 	countQuery = r.applyFilters(countQuery, options...)
 	var res struct{ Count int64 }
 	err := r.queryOne(countQuery, &res)
 	return res.Count, err
+}
+
+func removeOrderBy(sq SelectBuilder) SelectBuilder {
+	return builder.Delete(sq, "OrderByParts").(SelectBuilder)
 }
 
 func (r sqlRepository) putByMatch(filter Sqlizer, id string, m any, colsToUpdate ...string) (string, error) {

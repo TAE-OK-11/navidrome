@@ -43,6 +43,16 @@ var _ = Describe("sqlRepository", func() {
 		})
 	})
 
+	Describe("removeOrderBy", func() {
+		It("removes existing order by clauses", func() {
+			sq := squirrel.Select("*").From("media_file").OrderBy("title asc", "id desc")
+			sql, _, err := removeOrderBy(sq).ToSql()
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(sql).To(Equal("SELECT * FROM media_file"))
+		})
+	})
+
 	Describe("toSQL", func() {
 		It("returns error for invalid SQL", func() {
 			sq := squirrel.Select("*").From("test").Where(1)
@@ -300,6 +310,14 @@ var _ = Describe("sqlRepository", func() {
 				sql, _, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(sql).To(ContainSubstring("IN (SELECT ul.library_id FROM user_library ul WHERE ul.user_id = ?)"))
+			})
+
+			It("should fail closed before querying the library table", func() {
+				raw := r
+				raw.db = nil
+
+				Expect(raw.userSeesAllLibraries(nil)).To(BeFalse())
+				Expect(raw.userSeesAllLibraries([]int{})).To(BeFalse())
 			})
 		})
 

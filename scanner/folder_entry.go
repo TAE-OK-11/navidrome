@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"slices"
 	"time"
 
@@ -75,7 +74,7 @@ func (f *folderEntry) toFolder() *model.Folder {
 	if playlists.InPath(*folder) {
 		folder.NumPlaylists = f.numPlaylists
 	}
-	folder.ImageFiles = slices.Collect(maps.Keys(f.imageFiles))
+	folder.ImageFiles = mapKeys(f.imageFiles)
 	folder.ImagesUpdatedAt = f.imagesUpdatedAt
 	folder.Hash = f.hash()
 	return folder
@@ -93,9 +92,9 @@ func (f *folderEntry) hash() string {
 	)
 
 	// Sort the keys of audio and image files to ensure consistent hashing
-	audioKeys := slices.Collect(maps.Keys(f.audioFiles))
+	audioKeys := mapKeys(f.audioFiles)
 	slices.Sort(audioKeys)
-	imageKeys := slices.Collect(maps.Keys(f.imageFiles))
+	imageKeys := mapKeys(f.imageFiles)
 	slices.Sort(imageKeys)
 
 	// Include audio files with their size and modtime
@@ -115,4 +114,20 @@ func (f *folderEntry) hash() string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func mapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func mapValues[K comparable, V any](m map[K]V) []V {
+	values := make([]V, 0, len(m))
+	for _, value := range m {
+		values = append(values, value)
+	}
+	return values
 }

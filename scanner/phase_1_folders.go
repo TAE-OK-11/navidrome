@@ -253,7 +253,7 @@ func (p *phaseFolders) processFolder(entry *folderEntry) (*folderEntry, error) {
 	}
 
 	// Remaining dbTracks are tracks that were not found in the FS, so they should be marked as missing
-	entry.missingTracks = slices.Collect(maps.Values(dbTracks))
+	entry.missingTracks = mapValues(dbTracks)
 
 	// Load metadata from files that need to be imported
 	if len(filesToImport) > 0 {
@@ -313,7 +313,7 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 		}
 	}
 	entry.tracks = tracks
-	entry.tags = slices.Collect(maps.Values(uniqueTags))
+	entry.tags = mapValues(uniqueTags)
 	return nil
 }
 
@@ -550,7 +550,7 @@ func (p *phaseFolders) finalize(err error) error {
 			if len(job.lastUpdates) == 0 {
 				continue
 			}
-			folderIDs := slices.Collect(maps.Keys(job.lastUpdates))
+			folderIDs := mapKeys(job.lastUpdates)
 			err := tx.Folder(p.ctx).MarkMissing(true, folderIDs...)
 			if err != nil {
 				log.Error(p.ctx, "Scanner: Error marking missing folders", "lib", job.lib.Name, err)

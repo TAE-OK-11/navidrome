@@ -547,15 +547,20 @@ func (r sqlRepository) putByMatch(filter Sqlizer, id string, m any, colsToUpdate
 // row identified by id: only the requested colsToUpdate (or all columns when none are specified),
 // dropping columns that must never be overwritten on update (created_at, birth_time).
 func filterUpdateValues(values map[string]any, id string, colsToUpdate ...string) map[string]any {
-	updateValues := map[string]any{}
-
-	// This is a map of the columns that need to be updated, if specified
-	c2upd := slice.ToMap(colsToUpdate, func(s string) (string, struct{}) {
-		return toSnakeCase(s), struct{}{}
-	})
-	for k, v := range values {
-		if _, found := c2upd[k]; len(c2upd) == 0 || found {
+	updateValues := make(map[string]any, len(values))
+	if len(colsToUpdate) == 0 {
+		for k, v := range values {
 			updateValues[k] = v
+		}
+	} else {
+		// This is a map of the columns that need to be updated, if specified
+		c2upd := slice.ToMap(colsToUpdate, func(s string) (string, struct{}) {
+			return toSnakeCase(s), struct{}{}
+		})
+		for k, v := range values {
+			if _, found := c2upd[k]; found {
+				updateValues[k] = v
+			}
 		}
 	}
 

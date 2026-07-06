@@ -3,7 +3,6 @@ package server
 import (
 	"compress/gzip"
 	"io"
-	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,11 +68,29 @@ func (a acceptedCompressions) hasAny() bool {
 }
 
 func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
+	if !strings.ContainsAny(acceptEncoding, ";*") {
+		return acceptedCompressionEncodingsFast(acceptEncoding)
+	}
 	return acceptedCompressions{
 		brotli: acceptedEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
 		zstd:   acceptedEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
 		gzip:   acceptedEncodingQuality(acceptEncoding, string(compressionGzip)) > 0,
 	}
+}
+
+func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompressions {
+	var accepted acceptedCompressions
+	for part := range strings.SplitSeq(acceptEncoding, ",") {
+		switch strings.TrimSpace(strings.ToLower(part)) {
+		case string(compressionBrotli):
+			accepted.brotli = true
+		case string(compressionZstd):
+			accepted.zstd = true
+		case string(compressionGzip):
+			accepted.gzip = true
+		}
+	}
+	return accepted
 }
 
 func acceptedEncodingQuality(header, encoding string) float64 {
@@ -300,11 +317,8 @@ func hasSmallContentLength(h http.Header) bool {
 }
 
 func isCompressibleContentType(contentType string) bool {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType, _, _ = strings.Cut(contentType, ";")
-		mediaType = strings.ToLower(strings.TrimSpace(mediaType))
-	}
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
 	if strings.HasPrefix(mediaType, "text/") {
 		return mediaType != "text/event-stream"
 	}

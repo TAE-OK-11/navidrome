@@ -87,11 +87,7 @@ func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
 	if !strings.ContainsAny(acceptEncoding, ";*") {
 		return acceptedCompressionEncodingsFast(acceptEncoding)
 	}
-	return acceptedCompressions{
-		brotli: acceptedEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
-		zstd:   explicitEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
-		gzip:   acceptedEncodingQuality(acceptEncoding, string(compressionGzip)) > 0,
-	}
+	return acceptedCompressionEncodingsSlow(acceptEncoding)
 }
 
 func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompressions {
@@ -109,39 +105,41 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 	return accepted
 }
 
-func acceptedEncodingQuality(header, encoding string) float64 {
-	if quality, ok := encodingQualityFromHeader(header, encoding); ok {
-		return quality
-	}
-	if quality, ok := encodingQualityFromHeader(header, "*"); ok {
-		return quality
-	}
-	return 0
-}
-
-func explicitEncodingQuality(header, encoding string) float64 {
-	quality, _ := encodingQualityFromHeader(header, encoding)
-	return quality
-}
-
-func encodingQualityFromHeader(header, encoding string) (float64, bool) {
+func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompressions {
+	var accepted acceptedCompressions
+	var brotliSet, gzipSet bool
 	var wildcardQuality float64
+	var wildcardSet bool
 
-	for part := range strings.SplitSeq(header, ",") {
+	for part := range strings.SplitSeq(acceptEncoding, ",") {
 		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
 		token = strings.TrimSpace(strings.ToLower(token))
 		quality := encodingQuality(params)
 		switch token {
-		case encoding:
-			return quality, true
+		case string(compressionBrotli):
+			accepted.brotli = quality > 0
+			brotliSet = true
+		case string(compressionZstd):
+			accepted.zstd = quality > 0
+		case string(compressionGzip):
+			accepted.gzip = quality > 0
+			gzipSet = true
 		case "*":
 			wildcardQuality = quality
+			wildcardSet = true
 		}
 	}
-	if encoding == "*" {
-		return wildcardQuality, strings.Contains(header, "*")
+
+	if wildcardSet && wildcardQuality > 0 {
+		if !brotliSet {
+			accepted.brotli = true
+		}
+		if !gzipSet {
+			accepted.gzip = true
+		}
 	}
-	return 0, false
+
+	return accepted
 }
 
 func encodingQuality(params string) float64 {
@@ -344,6 +342,9 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	if preferred == compressionZstd && accepted.zstd {
 		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
+	if accepted.zstd {
+		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
+	}
 	if accepted.brotli {
 		if level == 0 {
 			level = brotliLargeLevel
@@ -352,9 +353,6 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	}
 	if accepted.gzip {
 		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
-	}
-	if accepted.zstd {
-		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
 	return compressionProfile{}
 }

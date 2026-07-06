@@ -463,6 +463,36 @@ var _ = Describe("middlewares", func() {
 			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
 			Expect(rec.Body.String()).To(Equal(body[:11]))
 		})
+
+		It("falls back when the original asset is missing", func() {
+			body := strings.Repeat("console.log('navidrome');", 64)
+			fileSystem := fstest.MapFS{
+				"assets/index.js.br": &fstest.MapFile{Data: encodeBrotli(body, 5)},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec := httptest.NewRecorder()
+
+			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusNotFound))
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+		})
+
+		It("does not serve precompressed variants for non-GET requests", func() {
+			body := strings.Repeat("console.log('navidrome');", 64)
+			fileSystem := fstest.MapFS{
+				"assets/index.js":    &fstest.MapFile{Data: []byte(body)},
+				"assets/index.js.br": &fstest.MapFile{Data: encodeBrotli(body, 5)},
+			}
+			req := httptest.NewRequest(http.MethodPost, "/assets/index.js", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			rec := httptest.NewRecorder()
+
+			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+		})
 	})
 
 	Describe("URLParamsMiddleware", func() {

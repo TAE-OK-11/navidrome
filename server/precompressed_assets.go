@@ -13,7 +13,7 @@ import (
 func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 	fallback := http.FileServer(http.FS(fileSystem))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead || r.Header.Get("Range") != "" {
+		if r.Method != http.MethodGet || r.Header.Get("Range") != "" {
 			fallback.ServeHTTP(w, r)
 			return
 		}
@@ -40,6 +40,16 @@ func servePrecompressedAsset(w http.ResponseWriter, r *http.Request, fileSystem 
 	}
 	if strings.HasSuffix(r.URL.Path, "/") {
 		assetPath = path.Join(assetPath, "index.html")
+	}
+
+	original, err := fileSystem.Open(assetPath)
+	if err != nil {
+		return false
+	}
+	originalInfo, err := original.Stat()
+	_ = original.Close()
+	if err != nil || originalInfo.IsDir() {
+		return false
 	}
 
 	file, err := fileSystem.Open(assetPath + suffix)

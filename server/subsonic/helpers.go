@@ -350,31 +350,29 @@ func sanitizeSlashes(target string) string {
 // RecentlyAddedByModTime is set, CreatedAt otherwise. The other timestamps are
 // fallbacks for legacy rows; returns zero only when all three are unset.
 func albumCreatedAt(al model.Album) time.Time {
-	candidates := []time.Time{al.CreatedAt, al.UpdatedAt, al.ImportedAt}
 	if conf.Server.RecentlyAddedByModTime {
-		candidates = []time.Time{al.UpdatedAt, al.CreatedAt, al.ImportedAt}
+		return firstNonZeroTime(al.UpdatedAt, al.CreatedAt, al.ImportedAt)
 	}
-	for _, t := range candidates {
-		if !t.IsZero() {
-			return t
-		}
-	}
-	return time.Time{}
+	return firstNonZeroTime(al.CreatedAt, al.UpdatedAt, al.ImportedAt)
 }
 
 // mediaFileCreatedAt is the song counterpart of albumCreatedAt, tracking
 // mediaFileRecentlyAddedSort; BirthTime is the legacy fallback.
 func mediaFileCreatedAt(mf model.MediaFile) time.Time {
-	candidates := []time.Time{mf.CreatedAt, mf.UpdatedAt, mf.BirthTime}
 	if conf.Server.RecentlyAddedByModTime {
-		candidates = []time.Time{mf.UpdatedAt, mf.CreatedAt, mf.BirthTime}
+		return firstNonZeroTime(mf.UpdatedAt, mf.CreatedAt, mf.BirthTime)
 	}
-	for _, t := range candidates {
-		if !t.IsZero() {
-			return t
-		}
+	return firstNonZeroTime(mf.CreatedAt, mf.UpdatedAt, mf.BirthTime)
+}
+
+func firstNonZeroTime(first, second, third time.Time) time.Time {
+	if !first.IsZero() {
+		return first
 	}
-	return time.Time{}
+	if !second.IsZero() {
+		return second
+	}
+	return third
 }
 
 func childFromAlbum(ctx context.Context, al model.Album) responses.Child {
@@ -435,14 +433,18 @@ func toItemDate(date string) responses.ItemDate {
 	if date == "" {
 		return itemDate
 	}
-	parts := strings.Split(date, "-")
-	if len(parts) > 2 {
-		itemDate.Day = number.ParseInt[int32](parts[2])
+	year, rest, _ := strings.Cut(date, "-")
+	itemDate.Year = number.ParseInt[int32](year)
+	month, day, hasDay := strings.Cut(rest, "-")
+	if month != "" {
+		itemDate.Month = number.ParseInt[int32](month)
 	}
-	if len(parts) > 1 {
-		itemDate.Month = number.ParseInt[int32](parts[1])
+	if hasDay {
+		if extra, _, hasExtra := strings.Cut(day, "-"); hasExtra {
+			day = extra
+		}
+		itemDate.Day = number.ParseInt[int32](day)
 	}
-	itemDate.Year = number.ParseInt[int32](parts[0])
 
 	return itemDate
 }

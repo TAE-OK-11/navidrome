@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/resources"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/gravatar"
+	"github.com/navidrome/navidrome/utils/httpcache"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -79,8 +80,9 @@ func (api *Router) GetCoverArt(w http.ResponseWriter, r *http.Request) (*respons
 	}
 
 	defer imgReader.Close()
-	w.Header().Set("cache-control", "public, max-age=315360000")
-	w.Header().Set("last-modified", lastUpdate.Format(http.TimeFormat))
+	if httpcache.SetArtworkHeaders(w, r, lastUpdate) {
+		return nil, nil
+	}
 
 	cnt, err := io.Copy(w, imgReader)
 	if err != nil {

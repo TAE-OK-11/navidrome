@@ -45,6 +45,7 @@ var (
 	brotliHugeWriterPool  sync.Pool
 	zstdGeneralWriterPool sync.Pool
 	gzipFallbackPool      sync.Pool
+	gzipWrapperPool       sync.Pool
 )
 
 func compressMiddleware() func(http.Handler) http.Handler {
@@ -492,7 +493,6 @@ func (w *pooledBrotliWriter) Write(p []byte) (int, error) {
 
 func (w *pooledBrotliWriter) Close() error {
 	err := w.writer.Close()
-	w.writer.Reset(io.Discard)
 	w.pool.Put(w.writer)
 	return err
 }
@@ -523,7 +523,6 @@ func (w *pooledZstdWriter) Write(p []byte) (int, error) {
 
 func (w *pooledZstdWriter) Close() error {
 	err := w.writer.Close()
-	w.writer.Reset(io.Discard)
 	w.pool.Put(w.writer)
 	return err
 }
@@ -534,15 +533,22 @@ type pooledGzipWriter struct {
 }
 
 func newPooledGzipWriter(w io.Writer, level int) (io.WriteCloser, error) {
+	pooled, _ := gzipWrapperPool.Get().(*pooledGzipWriter)
+	if pooled == nil {
+		pooled = &pooledGzipWriter{pool: &gzipFallbackPool}
+	}
 	if writer, ok := gzipFallbackPool.Get().(*gzip.Writer); ok {
 		writer.Reset(w)
-		return &pooledGzipWriter{writer: writer, pool: &gzipFallbackPool}, nil
+		pooled.writer = writer
+		return pooled, nil
 	}
 	writer, err := gzip.NewWriterLevel(w, level)
 	if err != nil {
+		gzipWrapperPool.Put(pooled)
 		return nil, err
 	}
-	return &pooledGzipWriter{writer: writer, pool: &gzipFallbackPool}, nil
+	pooled.writer = writer
+	return pooled, nil
 }
 
 func (w *pooledGzipWriter) Write(p []byte) (int, error) {
@@ -551,7 +557,8 @@ func (w *pooledGzipWriter) Write(p []byte) (int, error) {
 
 func (w *pooledGzipWriter) Close() error {
 	err := w.writer.Close()
-	w.writer.Reset(io.Discard)
 	w.pool.Put(w.writer)
+	w.writer = nil
+	gzipWrapperPool.Put(w)
 	return err
 }

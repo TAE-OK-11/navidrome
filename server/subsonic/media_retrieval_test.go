@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
@@ -49,6 +50,20 @@ var _ = Describe("MediaRetrievalController", func() {
 			Expect(artwork.recvSize).To(Equal(128))
 			Expect(artwork.recvSquare).To(BeTrue())
 			Expect(w.Body.String()).To(Equal(artwork.data))
+		})
+
+		It("returns not modified for fresh cached cover art", func() {
+			artwork.lastUpdate = time.Date(2026, 7, 6, 12, 30, 0, 0, time.UTC)
+			r := newGetRequest("id=34", "size=128", "square=true")
+			r.Header.Set("If-Modified-Since", artwork.lastUpdate.Format(http.TimeFormat))
+
+			_, err := router.GetCoverArt(w, r)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(w.Code).To(Equal(304))
+			Expect(w.Body.String()).To(BeEmpty())
+			Expect(w.Header().Get("Cache-Control")).To(Equal("public, max-age=315360000"))
+			Expect(w.Header().Get("Last-Modified")).To(Equal(artwork.lastUpdate.Format(http.TimeFormat)))
 		})
 
 		It("should return placeholder if id parameter is missing (mimicking Subsonic)", func() {
@@ -193,6 +208,7 @@ type fakeArtwork struct {
 	recvId        string
 	recvSize      int
 	recvSquare    bool
+	lastUpdate    time.Time
 }
 
 func (c *fakeArtwork) GetOrPlaceholder(_ context.Context, id string, size int, square bool) (io.ReadCloser, time.Time, error) {
@@ -206,7 +222,7 @@ func (c *fakeArtwork) GetOrPlaceholder(_ context.Context, id string, size int, s
 		c.ctxCancelFunc()
 		return nil, time.Time{}, context.Canceled
 	}
-	return io.NopCloser(bytes.NewReader([]byte(c.data))), time.Time{}, nil
+	return io.NopCloser(bytes.NewReader([]byte(c.data))), c.lastUpdate, nil
 }
 
 type mockedMediaFile struct {

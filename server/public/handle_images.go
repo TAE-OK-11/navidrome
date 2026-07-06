@@ -11,6 +11,7 @@ import (
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/utils/httpcache"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -59,8 +60,9 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer imgReader.Close()
-	w.Header().Set("Cache-Control", "public, max-age=315360000")
-	w.Header().Set("Last-Modified", lastUpdate.Format(http.TimeFormat))
+	if httpcache.SetArtworkHeaders(w, r, lastUpdate) {
+		return
+	}
 	cnt, err := io.Copy(w, imgReader)
 	if err != nil {
 		log.Warn(ctx, "Error sending image", "count", cnt, err)

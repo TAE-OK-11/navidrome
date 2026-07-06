@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -32,6 +33,18 @@ const (
 	compressionBrotli compressionEncoding = "br"
 	compressionZstd   compressionEncoding = "zstd"
 	compressionGzip   compressionEncoding = "gzip"
+)
+
+var (
+	compressionBufferPool = sync.Pool{
+		New: func() any {
+			return make([]byte, 0, compressionDecisionBufferTarget)
+		},
+	}
+	brotliLargeWriterPool sync.Pool
+	brotliHugeWriterPool  sync.Pool
+	zstdGeneralWriterPool sync.Pool
+	gzipFallbackPool      sync.Pool
 )
 
 func compressMiddleware() func(http.Handler) http.Handler {
@@ -206,6 +219,9 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 
+	if w.buffer == nil {
+		w.buffer = getCompressionBuffer()
+	}
 	w.buffer = append(w.buffer, p...)
 	if len(w.buffer) < compressionDecisionBufferTarget {
 		return len(p), nil
@@ -259,8 +275,9 @@ func (w *compressResponseWriter) flushBuffered() error {
 		if len(w.buffer) == 0 {
 			return nil
 		}
-		_, err := w.ResponseWriter.Write(w.buffer)
-		w.buffer = nil
+		buf := w.buffer
+		_, err := w.ResponseWriter.Write(buf)
+		w.releaseBuffer()
 		return err
 	}
 
@@ -271,8 +288,9 @@ func (w *compressResponseWriter) flushBuffered() error {
 		if len(w.buffer) == 0 {
 			return nil
 		}
-		_, err := w.ResponseWriter.Write(w.buffer)
-		w.buffer = nil
+		buf := w.buffer
+		_, err := w.ResponseWriter.Write(buf)
+		w.releaseBuffer()
 		return err
 	}
 
@@ -288,9 +306,24 @@ func (w *compressResponseWriter) flushBuffered() error {
 	if len(w.buffer) == 0 {
 		return nil
 	}
-	_, err = w.writer.Write(w.buffer)
-	w.buffer = nil
+	buf := w.buffer
+	_, err = w.writer.Write(buf)
+	w.releaseBuffer()
 	return err
+}
+
+func getCompressionBuffer() []byte {
+	return compressionBufferPool.Get().([]byte)[:0]
+}
+
+func (w *compressResponseWriter) releaseBuffer() {
+	if w.buffer == nil {
+		return
+	}
+	if cap(w.buffer) <= compressionDecisionBufferTarget*2 {
+		compressionBufferPool.Put(w.buffer[:0])
+	}
+	w.buffer = nil
 }
 
 func isCompressibleResponse(status int, h http.Header, contentType string) bool {
@@ -422,12 +455,103 @@ func addVaryAcceptEncoding(h http.Header) {
 func newCompressionWriter(w io.Writer, profile compressionProfile) (io.WriteCloser, error) {
 	switch profile.encoding {
 	case compressionBrotli:
-		return brotli.NewWriterLevel(w, profile.level), nil
+		return newPooledBrotliWriter(w, profile.level), nil
 	case compressionZstd:
-		return zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(profile.level)), zstd.WithEncoderConcurrency(1))
+		return newPooledZstdWriter(w, profile.level)
 	case compressionGzip:
-		return gzip.NewWriterLevel(w, profile.level)
+		return newPooledGzipWriter(w, profile.level)
 	default:
 		return nil, http.ErrNotSupported
 	}
+}
+
+type pooledBrotliWriter struct {
+	writer *brotli.Writer
+	pool   *sync.Pool
+}
+
+func newPooledBrotliWriter(w io.Writer, level int) io.WriteCloser {
+	pool := brotliPool(level)
+	if writer, ok := pool.Get().(*brotli.Writer); ok {
+		writer.Reset(w)
+		return &pooledBrotliWriter{writer: writer, pool: pool}
+	}
+	return &pooledBrotliWriter{writer: brotli.NewWriterLevel(w, level), pool: pool}
+}
+
+func brotliPool(level int) *sync.Pool {
+	if level >= brotliHugeLevel {
+		return &brotliHugeWriterPool
+	}
+	return &brotliLargeWriterPool
+}
+
+func (w *pooledBrotliWriter) Write(p []byte) (int, error) {
+	return w.writer.Write(p)
+}
+
+func (w *pooledBrotliWriter) Close() error {
+	err := w.writer.Close()
+	w.writer.Reset(io.Discard)
+	w.pool.Put(w.writer)
+	return err
+}
+
+type pooledZstdWriter struct {
+	writer *zstd.Encoder
+	pool   *sync.Pool
+}
+
+func newPooledZstdWriter(w io.Writer, level int) (io.WriteCloser, error) {
+	if writer, ok := zstdGeneralWriterPool.Get().(*zstd.Encoder); ok {
+		writer.Reset(w)
+		return &pooledZstdWriter{writer: writer, pool: &zstdGeneralWriterPool}, nil
+	}
+	writer, err := zstd.NewWriter(w,
+		zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)),
+		zstd.WithEncoderConcurrency(1),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &pooledZstdWriter{writer: writer, pool: &zstdGeneralWriterPool}, nil
+}
+
+func (w *pooledZstdWriter) Write(p []byte) (int, error) {
+	return w.writer.Write(p)
+}
+
+func (w *pooledZstdWriter) Close() error {
+	err := w.writer.Close()
+	w.writer.Reset(io.Discard)
+	w.pool.Put(w.writer)
+	return err
+}
+
+type pooledGzipWriter struct {
+	writer *gzip.Writer
+	pool   *sync.Pool
+}
+
+func newPooledGzipWriter(w io.Writer, level int) (io.WriteCloser, error) {
+	if writer, ok := gzipFallbackPool.Get().(*gzip.Writer); ok {
+		writer.Reset(w)
+		return &pooledGzipWriter{writer: writer, pool: &gzipFallbackPool}, nil
+	}
+	writer, err := gzip.NewWriterLevel(w, level)
+	if err != nil {
+		return nil, err
+	}
+	return &pooledGzipWriter{writer: writer, pool: &gzipFallbackPool}, nil
+}
+
+func (w *pooledGzipWriter) Write(p []byte) (int, error) {
+	return w.writer.Write(p)
+}
+
+func (w *pooledGzipWriter) Close() error {
+	err := w.writer.Close()
+	w.writer.Reset(io.Discard)
+	w.pool.Put(w.writer)
+	return err
 }

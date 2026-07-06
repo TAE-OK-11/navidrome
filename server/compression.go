@@ -88,7 +88,7 @@ func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
 		return acceptedCompressionEncodingsFast(acceptEncoding)
 	}
 	return acceptedCompressions{
-		brotli: explicitEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
+		brotli: acceptedEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
 		zstd:   explicitEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
 		gzip:   acceptedEncodingQuality(acceptEncoding, string(compressionGzip)) > 0,
 	}

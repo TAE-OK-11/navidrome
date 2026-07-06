@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"testing/fstest"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -314,6 +316,49 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
+		It("uses brotli for LRC lyric responses starting at 256 bytes", func() {
+			req := httptest.NewRequest(http.MethodGet, "/rest/getLyricsBySongId.view", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+			lyrics := strings.Repeat("[00:01.00]line\n", 20)
+			lyricsHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"lyrics":"` + lyrics + `"}`))
+			})
+
+			compressMiddleware()(lyricsHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(ContainSubstring("[00:01.00]line"))
+		})
+
+		It("uses brotli for Web UI responses starting at 1024 bytes", func() {
+			req := httptest.NewRequest(http.MethodGet, "/app/", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+			body := strings.Repeat("<script>window.x=1</script>", 64)
+			webHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				_, _ = w.Write([]byte(body))
+			})
+
+			compressMiddleware()(webHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(body))
+		})
+
+		It("uses gzip level fallback when preferred encodings are unavailable", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("gzip"))
+			Expect(decodeGzip(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
 		It("does not compress small responses", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "br")
@@ -378,6 +423,45 @@ var _ = Describe("middlewares", func() {
 
 			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
 			Expect(rec.Body.String()).To(ContainSubstring("event: ping"))
+		})
+	})
+
+	Describe("PrecompressedFileServer", func() {
+		It("serves precompressed brotli assets when available", func() {
+			body := strings.Repeat("console.log('navidrome');", 64)
+			fileSystem := fstest.MapFS{
+				"assets/index.js":    &fstest.MapFile{Data: []byte(body)},
+				"assets/index.js.br": &fstest.MapFile{Data: encodeBrotli(body, 5)},
+				"assets/index.js.gz": &fstest.MapFile{Data: encodeGzip(body, 9)},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
+			req.Header.Set("Accept-Encoding", "gzip, br")
+			rec := httptest.NewRecorder()
+
+			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusOK))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(body))
+		})
+
+		It("does not serve precompressed variants for range requests", func() {
+			body := strings.Repeat("console.log('navidrome');", 64)
+			fileSystem := fstest.MapFS{
+				"assets/index.js":    &fstest.MapFile{Data: []byte(body)},
+				"assets/index.js.br": &fstest.MapFile{Data: encodeBrotli(body, 5)},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
+			req.Header.Set("Accept-Encoding", "br")
+			req.Header.Set("Range", "bytes=0-10")
+			rec := httptest.NewRecorder()
+
+			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusPartialContent))
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+			Expect(rec.Body.String()).To(Equal(body[:11]))
 		})
 	})
 
@@ -571,6 +655,34 @@ func decodeBrotli(data []byte) string {
 	out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(data)))
 	Expect(err).NotTo(HaveOccurred())
 	return string(out)
+}
+
+func encodeBrotli(data string, level int) []byte {
+	var buf bytes.Buffer
+	w := brotli.NewWriterLevel(&buf, level)
+	_, err := w.Write([]byte(data))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(w.Close()).To(Succeed())
+	return buf.Bytes()
+}
+
+func decodeGzip(data []byte) string {
+	reader, err := gzip.NewReader(bytes.NewReader(data))
+	Expect(err).NotTo(HaveOccurred())
+	defer reader.Close()
+	out, err := io.ReadAll(reader)
+	Expect(err).NotTo(HaveOccurred())
+	return string(out)
+}
+
+func encodeGzip(data string, level int) []byte {
+	var buf bytes.Buffer
+	w, err := gzip.NewWriterLevel(&buf, level)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = w.Write([]byte(data))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(w.Close()).To(Succeed())
+	return buf.Bytes()
 }
 
 func decodeZstd(data []byte) string {

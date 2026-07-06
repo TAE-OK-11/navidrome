@@ -12,9 +12,18 @@ import (
 )
 
 const (
-	minCompressedResponseSize       = 512
+	generalAPICompressedMinSize     = 1024
+	largeAPICompressedMinSize       = 2048
+	hugeAPICompressedMinSize        = 4096
+	lyricsCompressedMinSize         = 256
+	webUICompressedMinSize          = 1024
 	largeCompressedResponseSize     = 16 << 10
+	hugeCompressedResponseSize      = 256 << 10
 	compressionDecisionBufferTarget = largeCompressedResponseSize
+	brotliLargeLevel                = 5
+	brotliHugeLevel                 = 6
+	zstdGeneralLevel                = 3
+	gzipFallbackLevel               = 4
 )
 
 type compressionEncoding string
@@ -50,6 +59,7 @@ func compressMiddleware() func(http.Handler) http.Handler {
 			cw := &compressResponseWriter{
 				ResponseWriter: w,
 				accepted:       accepted,
+				path:           r.URL.Path,
 			}
 			defer cw.Close()
 			next.ServeHTTP(cw, r)
@@ -61,6 +71,12 @@ type acceptedCompressions struct {
 	brotli bool
 	zstd   bool
 	gzip   bool
+}
+
+type compressionProfile struct {
+	encoding compressionEncoding
+	minSize  int
+	level    int
 }
 
 func (a acceptedCompressions) hasAny() bool {
@@ -146,6 +162,7 @@ type compressResponseWriter struct {
 	http.ResponseWriter
 	accepted acceptedCompressions
 	encoding compressionEncoding
+	path     string
 	status   int
 	writer   io.WriteCloser
 	buffer   []byte
@@ -179,7 +196,7 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 	}
 
 	w.buffer = append(w.buffer, p...)
-	if len(w.buffer) < compressionDecisionBufferTarget && !hasSmallContentLength(w.Header()) {
+	if len(w.buffer) < compressionDecisionBufferTarget {
 		return len(p), nil
 	}
 	if err := w.flushBuffered(); err != nil {
@@ -224,7 +241,8 @@ func (w *compressResponseWriter) flushBuffered() error {
 		status = http.StatusOK
 	}
 
-	if !shouldCompressResponse(status, w.Header(), w.buffer) {
+	contentType := responseContentType(w.Header(), w.buffer)
+	if !isCompressibleResponse(status, w.Header(), contentType) {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
 		if len(w.buffer) == 0 {
@@ -235,8 +253,8 @@ func (w *compressResponseWriter) flushBuffered() error {
 		return err
 	}
 
-	w.encoding = selectCompressionEncoding(w.accepted, len(w.buffer))
-	if w.encoding == "" {
+	profile := selectCompressionProfile(w.accepted, w.path, w.Header(), contentType, len(w.buffer))
+	if profile.encoding == "" || len(w.buffer) < profile.minSize {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
 		if len(w.buffer) == 0 {
@@ -247,10 +265,11 @@ func (w *compressResponseWriter) flushBuffered() error {
 		return err
 	}
 
+	w.encoding = profile.encoding
 	setCompressionHeaders(w.Header(), w.encoding)
 	w.ResponseWriter.WriteHeader(status)
 
-	writer, err := newCompressionWriter(w.ResponseWriter, w.encoding)
+	writer, err := newCompressionWriter(w.ResponseWriter, profile)
 	if err != nil {
 		return err
 	}
@@ -263,57 +282,95 @@ func (w *compressResponseWriter) flushBuffered() error {
 	return err
 }
 
-func shouldCompressResponse(status int, h http.Header, body []byte) bool {
+func isCompressibleResponse(status int, h http.Header, contentType string) bool {
 	if status < http.StatusOK || status == http.StatusNoContent || status == http.StatusNotModified {
 		return false
 	}
 	if h.Get("Content-Encoding") != "" || strings.Contains(strings.ToLower(h.Get("Cache-Control")), "no-transform") {
 		return false
 	}
-	if hasSmallContentLength(h) || len(body) < minCompressedResponseSize {
-		return false
-	}
+	return isCompressibleContentType(contentType)
+}
+
+func responseContentType(h http.Header, body []byte) string {
 	contentType := h.Get("Content-Type")
 	if contentType == "" && len(body) > 0 {
 		contentType = http.DetectContentType(body)
 		h.Set("Content-Type", contentType)
 	}
-	return isCompressibleContentType(contentType)
+	return contentType
 }
 
-func selectCompressionEncoding(accepted acceptedCompressions, bodySize int) compressionEncoding {
-	if bodySize >= largeCompressedResponseSize {
-		if accepted.brotli {
-			return compressionBrotli
-		}
-		if accepted.zstd {
-			return compressionZstd
-		}
-		if accepted.gzip {
-			return compressionGzip
-		}
-		return ""
+func selectCompressionProfile(accepted acceptedCompressions, path string, h http.Header, contentType string, bodySize int) compressionProfile {
+	minSize := generalAPICompressedMinSize
+	level := zstdGeneralLevel
+	preferred := compressionZstd
+
+	switch {
+	case isLyricsResponsePath(path):
+		minSize = lyricsCompressedMinSize
+		level = brotliLargeLevel
+		preferred = compressionBrotli
+	case isWebUIResponsePath(path, contentType):
+		minSize = webUICompressedMinSize
+		level = brotliLargeLevel
+		preferred = compressionBrotli
+	case responseSizeAtLeast(h, bodySize, hugeCompressedResponseSize):
+		minSize = hugeAPICompressedMinSize
+		level = brotliHugeLevel
+		preferred = compressionBrotli
+	case responseSizeAtLeast(h, bodySize, largeCompressedResponseSize):
+		minSize = largeAPICompressedMinSize
+		level = brotliLargeLevel
+		preferred = compressionBrotli
 	}
 
-	if accepted.zstd {
-		return compressionZstd
+	if preferred == compressionBrotli && accepted.brotli {
+		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
+	}
+	if preferred == compressionZstd && accepted.zstd {
+		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
 	if accepted.gzip {
-		return compressionGzip
+		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
+	}
+	if accepted.zstd {
+		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
 	if accepted.brotli {
-		return compressionBrotli
+		if level == 0 {
+			level = brotliLargeLevel
+		}
+		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
 	}
-	return ""
+	return compressionProfile{}
 }
 
-func hasSmallContentLength(h http.Header) bool {
+func responseSizeAtLeast(h http.Header, bodySize, threshold int) bool {
 	contentLength := h.Get("Content-Length")
 	if contentLength == "" {
-		return false
+		return bodySize >= threshold
 	}
 	n, err := strconv.Atoi(contentLength)
-	return err == nil && n < minCompressedResponseSize
+	return err == nil && n >= threshold
+}
+
+func isLyricsResponsePath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, ".view"))
+	return strings.Contains(path, "lyrics")
+}
+
+func isWebUIResponsePath(path, contentType string) bool {
+	if strings.HasPrefix(path, "/app/") || path == "/app" {
+		return true
+	}
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	return mediaType == "text/html" ||
+		mediaType == "text/css" ||
+		mediaType == "application/javascript" ||
+		mediaType == "application/x-javascript" ||
+		mediaType == "application/manifest+json"
 }
 
 func isCompressibleContentType(contentType string) bool {
@@ -351,14 +408,14 @@ func addVaryAcceptEncoding(h http.Header) {
 	h.Add("Vary", "Accept-Encoding")
 }
 
-func newCompressionWriter(w io.Writer, encoding compressionEncoding) (io.WriteCloser, error) {
-	switch encoding {
+func newCompressionWriter(w io.Writer, profile compressionProfile) (io.WriteCloser, error) {
+	switch profile.encoding {
 	case compressionBrotli:
-		return brotli.NewWriterLevel(w, 3), nil
+		return brotli.NewWriterLevel(w, profile.level), nil
 	case compressionZstd:
-		return zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.SpeedFastest), zstd.WithEncoderConcurrency(1))
+		return zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(profile.level)), zstd.WithEncoderConcurrency(1))
 	case compressionGzip:
-		return gzip.NewWriterLevel(w, gzip.BestSpeed)
+		return gzip.NewWriterLevel(w, profile.level)
 	default:
 		return nil, http.ErrNotSupported
 	}

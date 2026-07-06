@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "vite",
-    "build": "vite build",
+    "build": "vite build && node bin/precompress-build-assets.mjs",
     "serve": "vite preview",
     "test:watch": "vitest",
     "test": "vitest --watch=false",

@@ -240,7 +240,7 @@ func (s *Server) frontendAssetsHandler() http.Handler {
 	r := chi.NewRouter()
 
 	r.Handle("/", Index(s.ds, ui.BuildAssets()))
-	r.Handle("/*", http.StripPrefix(s.appRoot, http.FileServer(http.FS(ui.BuildAssets()))))
+	r.Handle("/*", http.StripPrefix(s.appRoot, PrecompressedFileServer(ui.BuildAssets())))
 	return r
 }
 

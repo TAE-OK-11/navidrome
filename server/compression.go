@@ -12,7 +12,11 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const minCompressedResponseSize = 512
+const (
+	minCompressedResponseSize       = 512
+	largeCompressedResponseSize     = 16 << 10
+	compressionDecisionBufferTarget = largeCompressedResponseSize
+)
 
 type compressionEncoding string
 
@@ -21,8 +25,6 @@ const (
 	compressionZstd   compressionEncoding = "zstd"
 	compressionGzip   compressionEncoding = "gzip"
 )
-
-var compressionCandidates = [...]compressionEncoding{compressionBrotli, compressionZstd, compressionGzip}
 
 func compressMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -40,15 +42,15 @@ func compressMiddleware() func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			encoding := preferredCompressionEncoding(acceptEncoding)
-			if encoding == "" {
+			accepted := acceptedCompressionEncodings(acceptEncoding)
+			if !accepted.hasAny() {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			cw := &compressResponseWriter{
 				ResponseWriter: w,
-				encoding:       encoding,
+				accepted:       accepted,
 			}
 			defer cw.Close()
 			next.ServeHTTP(cw, r)
@@ -56,20 +58,22 @@ func compressMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-func preferredCompressionEncoding(acceptEncoding string) compressionEncoding {
-	var best compressionEncoding
-	bestQuality := 0.0
-	bestIndex := len(compressionCandidates)
+type acceptedCompressions struct {
+	brotli bool
+	zstd   bool
+	gzip   bool
+}
 
-	for i, candidate := range compressionCandidates {
-		quality := acceptedEncodingQuality(acceptEncoding, string(candidate))
-		if quality > bestQuality || quality == bestQuality && quality > 0 && i < bestIndex {
-			best = candidate
-			bestQuality = quality
-			bestIndex = i
-		}
+func (a acceptedCompressions) hasAny() bool {
+	return a.brotli || a.zstd || a.gzip
+}
+
+func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
+	return acceptedCompressions{
+		brotli: acceptedEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
+		zstd:   acceptedEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
+		gzip:   acceptedEncodingQuality(acceptEncoding, string(compressionGzip)) > 0,
 	}
-	return best
 }
 
 func acceptedEncodingQuality(header, encoding string) float64 {
@@ -123,6 +127,7 @@ func isMediaResponsePath(path string) bool {
 
 type compressResponseWriter struct {
 	http.ResponseWriter
+	accepted acceptedCompressions
 	encoding compressionEncoding
 	status   int
 	writer   io.WriteCloser
@@ -157,7 +162,7 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 	}
 
 	w.buffer = append(w.buffer, p...)
-	if len(w.buffer) < minCompressedResponseSize && !hasSmallContentLength(w.Header()) {
+	if len(w.buffer) < compressionDecisionBufferTarget && !hasSmallContentLength(w.Header()) {
 		return len(p), nil
 	}
 	if err := w.flushBuffered(); err != nil {
@@ -171,10 +176,15 @@ func (w *compressResponseWriter) Close() error {
 		return nil
 	}
 	w.closed = true
+	if w.writer == nil && !w.raw {
+		if err := w.flushBuffered(); err != nil {
+			return err
+		}
+	}
 	if w.writer != nil {
 		return w.writer.Close()
 	}
-	return w.flushBuffered()
+	return nil
 }
 
 func (w *compressResponseWriter) Flush() {
@@ -198,6 +208,18 @@ func (w *compressResponseWriter) flushBuffered() error {
 	}
 
 	if !shouldCompressResponse(status, w.Header(), w.buffer) {
+		w.raw = true
+		w.ResponseWriter.WriteHeader(status)
+		if len(w.buffer) == 0 {
+			return nil
+		}
+		_, err := w.ResponseWriter.Write(w.buffer)
+		w.buffer = nil
+		return err
+	}
+
+	w.encoding = selectCompressionEncoding(w.accepted, len(w.buffer))
+	if w.encoding == "" {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
 		if len(w.buffer) == 0 {
@@ -240,6 +262,32 @@ func shouldCompressResponse(status int, h http.Header, body []byte) bool {
 		h.Set("Content-Type", contentType)
 	}
 	return isCompressibleContentType(contentType)
+}
+
+func selectCompressionEncoding(accepted acceptedCompressions, bodySize int) compressionEncoding {
+	if bodySize >= largeCompressedResponseSize {
+		if accepted.brotli {
+			return compressionBrotli
+		}
+		if accepted.zstd {
+			return compressionZstd
+		}
+		if accepted.gzip {
+			return compressionGzip
+		}
+		return ""
+	}
+
+	if accepted.zstd {
+		return compressionZstd
+	}
+	if accepted.gzip {
+		return compressionGzip
+	}
+	if accepted.brotli {
+		return compressionBrotli
+	}
+	return ""
 }
 
 func hasSmallContentLength(h http.Header) bool {

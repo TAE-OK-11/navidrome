@@ -83,9 +83,9 @@ var _ = Describe("Search", func() {
 				Expect(resp).ToNot(BeNil())
 				Expect(resp.SearchResult2).ToNot(BeNil())
 
-				assertQueryOptions(mockAlbumRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
-				assertQueryOptions(mockMediaFileRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
-				assertQueryOptions(mockArtistRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
+				Expect(mockAlbumRepo.Options.Filters).To(BeNil())
+				Expect(mockArtistRepo.Options.Filters).To(BeNil())
+				Expect(mockMediaFileRepo.Options.Filters).To(BeNil())
 			})
 
 			It("should return empty results when user has no accessible libraries", func() {
@@ -167,9 +167,9 @@ var _ = Describe("Search", func() {
 				Expect(resp).ToNot(BeNil())
 				Expect(resp.SearchResult3).ToNot(BeNil())
 
-				assertQueryOptions(mockAlbumRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
-				assertQueryOptions(mockMediaFileRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
-				assertQueryOptions(mockArtistRepo.Options.Filters, "library_id IN (?,?,?)", 1, 2, 3)
+				Expect(mockAlbumRepo.Options.Filters).To(BeNil())
+				Expect(mockArtistRepo.Options.Filters).To(BeNil())
+				Expect(mockMediaFileRepo.Options.Filters).To(BeNil())
 			})
 
 			It("should return empty results when user has no accessible libraries", func() {

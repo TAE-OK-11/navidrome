@@ -241,6 +241,7 @@ var _ = Describe("middlewares", func() {
 		const responseBody = `{"data":"` + "0123456789abcdef0123456789abcdef" + `"}`
 
 		var handler http.Handler
+		var largeHandler http.Handler
 
 		BeforeEach(func() {
 			body := strings.Repeat(responseBody, 32)
@@ -248,18 +249,36 @@ var _ = Describe("middlewares", func() {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(body))
 			})
+
+			largeBody := strings.Repeat(responseBody, 512)
+			largeHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(largeBody))
+			})
 		})
 
-		It("prefers brotli over zstd and gzip", func() {
+		It("uses zstd for small compressed responses", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
 			rec := httptest.NewRecorder()
 
 			compressMiddleware()(handler).ServeHTTP(rec, req)
 
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("uses brotli for large compressed responses", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(largeHandler).ServeHTTP(rec, req)
+
 			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
 			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
-			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 512)))
 		})
 
 		It("uses zstd when brotli is unavailable", func() {
@@ -284,9 +303,9 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
-		It("chooses the highest accepted q value before server preference", func() {
+		It("keeps zstd for small responses even when brotli has a higher q value", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.Header.Set("Accept-Encoding", "br;q=0.1, zstd;q=1, gzip;q=0.5")
+			req.Header.Set("Accept-Encoding", "br;q=1, zstd;q=0.1, gzip;q=0.5")
 			rec := httptest.NewRecorder()
 
 			compressMiddleware()(handler).ServeHTTP(rec, req)

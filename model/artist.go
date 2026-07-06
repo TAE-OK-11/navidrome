@@ -1,8 +1,6 @@
 package model
 
 import (
-	"maps"
-	"slices"
 	"time"
 
 	"github.com/navidrome/navidrome/consts"
@@ -68,7 +66,11 @@ func (a Artist) UploadedImagePath() string {
 
 // Roles returns the roles this artist has participated in., based on the Stats field
 func (a Artist) Roles() []Role {
-	return slices.Collect(maps.Keys(a.Stats))
+	roles := make([]Role, 0, len(a.Stats))
+	for role := range a.Stats {
+		roles = append(roles, role)
+	}
+	return roles
 }
 
 type Artists []Artist

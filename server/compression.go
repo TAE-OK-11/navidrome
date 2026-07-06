@@ -254,7 +254,8 @@ func hasSmallContentLength(h http.Header) bool {
 func isCompressibleContentType(contentType string) bool {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		mediaType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+		mediaType, _, _ = strings.Cut(contentType, ";")
+		mediaType = strings.ToLower(strings.TrimSpace(mediaType))
 	}
 	if strings.HasPrefix(mediaType, "text/") {
 		return mediaType != "text/event-stream"

@@ -2,8 +2,6 @@ package model
 
 import (
 	"time"
-
-	"github.com/navidrome/navidrome/utils/slice"
 )
 
 type Library struct {
@@ -35,7 +33,11 @@ const (
 type Libraries []Library
 
 func (l Libraries) IDs() []int {
-	return slice.Map(l, func(lib Library) int { return lib.ID })
+	ids := make([]int, 0, len(l))
+	for _, lib := range l {
+		ids = append(ids, lib.ID)
+	}
+	return ids
 }
 
 type LibraryRepository interface {

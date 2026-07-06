@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -65,7 +64,9 @@ func (a *dbAlbum) PostMapArgs(args map[string]any) error {
 	fullText := []string{a.Name, a.SortAlbumName, a.AlbumArtist}
 	participantNames := a.Album.Participants.AllNames()
 	fullText = append(fullText, participantNames...)
-	fullText = append(fullText, slices.Collect(maps.Values(a.Album.Discs))...)
+	for _, disc := range a.Album.Discs {
+		fullText = append(fullText, disc)
+	}
 	fullText = append(fullText, a.Album.Tags[model.TagAlbumVersion]...)
 	fullText = append(fullText, a.Album.Tags[model.TagCatalogNumber]...)
 	args["full_text"] = formatFullText(fullText...)

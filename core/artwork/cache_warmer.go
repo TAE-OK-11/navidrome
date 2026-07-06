@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
-	"slices"
 	"sync"
 	"time"
 
@@ -114,7 +112,10 @@ func (a *cacheWarmer) run(ctx context.Context) {
 			continue
 		}
 
-		batch := slices.Collect(maps.Keys(a.buffer))
+		batch := make([]model.ArtworkID, 0, len(a.buffer))
+		for artID := range a.buffer {
+			batch = append(batch, artID)
+		}
 		a.buffer = make(map[model.ArtworkID]struct{})
 		a.mutex.Unlock()
 

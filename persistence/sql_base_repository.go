@@ -273,7 +273,11 @@ func (r sqlRepository) visibleLibraryIDs() ([]int, error) {
 		err := r.queryAllSlice(Select("id").From("library"), &ids)
 		return ids, err
 	}
-	return slice.Map(user.Libraries, func(lib model.Library) int { return lib.ID }), nil
+	ids := make([]int, 0, len(user.Libraries))
+	for _, lib := range user.Libraries {
+		ids = append(ids, lib.ID)
+	}
+	return ids, nil
 }
 
 func (r sqlRepository) seedKey() string {

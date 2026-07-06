@@ -3,16 +3,13 @@ package matcher
 import (
 	"context"
 	"fmt"
-	"maps"
 	"math"
-	"slices"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/slice"
 	"github.com/navidrome/navidrome/utils/str"
 	"github.com/xrash/smetrics"
 )
@@ -433,13 +430,13 @@ func (m *Matcher) resolveArtists(ctx context.Context, queries []indexedQuery) (r
 	// available for specificity scoring).
 	var filter squirrel.Or
 	if len(nameToQueries) > 0 {
-		filter = append(filter, squirrel.Eq{"order_artist_name": slices.Collect(maps.Keys(nameToQueries))})
+		filter = append(filter, squirrel.Eq{"order_artist_name": mapKeys(nameToQueries)})
 	}
 	if len(mbidToQueries) > 0 {
-		filter = append(filter, squirrel.Eq{"mbz_artist_id": slices.Collect(maps.Keys(mbidToQueries))})
+		filter = append(filter, squirrel.Eq{"mbz_artist_id": mapKeys(mbidToQueries)})
 	}
 	if len(allIDs) > 0 {
-		filter = append(filter, squirrel.Eq{"id": slices.Collect(maps.Keys(allIDs))})
+		filter = append(filter, squirrel.Eq{"id": mapKeys(allIDs)})
 	}
 	if len(filter) > 0 {
 		artists, err := m.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: filter})
@@ -460,7 +457,7 @@ func (m *Matcher) resolveArtists(ctx context.Context, queries []indexedQuery) (r
 		}
 	}
 
-	res.allIDs = slices.Collect(maps.Keys(allIDs))
+	res.allIDs = mapKeys(allIDs)
 	return res, nil
 }
 
@@ -469,6 +466,14 @@ func addToSet(m map[int]map[string]struct{}, k int, v string) {
 		m[k] = map[string]struct{}{}
 	}
 	m[k][v] = struct{}{}
+}
+
+func mapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // scoredTrack is a candidate track for a query; overlap is how many of the query's distinct
@@ -542,7 +547,10 @@ func (m *Matcher) fetchTracksCreditedTo(ctx context.Context, artistIDs []string)
 	if len(artistIDs) == 0 {
 		return nil, nil
 	}
-	args := slice.Map(artistIDs, func(id string) any { return id })
+	args := make([]any, len(artistIDs))
+	for i, id := range artistIDs {
+		args[i] = id
+	}
 	return m.ds.MediaFile(ctx).GetAll(model.QueryOptions{
 		Filters: squirrel.And{
 			squirrel.Expr(

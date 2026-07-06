@@ -2,7 +2,6 @@ package model
 
 import (
 	"cmp"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -365,8 +364,16 @@ func init() {
 
 		// This is here to avoid cyclic imports. The criteria package needs to know all tag names, so they can be
 		// used in smart playlists
-		criteria.AddRoles(slices.Collect(maps.Keys(AllRoles)))
+		criteria.AddRoles(roleNames())
 		criteria.AddTagNames(tagNames())
 		criteria.AddNumericTags(numericTagNames())
 	})
+}
+
+func roleNames() []string {
+	roles := make([]string, 0, len(AllRoles))
+	for role := range AllRoles {
+		roles = append(roles, role)
+	}
+	return roles
 }

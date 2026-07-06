@@ -22,7 +22,6 @@ import (
 	"github.com/navidrome/navidrome/utils/gg"
 	"github.com/navidrome/navidrome/utils/number"
 	"github.com/navidrome/navidrome/utils/req"
-	"github.com/navidrome/navidrome/utils/slice"
 )
 
 func newResponse() *responses.Subsonic {
@@ -141,8 +140,19 @@ func toOSArtistID3(ctx context.Context, a model.Artist) *responses.OpenSubsonicA
 		MusicBrainzId: a.MbzArtistID,
 		SortName:      sortName(a.SortArtistName, a.OrderArtistName),
 	}
-	artist.Roles = slice.Map(a.Roles(), func(r model.Role) string { return r.String() })
+	artist.Roles = artistRoleStrings(a)
 	return &artist
+}
+
+func artistRoleStrings(a model.Artist) []string {
+	if len(a.Stats) == 0 {
+		return nil
+	}
+	roles := make([]string, 0, len(a.Stats))
+	for role := range a.Stats {
+		roles = append(roles, role.String())
+	}
+	return roles
 }
 
 func toGenres(genres model.Genres) *responses.Genres {
@@ -291,22 +301,36 @@ func osChildFromMediaFile(ctx context.Context, mf model.MediaFile) *responses.Op
 	}
 	child.Contributors = contributors
 	child.ExplicitStatus = mapExplicitStatus(mf.ExplicitStatus)
-	child.Works = slice.Map(mf.Works(), func(w model.Work) responses.Work {
-		return responses.Work{Name: w.Name, MusicBrainzId: w.MbzWorkID}
-	})
-	child.Movements = slice.Map(mf.Movements(), func(m model.Movement) responses.Movement {
-		return responses.Movement{Name: m.Name, Number: m.Number, Count: m.Count}
-	})
+	child.Works = workRefs(mf.Works())
+	child.Movements = movementRefs(mf.Movements())
 	return &child
 }
 
 func artistRefs(participants model.ParticipantList) []responses.ArtistID3Ref {
-	return slice.Map(participants, func(p model.Participant) responses.ArtistID3Ref {
-		return responses.ArtistID3Ref{
+	artists := make([]responses.ArtistID3Ref, len(participants))
+	for i, p := range participants {
+		artists[i] = responses.ArtistID3Ref{
 			Id:   p.ID,
 			Name: p.Name,
 		}
-	})
+	}
+	return artists
+}
+
+func workRefs(works []model.Work) []responses.Work {
+	response := make([]responses.Work, len(works))
+	for i, w := range works {
+		response[i] = responses.Work{Name: w.Name, MusicBrainzId: w.MbzWorkID}
+	}
+	return response
+}
+
+func movementRefs(movements []model.Movement) []responses.Movement {
+	response := make([]responses.Movement, len(movements))
+	for i, m := range movements {
+		response[i] = responses.Movement{Name: m.Name, Number: m.Number, Count: m.Count}
+	}
+	return response
 }
 
 func fakePath(mf model.MediaFile) string {
@@ -508,9 +532,7 @@ func buildOSAlbumID3(ctx context.Context, album model.Album) *responses.OpenSubs
 	if conf.Server.Subsonic.EnableAverageRating {
 		dir.AverageRating = album.AverageRating
 	}
-	dir.RecordLabels = slice.Map(album.Tags.Values(model.TagRecordLabel), func(s string) responses.RecordLabel {
-		return responses.RecordLabel{Name: s}
-	})
+	dir.RecordLabels = recordLabels(album.Tags.Values(model.TagRecordLabel))
 	dir.MusicBrainzId = album.MbzAlbumID
 	dir.Genres = toItemGenres(album.Genres)
 	dir.Artists = artistRefs(album.Participants[model.RoleAlbumArtist])
@@ -530,6 +552,14 @@ func buildOSAlbumID3(ctx context.Context, album model.Album) *responses.OpenSubs
 	return &dir
 }
 
+func recordLabels(labels []string) []responses.RecordLabel {
+	response := make([]responses.RecordLabel, len(labels))
+	for i, label := range labels {
+		response[i] = responses.RecordLabel{Name: label}
+	}
+	return response
+}
+
 func mapExplicitStatus(explicitStatus string) string {
 	switch explicitStatus {
 	case "c":
@@ -541,7 +571,7 @@ func mapExplicitStatus(explicitStatus string) string {
 }
 
 // getUserAccessibleLibraries returns the list of libraries the current user has access to.
-func getUserAccessibleLibraries(ctx context.Context) []model.Library {
+func getUserAccessibleLibraries(ctx context.Context) model.Libraries {
 	user := getUser(ctx)
 	return user.Libraries
 }
@@ -561,7 +591,7 @@ func selectedMusicFolderIds(r *http.Request, required bool) ([]int, error) {
 
 	// Get user's accessible libraries for validation
 	libraries := getUserAccessibleLibraries(r.Context())
-	accessibleLibraryIds := slice.Map(libraries, func(lib model.Library) int { return lib.ID })
+	accessibleLibraryIds := libraries.IDs()
 
 	if len(musicFolderIds) > 0 {
 		// Validate all provided library IDs - if any are invalid, return an error

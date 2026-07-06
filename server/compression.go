@@ -88,8 +88,8 @@ func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
 		return acceptedCompressionEncodingsFast(acceptEncoding)
 	}
 	return acceptedCompressions{
-		brotli: acceptedEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
-		zstd:   acceptedEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
+		brotli: explicitEncodingQuality(acceptEncoding, string(compressionBrotli)) > 0,
+		zstd:   explicitEncodingQuality(acceptEncoding, string(compressionZstd)) > 0,
 		gzip:   acceptedEncodingQuality(acceptEncoding, string(compressionGzip)) > 0,
 	}
 }
@@ -110,8 +110,22 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 }
 
 func acceptedEncodingQuality(header, encoding string) float64 {
+	if quality, ok := encodingQualityFromHeader(header, encoding); ok {
+		return quality
+	}
+	if quality, ok := encodingQualityFromHeader(header, "*"); ok {
+		return quality
+	}
+	return 0
+}
+
+func explicitEncodingQuality(header, encoding string) float64 {
+	quality, _ := encodingQualityFromHeader(header, encoding)
+	return quality
+}
+
+func encodingQualityFromHeader(header, encoding string) (float64, bool) {
 	var wildcardQuality float64
-	hasWildcard := false
 
 	for part := range strings.SplitSeq(header, ",") {
 		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
@@ -119,16 +133,15 @@ func acceptedEncodingQuality(header, encoding string) float64 {
 		quality := encodingQuality(params)
 		switch token {
 		case encoding:
-			return quality
+			return quality, true
 		case "*":
 			wildcardQuality = quality
-			hasWildcard = true
 		}
 	}
-	if hasWildcard {
-		return wildcardQuality
+	if encoding == "*" {
+		return wildcardQuality, strings.Contains(header, "*")
 	}
-	return 0
+	return 0, false
 }
 
 func encodingQuality(params string) float64 {
@@ -331,17 +344,17 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	if preferred == compressionZstd && accepted.zstd {
 		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
-	if accepted.gzip {
-		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
-	}
-	if accepted.zstd {
-		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
-	}
 	if accepted.brotli {
 		if level == 0 {
 			level = brotliLargeLevel
 		}
 		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
+	}
+	if accepted.gzip {
+		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
+	}
+	if accepted.zstd {
+		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	}
 	return compressionProfile{}
 }

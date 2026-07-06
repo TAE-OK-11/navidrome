@@ -359,6 +359,28 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeGzip(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
+		It("falls back from zstd to brotli before gzip when zstd is unsupported", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip, br")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("does not enable zstd from an Accept-Encoding wildcard alone", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip;q=1, *;q=1")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("gzip"))
+			Expect(decodeGzip(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
 		It("does not compress small responses", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "br")

@@ -175,13 +175,13 @@ var _ = Describe("CacheWarmer", func() {
 			}).Should(Equal(0))
 		})
 
-		It("pre-caches original and UICoverArtSize", func() {
+		It("pre-caches UICoverArtSize", func() {
 			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 
 			Eventually(func() []int {
 				return aw.getCachedSizes()
-			}).Should(ContainElements(0, conf.Server.UICoverArtSize))
+			}).Should(ContainElements(conf.Server.UICoverArtSize))
 		})
 	})
 })

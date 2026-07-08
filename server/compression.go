@@ -108,16 +108,29 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 	var accepted acceptedCompressions
 	for part := range strings.SplitSeq(acceptEncoding, ",") {
 		token := strings.TrimSpace(part)
-		switch {
-		case strings.EqualFold(token, string(compressionBrotli)):
+		switch token {
+		case string(compressionBrotli):
 			accepted.brotli = true
-		case strings.EqualFold(token, string(compressionZstd)):
+		case string(compressionZstd):
 			accepted.zstd = true
-		case strings.EqualFold(token, string(compressionGzip)):
+		case string(compressionGzip):
 			accepted.gzip = true
+		default:
+			setAcceptedCompressionFallback(&accepted, token)
 		}
 	}
 	return accepted
+}
+
+func setAcceptedCompressionFallback(accepted *acceptedCompressions, token string) {
+	switch {
+	case strings.EqualFold(token, string(compressionBrotli)):
+		accepted.brotli = true
+	case strings.EqualFold(token, string(compressionZstd)):
+		accepted.zstd = true
+	case strings.EqualFold(token, string(compressionGzip)):
+		accepted.gzip = true
+	}
 }
 
 func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompressions {
@@ -403,7 +416,7 @@ func responseSizeAtLeast(h http.Header, bodySize, threshold int) bool {
 
 func isLyricsResponsePath(path string) bool {
 	path = strings.TrimSuffix(path, ".view")
-	return containsFoldASCII(path, "lyrics")
+	return strings.Contains(path, "lyrics") || containsFoldASCII(path, "lyrics")
 }
 
 func isWebUIResponsePath(path, contentType string) bool {
@@ -412,19 +425,46 @@ func isWebUIResponsePath(path, contentType string) bool {
 	}
 	mediaType, _, _ := strings.Cut(contentType, ";")
 	mediaType = strings.TrimSpace(mediaType)
-	return strings.EqualFold(mediaType, "text/html") ||
-		strings.EqualFold(mediaType, "text/css") ||
-		strings.EqualFold(mediaType, "application/javascript") ||
-		strings.EqualFold(mediaType, "application/x-javascript") ||
-		strings.EqualFold(mediaType, "application/manifest+json")
+	switch mediaType {
+	case "text/html",
+		"text/css",
+		"application/javascript",
+		"application/x-javascript",
+		"application/manifest+json":
+		return true
+	default:
+		return strings.EqualFold(mediaType, "text/html") ||
+			strings.EqualFold(mediaType, "text/css") ||
+			strings.EqualFold(mediaType, "application/javascript") ||
+			strings.EqualFold(mediaType, "application/x-javascript") ||
+			strings.EqualFold(mediaType, "application/manifest+json")
+	}
 }
 
 func isCompressibleContentType(contentType string) bool {
 	mediaType, _, _ := strings.Cut(contentType, ";")
 	mediaType = strings.TrimSpace(mediaType)
+	if strings.HasPrefix(mediaType, "text/") {
+		return mediaType != "text/event-stream"
+	}
 	if len(mediaType) >= len("text/") && strings.EqualFold(mediaType[:len("text/")], "text/") {
 		return !strings.EqualFold(mediaType, "text/event-stream")
 	}
+	switch mediaType {
+	case "application/json",
+		"application/xml",
+		"application/javascript",
+		"application/x-javascript",
+		"application/manifest+json",
+		"application/problem+json",
+		"image/svg+xml":
+		return true
+	default:
+		return compressibleContentTypeFallback(mediaType)
+	}
+}
+
+func compressibleContentTypeFallback(mediaType string) bool {
 	switch {
 	case strings.EqualFold(mediaType, "application/json"),
 		strings.EqualFold(mediaType, "application/xml"),

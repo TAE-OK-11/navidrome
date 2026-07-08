@@ -145,17 +145,8 @@ func (a *cacheWarmer) doCacheImage(ctx context.Context, id model.ArtworkID) erro
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := a.cacheImage(ctx, id, 0, false); err != nil {
-		return err
-	}
-	if a.coverArtSize <= 0 {
-		return nil
-	}
-	return a.cacheImage(ctx, id, a.coverArtSize, true)
-}
-
-func (a *cacheWarmer) cacheImage(ctx context.Context, id model.ArtworkID, size int, square bool) error {
-	r, _, err := a.artwork.Get(ctx, id, size, square)
+	size := a.coverArtSize
+	r, _, err := a.artwork.Get(ctx, id, size, true)
 	if err != nil {
 		return fmt.Errorf("caching id='%s', size=%d: %w", id, size, err)
 	}

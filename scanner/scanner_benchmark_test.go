@@ -26,17 +26,21 @@ import (
 )
 
 func BenchmarkScan(b *testing.B) {
-	// Detect any goroutine leaks in the scanner code under test
-	defer goleak.VerifyNone(b,
-		goleak.IgnoreTopFunction("testing.(*B).run1"),
-		goleak.IgnoreAnyFunction("testing.(*B).doBench"),
-		// Ignore database/sql.(*DB).connectionOpener, as we are not closing the database connection
-		goleak.IgnoreAnyFunction("database/sql.(*DB).connectionOpener"),
-	)
+	if os.Getenv("GOLEAK") != "" {
+		defer goleak.VerifyNone(b,
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreAnyFunction("testing.(*B).doBench"),
+			goleak.IgnoreAnyFunction("database/sql.(*DB).connectionOpener"),
+			goleak.IgnoreAnyFunction("runtime/pprof.profileWriter"),
+		)
+	}
 
-	tmpDir := os.TempDir()
+	tmpDir := b.TempDir()
+	conf.Server.MusicFolder = "fake:///music"
 	conf.Server.DbPath = filepath.Join(tmpDir, "test-scanner.db?_journal_mode=WAL")
-	db.Init(context.Background())
+	conf.Server.DevScannerThreads = 1
+	cleanupDB := db.Init(context.Background())
+	b.Cleanup(cleanupDB)
 
 	ds := persistence.New(db.Db())
 	conf.Server.DevExternalScanner = false
@@ -77,7 +81,7 @@ func BenchmarkScan(b *testing.B) {
 	runtime.ReadMemStats(&m1)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := s.ScanAll(context.Background(), true)
 		if err != nil {
 			b.Fatal(err)

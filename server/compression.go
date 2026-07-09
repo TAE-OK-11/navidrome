@@ -206,18 +206,14 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
-	if w.writer != nil {
-		if _, err := w.writer.Write(p); err != nil {
+	if w.writer != nil || w.raw {
+		return w.writeStarted(p)
+	}
+	if w.buffer == nil && len(p) >= compressionDecisionBufferTarget {
+		if err := w.start(p); err != nil {
 			return 0, err
 		}
-		return len(p), nil
-	}
-	if w.raw {
-		n, err := w.ResponseWriter.Write(p)
-		if err != nil {
-			return n, err
-		}
-		return len(p), nil
+		return w.writeStarted(p)
 	}
 
 	if w.buffer == nil {
@@ -264,35 +260,37 @@ func (w *compressResponseWriter) flushBuffered() error {
 	if w.writer != nil || w.raw {
 		return nil
 	}
+	buf := w.buffer
+	if err := w.start(buf); err != nil {
+		return err
+	}
+	if len(buf) == 0 {
+		w.releaseBuffer()
+		return nil
+	}
+	_, err := w.writeStarted(buf)
+	w.releaseBuffer()
+	return err
+}
+
+func (w *compressResponseWriter) start(body []byte) error {
 	status := w.status
 	if status == 0 {
 		status = http.StatusOK
 	}
 
-	contentType := responseContentType(w.Header(), w.buffer)
+	contentType := responseContentType(w.Header(), body)
 	if !isCompressibleResponse(status, w.Header(), contentType) {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
-		if len(w.buffer) == 0 {
-			return nil
-		}
-		buf := w.buffer
-		_, err := w.ResponseWriter.Write(buf)
-		w.releaseBuffer()
-		return err
+		return nil
 	}
 
-	profile := selectCompressionProfile(w.accepted, w.path, w.Header(), contentType, len(w.buffer))
-	if profile.encoding == "" || len(w.buffer) < profile.minSize {
+	profile := selectCompressionProfile(w.accepted, w.path, w.Header(), contentType, len(body))
+	if profile.encoding == "" || len(body) < profile.minSize {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
-		if len(w.buffer) == 0 {
-			return nil
-		}
-		buf := w.buffer
-		_, err := w.ResponseWriter.Write(buf)
-		w.releaseBuffer()
-		return err
+		return nil
 	}
 
 	w.encoding = profile.encoding
@@ -304,13 +302,17 @@ func (w *compressResponseWriter) flushBuffered() error {
 		return err
 	}
 	w.writer = writer
-	if len(w.buffer) == 0 {
-		return nil
+	return nil
+}
+
+func (w *compressResponseWriter) writeStarted(p []byte) (int, error) {
+	if w.writer != nil {
+		if _, err := w.writer.Write(p); err != nil {
+			return 0, err
+		}
+		return len(p), nil
 	}
-	buf := w.buffer
-	_, err = w.writer.Write(buf)
-	w.releaseBuffer()
-	return err
+	return w.ResponseWriter.Write(p)
 }
 
 func getCompressionBuffer() []byte {

@@ -1,12 +1,81 @@
 import { describe, it, expect } from 'vitest'
 import { playerReducer } from './playerReducer'
 import {
+  PLAYER_ADD_TRACKS,
   PLAYER_SYNC_QUEUE,
   PLAYER_CURRENT,
   PLAYER_REFRESH_QUEUE,
 } from '../actions'
 
 describe('playerReducer', () => {
+  describe('PLAYER_ADD_TRACKS', () => {
+    const song = {
+      id: 'song-2',
+      title: 'Song 2',
+      artist: 'Artist',
+      album: 'Album',
+      duration: 120,
+    }
+
+    it('appends to a new queue without mutating the previous state', () => {
+      const oldQueue = [{ trackId: 'song-1', uuid: 'old' }]
+      const state = {
+        queue: oldQueue,
+        current: {},
+        clear: false,
+        volume: 1,
+        savedPlayIndex: 0,
+      }
+
+      const result = playerReducer(state, {
+        type: PLAYER_ADD_TRACKS,
+        data: { [song.id]: song },
+      })
+
+      expect(result.queue).not.toBe(oldQueue)
+      expect(oldQueue).toHaveLength(1)
+      expect(result.queue.map((item) => item.trackId)).toEqual([
+        'song-1',
+        'song-2',
+      ])
+    })
+
+    it('ignores malformed lyric JSON instead of aborting queue updates', () => {
+      const result = playerReducer(
+        { queue: [], current: {}, volume: 1, savedPlayIndex: 0 },
+        {
+          type: PLAYER_ADD_TRACKS,
+          data: { [song.id]: { ...song, lyrics: '{invalid' } },
+        },
+      )
+
+      expect(result.queue[0].lyric).toBe('')
+    })
+
+    it('formats synced lyric lines with a single trailing newline', () => {
+      const lyrics = JSON.stringify([
+        {
+          synced: true,
+          line: [
+            { start: 12340, value: 'first' },
+            { start: 61230, value: 'second' },
+          ],
+        },
+      ])
+      const result = playerReducer(
+        { queue: [], current: {}, volume: 1, savedPlayIndex: 0 },
+        {
+          type: PLAYER_ADD_TRACKS,
+          data: { [song.id]: { ...song, lyrics } },
+        },
+      )
+
+      expect(result.queue[0].lyric).toBe(
+        '[00:12.34] first\n[01:01.23] second\n',
+      )
+    })
+  })
+
   describe('pending track selection survives SYNC_QUEUE and premature CURRENT', () => {
     // Simulates the real sequence when clicking a new song while one is playing:
     // 1. PLAYER_PLAY_TRACKS sets playIndex and clear

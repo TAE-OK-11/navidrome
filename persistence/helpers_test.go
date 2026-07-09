@@ -1,9 +1,12 @@
 package persistence
 
 import (
+	"database/sql/driver"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/fatih/structs"
+	"github.com/navidrome/navidrome/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -62,6 +65,35 @@ var _ = Describe("Helpers", func() {
 				Not(HaveKey("Embed")),
 			))
 		})
+
+		It("matches the legacy mapper for persisted media files", func() {
+			now := time.Now()
+			bpm := 123
+			rec := &dbMediaFile{MediaFile: &model.MediaFile{
+				ID:        "track",
+				Title:     "Title",
+				Album:     "Album",
+				Artist:    "Artist",
+				BPM:       &bpm,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}}
+
+			actual, err := toSQLArgs(rec)
+			Expect(err).ToNot(HaveOccurred())
+			expected, err := legacyToSQLArgs(rec)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(actual).To(Equal(expected))
+		})
+
+		It("safely skips fields under a nil flattened pointer", func() {
+			type Wrapper struct {
+				*Model `structs:",flatten"`
+			}
+			args, err := toSQLArgs(&Wrapper{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(args).To(BeEmpty())
+		})
 	})
 
 	Describe("Exists", func() {
@@ -104,3 +136,27 @@ var _ = Describe("Helpers", func() {
 		})
 	})
 })
+
+func legacyToSQLArgs(rec any) (map[string]any, error) {
+	m := structs.Map(rec)
+	for key, value := range m {
+		switch typed := value.(type) {
+		case *time.Time:
+			if typed != nil {
+				m[key] = *typed
+			}
+		case driver.Valuer:
+			mapped, err := typed.Value()
+			if err != nil {
+				return nil, err
+			}
+			m[key] = mapped
+		}
+	}
+	if mapper, ok := rec.(PostMapper); ok {
+		if err := mapper.PostMapArgs(m); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}

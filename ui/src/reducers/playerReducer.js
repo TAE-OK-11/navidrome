@@ -23,13 +23,35 @@ const initialState = {
   savedPlayIndex: 0,
 }
 
-const pad = (value) => {
-  const str = value.toString()
-  if (str.length === 1) {
-    return `0${str}`
-  } else {
-    return str
+const pad = (value) => (value < 10 ? `0${value}` : String(value))
+
+const formatSyncedLyrics = (lyrics) => {
+  if (!lyrics) return ''
+
+  let structured
+  try {
+    structured = typeof lyrics === 'string' ? JSON.parse(lyrics) : lyrics
+  } catch {
+    return ''
   }
+  if (!Array.isArray(structured)) return ''
+
+  const output = []
+  for (const entry of structured) {
+    if (!entry?.synced || !Array.isArray(entry.line)) continue
+    for (const line of entry.line) {
+      const start = Number(line?.start)
+      if (!Number.isFinite(start)) continue
+
+      let time = Math.floor(start / 10)
+      const ms = time % 100
+      time = Math.floor(time / 100)
+      const sec = time % 60
+      const min = Math.floor(time / 60) % 60
+      output.push(`[${pad(min)}:${pad(sec)}.${pad(ms)}] ${line.value ?? ''}`)
+    }
+  }
+  return output.length > 0 ? `${output.join('\n')}\n` : ''
 }
 
 const makeMusicSrc = (trackId) =>
@@ -56,27 +78,7 @@ const mapToAudioLists = (item) => {
     }
   }
 
-  const { lyrics } = item
-  let lyricText = ''
-
-  if (lyrics) {
-    const structured = JSON.parse(lyrics)
-    for (const structuredLyric of structured) {
-      if (structuredLyric.synced) {
-        for (const line of structuredLyric.line) {
-          let time = Math.floor(line.start / 10)
-          const ms = time % 100
-          time = Math.floor(time / 100)
-          const sec = time % 60
-          time = Math.floor(time / 60)
-          const min = time % 60
-
-          ms.toString()
-          lyricText += `[${pad(min)}:${pad(sec)}.${pad(ms)}] ${line.value}\n`
-        }
-      }
-    }
-  }
+  const lyricText = formatSyncedLyrics(item.lyrics)
 
   return {
     trackId,
@@ -126,7 +128,7 @@ const reduceSetTrack = (state, { data }) => {
 }
 
 const reduceAddTracks = (state, { data }) => {
-  const queue = state.queue
+  const queue = state.queue.slice()
   Object.keys(data).forEach((id) => {
     queue.push(mapToAudioLists(data[id]))
   })

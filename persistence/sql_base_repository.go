@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -476,7 +477,7 @@ func (r sqlRepository) updateOwned(id string, m any, colsToUpdate ...string) err
 	}
 	updateValues := filterUpdateValues(values, id, colsToUpdate...)
 	delete(updateValues, "user_id") // ownership is immutable on update
-	update := Update(r.tableName).Where(r.addRestriction(Eq{"id": id})).SetMap(updateValues)
+	update := updateMap(r.tableName, updateValues, r.addRestriction(Eq{"id": id}))
 	count, err := r.executeSQL(update)
 	if err != nil {
 		return err
@@ -551,27 +552,25 @@ func (r sqlRepository) putByMatch(filter Sqlizer, id string, m any, colsToUpdate
 // row identified by id: only the requested colsToUpdate (or all columns when none are specified),
 // dropping columns that must never be overwritten on update (created_at, birth_time).
 func filterUpdateValues(values map[string]any, id string, colsToUpdate ...string) map[string]any {
-	updateValues := make(map[string]any, len(values))
 	if len(colsToUpdate) == 0 {
-		for k, v := range values {
+		values["id"] = id
+		delete(values, "created_at")
+		delete(values, "birth_time")
+		return values
+	}
+
+	updateValues := make(map[string]any, len(colsToUpdate)+1)
+	c2upd := slice.ToMap(colsToUpdate, func(s string) (string, struct{}) {
+		return toSnakeCase(s), struct{}{}
+	})
+	for k, v := range values {
+		if _, found := c2upd[k]; found {
 			updateValues[k] = v
-		}
-	} else {
-		// This is a map of the columns that need to be updated, if specified
-		c2upd := slice.ToMap(colsToUpdate, func(s string) (string, struct{}) {
-			return toSnakeCase(s), struct{}{}
-		})
-		for k, v := range values {
-			if _, found := c2upd[k]; found {
-				updateValues[k] = v
-			}
 		}
 	}
 
 	updateValues["id"] = id
 	delete(updateValues, "created_at")
-	// To avoid updating the media_file birth_time on each scan. Not the best solution, but it works for now
-	// TODO move to mediafile_repository when each repo has its own upsert method
 	delete(updateValues, "birth_time")
 	return updateValues
 }
@@ -583,13 +582,21 @@ func (r sqlRepository) put(id string, m any, colsToUpdate ...string) (newId stri
 	}
 	// If there's an ID, try to update first
 	if id != "" {
-		update := Update(r.tableName).Where(Eq{"id": id}).SetMap(filterUpdateValues(values, id, colsToUpdate...))
+		originalID, hadID := values["id"]
+		createdAt, hadCreatedAt := values["created_at"]
+		birthTime, hadBirthTime := values["birth_time"]
+		update := updateMap(r.tableName, filterUpdateValues(values, id, colsToUpdate...), Eq{"id": id})
 		count, err := r.executeSQL(update)
 		if err != nil {
 			return "", err
 		}
 		if count > 0 {
 			return id, nil
+		}
+		if len(colsToUpdate) == 0 {
+			restoreMapValue(values, "id", originalID, hadID)
+			restoreMapValue(values, "created_at", createdAt, hadCreatedAt)
+			restoreMapValue(values, "birth_time", birthTime, hadBirthTime)
 		}
 	}
 	// If it does not have an ID OR the ID was not found (when it is a new record with predefined id)
@@ -602,6 +609,14 @@ func (r sqlRepository) put(id string, m any, colsToUpdate ...string) (newId stri
 	return id, err
 }
 
+func restoreMapValue(values map[string]any, key string, value any, present bool) {
+	if present {
+		values[key] = value
+	} else {
+		delete(values, key)
+	}
+}
+
 func (r sqlRepository) delete(cond Sqlizer) error {
 	del := Delete(r.tableName).Where(cond)
 	_, err := r.executeSQL(del)
@@ -612,10 +627,81 @@ func (r sqlRepository) delete(cond Sqlizer) error {
 }
 
 func (r sqlRepository) logSQL(sql string, args dbx.Params, err error, rowsAffected int64, start time.Time) {
-	elapsed := time.Since(start)
 	if err == nil || errors.Is(err, context.Canceled) {
-		log.Trace(r.ctx, "SQL: `"+sql+"`", "args", args, "rowsAffected", rowsAffected, "elapsedTime", elapsed, err)
-	} else {
-		log.Error(r.ctx, "SQL: `"+sql+"`", "args", args, "rowsAffected", rowsAffected, "elapsedTime", elapsed, err)
+		if log.IsGreaterOrEqualTo(log.LevelTrace) {
+			log.Trace(r.ctx, "SQL: `"+sql+"`", "args", args, "rowsAffected", rowsAffected, "elapsedTime", time.Since(start), err)
+		}
+		return
 	}
+	log.Error(r.ctx, "SQL: `"+sql+"`", "args", args, "rowsAffected", rowsAffected, "elapsedTime", time.Since(start), err)
+}
+
+type mapUpdate struct {
+	table  string
+	values map[string]any
+	where  Sqlizer
+}
+
+func updateMap(table string, values map[string]any, where Sqlizer) Sqlizer {
+	return mapUpdate{table: table, values: values, where: where}
+}
+
+func (u mapUpdate) ToSql() (string, []any, error) {
+	if u.table == "" {
+		return "", nil, errors.New("update statements must specify a table")
+	}
+	if len(u.values) == 0 {
+		return "", nil, errors.New("update statements must have at least one Set clause")
+	}
+
+	keys := make([]string, 0, len(u.values))
+	for key := range u.values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var query strings.Builder
+	query.Grow(len(u.table) + len(keys)*12)
+	query.WriteString("UPDATE ")
+	query.WriteString(u.table)
+	query.WriteString(" SET ")
+	args := make([]any, 0, len(keys))
+	for i, key := range keys {
+		if i > 0 {
+			query.WriteString(", ")
+		}
+		query.WriteString(key)
+		query.WriteString(" = ")
+		value := u.values[key]
+		if sqlizer, ok := value.(Sqlizer); ok {
+			valueSQL, valueArgs, err := sqlizer.ToSql()
+			if err != nil {
+				return "", nil, err
+			}
+			if _, ok := sqlizer.(SelectBuilder); ok {
+				query.WriteByte('(')
+				query.WriteString(valueSQL)
+				query.WriteByte(')')
+			} else {
+				query.WriteString(valueSQL)
+			}
+			args = append(args, valueArgs...)
+			continue
+		}
+		query.WriteByte('?')
+		args = append(args, value)
+	}
+
+	if u.where != nil {
+		whereSQL, whereArgs, err := u.where.ToSql()
+		if err != nil {
+			return "", nil, err
+		}
+		if whereSQL != "" {
+			query.WriteString(" WHERE ")
+			query.WriteString(whereSQL)
+			args = append(args, whereArgs...)
+		}
+	}
+	return query.String(), args, nil
 }

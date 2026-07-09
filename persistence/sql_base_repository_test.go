@@ -86,6 +86,66 @@ var _ = Describe("sqlRepository", func() {
 		})
 	})
 
+	Describe("updateMap", func() {
+		It("matches squirrel's deterministic SetMap SQL and arguments", func() {
+			values := map[string]any{
+				"title": "Song",
+				"year":  2026,
+				"plays": squirrel.Expr("coalesce(plays, ?) + ?", 0, 1),
+			}
+			where := squirrel.Eq{"id": "track-id", "library_id": 1}
+			expectedSQL, expectedArgs, err := squirrel.Update("media_file").SetMap(values).Where(where).ToSql()
+			Expect(err).ToNot(HaveOccurred())
+
+			actualSQL, actualArgs, err := updateMap("media_file", values, where).ToSql()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(actualSQL).To(Equal(expectedSQL))
+			Expect(actualArgs).To(Equal(expectedArgs))
+		})
+
+		It("rejects empty tables and value maps", func() {
+			_, _, err := updateMap("", map[string]any{"id": 1}, nil).ToSql()
+			Expect(err).To(HaveOccurred())
+			_, _, err = updateMap("media_file", nil, nil).ToSql()
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("filterUpdateValues", func() {
+		It("reuses the fresh value map for full updates", func() {
+			values := map[string]any{
+				"id":         "old-id",
+				"title":      "Song",
+				"created_at": 1,
+				"birth_time": 2,
+			}
+			result := filterUpdateValues(values, "new-id")
+			result["title"] = "Updated"
+
+			Expect(values).To(HaveKeyWithValue("id", "new-id"))
+			Expect(values).To(HaveKeyWithValue("title", "Updated"))
+			Expect(values).ToNot(HaveKey("created_at"))
+			Expect(values).ToNot(HaveKey("birth_time"))
+		})
+
+		It("keeps partial updates isolated from the source map", func() {
+			values := map[string]any{"id": "track", "title": "Song", "year": 2026}
+			values["created_at"] = 1
+			values["birth_time"] = 2
+			result := filterUpdateValues(values, "track", "title", "created_at", "birth_time")
+			result["title"] = "Updated"
+
+			Expect(values).To(HaveKeyWithValue("title", "Song"))
+			Expect(result).To(SatisfyAll(
+				HaveKeyWithValue("id", "track"),
+				HaveKeyWithValue("title", "Updated"),
+				Not(HaveKey("year")),
+				Not(HaveKey("created_at")),
+				Not(HaveKey("birth_time")),
+			))
+		})
+	})
+
 	Describe("sanitizeSort", func() {
 		BeforeEach(func() {
 			r.registerModel(&struct {

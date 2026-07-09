@@ -1,6 +1,8 @@
 package persistence
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -8,6 +10,12 @@ import (
 )
 
 var benchmarkSQLArgs map[string]any
+
+var (
+	benchmarkFirstCap   = regexp.MustCompile("(.)([A-Z][a-z]+)")
+	benchmarkAllCap     = regexp.MustCompile("([a-z0-9])([A-Z])")
+	benchmarkUnderscore = regexp.MustCompile("_([A-Za-z])")
+)
 
 func BenchmarkToSQLArgsMediaFile(b *testing.B) {
 	bpm := 120
@@ -38,4 +46,30 @@ func BenchmarkToSQLArgsMediaFile(b *testing.B) {
 		}
 		benchmarkSQLArgs = args
 	}
+}
+
+func BenchmarkCaseConversion(b *testing.B) {
+	b.Run("legacy_snake", func(b *testing.B) {
+		for b.Loop() {
+			snake := benchmarkFirstCap.ReplaceAllString("SortAlbumArtistName", "${1}_${2}")
+			_ = strings.ToLower(benchmarkAllCap.ReplaceAllString(snake, "${1}_${2}"))
+		}
+	})
+	b.Run("snake", func(b *testing.B) {
+		for b.Loop() {
+			_ = toSnakeCase("SortAlbumArtistName")
+		}
+	})
+	b.Run("legacy_camel", func(b *testing.B) {
+		for b.Loop() {
+			_ = benchmarkUnderscore.ReplaceAllStringFunc("sort_album_artist_name", func(s string) string {
+				return strings.ToUpper(strings.ReplaceAll(s, "_", ""))
+			})
+		}
+	})
+	b.Run("camel", func(b *testing.B) {
+		for b.Loop() {
+			_ = toCamelCase("sort_album_artist_name")
+		}
+	})
 }

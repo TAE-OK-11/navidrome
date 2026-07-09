@@ -153,21 +153,77 @@ func valueByIndex(value reflect.Value, index []int) (reflect.Value, bool) {
 	return value, value.IsValid() && value.CanInterface()
 }
 
-var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
-var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")
-
 func toSnakeCase(str string) string {
-	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
-	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
-	return strings.ToLower(snake)
+	hasUpper := false
+	hasNonASCII := false
+	for i := range len(str) {
+		c := str[i]
+		hasUpper = hasUpper || c >= 'A' && c <= 'Z'
+		hasNonASCII = hasNonASCII || c >= 0x80
+	}
+	if !hasUpper {
+		if hasNonASCII {
+			return strings.ToLower(str)
+		}
+		return str
+	}
+
+	var snake strings.Builder
+	snake.Grow(len(str) + 4)
+	for i := range len(str) {
+		c := str[i]
+		if i > 0 && c >= 'A' && c <= 'Z' {
+			previous := str[i-1]
+			nextIsLower := i+1 < len(str) && str[i+1] >= 'a' && str[i+1] <= 'z'
+			previousIsLowerOrDigit := previous >= 'a' && previous <= 'z' || previous >= '0' && previous <= '9'
+			if nextIsLower || previousIsLowerOrDigit {
+				snake.WriteByte('_')
+			}
+		}
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		snake.WriteByte(c)
+	}
+	result := snake.String()
+	if hasNonASCII {
+		return strings.ToLower(result)
+	}
+	return result
 }
 
-var matchUnderscore = regexp.MustCompile("_([A-Za-z])")
-
 func toCamelCase(str string) string {
-	return matchUnderscore.ReplaceAllStringFunc(str, func(s string) string {
-		return strings.ToUpper(strings.Replace(s, "_", "", -1))
-	})
+	first := -1
+	for i := 0; i+1 < len(str); i++ {
+		if str[i] == '_' && isASCIILetter(str[i+1]) {
+			first = i
+			break
+		}
+	}
+	if first < 0 {
+		return str
+	}
+
+	var camel strings.Builder
+	camel.Grow(len(str) - 1)
+	camel.WriteString(str[:first])
+	for i := first; i < len(str); i++ {
+		if str[i] == '_' && i+1 < len(str) && isASCIILetter(str[i+1]) {
+			next := str[i+1]
+			if next >= 'a' && next <= 'z' {
+				next -= 'a' - 'A'
+			}
+			camel.WriteByte(next)
+			i++
+			continue
+		}
+		camel.WriteByte(str[i])
+	}
+	return camel.String()
+}
+
+func isASCIILetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
 func Exists(subTable string, cond squirrel.Sqlizer) existsCond {

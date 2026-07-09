@@ -22,6 +22,10 @@ var _ = Describe("Helpers", func() {
 		It("converts ALLCAPS", func() {
 			Expect(toSnakeCase("ALLCAPS")).To(Equal("allcaps"))
 		})
+		It("preserves acronym boundaries", func() {
+			Expect(toSnakeCase("RGAlbumGain")).To(Equal("rg_album_gain"))
+			Expect(toSnakeCase("URLValue")).To(Equal("url_value"))
+		})
 		It("does not converts snake_case", func() {
 			Expect(toSnakeCase("snake_case")).To(Equal("snake_case"))
 		})
@@ -38,6 +42,9 @@ var _ = Describe("Helpers", func() {
 		})
 		It("converts ALLCAPS", func() {
 			Expect(toCamelCase("ALLCAPS")).To(Equal("ALLCAPS"))
+		})
+		It("matches consecutive underscore behavior", func() {
+			Expect(toCamelCase("two__words")).To(Equal("two_Words"))
 		})
 	})
 	Describe("toSQLArgs", func() {

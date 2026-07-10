@@ -232,14 +232,18 @@ func equalMD5Hex(token string, sum [md5.Size]byte) bool {
 }
 
 func getPlayer(players core.Players) func(next http.Handler) http.Handler {
-	return getPlayerWithLookup(players, false)
+	return getPlayerWithLookupMode(players, false, false)
 }
 
 func getFreshPlayer(players core.Players) func(next http.Handler) http.Handler {
-	return getPlayerWithLookup(players, true)
+	return getPlayerWithLookupMode(players, true, false)
 }
 
-func getPlayerWithLookup(players core.Players, fresh bool) func(next http.Handler) http.Handler {
+func getStreamPlayer(players core.Players) func(next http.Handler) http.Handler {
+	return getPlayerWithLookupMode(players, true, true)
+}
+
+func getPlayerWithLookupMode(players core.Players, fresh, cacheRawStream bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -252,7 +256,11 @@ func getPlayerWithLookup(players core.Players, fresh bool) func(next http.Handle
 			var player *model.Player
 			var trc *model.Transcoding
 			var err error
-			if fresh {
+			useFresh := fresh
+			if cacheRawStream && req.Params(r).StringOr("format", "") == "raw" {
+				useFresh = false
+			}
+			if useFresh {
 				player, trc, err = players.RegisterFresh(ctx, playerId, client, userAgent, ip)
 			} else {
 				player, trc, err = players.Register(ctx, playerId, client, userAgent, ip)

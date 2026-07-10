@@ -3,7 +3,10 @@ package stream_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 
 	"github.com/navidrome/navidrome/conf"
@@ -56,6 +59,23 @@ var _ = Describe("MediaStreamer", func() {
 			s, err := streamer.NewStream(ctx, mf, stream.Request{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(s.Seekable()).To(BeTrue())
+		})
+		It("serves byte ranges from direct-play files", func() {
+			s, err := streamer.NewStream(ctx, mf, stream.Request{Format: "raw"})
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(s.Close)
+
+			expected, err := os.ReadFile(mf.AbsolutePath())
+			Expect(err).ToNot(HaveOccurred())
+			req := httptest.NewRequest(http.MethodGet, "/stream", nil)
+			req.Header.Set("Range", "bytes=1-4")
+			resp := httptest.NewRecorder()
+
+			_, err = s.Serve(ctx, resp, req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.Code).To(Equal(http.StatusPartialContent))
+			Expect(resp.Header().Get("Content-Range")).To(Equal("bytes 1-4/" + fmt.Sprint(len(expected))))
+			Expect(resp.Body.Bytes()).To(Equal(expected[1:5]))
 		})
 		It("returns a NON seekable stream if transcode is required", func() {
 			s, err := streamer.NewStream(ctx, mf, stream.Request{Format: "mp3", BitRate: 64})

@@ -195,5 +195,13 @@ var _ = Describe("Public URL Utilities", func() {
 			result := publicurl.ImageURL(nil, artID, 0)
 			Expect(result).ToNot(ContainSubstring("size="))
 		})
+
+		It("does not reuse a cached token after the signer changes", func() {
+			artID := model.NewArtworkID(model.KindArtistArtwork, "rotated-signer", nil)
+			first := publicurl.ImageURL(nil, artID, 0)
+			auth.TokenAuth = jwtauth.New("HS256", []byte("rotated secret"), nil)
+			second := publicurl.ImageURL(nil, artID, 0)
+			Expect(second).ToNot(Equal(first))
+		})
 	})
 })

@@ -5,6 +5,7 @@ import (
 	"errors"
 	_ "image/gif"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/navidrome/navidrome/consts"
@@ -12,27 +13,45 @@ import (
 	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/resources"
 	"github.com/navidrome/navidrome/utils/cache"
 	_ "golang.org/x/image/webp"
+	"golang.org/x/sync/singleflight"
 )
 
 var ErrUnavailable = errors.New("artwork unavailable")
+
+const (
+	artworkReaderCacheSize = 256
+	artworkReaderCacheTTL  = time.Second
+)
 
 type Artwork interface {
 	Get(ctx context.Context, artID model.ArtworkID, size int, square bool) (io.ReadCloser, time.Time, error)
 	GetOrPlaceholder(ctx context.Context, id string, size int, square bool) (io.ReadCloser, time.Time, error)
 }
 
-func NewArtwork(ds model.DataStore, cache cache.FileCache, ffmpeg ffmpeg.FFmpeg, provider external.Provider) Artwork {
-	return &artwork{ds: ds, cache: cache, ffmpeg: ffmpeg, provider: provider}
+func NewArtwork(ds model.DataStore, imageCache cache.FileCache, ffmpeg ffmpeg.FFmpeg, provider external.Provider) Artwork {
+	return &artwork{
+		ds:       ds,
+		cache:    imageCache,
+		ffmpeg:   ffmpeg,
+		provider: provider,
+		readerCache: cache.NewSimpleCache[string, artworkReader](cache.Options{
+			SizeLimit:  artworkReaderCacheSize,
+			DefaultTTL: artworkReaderCacheTTL,
+		}),
+	}
 }
 
 type artwork struct {
-	ds       model.DataStore
-	cache    cache.FileCache
-	ffmpeg   ffmpeg.FFmpeg
-	provider external.Provider
+	ds          model.DataStore
+	cache       cache.FileCache
+	ffmpeg      ffmpeg.FFmpeg
+	provider    external.Provider
+	readers     singleflight.Group
+	readerCache cache.SimpleCache[string, artworkReader]
 }
 
 type artworkReader interface {
@@ -108,6 +127,52 @@ func (a *artwork) getArtworkId(ctx context.Context, id string) (model.ArtworkID,
 }
 
 func (a *artwork) getArtworkReader(ctx context.Context, artID model.ArtworkID, size int, square bool) (artworkReader, error) {
+	artworkID := artID.String()
+	key := make([]byte, 0, len(artworkID)+32)
+	if user, ok := request.UserFrom(ctx); ok {
+		key = append(key, 'u')
+		key = append(key, user.ID...)
+		key = append(key, 0)
+		key = strconv.AppendBool(key, user.IsAdmin)
+		for _, library := range user.Libraries {
+			key = append(key, ',')
+			key = strconv.AppendInt(key, int64(library.ID), 10)
+		}
+	} else {
+		key = append(key, 'n')
+	}
+	key = append(key, 0)
+	key = append(key, artworkID...)
+	key = append(key, 0)
+	key = strconv.AppendInt(key, int64(size), 10)
+	key = append(key, 0)
+	key = strconv.AppendBool(key, square)
+	cacheKey := string(key)
+	if a.readerCache != nil {
+		if reader, cacheErr := a.readerCache.Get(cacheKey); cacheErr == nil {
+			return reader, nil
+		}
+	}
+
+	value, err, _ := a.readers.Do(cacheKey, func() (any, error) {
+		if a.readerCache != nil {
+			if reader, cacheErr := a.readerCache.Get(cacheKey); cacheErr == nil {
+				return reader, nil
+			}
+		}
+		reader, buildErr := a.buildArtworkReader(ctx, artID, size, square)
+		if buildErr == nil && a.readerCache != nil {
+			_ = a.readerCache.Add(cacheKey, reader)
+		}
+		return reader, buildErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value.(artworkReader), nil
+}
+
+func (a *artwork) buildArtworkReader(ctx context.Context, artID model.ArtworkID, size int, square bool) (artworkReader, error) {
 	var artReader artworkReader
 	var err error
 	if size > 0 || square {

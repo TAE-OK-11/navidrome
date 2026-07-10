@@ -16,6 +16,7 @@ import (
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -67,6 +68,39 @@ var _ = Describe("Artwork", func() {
 		cache := GetImageCache()
 		ffmpeg = tests.NewMockFFmpeg("content from ffmpeg")
 		aw = NewArtwork(ds, cache, ffmpeg, nil).(*artwork)
+	})
+
+	Describe("artwork reader cache", func() {
+		BeforeEach(func() {
+			folderRepo.result = []model.Folder{}
+			ds.Album(ctx).(*tests.MockAlbumRepo).SetData(model.Albums{alOnlyExternal})
+		})
+
+		It("reuses a recently built reader", func() {
+			first, err := aw.getArtworkReader(ctx, alOnlyExternal.CoverArtID(), 0, false)
+			Expect(err).NotTo(HaveOccurred())
+			second, err := aw.getArtworkReader(ctx, alOnlyExternal.CoverArtID(), 0, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(second).To(BeIdenticalTo(first))
+			Expect(aw.readerCache.Len()).To(Equal(1))
+		})
+
+		It("separates readers by user permission scope", func() {
+			firstCtx := request.WithUser(ctx, model.User{ID: "user-1", Libraries: model.Libraries{{ID: 1}}})
+			secondCtx := request.WithUser(ctx, model.User{ID: "user-2", Libraries: model.Libraries{{ID: 1}}})
+			first, err := aw.getArtworkReader(firstCtx, alOnlyExternal.CoverArtID(), 0, false)
+			Expect(err).NotTo(HaveOccurred())
+			second, err := aw.getArtworkReader(secondCtx, alOnlyExternal.CoverArtID(), 0, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(second).NotTo(BeIdenticalTo(first))
+			Expect(aw.readerCache.Len()).To(Equal(2))
+		})
+
+		It("does not cache reader construction errors", func() {
+			_, err := aw.getArtworkReader(ctx, model.MustParseArtworkID("al-NOT-FOUND"), 0, false)
+			Expect(err).To(MatchError(model.ErrNotFound))
+			Expect(aw.readerCache.Len()).To(BeZero())
+		})
 	})
 
 	Describe("albumArtworkReader", func() {

@@ -669,7 +669,7 @@ func (a Array[T]) MarshalJSON() ([]byte, error) {
 // empty array instead of null.
 func marshalJSONArray[T any](v []T) ([]byte, error) {
 	if len(v) == 0 {
-		return json.Marshal([]T{})
+		return []byte("[]"), nil
 	}
 	return json.Marshal(v)
 }

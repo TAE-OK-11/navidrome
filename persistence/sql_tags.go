@@ -2,12 +2,12 @@ package persistence
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
+	json "github.com/goccy/go-json"
 	"github.com/navidrome/navidrome/model"
 	"github.com/pocketbase/dbx"
 )

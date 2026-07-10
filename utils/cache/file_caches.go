@@ -2,14 +2,18 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/djherbis/fscache"
+	diskstream "github.com/djherbis/stream"
 	"github.com/dustin/go-humanize"
 	"github.com/hashicorp/go-multierror"
 	"github.com/navidrome/navidrome/conf"
@@ -189,6 +193,16 @@ func (fc *fileCache) Get(ctx context.Context, arg Item) (*CachedStream, error) {
 		size := getFinalCachedSize(r)
 		if size >= 0 {
 			log.Trace(ctx, "Cache HIT", "cache", fc.name, "key", key, "size", size)
+			if source, closer, ok := directFileStream(r, size); ok {
+				return &CachedStream{
+					Reader: source,
+					Seeker: source,
+					Closer: closer,
+					Cached: true,
+					conn:   source,
+					size:   size,
+				}, nil
+			}
 			sr := io.NewSectionReader(r, 0, size)
 			return &CachedStream{
 				Reader: sr,
@@ -211,6 +225,29 @@ type CachedStream struct {
 	io.Seeker
 	io.Closer
 	Cached bool
+	conn   syscall.Conn
+	size   int64
+}
+
+func (s *CachedStream) SyscallConn() (syscall.RawConn, error) {
+	if s.conn == nil {
+		return nil, os.ErrInvalid
+	}
+	return s.conn.SyscallConn()
+}
+
+// RemainingLength returns the bytes left in a completed, file-backed cache
+// stream. Consumers can use it to avoid chunked HTTP responses without seeking
+// to the end and disturbing an active reader.
+func (s *CachedStream) RemainingLength() (int64, bool) {
+	if s.conn == nil || s.Seeker == nil {
+		return 0, false
+	}
+	offset, err := s.Seek(0, io.SeekCurrent)
+	if err != nil || offset < 0 || offset > s.size {
+		return 0, false
+	}
+	return s.size - offset, true
 }
 
 func (s *CachedStream) Close() error {
@@ -232,6 +269,40 @@ func getFinalCachedSize(r fscache.ReadAtCloser) int64 {
 		}
 	}
 	return -1
+}
+
+const directFileStreamMinSize = 64 << 10
+
+func directFileStream(r fscache.ReadAtCloser, size int64) (*os.File, io.Closer, bool) {
+	if size < directFileStreamMinSize {
+		return nil, nil, false
+	}
+	cacheReader, ok := r.(*fscache.CacheReader)
+	if !ok {
+		return nil, nil, false
+	}
+
+	switch source := cacheReader.ReadAtCloser.(type) {
+	case *os.File:
+		return source, r, true
+	case *diskstream.Reader:
+		file, err := os.Open(source.Name())
+		if err != nil {
+			return nil, nil, false
+		}
+		return file, joinedCloser{first: file, second: r}, true
+	default:
+		return nil, nil, false
+	}
+}
+
+type joinedCloser struct {
+	first  io.Closer
+	second io.Closer
+}
+
+func (c joinedCloser) Close() error {
+	return errors.Join(c.first.Close(), c.second.Close())
 }
 
 func copyAndClose(w io.WriteCloser, r io.Reader) error {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -182,7 +183,16 @@ func (s *Stream) EstimatedContentLength() int {
 // Empty output (0 bytes, no error) is logged but not treated as an error.
 func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request) (int64, error) {
 	if s.Seekable() {
-		http.ServeContent(w, r, s.Name(), s.ModTime(), s)
+		content := io.ReadSeeker(s)
+		// Preserve file-backed readers so net/http can use sendfile for direct
+		// play and completed transcoding-cache hits.
+		if source, ok := s.ReadCloser.(interface {
+			io.ReadSeeker
+			syscall.Conn
+		}); ok {
+			content = source
+		}
+		http.ServeContent(w, r, s.Name(), s.ModTime(), content)
 		return -1, nil
 	}
 

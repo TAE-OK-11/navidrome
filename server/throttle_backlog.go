@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
+	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -31,9 +34,9 @@ type requestThrottle struct {
 // the client with a write deadline. This prevents slow clients from holding
 // throttle capacity.
 //
-// Because it buffers the entire response in memory, this middleware should only
-// be used for endpoints that return small responses (e.g., artwork images). Do
-// not use it for audio streaming or download endpoints.
+// Completed file-backed responses release the token before being copied directly
+// to the client. Other responses are buffered in memory, so this middleware
+// should still only be used for small responses such as artwork images.
 func ThrottleBacklog(limit, backlogLimit int, backlogTimeout time.Duration) func(http.Handler) http.Handler {
 	if limit <= 0 {
 		return func(next http.Handler) http.Handler { return next }
@@ -71,17 +74,26 @@ func (t *requestThrottle) handler(next http.Handler) http.Handler {
 			return
 		}
 
-		buf := &bufferedResponseWriter{header: make(http.Header)}
+		buf := &bufferedResponseWriter{
+			header:      make(http.Header),
+			destination: w,
+			release:     release,
+		}
 		func() {
 			defer release()
 			next.ServeHTTP(buf, r)
 		}()
 
-		maps.Copy(w.Header(), buf.header)
-		if buf.code > 0 {
-			w.WriteHeader(buf.code)
+		if !buf.passthrough {
+			maps.Copy(w.Header(), buf.header)
+			if buf.code > 0 {
+				w.WriteHeader(buf.code)
+			}
 		}
-		if _, err := w.Write(buf.body.Bytes()); err != nil {
+		if !buf.passthrough && buf.body.Len() > 0 {
+			_, err = buf.body.WriteTo(w)
+		}
+		if err != nil {
 			log.Warn(ctx, "Error writing throttled response", err)
 		}
 	})
@@ -128,22 +140,69 @@ func (t *requestThrottle) releaseFunc() func() {
 }
 
 type bufferedResponseWriter struct {
-	header http.Header
-	body   bytes.Buffer
-	code   int
+	header      http.Header
+	body        bytes.Buffer
+	code        int
+	destination http.ResponseWriter
+	release     func()
+	passthrough bool
 }
 
 func (w *bufferedResponseWriter) Header() http.Header {
+	if w.passthrough {
+		return w.destination.Header()
+	}
 	return w.header
 }
 
 func (w *bufferedResponseWriter) Write(b []byte) (int, error) {
+	if w.passthrough {
+		return w.destination.Write(b)
+	}
 	return w.body.Write(b)
 }
 
 func (w *bufferedResponseWriter) WriteHeader(code int) {
-	if w.code != 0 {
+	if w.code != 0 || w.passthrough {
 		return
 	}
 	w.code = code
+}
+
+func (w *bufferedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if w.destination != nil {
+		if source, ok := r.(syscall.Conn); ok {
+			if _, err := source.SyscallConn(); err == nil {
+				if w.header.Get("Content-Length") == "" && w.header.Get("Transfer-Encoding") == "" {
+					if sized, ok := r.(interface{ RemainingLength() (int64, bool) }); ok {
+						if remaining, valid := sized.RemainingLength(); valid {
+							w.header.Set("Content-Length", strconv.FormatInt(remaining, 10))
+						}
+					}
+				}
+				if err := w.startPassthrough(); err != nil {
+					return 0, err
+				}
+				return io.Copy(w.destination, r)
+			}
+		}
+	}
+	return w.body.ReadFrom(r)
+}
+
+func (w *bufferedResponseWriter) startPassthrough() error {
+	if w.passthrough {
+		return nil
+	}
+	maps.Copy(w.destination.Header(), w.header)
+	if w.code > 0 {
+		w.destination.WriteHeader(w.code)
+	}
+	w.passthrough = true
+	w.release()
+	if w.body.Len() == 0 {
+		return nil
+	}
+	_, err := w.body.WriteTo(w.destination)
+	return err
 }

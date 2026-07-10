@@ -59,6 +59,14 @@ func (r sqlRepository) doSearch(sq SelectBuilder, q string, results any, cfg sea
 
 	// Empty query (OpenSubsonic `search3?query=""`) — return all in natural order.
 	if q == "" || q == `""` {
+		// The first page does not pay OFFSET's linear join cost. For tables whose
+		// library scope is already present in sq, the direct query avoids the
+		// ranked window subquery and is substantially cheaper. Artist search keeps
+		// the two-phase path because its junction-table scope needs separate rowid
+		// deduplication and a pinned join order even at offset zero.
+		if options.Offset == 0 && cfg.LibraryFilter == nil {
+			return r.queryAll(sq.OrderBy(cfg.NaturalOrder), results)
+		}
 		rowidCore := Select(r.tableName + ".rowid").From(r.tableName).OrderBy(cfg.NaturalOrder)
 		return r.executeTwoPhase(sq, results, rowidCore, cfg, options)
 	}

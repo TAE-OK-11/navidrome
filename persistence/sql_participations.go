@@ -1,10 +1,12 @@
 package persistence
 
 import (
-	"encoding/json"
 	"fmt"
+	"hash/maphash"
+	"sync"
 
 	. "github.com/Masterminds/squirrel"
+	json "github.com/goccy/go-json"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/slice"
 )
@@ -22,6 +24,27 @@ type flatParticipant struct {
 	SubRole  string `json:"sub_role,omitempty"`
 }
 
+const (
+	participantCacheShardCount      = 16
+	participantCacheEntriesPerShard = 16
+	participantCacheMaxKeySize      = 16 << 10
+)
+
+type participantCacheEntry struct {
+	source       string
+	participants map[model.Role][]participant
+}
+
+type participantCacheShard struct {
+	sync.RWMutex
+	entries map[uint64]participantCacheEntry
+}
+
+var (
+	participantCacheSeed = maphash.MakeSeed()
+	participantCache     [participantCacheShardCount]participantCacheShard
+)
+
 func marshalParticipants(participants model.Participants) string {
 	dbParticipants := make(map[model.Role][]participant)
 	for role, artists := range participants {
@@ -34,20 +57,57 @@ func marshalParticipants(participants model.Participants) string {
 }
 
 func unmarshalParticipants(data string) (model.Participants, error) {
+	if len(data) > participantCacheMaxKeySize {
+		dbParticipants, err := decodeParticipants(data)
+		if err != nil {
+			return nil, err
+		}
+		return participantsFromDB(dbParticipants), nil
+	}
+
+	key := maphash.String(participantCacheSeed, data)
+	shard := &participantCache[int(key)&(participantCacheShardCount-1)]
+	shard.RLock()
+	entry, ok := shard.entries[key]
+	shard.RUnlock()
+	if !ok || entry.source != data {
+		var err error
+		entry.participants, err = decodeParticipants(data)
+		if err != nil {
+			return nil, err
+		}
+		entry.source = data
+		shard.Lock()
+		if shard.entries == nil {
+			shard.entries = make(map[uint64]participantCacheEntry, participantCacheEntriesPerShard)
+		} else if len(shard.entries) >= participantCacheEntriesPerShard {
+			clear(shard.entries)
+		}
+		shard.entries[key] = entry
+		shard.Unlock()
+	}
+	return participantsFromDB(entry.participants), nil
+}
+
+func decodeParticipants(data string) (map[model.Role][]participant, error) {
 	var dbParticipants map[model.Role][]participant
 	err := json.Unmarshal([]byte(data), &dbParticipants)
 	if err != nil {
 		return nil, fmt.Errorf("parsing participants: %w", err)
 	}
+	return dbParticipants, nil
+}
 
+func participantsFromDB(dbParticipants map[model.Role][]participant) model.Participants {
 	participants := make(model.Participants, len(dbParticipants))
 	for role, participantList := range dbParticipants {
-		artists := slice.Map(participantList, func(p participant) model.Participant {
-			return model.Participant{Artist: model.Artist{ID: p.ID, Name: p.Name}, SubRole: p.SubRole}
-		})
+		artists := make(model.ParticipantList, len(participantList))
+		for i, p := range participantList {
+			artists[i] = model.Participant{Artist: model.Artist{ID: p.ID, Name: p.Name}, SubRole: p.SubRole}
+		}
 		participants[role] = artists
 	}
-	return participants, nil
+	return participants
 }
 
 func (r sqlRepository) updateParticipants(itemID string, participants model.Participants) error {

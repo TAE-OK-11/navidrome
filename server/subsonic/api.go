@@ -56,6 +56,7 @@ type Router struct {
 	transcodeDecision stream.TranscodeDecider
 	sonic             *sonicsvc.Sonic
 	genreCache        genreResponseCache
+	streamFiles       *streamMediaCache
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,
@@ -81,6 +82,7 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		lyrics:            lyrics,
 		transcodeDecision: transcodeDecision,
 		sonic:             sonic,
+		streamFiles:       newStreamMediaCache(streamMediaCacheLimit, streamMediaCacheTTL),
 	}
 	r.Handler = r.routes()
 	return r
@@ -184,8 +186,11 @@ func (api *Router) routes() http.Handler {
 			h(r, "getLyricsBySongId", api.GetLyricsBySongId)
 		})
 		r.Group(func(r chi.Router) {
-			r.Use(getFreshPlayer(api.players))
+			r.Use(getStreamPlayer(api.players))
 			hr(r, "stream", api.Stream)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(getFreshPlayer(api.players))
 			hr(r, "download", api.Download)
 			hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
 			hr(r, "getTranscodeStream", api.GetTranscodeStream)

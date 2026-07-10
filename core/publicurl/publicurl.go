@@ -2,12 +2,15 @@ package publicurl
 
 import (
 	"cmp"
+	"hash/maphash"
 	"net/http"
 	"net/url"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/auth"
@@ -15,16 +18,66 @@ import (
 	"github.com/navidrome/navidrome/model"
 )
 
+const (
+	imageTokenCacheShardCount      = 16
+	imageTokenCacheEntriesPerShard = 128
+)
+
+type imageTokenCacheKey struct {
+	signer    *jwtauth.JWTAuth
+	artworkID string
+}
+
+type imageTokenCacheShard struct {
+	sync.RWMutex
+	entries map[imageTokenCacheKey]string
+}
+
+var (
+	imageTokenCacheSeed = maphash.MakeSeed()
+	imageTokenCache     [imageTokenCacheShardCount]imageTokenCacheShard
+)
+
 // ImageURL generates a public URL for artwork images.
 // It creates a signed token for the artwork ID and builds a complete public URL.
 func ImageURL(req *http.Request, artID model.ArtworkID, size int) string {
-	token, _ := auth.CreatePublicToken(auth.Claims{ID: artID.String()})
+	token, _ := cachedImageToken(artID.String())
 	uri := path.Join(consts.URLPathPublicImages, token)
 	params := url.Values{}
 	if size > 0 {
 		params.Add("size", strconv.Itoa(size))
 	}
 	return PublicURL(req, uri, params)
+}
+
+func cachedImageToken(artworkID string) (string, error) {
+	key := imageTokenCacheKey{signer: auth.TokenAuth, artworkID: artworkID}
+	hash := maphash.String(imageTokenCacheSeed, artworkID)
+	shard := &imageTokenCache[int(hash)&(imageTokenCacheShardCount-1)]
+	shard.RLock()
+	token, ok := shard.entries[key]
+	shard.RUnlock()
+	if ok {
+		return token, nil
+	}
+
+	token, err := auth.CreatePublicToken(auth.Claims{ID: artworkID})
+	if err != nil {
+		return token, err
+	}
+	shard.Lock()
+	if cached, found := shard.entries[key]; found {
+		shard.Unlock()
+		return cached, nil
+	}
+	if shard.entries == nil {
+		shard.entries = make(map[imageTokenCacheKey]string, imageTokenCacheEntriesPerShard)
+	} else if len(shard.entries) >= imageTokenCacheEntriesPerShard {
+		clear(shard.entries)
+	}
+	shard.entries[key] = token
+	shard.Unlock()
+	return token, nil
 }
 
 // PublicURL builds a full URL for public-facing resources.

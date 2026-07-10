@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -88,6 +90,35 @@ var _ = Describe("ThrottleBacklog", func() {
 		Expect(w.Header().Get("Content-Type")).To(Equal("image/jpeg"))
 		Expect(w.Header().Get("Cache-Control")).To(Equal("public"))
 		Expect(w.Body.String()).To(Equal("body"))
+	})
+
+	It("passes completed file responses through after releasing capacity", func() {
+		file, err := os.CreateTemp("", "throttle-file")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = file.Close()
+			_ = os.Remove(file.Name())
+		})
+		_, err = file.WriteString("cached artwork")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = file.Seek(0, io.SeekStart)
+		Expect(err).NotTo(HaveOccurred())
+
+		m := ThrottleBacklog(1, 0, time.Second)
+		r := chi.NewRouter()
+		r.Use(m)
+		r.Get("/test", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, copyErr := io.Copy(w, fileConnReader{file: file})
+			Expect(copyErr).NotTo(HaveOccurred())
+		})
+
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/test", nil))
+		Expect(w.Code).To(Equal(http.StatusOK))
+		Expect(w.Header().Get("Content-Type")).To(Equal("image/jpeg"))
+		Expect(w.Header().Get("Content-Length")).To(Equal("14"))
+		Expect(w.Body.String()).To(Equal("cached artwork"))
 	})
 
 	It("uses the first response status code", func() {
@@ -250,6 +281,30 @@ type slowTestWriter struct {
 	body      bytes.Buffer
 	code      int
 	unblocked chan struct{}
+}
+
+type fileConnReader struct {
+	file *os.File
+}
+
+func (r fileConnReader) Read(p []byte) (int, error) {
+	return r.file.Read(p)
+}
+
+func (r fileConnReader) RemainingLength() (int64, bool) {
+	info, err := r.file.Stat()
+	if err != nil {
+		return 0, false
+	}
+	offset, err := r.file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, false
+	}
+	return info.Size() - offset, true
+}
+
+func (r fileConnReader) SyscallConn() (syscall.RawConn, error) {
+	return r.file.SyscallConn()
 }
 
 func newSlowTestWriter(unblocked chan struct{}) *slowTestWriter {

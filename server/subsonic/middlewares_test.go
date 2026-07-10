@@ -431,6 +431,42 @@ var _ = Describe("Middlewares", func() {
 		})
 	})
 
+	Describe("GetStreamPlayer", func() {
+		var mockedPlayers *mockPlayers
+		var r *http.Request
+
+		BeforeEach(func() {
+			mockedPlayers = &mockPlayers{}
+			r = newGetRequest()
+			ctx := request.WithUsername(r.Context(), "someone")
+			ctx = request.WithClient(ctx, "client")
+			r = r.WithContext(ctx)
+		})
+
+		It("uses the cached lookup path for explicit raw streams", func() {
+			r.URL.RawQuery = "format=raw"
+			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
+
+			Expect(mockedPlayers.registerCalls).To(Equal(1))
+			Expect(mockedPlayers.freshCalls).To(BeZero())
+		})
+
+		It("uses a fresh lookup when the stream format is resolved from player settings", func() {
+			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
+
+			Expect(mockedPlayers.registerCalls).To(BeZero())
+			Expect(mockedPlayers.freshCalls).To(Equal(1))
+		})
+
+		It("keeps noncanonical format values on the fresh lookup path", func() {
+			r.URL.RawQuery = "format=RAW"
+			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
+
+			Expect(mockedPlayers.registerCalls).To(BeZero())
+			Expect(mockedPlayers.freshCalls).To(Equal(1))
+		})
+	})
+
 	Describe("validateCredentials", func() {
 		var usr *model.User
 
@@ -530,7 +566,9 @@ func (mh *mockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type mockPlayers struct {
 	core.Players
-	transcoding *model.Transcoding
+	transcoding   *model.Transcoding
+	registerCalls int
+	freshCalls    int
 }
 
 func (mp *mockPlayers) Get(ctx context.Context, playerId string) (*model.Player, error) {
@@ -538,6 +576,7 @@ func (mp *mockPlayers) Get(ctx context.Context, playerId string) (*model.Player,
 }
 
 func (mp *mockPlayers) Register(ctx context.Context, id, client, typ, ip string) (*model.Player, *model.Transcoding, error) {
+	mp.registerCalls++
 	if client == "error" {
 		return nil, nil, errors.New(client)
 	}
@@ -545,5 +584,9 @@ func (mp *mockPlayers) Register(ctx context.Context, id, client, typ, ip string)
 }
 
 func (mp *mockPlayers) RegisterFresh(ctx context.Context, id, client, typ, ip string) (*model.Player, *model.Transcoding, error) {
-	return mp.Register(ctx, id, client, typ, ip)
+	mp.freshCalls++
+	if client == "error" {
+		return nil, nil, errors.New(client)
+	}
+	return &model.Player{ID: id}, mp.transcoding, nil
 }

@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -81,6 +82,41 @@ var _ = Describe("File Caches", func() {
 			Expect(s.Cached).To(BeTrue())
 			Expect(s.Closer).ToNot(BeNil())
 			Expect(called).To(BeFalse())
+		})
+
+		It("exposes completed large cache hits as direct file streams", func() {
+			data := bytes.Repeat([]byte("cache-data"), 16*1024)
+			fc := callNewFileCache("test", "1MB", "test", 0, func(context.Context, Item) (io.Reader, error) {
+				return bytes.NewReader(data), nil
+			})
+
+			first, err := fc.Get(context.Background(), &testArg{"large"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(io.ReadAll(first)).To(Equal(data))
+			Expect(first.Close()).To(Succeed())
+
+			dataPath := fcSpreadFS(fc).KeyMapper((&testArg{"large"}).Key())
+			Eventually(func() bool {
+				_, statErr := os.Stat(dataPath + ".complete")
+				return statErr == nil
+			}).Should(BeTrue())
+
+			second, err := fc.Get(context.Background(), &testArg{"large"})
+			Expect(err).NotTo(HaveOccurred())
+			_, isFile := second.Reader.(*os.File)
+			Expect(isFile).To(BeTrue())
+			_, err = second.SyscallConn()
+			Expect(err).NotTo(HaveOccurred())
+			_, err = second.Seek(1024, io.SeekStart)
+			Expect(err).NotTo(HaveOccurred())
+			remaining, ok := second.RemainingLength()
+			Expect(ok).To(BeTrue())
+			Expect(remaining).To(Equal(int64(len(data) - 1024)))
+			chunk := make([]byte, 128)
+			_, err = io.ReadFull(second, chunk)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(chunk).To(Equal(data[1024 : 1024+len(chunk)]))
+			Expect(second.Close()).To(Succeed())
 		})
 
 		It("does not cache data if cache is disabled", func() {

@@ -37,6 +37,7 @@ func BenchmarkScan(b *testing.B) {
 
 	tmpDir := b.TempDir()
 	conf.Server.MusicFolder = "fake:///music"
+	conf.Server.DataFolder = conf.NewDir(tmpDir)
 	conf.Server.DbPath = filepath.Join(tmpDir, "test-scanner.db?_journal_mode=WAL")
 	conf.Server.DevScannerThreads = 1
 	cleanupDB := db.Init(context.Background())

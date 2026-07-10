@@ -40,6 +40,7 @@ func NewCacheWarmer(artwork Artwork, cache cache.FileCache) CacheWarmer {
 		buffer:       make(map[model.ArtworkID]struct{}),
 		wakeSignal:   make(chan struct{}, 1),
 		coverArtSize: conf.Server.UICoverArtSize,
+		concurrency:  max(1, conf.Server.DevArtworkMaxRequests),
 	}
 
 	// Create a context with a fake admin user, to be able to pre-cache Playlist CoverArts
@@ -55,6 +56,7 @@ type cacheWarmer struct {
 	cache        cache.FileCache
 	wakeSignal   chan struct{}
 	coverArtSize int
+	concurrency  int
 }
 
 func (a *cacheWarmer) PreCache(artID model.ArtworkID) {
@@ -134,8 +136,7 @@ func (a *cacheWarmer) waitSignal(ctx context.Context, timeout time.Duration) {
 func (a *cacheWarmer) processBatch(ctx context.Context, batch []model.ArtworkID) {
 	log.Trace(ctx, "PreCaching a new batch of artwork", "batchSize", len(batch))
 	input := pl.FromSlice(ctx, batch)
-	concurrency := max(1, conf.Server.DevArtworkMaxRequests)
-	errs := pl.Sink(ctx, concurrency, input, a.doCacheImage)
+	errs := pl.Sink(ctx, a.concurrency, input, a.doCacheImage)
 	for err := range errs {
 		log.Debug(ctx, "Error warming cache", err)
 	}

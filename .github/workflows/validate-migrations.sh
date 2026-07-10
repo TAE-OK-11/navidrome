@@ -60,6 +60,7 @@ human_ts() {
 is_migration() { # $1=basename -> 0 if a .sql/.go file with a 14-digit prefix
   local b="$1"
   case "$b" in
+    *_test.go) return 1 ;;
     *.sql | *.go) ;;
     *) return 1 ;;
   esac
@@ -90,6 +91,7 @@ while IFS= read -r f; do
   [ -z "$f" ] && continue
   b="$(basename "$f")"
   case "$b" in
+    *_test.go) continue ;;
     *.sql) ;;                                  # any .sql in this dir must be a migration
     *.go) [[ "$b" == [0-9]* ]] || continue ;;  # non-timestamped .go = helper (e.g. migration.go), skip
     *) continue ;;

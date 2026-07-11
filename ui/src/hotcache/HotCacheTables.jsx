@@ -155,7 +155,9 @@ export const SessionsTable = ({ rows, labels }) => (
               {formatNumber(row.requestCount)} / {formatNumber(row.rangeCount)}{' '}
               / {formatNumber(row.seekCount)}
             </TableCell>
-            <TableCell>{row.thresholdState}</TableCell>
+            <TableCell>
+              {labels[`thresholdState_${row.thresholdState}`]}
+            </TableCell>
             <TableCell>{formatDate(row.lastActivity)}</TableCell>
           </TableRow>
         ))}
@@ -202,7 +204,7 @@ export const QueueTable = ({ rows, labels, onCancel }) => (
             </TableCell>
             <TableCell>{row.thresholdReason}</TableCell>
             <TableCell>{formatDate(row.queuedAt)}</TableCell>
-            <TableCell>{row.state}</TableCell>
+            <TableCell>{labels[`queueState_${row.state}`]}</TableCell>
             <TableCell>
               <Tooltip title={labels.cancel}>
                 <IconButton size="small" onClick={() => onCancel(row.mediaId)}>
@@ -266,7 +268,7 @@ export const EntriesTable = ({ rows, labels, onPromote, onRemove }) => (
             <TableCell>
               <Chip
                 size="small"
-                label={row.integrityState}
+                label={labels[`integrity_${row.integrityState}`]}
                 color={
                   row.integrityState === 'verified' ? 'primary' : 'secondary'
                 }
@@ -418,7 +420,7 @@ export const CurrentPromotion = ({ value, labels }) => {
         mt={1}
         color="text.secondary"
       >
-        <span>{value.phase}</span>
+        <span>{labels.phase(value.phase)}</span>
         <span>
           {formatStorage(value.bytesCopied)} / {formatStorage(value.totalBytes)}
         </span>

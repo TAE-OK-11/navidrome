@@ -384,7 +384,7 @@ const HotCacheAdmin = () => {
           <Typography variant="h5">{t('title')}</Typography>
         </Box>
         <Chip
-          label={status.health || 'unknown'}
+          label={t(`health.${status.health || 'unknown'}`)}
           color={status.health === 'healthy' ? 'primary' : 'default'}
         />
         <Tooltip title={t('refresh')}>
@@ -454,7 +454,10 @@ const HotCacheAdmin = () => {
             <Typography variant="h6">{t('currentPromotion')}</Typography>
             <CurrentPromotion
               value={dashboard.current}
-              labels={{ empty: t('noActivePromotion') }}
+              labels={{
+                empty: t('noActivePromotion'),
+                phase: (value) => t(`columns.phase_${value}`),
+              }}
             />
             <Divider />
           </>

@@ -660,6 +660,13 @@
     "actionAccepted": "Hot Cache action accepted",
     "confirmPurge": "Remove every inactive cached original? Source audio is not affected.",
     "confirmRemove": "Remove %{title} from Hot Cache? Source audio is not affected.",
+    "health": {
+      "healthy": "Healthy",
+      "disabled": "Disabled",
+      "paused": "Paused",
+      "degraded": "Degraded",
+      "unknown": "Unknown"
+    },
     "tabs": {
       "overview": "Overview",
       "sessions": "Sessions",
@@ -742,7 +749,29 @@
       "cacheState_available": "Available",
       "cacheState_cached": "Cached",
       "cacheState_queued": "Queued",
-      "cacheState_copying": "Copying"
+      "cacheState_copying": "Copying",
+      "thresholdState_probe": "Monitoring",
+      "thresholdState_cached": "Cache hit",
+      "thresholdState_threshold-wait": "Waiting for threshold",
+      "thresholdState_threshold-reached": "Threshold reached",
+      "thresholdState_skipped": "Skipped",
+      "thresholdState_cancelled": "Cancelled",
+      "queueState_queued": "Queued",
+      "queueState_copying": "Copying",
+      "queueState_cancelled": "Cancelled",
+      "queueState_completed": "Completed",
+      "queueState_failed": "Failed",
+      "integrity_verified": "Verified",
+      "integrity_stale": "Stale",
+      "phase_waiting": "Waiting",
+      "phase_copying": "Copying",
+      "phase_fsync": "Syncing to disk",
+      "phase_checksum": "Verifying checksum",
+      "phase_sidecar": "Saving metadata",
+      "phase_atomic-rename": "Publishing atomically",
+      "phase_completed": "Completed",
+      "phase_cancelled": "Cancelled",
+      "phase_failed": "Failed"
     }
   },
   "player": {

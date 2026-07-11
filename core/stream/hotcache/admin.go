@@ -303,6 +303,42 @@ func (r *resolver) Formats() []FormatSnapshot {
 	return result
 }
 
+// MediaStates returns cache-control state for the requested media IDs in one
+// bounded pass. It is used by the administrator search UI and never touches
+// the streaming hot path.
+func (r *resolver) MediaStates(mediaIDs []string) map[string]string {
+	wanted := make(map[string]struct{}, len(mediaIDs))
+	result := make(map[string]string, len(mediaIDs))
+	for _, mediaID := range mediaIDs {
+		if mediaID != "" {
+			wanted[mediaID] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return result
+	}
+
+	r.mu.Lock()
+	for _, cached := range r.entries {
+		if _, ok := wanted[cached.meta.SourceID]; ok && !cached.stale {
+			result[cached.meta.SourceID] = "cached"
+		}
+	}
+	for _, task := range r.promoting {
+		mediaID := task.identity.mediaID
+		if _, ok := wanted[mediaID]; !ok || task.cancelled.Load() {
+			continue
+		}
+		state := "queued"
+		if task == r.current || task.state == "copying" {
+			state = "copying"
+		}
+		result[mediaID] = state
+	}
+	r.mu.Unlock()
+	return result
+}
+
 func formatIndexFromMetadata(meta metadata) int {
 	mf := model.MediaFile{Codec: meta.Codec, Suffix: meta.Extension}
 	if mf.Suffix == "" {

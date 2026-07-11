@@ -2,6 +2,7 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import {
   Box,
+  Checkbox,
   Chip,
   IconButton,
   LinearProgress,
@@ -37,6 +38,70 @@ const EmptyRow = ({ columns, label }) => (
 )
 
 EmptyRow.propTypes = { columns: PropTypes.number, label: PropTypes.string }
+
+export const CandidatesTable = ({ rows, labels, selected, onToggle }) => (
+  <TableContainer>
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell padding="checkbox" />
+          {['track', 'format', 'size', 'state'].map((key) => (
+            <TableCell key={key}>{labels[key]}</TableCell>
+          ))}
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {!rows.length && <EmptyRow columns={5} label={labels.empty} />}
+        {rows.map((row) => {
+          const available = row.cacheState === 'available'
+          return (
+            <TableRow
+              key={row.mediaId}
+              hover
+              selected={selected.includes(row.mediaId)}
+            >
+              <TableCell padding="checkbox">
+                <Checkbox
+                  color="primary"
+                  checked={selected.includes(row.mediaId)}
+                  disabled={!available}
+                  inputProps={{ 'aria-label': row.title || row.mediaId }}
+                  onChange={() => onToggle(row.mediaId)}
+                />
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2">
+                  {row.title || row.mediaId}
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  {row.artist || '-'} {row.album ? `- ${row.album}` : ''}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                {row.codec || '-'} / {row.container || '-'}
+              </TableCell>
+              <TableCell>{formatStorage(row.size)}</TableCell>
+              <TableCell>
+                <Chip
+                  size="small"
+                  color={row.cacheState === 'cached' ? 'primary' : 'default'}
+                  label={labels[`cacheState_${row.cacheState || 'available'}`]}
+                />
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  </TableContainer>
+)
+
+CandidatesTable.propTypes = {
+  rows: PropTypes.array,
+  labels: PropTypes.object,
+  selected: PropTypes.array,
+  onToggle: PropTypes.func,
+}
 
 export const SessionsTable = ({ rows, labels }) => (
   <TableContainer>

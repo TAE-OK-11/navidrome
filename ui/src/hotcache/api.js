@@ -2,15 +2,44 @@ import httpClient from '../dataProvider/httpClient'
 
 const ROOT = '/api/admin/hot-cache'
 
-const queryString = (query = {}) => {
+const asObject = (value) =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+
+const asArray = (value) => (Array.isArray(value) ? value : [])
+
+export const queryString = (query) => {
   const params = new URLSearchParams()
-  Object.entries(query).forEach(([key, value]) => {
+  Object.entries(asObject(query)).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       params.set(key, String(value))
     }
   })
   const value = params.toString()
   return value ? `?${value}` : ''
+}
+
+export const normalizeDashboard = (value) => {
+  const dashboard = asObject(value)
+  return {
+    status: asObject(dashboard.status),
+    sessions: asArray(dashboard.sessions),
+    queue: asArray(dashboard.queue),
+    current: dashboard.current || null,
+    formats: asArray(dashboard.formats),
+    events: asArray(dashboard.events),
+    errors: asArray(dashboard.errors),
+    artwork: asArray(dashboard.artwork),
+  }
+}
+
+export const normalizePage = (value) => {
+  const page = asObject(value)
+  return { items: asArray(page.items), total: Number(page.total) || 0 }
+}
+
+export const normalizeCandidates = (value) => {
+  const page = asObject(value)
+  return { items: asArray(page.items), hasMore: Boolean(page.hasMore) }
 }
 
 export const getHotCache = (path, query, signal) =>
@@ -25,4 +54,23 @@ export const hotCacheAction = (path, method = 'POST', headers) =>
   }).then(({ json }) => json)
 
 export const getHotCacheEntries = (query, signal) =>
-  getHotCache('entries', query, signal)
+  getHotCache('entries', query, signal).then(normalizePage)
+
+export const getHotCacheDashboard = (signal) =>
+  getHotCache('dashboard', { eventLimit: 200 }, signal).then(normalizeDashboard)
+
+export const getHotCacheCandidates = (query, signal) =>
+  getHotCache('candidates', query, signal).then(normalizeCandidates)
+
+export const promoteHotCacheCandidates = (mediaIds) =>
+  httpClient(`${ROOT}/promote`, {
+    method: 'POST',
+    headers: new Headers({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ mediaIds: asArray(mediaIds) }),
+  }).then(({ json }) => ({
+    accepted: asArray(json?.accepted),
+    rejected: asObject(json?.rejected),
+  }))

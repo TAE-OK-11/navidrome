@@ -17,9 +17,63 @@ import (
 
 const hotCacheAdminTimeout = 30 * time.Second
 
+type hotCacheDashboard struct {
+	Status   hotcache.StatusSnapshot      `json:"status"`
+	Sessions []hotcache.SessionSnapshot   `json:"sessions"`
+	Queue    []hotcache.QueueItemSnapshot `json:"queue"`
+	Current  *hotcache.PromotionSnapshot  `json:"current"`
+	Formats  []hotcache.FormatSnapshot    `json:"formats"`
+	Events   []hotcache.Event             `json:"events"`
+	Errors   []hotcache.Event             `json:"errors"`
+	Artwork  []hotcache.Event             `json:"artwork"`
+}
+
+type hotCacheCandidate struct {
+	MediaID    string  `json:"mediaId"`
+	Title      string  `json:"title"`
+	Artist     string  `json:"artist"`
+	Album      string  `json:"album"`
+	Codec      string  `json:"codec"`
+	Container  string  `json:"container"`
+	Size       int64   `json:"size"`
+	Duration   float32 `json:"duration"`
+	CacheState string  `json:"cacheState"`
+}
+
+type hotCacheCandidatePage struct {
+	Items   []hotCacheCandidate `json:"items"`
+	HasMore bool                `json:"hasMore"`
+}
+
+type hotCachePromoteRequest struct {
+	MediaIDs []string `json:"mediaIds"`
+}
+
+type hotCachePromoteResult struct {
+	Accepted []string          `json:"accepted"`
+	Rejected map[string]string `json:"rejected"`
+}
+
 func (api *Router) addHotCacheRoutes(r chi.Router) {
 	manager := hotcache.GetManager()
 	r.Route("/admin/hot-cache", func(r chi.Router) {
+		r.Get("/dashboard", func(w http.ResponseWriter, request *http.Request) {
+			limit := parseLimit(request.URL.Query().Get("eventLimit"))
+			events := nonNilHotCacheSlice(manager.Events(0, limit))
+			errorsOnly := nonNilHotCacheSlice(manager.Errors(0, limit))
+			artwork := make([]hotcache.Event, 0)
+			for _, event := range errorsOnly {
+				if event.Category == "artwork" {
+					artwork = append(artwork, event)
+				}
+			}
+			writeHotCacheJSON(w, http.StatusOK, hotCacheDashboard{
+				Status: manager.Status(), Sessions: nonNilHotCacheSlice(manager.Sessions()),
+				Queue: nonNilHotCacheSlice(manager.Queue()), Current: manager.CurrentPromotion(),
+				Formats: nonNilHotCacheSlice(manager.Formats()), Events: events,
+				Errors: errorsOnly, Artwork: artwork,
+			})
+		})
 		r.Get("/status", func(w http.ResponseWriter, _ *http.Request) {
 			writeHotCacheJSON(w, http.StatusOK, manager.Status())
 		})
@@ -75,6 +129,8 @@ func (api *Router) addHotCacheRoutes(r chi.Router) {
 			}
 			writeHotCacheJSON(w, http.StatusOK, result)
 		})
+		r.Get("/candidates", api.hotCacheCandidates(manager))
+		r.Post("/promote", api.hotCachePromoteMany(manager))
 
 		r.Post("/entries/{mediaID}/promote", api.hotCacheMediaAction(manager, manager.Promote))
 		r.Post("/entries/{mediaID}/retry", api.hotCacheMediaAction(manager, manager.Retry))
@@ -121,6 +177,94 @@ func (api *Router) addHotCacheRoutes(r chi.Router) {
 			writeHotCacheJSON(w, http.StatusOK, map[string]bool{"reset": true})
 		})
 	})
+}
+
+func (api *Router) hotCacheCandidates(manager hotcache.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		search := strings.TrimSpace(request.URL.Query().Get("search"))
+		if len([]rune(search)) < 2 {
+			writeHotCacheJSON(w, http.StatusOK, hotCacheCandidatePage{Items: []hotCacheCandidate{}})
+			return
+		}
+		offset := max(parseInt(request.URL.Query().Get("offset"), 0), 0)
+		limit := min(max(parseInt(request.URL.Query().Get("limit"), 25), 1), 50)
+		files, err := api.ds.MediaFile(request.Context()).Search(search, model.QueryOptions{Max: limit + 1, Offset: offset})
+		if err != nil {
+			writeHotCacheJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		hasMore := len(files) > limit
+		if hasMore {
+			files = files[:limit]
+		}
+		ids := make([]string, 0, len(files))
+		for i := range files {
+			ids = append(ids, files[i].ID)
+		}
+		states := manager.MediaStates(ids)
+		items := make([]hotCacheCandidate, 0, len(files))
+		for i := range files {
+			file := &files[i]
+			state := states[file.ID]
+			if state == "" {
+				state = "available"
+			}
+			items = append(items, hotCacheCandidate{
+				MediaID: file.ID, Title: file.Title, Artist: file.Artist, Album: file.Album,
+				Codec: file.Codec, Container: file.Suffix, Size: file.Size,
+				Duration: file.Duration, CacheState: state,
+			})
+		}
+		writeHotCacheJSON(w, http.StatusOK, hotCacheCandidatePage{Items: items, HasMore: hasMore})
+	}
+}
+
+func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		request.Body = http.MaxBytesReader(w, request.Body, 64<<10)
+		var payload hotCachePromoteRequest
+		decoder := json.NewDecoder(request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeHotCacheJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid promotion request"})
+			return
+		}
+		if len(payload.MediaIDs) == 0 || len(payload.MediaIDs) > 50 {
+			writeHotCacheJSON(w, http.StatusBadRequest, map[string]string{"error": "select between 1 and 50 tracks"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(request.Context(), hotCacheAdminTimeout)
+		defer cancel()
+		result := hotCachePromoteResult{Accepted: []string{}, Rejected: map[string]string{}}
+		seen := make(map[string]struct{}, len(payload.MediaIDs))
+		for _, mediaID := range payload.MediaIDs {
+			if mediaID == "" {
+				continue
+			}
+			if _, duplicate := seen[mediaID]; duplicate {
+				continue
+			}
+			seen[mediaID] = struct{}{}
+			mediaFile, err := api.ds.MediaFile(ctx).GetForStreaming(mediaID)
+			if err == nil {
+				err = manager.Promote(ctx, mediaFile)
+			}
+			if err != nil {
+				result.Rejected[mediaID] = err.Error()
+				continue
+			}
+			result.Accepted = append(result.Accepted, mediaID)
+		}
+		writeHotCacheJSON(w, http.StatusAccepted, result)
+	}
+}
+
+func nonNilHotCacheSlice[T any](items []T) []T {
+	if items == nil {
+		return []T{}
+	}
+	return items
 }
 
 func (api *Router) hotCacheMediaAction(manager hotcache.Manager, action func(context.Context, *model.MediaFile) error) http.HandlerFunc {

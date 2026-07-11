@@ -665,6 +665,7 @@
       "sessions": "Sessions",
       "queue": "Queue",
       "entries": "Cached tracks",
+      "manual": "Manual caching",
       "formats": "Formats",
       "events": "Events",
       "errors": "Errors",
@@ -693,6 +694,14 @@
       "playing": "Playing",
       "corrupted": "Corrupted",
       "recently-used": "Recently used"
+    },
+    "manual": {
+      "search": "Search the music library",
+      "minimumSearch": "Enter at least 2 characters",
+      "moreResults": "Showing the first 25 results. Refine your search for more.",
+      "resultCount": "%{count} tracks found",
+      "cacheSelected": "Cache selected (%{count})",
+      "accepted": "%{count} tracks added to the cache queue"
     },
     "columns": {
       "empty": "No records",
@@ -728,7 +737,11 @@
       "type": "Type",
       "category": "Category",
       "message": "Message",
-      "lastActivity": "Last activity"
+      "lastActivity": "Last activity",
+      "cacheState_available": "Available",
+      "cacheState_cached": "Cached",
+      "cacheState_queued": "Queued",
+      "cacheState_copying": "Copying"
     }
   },
   "player": {

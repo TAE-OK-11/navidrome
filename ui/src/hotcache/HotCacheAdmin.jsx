@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Redirect } from 'react-router-dom'
 import { Title, useNotify, usePermissions, useTranslate } from 'react-admin'
 import {
@@ -30,7 +30,14 @@ import PlayArrowIcon from '@material-ui/icons/PlayArrow'
 import VerifiedUserIcon from '@material-ui/icons/VerifiedUser'
 import DeleteSweepIcon from '@material-ui/icons/DeleteSweep'
 import BuildIcon from '@material-ui/icons/Build'
-import { getHotCache, getHotCacheEntries, hotCacheAction } from './api'
+import CloudDownloadIcon from '@material-ui/icons/CloudDownload'
+import {
+  getHotCacheCandidates,
+  getHotCacheDashboard,
+  getHotCacheEntries,
+  hotCacheAction,
+  promoteHotCacheCandidates,
+} from './api'
 import {
   formatDurationNs,
   formatNumber,
@@ -39,6 +46,7 @@ import {
 } from './formatters'
 import {
   CurrentPromotion,
+  CandidatesTable,
   EntriesTable,
   EventsTable,
   FormatsTable,
@@ -88,16 +96,23 @@ const useStyles = makeStyles((theme) => ({
   search: { minWidth: 220 },
   select: { minWidth: 135 },
   spacer: { flex: 1 },
+  progress: { height: 4 },
 }))
 
-const Metric = ({ label, value }) => (
-  <Box className={useStyles().metric}>
-    <Typography variant="caption" color="textSecondary">
-      {label}
-    </Typography>
-    <Typography className={useStyles().metricValue}>{value}</Typography>
-  </Box>
-)
+const Metric = ({ label, value }) => {
+  const classes = useStyles()
+  return (
+    <Box className={classes.metric}>
+      <Typography variant="caption" color="textSecondary">
+        {label}
+      </Typography>
+      <Typography className={classes.metricValue}>{value}</Typography>
+    </Box>
+  )
+}
+
+const errorStatus = (error) =>
+  Number(error?.status || error?.response?.status || 0)
 
 const HotCacheAdmin = () => {
   const classes = useStyles()
@@ -125,8 +140,15 @@ const HotCacheAdmin = () => {
     offset: 0,
     limit: 25,
   })
+  const [debouncedEntryQuery, setDebouncedEntryQuery] = useState(entryQuery)
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [candidateQuery, setCandidateQuery] = useState('')
+  const [candidates, setCandidates] = useState({ items: [], hasMore: false })
+  const [selectedCandidates, setSelectedCandidates] = useState([])
   const [busy, setBusy] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [confirm, setConfirm] = useState(null)
+  const pollErrorShown = useRef(false)
 
   const t = useCallback(
     (key, options) => translate(`hotCache.${key}`, options),
@@ -138,86 +160,134 @@ const HotCacheAdmin = () => {
   )
 
   const loadDashboard = useCallback(async (signal) => {
-    const [status, sessions, queue, current, formats, events, errors, artwork] =
-      await Promise.all([
-        getHotCache('status', null, signal),
-        getHotCache('sessions', null, signal),
-        getHotCache('queue', null, signal),
-        getHotCache('current', null, signal),
-        getHotCache('formats', null, signal),
-        getHotCache('events', { limit: 200 }, signal),
-        getHotCache('errors', { limit: 200 }, signal),
-        getHotCache('artwork-errors', { limit: 200 }, signal),
-      ])
-    setDashboard({
-      status,
-      sessions,
-      queue,
-      current,
-      formats,
-      events,
-      errors,
-      artwork,
-    })
+    const value = await getHotCacheDashboard(signal)
+    setDashboard(value)
+    pollErrorShown.current = false
+    setInitialLoading(false)
   }, [])
 
   const loadEntries = useCallback(
     async (signal) => {
-      setEntries(await getHotCacheEntries(entryQuery, signal))
+      setEntries(await getHotCacheEntries(debouncedEntryQuery, signal))
     },
-    [entryQuery],
+    [debouncedEntryQuery],
+  )
+
+  const loadCandidates = useCallback(
+    async (signal) => {
+      if (candidateQuery.trim().length < 2) {
+        setCandidates({ items: [], hasMore: false })
+        setSelectedCandidates([])
+        return
+      }
+      const page = await getHotCacheCandidates(
+        { search: candidateQuery.trim(), limit: 25 },
+        signal,
+      )
+      setCandidates(page)
+      const available = new Set(
+        page.items
+          .filter((item) => item.cacheState === 'available')
+          .map((item) => item.mediaId),
+      )
+      setSelectedCandidates((current) =>
+        current.filter((mediaId) => available.has(mediaId)),
+      )
+    },
+    [candidateQuery],
   )
 
   const refresh = useCallback(async () => {
     const controller = new AbortController()
     setBusy(true)
     try {
-      await Promise.all([
-        loadDashboard(controller.signal),
-        loadEntries(controller.signal),
-      ])
+      const tasks = [loadDashboard(controller.signal)]
+      if (tab === 3) tasks.push(loadEntries(controller.signal))
+      if (tab === 4) tasks.push(loadCandidates(controller.signal))
+      await Promise.all(tasks)
     } catch (error) {
       if (error.name !== 'AbortError') notify(error.message, 'warning')
     } finally {
       setBusy(false)
     }
-    return () => controller.abort()
-  }, [loadDashboard, loadEntries, notify])
+  }, [loadCandidates, loadDashboard, loadEntries, notify, tab])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedEntryQuery(entryQuery),
+      350,
+    )
+    return () => window.clearTimeout(timer)
+  }, [entryQuery])
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setCandidateQuery(candidateSearch),
+      350,
+    )
+    return () => window.clearTimeout(timer)
+  }, [candidateSearch])
 
   useEffect(() => {
     if (permissions !== 'admin') return undefined
     let active = true
-    let controller = new AbortController()
+    let controller
+    let timer
+    const schedule = (delay) => {
+      window.clearTimeout(timer)
+      if (active) timer = window.setTimeout(poll, delay)
+    }
     const poll = async () => {
+      if (document.hidden) {
+        schedule(15000)
+        return
+      }
+      controller = new AbortController()
+      let delay = 15000
       try {
         await loadDashboard(controller.signal)
       } catch (error) {
-        if (active && error.name !== 'AbortError')
+        delay = errorStatus(error) === 429 ? 60000 : 15000
+        if (active && error.name !== 'AbortError' && !pollErrorShown.current) {
           notify(error.message, 'warning')
+          pollErrorShown.current = true
+        }
+        setInitialLoading(false)
       }
+      schedule(delay)
     }
     poll()
-    const timer = window.setInterval(() => {
-      controller.abort()
-      controller = new AbortController()
-      poll()
-    }, 5000)
+    const onVisibilityChange = () => {
+      if (!document.hidden) schedule(250)
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       active = false
-      controller.abort()
-      window.clearInterval(timer)
+      controller?.abort()
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [loadDashboard, notify, permissions])
 
   useEffect(() => {
-    if (permissions !== 'admin') return undefined
+    if (permissions !== 'admin' || tab !== 3) return undefined
     const controller = new AbortController()
     loadEntries(controller.signal).catch(
       (error) =>
         error.name !== 'AbortError' && notify(error.message, 'warning'),
     )
     return () => controller.abort()
-  }, [loadEntries, notify, permissions])
+  }, [loadEntries, notify, permissions, tab])
+
+  useEffect(() => {
+    if (permissions !== 'admin' || tab !== 4) return undefined
+    const controller = new AbortController()
+    loadCandidates(controller.signal).catch(
+      (error) =>
+        error.name !== 'AbortError' && notify(error.message, 'warning'),
+    )
+    return () => controller.abort()
+  }, [loadCandidates, notify, permissions, tab])
 
   const action = useCallback(
     async (path, method = 'POST', headers) => {
@@ -225,15 +295,44 @@ const HotCacheAdmin = () => {
       try {
         await hotCacheAction(path, method, headers)
         notify('hotCache.actionAccepted', 'info')
-        await Promise.all([loadDashboard(), loadEntries()])
+        const tasks = [loadDashboard()]
+        if (tab === 3) tasks.push(loadEntries())
+        if (tab === 4) tasks.push(loadCandidates())
+        await Promise.all(tasks)
       } catch (error) {
         notify(error.message, 'warning')
       } finally {
         setBusy(false)
       }
     },
-    [loadDashboard, loadEntries, notify],
+    [loadCandidates, loadDashboard, loadEntries, notify, tab],
   )
+
+  const toggleCandidate = useCallback((mediaId) => {
+    setSelectedCandidates((current) =>
+      current.includes(mediaId)
+        ? current.filter((id) => id !== mediaId)
+        : [...current, mediaId],
+    )
+  }, [])
+
+  const promoteSelected = useCallback(async () => {
+    if (!selectedCandidates.length) return
+    setBusy(true)
+    try {
+      const result = await promoteHotCacheCandidates(selectedCandidates)
+      notify(
+        t('manual.accepted', { count: result.accepted.length }),
+        result.accepted.length ? 'info' : 'warning',
+      )
+      setSelectedCandidates([])
+      await Promise.all([loadDashboard(), loadCandidates()])
+    } catch (error) {
+      notify(error.message, 'warning')
+    } finally {
+      setBusy(false)
+    }
+  }, [loadCandidates, loadDashboard, notify, selectedCandidates, t])
 
   if (loading) return <LinearProgress />
   if (permissions !== 'admin') return <Redirect to="/" />
@@ -263,7 +362,9 @@ const HotCacheAdmin = () => {
   return (
     <Box className={classes.root}>
       <Title title={`Navidrome - ${t('title')}`} />
-      {busy && <LinearProgress />}
+      <Box className={classes.progress}>
+        {(busy || initialLoading) && <LinearProgress />}
+      </Box>
       <Box className={classes.header}>
         <Box className={classes.headerTitle}>
           <Typography variant="h5">{t('title')}</Typography>
@@ -324,6 +425,7 @@ const HotCacheAdmin = () => {
           'sessions',
           'queue',
           'entries',
+          'manual',
           'formats',
           'events',
           'errors',
@@ -456,9 +558,50 @@ const HotCacheAdmin = () => {
           </>
         )}
         {tab === 4 && (
-          <FormatsTable rows={dashboard.formats} labels={tableLabels} />
+          <>
+            <Box className={classes.toolbar}>
+              <TextField
+                className={classes.search}
+                size="small"
+                variant="outlined"
+                label={t('manual.search')}
+                value={candidateSearch}
+                onChange={(event) => setCandidateSearch(event.target.value)}
+              />
+              <Typography variant="caption" color="textSecondary">
+                {candidateSearch.trim().length < 2
+                  ? t('manual.minimumSearch')
+                  : candidates.hasMore
+                    ? t('manual.moreResults')
+                    : t('manual.resultCount', {
+                        count: candidates.items.length,
+                      })}
+              </Typography>
+              <Box className={classes.spacer} />
+              <Button
+                color="primary"
+                variant="contained"
+                startIcon={<CloudDownloadIcon />}
+                disabled={!selectedCandidates.length || busy}
+                onClick={promoteSelected}
+              >
+                {t('manual.cacheSelected', {
+                  count: selectedCandidates.length,
+                })}
+              </Button>
+            </Box>
+            <CandidatesTable
+              rows={candidates.items}
+              labels={tableLabels}
+              selected={selectedCandidates}
+              onToggle={toggleCandidate}
+            />
+          </>
         )}
         {tab === 5 && (
+          <FormatsTable rows={dashboard.formats} labels={tableLabels} />
+        )}
+        {tab === 6 && (
           <>
             <Box className={classes.toolbar}>
               <Box className={classes.spacer} />
@@ -469,10 +612,10 @@ const HotCacheAdmin = () => {
             <EventsTable rows={dashboard.events} labels={tableLabels} />
           </>
         )}
-        {tab === 6 && (
+        {tab === 7 && (
           <EventsTable rows={dashboard.errors} labels={tableLabels} />
         )}
-        {tab === 7 && (
+        {tab === 8 && (
           <>
             <Box className={classes.toolbar}>
               <Box className={classes.spacer} />

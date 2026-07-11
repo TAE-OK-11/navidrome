@@ -36,6 +36,7 @@ type Manager interface {
 	Events(after uint64, limit int) []Event
 	Errors(after uint64, limit int) []Event
 	Formats() []FormatSnapshot
+	MediaStates(mediaIDs []string) map[string]string
 	Promote(ctx context.Context, mf *model.MediaFile) error
 	Remove(mediaID string) error
 	Retry(ctx context.Context, mf *model.MediaFile) error

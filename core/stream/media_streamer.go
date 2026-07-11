@@ -17,6 +17,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/ffmpeg"
+	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -30,11 +31,12 @@ type MediaStreamer interface {
 
 type TranscodingCache cache.FileCache
 
-func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCache) MediaStreamer {
+func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCache, resolver hotcache.Resolver) MediaStreamer {
 	return &mediaStreamer{
 		ds:         ds,
 		transcoder: t,
 		cache:      cache,
+		resolver:   resolver,
 		limiter:    NewTranscodeLimiter(conf.Server.Transcoding.MaxConcurrent, conf.Server.Transcoding.MaxConcurrentPerUser),
 	}
 }
@@ -43,6 +45,7 @@ type mediaStreamer struct {
 	ds         model.DataStore
 	transcoder ffmpeg.FFmpeg
 	cache      cache.FileCache
+	resolver   hotcache.Resolver
 	limiter    TranscodeLimiter
 }
 
@@ -107,10 +110,11 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 			"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
 			"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
 			"selectedBitrate", bitRate, "selectedFormat", format)
-		f, err := os.Open(filePath)
+		f, err := ms.resolver.Open(ctx, mf)
 		if err != nil {
 			return nil, err
 		}
+		cached = hotcache.IsHit(f)
 		s.ReadCloser = f
 		s.Seeker = f
 		s.format = mf.Suffix

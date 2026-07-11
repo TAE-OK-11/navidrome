@@ -165,6 +165,24 @@ var _ = Describe("Configuration", func() {
 		})
 	})
 
+	Describe("HotCache configuration", func() {
+		It("loads the documented underscore-separated environment variables", func() {
+			cachePath := filepath.Join(GinkgoT().TempDir(), "hot-music")
+			GinkgoT().Setenv("ND_HOT_CACHE_ENABLED", "true")
+			GinkgoT().Setenv("ND_HOT_CACHE_PATH", cachePath)
+			GinkgoT().Setenv("ND_HOT_CACHE_MAX_SIZE", "3GiB")
+			GinkgoT().Setenv("ND_HOT_CACHE_PROMOTE_ON_PLAY", "true")
+
+			conf.InitConfig("", true)
+			conf.Load(true)
+
+			Expect(conf.Server.HotCache.Enabled).To(BeTrue())
+			Expect(conf.Server.HotCache.Path.String()).To(Equal(cachePath))
+			Expect(conf.Server.HotCache.MaxSize).To(Equal("3GiB"))
+			Expect(conf.Server.HotCache.PromoteOnPlay).To(BeTrue())
+		})
+	})
+
 	Describe("logFatal", func() {
 		var invalidPath string
 		BeforeEach(func() {

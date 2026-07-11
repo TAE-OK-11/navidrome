@@ -12,11 +12,13 @@ import (
 	"github.com/navidrome/navidrome/core/playlists"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/core/stream"
+	"github.com/navidrome/navidrome/core/stream/hotcache"
 )
 
 var Set = wire.NewSet(
 	stream.NewMediaStreamer,
 	stream.GetTranscodingCache,
+	hotcache.GetResolver,
 	NewArchiver,
 	NewPlayers,
 	NewShare,

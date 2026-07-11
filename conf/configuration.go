@@ -113,6 +113,7 @@ type configOptions struct {
 	Inspect                         inspectOptions      `json:",omitzero"`
 	Subsonic                        subsonicOptions     `json:",omitzero"`
 	Transcoding                     transcodingOptions  `json:",omitzero"`
+	HotCache                        hotCacheOptions     `json:",omitzero"`
 	LastFM                          lastfmOptions       `json:",omitzero"`
 	Deezer                          deezerOptions       `json:",omitzero"`
 	ListenBrainz                    listenBrainzOptions `json:",omitzero"`
@@ -171,6 +172,13 @@ type transcodingOptions struct {
 	MaxConcurrent        int
 	MaxConcurrentPerUser int
 	EnableCancellation   bool
+}
+
+type hotCacheOptions struct {
+	Enabled       bool
+	Path          Dir
+	MaxSize       string
+	PromoteOnPlay bool
 }
 
 type subsonicOptions struct {
@@ -836,6 +844,10 @@ func setViperDefaults() {
 	viper.SetDefault("transcoding.maxconcurrent", 0)
 	viper.SetDefault("transcoding.maxconcurrentperuser", 0)
 	viper.SetDefault("transcoding.enablecancellation", false)
+	viper.SetDefault("hotcache.enabled", false)
+	viper.SetDefault("hotcache.path", "")
+	viper.SetDefault("hotcache.maxsize", "3GiB")
+	viper.SetDefault("hotcache.promoteonplay", true)
 	viper.SetDefault("agents", "deezer,lastfm,listenbrainz")
 	viper.SetDefault("lastfm.enabled", true)
 	viper.SetDefault("lastfm.language", consts.DefaultInfoLanguage)
@@ -925,6 +937,10 @@ func InitConfig(cfgFile string, loadEnvVars bool) {
 		viper.SetEnvPrefix("ND")
 		replacer := strings.NewReplacer(".", "_")
 		viper.SetEnvKeyReplacer(replacer)
+		_ = viper.BindEnv("hotcache.enabled", "ND_HOT_CACHE_ENABLED", "ND_HOTCACHE_ENABLED")
+		_ = viper.BindEnv("hotcache.path", "ND_HOT_CACHE_PATH", "ND_HOTCACHE_PATH")
+		_ = viper.BindEnv("hotcache.maxsize", "ND_HOT_CACHE_MAX_SIZE", "ND_HOTCACHE_MAXSIZE")
+		_ = viper.BindEnv("hotcache.promoteonplay", "ND_HOT_CACHE_PROMOTE_ON_PLAY", "ND_HOTCACHE_PROMOTEONPLAY")
 		viper.AutomaticEnv()
 	}
 

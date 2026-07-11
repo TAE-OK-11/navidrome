@@ -90,10 +90,12 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 	var bitRate int
 	var cached bool
 	defer func() {
-		log.Info(ctx, "Streaming file", "title", mf.Title, "artist", mf.Artist, "format", format, "cached", cached,
-			"bitRate", bitRate, "sampleRate", req.SampleRate, "bitDepth", req.BitDepth, "channels", req.Channels,
-			"user", userName(ctx), "transcoding", format != "raw",
-			"originalFormat", mf.Suffix, "originalBitRate", mf.BitRate)
+		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Debug(ctx, "Streaming file request", "mediaID", mf.ID, "title", mf.Title, "artist", mf.Artist,
+				"format", format, "cached", cached, "bitRate", bitRate, "sampleRate", req.SampleRate,
+				"bitDepth", req.BitDepth, "channels", req.Channels, "user", userName(ctx),
+				"transcoding", format != "raw", "originalFormat", mf.Suffix, "originalBitRate", mf.BitRate)
+		}
 	}()
 
 	format = req.Format
@@ -156,10 +158,11 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 }
 
 type Stream struct {
-	ctx     context.Context
-	mf      *model.MediaFile
-	bitRate int
-	format  string
+	ctx      context.Context
+	mf       *model.MediaFile
+	bitRate  int
+	format   string
+	playback bool
 	io.ReadCloser
 	io.Seeker
 }
@@ -180,6 +183,11 @@ func (s *Stream) EstimatedContentLength() int {
 	return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
 }
 
+// TrackPlayback marks this stream as an actual player request. Downloads and
+// archive reads still contribute request statistics but cannot trigger source
+// promotion or create play sessions.
+func (s *Stream) TrackPlayback() { s.playback = true }
+
 // Serve writes the stream to the HTTP response. For seekable streams it uses http.ServeContent
 // (supporting range requests). For non-seekable streams it writes directly and logs any errors.
 // Returns the number of bytes written and an error only when io.Copy fails with 0 bytes written
@@ -187,6 +195,14 @@ func (s *Stream) EstimatedContentLength() int {
 // Empty output (0 bytes, no error) is logged but not treated as an error.
 func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request) (int64, error) {
 	if s.Seekable() {
+		writer := w
+		var observed *observedResponseWriter
+		if _, ok := s.ReadCloser.(interface {
+			ObservePlayback(context.Context, hotcache.PlaybackObservation)
+		}); ok {
+			observed = newObservedResponseWriter(w)
+			writer = observed
+		}
 		content := io.ReadSeeker(s)
 		// Preserve file-backed readers so net/http can use sendfile for direct
 		// play and completed transcoding-cache hits.
@@ -196,7 +212,28 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}); ok {
 			content = source
 		}
-		http.ServeContent(w, r, s.Name(), s.ModTime(), content)
+		started := time.Now()
+		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
+		if observed != nil {
+			cancelled := r.Context().Err() != nil || expectedClientDisconnect(observed.writeErr)
+			hotcache.ObservePlayback(s.ReadCloser, ctx, hotcache.PlaybackObservation{
+				Playback: s.playback, RangeHeader: r.Header.Get("Range"), Method: r.Method,
+				RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Elapsed: time.Since(started),
+				TTFB: observed.ttfb(), Cancelled: cancelled, BytesExpected: observed.bytes,
+				Sendfile: observed.readerFromUsed && observed.readerFromFast,
+			})
+			if observed.writeErr != nil {
+				if cancelled {
+					hotcache.RecordTransportEvent(true, "expected_broken_pipe", "client_cancelled", s.mf.ID, observed.writeErr.Error())
+					log.Debug(ctx, "Direct stream ended after client cancellation", "mediaID", s.mf.ID, observed.writeErr)
+				} else {
+					hotcache.RecordTransportEvent(false, "unexpected_broken_pipe", "transport_error", s.mf.ID, observed.writeErr.Error())
+					log.Warn(ctx, "Unexpected direct stream transport error", "mediaID", s.mf.ID, observed.writeErr)
+				}
+			} else if cancelled {
+				hotcache.RecordTransportEvent(true, "client_cancelled", "context_cancelled", s.mf.ID, "request context cancelled")
+			}
+		}
 		return -1, nil
 	}
 

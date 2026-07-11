@@ -87,11 +87,13 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(os.WriteFile(filepath.Join(musicDir, "hot.flac"), contents, 0o600)).To(Succeed())
 			hotFile := &model.MediaFile{ID: "hot", LibraryPath: musicDir, Path: "hot.flac", Suffix: "flac"}
 			resolver := hotcache.New(hotcache.Options{Enabled: true, Path: cachePath, MaxSize: 1 << 20, PromoteOnPlay: true})
+			DeferCleanup(func() { _ = resolver.(hotcache.Manager).Shutdown(context.Background()) })
 			hotStreamer := stream.NewMediaStreamer(ds, ffmpeg, testCache, resolver)
 
 			first, err := hotStreamer.NewStream(ctx, hotFile, stream.Request{Format: "raw"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(first.Close()).To(Succeed())
+			Expect(resolver.(hotcache.Manager).Promote(ctx, hotFile)).To(Succeed())
 			Eventually(func() uint64 { return resolver.Stats().Promotions }).Should(Equal(uint64(1)))
 
 			second, err := hotStreamer.NewStream(ctx, hotFile, stream.Request{Format: "raw"})

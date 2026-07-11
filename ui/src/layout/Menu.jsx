@@ -2,9 +2,15 @@ import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Divider, makeStyles } from '@material-ui/core'
 import clsx from 'clsx'
-import { useTranslate, MenuItemLink, getResources } from 'react-admin'
+import {
+  useTranslate,
+  MenuItemLink,
+  getResources,
+  usePermissions,
+} from 'react-admin'
 import ViewListIcon from '@material-ui/icons/ViewList'
 import AlbumIcon from '@material-ui/icons/Album'
+import StorageIcon from '@material-ui/icons/Storage'
 import SubMenu from './SubMenu'
 import { humanize, pluralize } from 'inflection'
 import albumLists from '../album/albumLists'
@@ -52,6 +58,7 @@ const Menu = ({ dense = false }) => {
   const queue = useSelector((state) => state.player?.queue)
   const classes = useStyles({ addPadding: queue.length > 0 })
   const resources = useSelector(getResources)
+  const { permissions } = usePermissions()
 
   // TODO State is not persisted in mobile when you close the sidebar menu. Move to redux?
   const [state, setState] = useState({
@@ -138,6 +145,19 @@ const Menu = ({ dense = false }) => {
         </>
       ) : (
         resources.filter(subItems('playlist')).map(renderResourceMenuItemLink)
+      )}
+      {permissions === 'admin' && (
+        <>
+          <Divider />
+          <MenuItemLink
+            to="/admin/hot-cache"
+            activeClassName={classes.active}
+            primaryText={translate('hotCache.title')}
+            leftIcon={<StorageIcon />}
+            sidebarIsOpen={open}
+            dense={dense}
+          />
+        </>
       )}
     </div>
   )

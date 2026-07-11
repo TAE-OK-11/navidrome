@@ -27,7 +27,11 @@ func TestResolverMissPromotionHitIntegrityAndRange(t *testing.T) {
 	miss, err := r.Open(context.Background(), mf)
 	require.NoError(t, err)
 	require.False(t, IsHit(miss))
-	require.Equal(t, expected, readAndClose(t, miss))
+	contents, err := io.ReadAll(miss)
+	require.NoError(t, err)
+	require.Equal(t, expected, contents)
+	ObservePlayback(miss, context.Background(), PlaybackObservation{Playback: true, Method: http.MethodGet, Elapsed: 21 * time.Second})
+	require.NoError(t, miss.Close())
 	require.Equal(t, uint64(1), r.Stats().Misses)
 	waitForIdle(t, r)
 	require.Equal(t, uint64(1), r.Stats().Promotions)
@@ -63,7 +67,7 @@ func TestResolverDeduplicatesConcurrentPromotion(t *testing.T) {
 	started := make(chan struct{})
 	continueCopy := make(chan struct{})
 	var copies atomic.Int32
-	r.copyFile = func(dst io.Writer, src io.Reader, buffer []byte) (int64, error) {
+	r.copyFile = func(_ context.Context, dst io.Writer, src io.Reader, buffer []byte, _ *promotionTask) (int64, error) {
 		if copies.Add(1) == 1 {
 			close(started)
 		}
@@ -73,7 +77,11 @@ func TestResolverDeduplicatesConcurrentPromotion(t *testing.T) {
 
 	first, err := r.Open(context.Background(), mf)
 	require.NoError(t, err)
-	require.Equal(t, expected, readAndClose(t, first))
+	contents, err := io.ReadAll(first)
+	require.NoError(t, err)
+	require.Equal(t, expected, contents)
+	ObservePlayback(first, context.Background(), PlaybackObservation{Playback: true, Method: http.MethodGet, Elapsed: 21 * time.Second})
+	require.NoError(t, first.Close())
 	select {
 	case <-started:
 	case <-time.After(3 * time.Second):
@@ -103,7 +111,7 @@ func TestResolverDefersPromotionUntilPlaybackCloses(t *testing.T) {
 	_, mf, expected := createSource(t, "deferred", bytes.Repeat([]byte("d"), 4096))
 	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
 	started := make(chan struct{})
-	r.copyFile = func(dst io.Writer, src io.Reader, buffer []byte) (int64, error) {
+	r.copyFile = func(_ context.Context, dst io.Writer, src io.Reader, buffer []byte, _ *promotionTask) (int64, error) {
 		close(started)
 		return io.CopyBuffer(dst, src, buffer)
 	}
@@ -113,6 +121,7 @@ func TestResolverDefersPromotionUntilPlaybackCloses(t *testing.T) {
 	contents, err := io.ReadAll(file)
 	require.NoError(t, err)
 	require.Equal(t, expected, contents)
+	ObservePlayback(file, context.Background(), PlaybackObservation{Playback: true, Method: http.MethodGet, Elapsed: 21 * time.Second})
 	select {
 	case <-started:
 		t.Fatal("promotion started while direct playback was active")
@@ -157,7 +166,7 @@ func TestResolverEvictsLeastRecentlyUsedEntry(t *testing.T) {
 }
 
 func TestResolverDoesNotEvictActiveEntry(t *testing.T) {
-	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1800)
+	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 2600)
 	_, first, _ := createSource(t, "pinned", bytes.Repeat([]byte("p"), 900))
 	_, second, expectedSecond := createSource(t, "waiting", bytes.Repeat([]byte("w"), 900))
 	promoteAndWait(t, r, first)
@@ -167,6 +176,7 @@ func TestResolverDoesNotEvictActiveEntry(t *testing.T) {
 	secondMiss, err := r.Open(context.Background(), second)
 	require.NoError(t, err)
 	require.Equal(t, expectedSecond, readAndClose(t, secondMiss))
+	require.NoError(t, r.Promote(context.Background(), second))
 	waitForIdle(t, r)
 	require.Equal(t, 1, r.Stats().Entries)
 	require.GreaterOrEqual(t, r.Stats().Failures, uint64(1))
@@ -187,7 +197,10 @@ func TestResolverInvalidatesChangedAndDeletedSources(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, changed, readAndClose(t, modified))
 	require.NotEqual(t, original, changed)
-	waitForIdle(t, r)
+	require.Zero(t, r.Stats().Entries)
+	require.Equal(t, uint64(1), r.Status().SourceInvalidations)
+	require.Equal(t, uint64(1), r.Status().Fallbacks)
+	promoteAndWait(t, r, mf)
 	verified, err := r.Open(context.Background(), mf)
 	require.NoError(t, err)
 	require.Equal(t, changed, readAndClose(t, verified))
@@ -230,12 +243,13 @@ func TestResolverFallsBackForUnavailableCacheAndDiskFull(t *testing.T) {
 	require.Equal(t, expected, readAndClose(t, file))
 
 	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
-	r.copyFile = func(io.Writer, io.Reader, []byte) (int64, error) {
+	r.copyFile = func(context.Context, io.Writer, io.Reader, []byte, *promotionTask) (int64, error) {
 		return 0, syscall.ENOSPC
 	}
 	file, err = r.Open(context.Background(), mf)
 	require.NoError(t, err)
 	require.Equal(t, expected, readAndClose(t, file))
+	require.NoError(t, r.Promote(context.Background(), mf))
 	waitForIdle(t, r)
 	require.Equal(t, uint64(1), r.Stats().Failures)
 	require.Equal(t, 0, r.Stats().Entries)
@@ -246,14 +260,12 @@ func TestResolverCapacityIncludesInFlightReservation(t *testing.T) {
 	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 512<<10)
 	started := make(chan struct{})
 	continueCopy := make(chan struct{})
-	r.copyFile = func(dst io.Writer, src io.Reader, buffer []byte) (int64, error) {
+	r.copyFile = func(_ context.Context, dst io.Writer, src io.Reader, buffer []byte, _ *promotionTask) (int64, error) {
 		close(started)
 		<-continueCopy
 		return io.CopyBuffer(dst, src, buffer)
 	}
-	file, err := r.Open(context.Background(), mf)
-	require.NoError(t, err)
-	require.NoError(t, file.Close())
+	require.NoError(t, r.Promote(context.Background(), mf))
 	<-started
 	r.mu.Lock()
 	require.Greater(t, r.reserved, int64(256<<10))
@@ -312,15 +324,27 @@ type testingTB interface {
 	Helper()
 	TempDir() string
 	Fatalf(string, ...any)
+	Cleanup(func())
 }
 
 func newTestResolver(t testingTB, path string, maxSize int64) *resolver {
 	t.Helper()
-	created := New(Options{Enabled: true, Path: path, MaxSize: maxSize, PromoteOnPlay: true})
+	created := New(Options{
+		Enabled: true, Path: path, MaxSize: maxSize, PromoteOnPlay: true,
+		SessionWindow: 30 * time.Second, SessionIdleTimeout: 60 * time.Second,
+		MaxSessions: 1024, MinPlaySeconds: 20, MinPlayPercent: 25,
+		QueueMax: 128, PromotionDelayAfterPlay: 0, PromotionMaxRetries: 0,
+		TouchInterval: time.Hour, StatsEnabled: true, EventsMax: 256,
+	})
 	r, ok := created.(*resolver)
 	if !ok || !r.enabled {
 		t.Fatalf("hot cache was not enabled")
 	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = r.Shutdown(ctx)
+	})
 	return r
 }
 
@@ -344,12 +368,8 @@ func readAndClose(t *testing.T, file File) []byte {
 
 func promoteAndWait(t testingTB, r *resolver, mf *model.MediaFile) {
 	t.Helper()
-	file, err := r.Open(context.Background(), mf)
-	if err != nil {
-		t.Fatalf("open source: %v", err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatalf("close source: %v", err)
+	if err := r.Promote(context.Background(), mf); err != nil {
+		t.Fatalf("promote source: %v", err)
 	}
 	waitForIdle(t, r)
 }

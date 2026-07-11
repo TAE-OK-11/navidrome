@@ -38,6 +38,7 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	if err != nil {
 		return nil, err
 	}
+	stream.TrackPlayback()
 
 	// Make sure the stream will be closed at the end, to avoid leakage
 	defer func() {

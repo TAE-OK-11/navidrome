@@ -10,11 +10,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -29,42 +27,6 @@ const (
 	copyBufferSize  = 256 * 1024
 )
 
-// File is the file-backed stream returned by a Resolver. Keeping syscall.Conn
-// in the contract preserves net/http's sendfile path for cache hits.
-type File interface {
-	io.ReadSeekCloser
-	syscall.Conn
-}
-
-// Resolver selects a verified hot-cache file or immediately opens the source.
-type Resolver interface {
-	Open(ctx context.Context, mf *model.MediaFile) (File, error)
-	Stats() Stats
-}
-
-// IsHit reports whether a resolved file is backed by the original hot cache.
-func IsHit(file File) bool {
-	marked, ok := file.(interface{ HotCacheHit() bool })
-	return ok && marked.HotCacheHit()
-}
-
-type Stats struct {
-	Hits       uint64
-	Misses     uint64
-	Promotions uint64
-	Failures   uint64
-	Evictions  uint64
-	Bytes      int64
-	Entries    int
-}
-
-type Options struct {
-	Enabled       bool
-	Path          string
-	MaxSize       int64
-	PromoteOnPlay bool
-}
-
 type metadata struct {
 	Version       int    `json:"version"`
 	Key           string `json:"key"`
@@ -75,36 +37,77 @@ type metadata struct {
 	DataSize      int64  `json:"dataSize"`
 	DataModTime   int64  `json:"dataModTime"`
 	SHA256        string `json:"sha256"`
+	Title         string `json:"title,omitempty"`
+	Artist        string `json:"artist,omitempty"`
+	Album         string `json:"album,omitempty"`
+	Codec         string `json:"codec,omitempty"`
+	Container     string `json:"container,omitempty"`
+	Extension     string `json:"extension,omitempty"`
+	BitRate       int    `json:"bitRate,omitempty"`
 }
 
 type entry struct {
-	meta         metadata
-	dataPath     string
-	metadataPath string
-	metadataSize int64
-	lastUsed     time.Time
-	active       int
-	stale        bool
+	meta             metadata
+	dataPath         string
+	metadataPath     string
+	metadataSize     int64
+	createdAt        time.Time
+	lastUsed         time.Time
+	lastPersisted    time.Time
+	lastSessionHit   time.Time
+	lastRequestHit   time.Time
+	latestTTFB       time.Duration
+	latestRangeCount uint64
+	requestHits      uint64
+	sessionHits      uint64
+	active           int
+	touchPending     bool
+	stale            bool
 }
 
 type resolver struct {
-	mu            sync.Mutex
-	enabled       bool
-	promoteOnPlay bool
-	path          string
-	maxSize       int64
-	used          int64
-	reserved      int64
-	entries       map[string]*entry
-	promoting     map[string]struct{}
-	promoteSem    chan struct{}
-	copyFile      func(io.Writer, io.Reader, []byte) (int64, error)
+	mu             sync.Mutex
+	enabled        bool
+	promoteOnPlay  bool
+	path           string
+	maxSize        int64
+	used           int64
+	reserved       int64
+	entries        map[string]*entry
+	playing        map[string]int
+	queue          chan *promotionTask
+	promoting      map[string]*promotionTask
+	current        *promotionTask
+	paused         atomic.Bool
+	shuttingDown   atomic.Bool
+	stopOnce       sync.Once
+	stop           chan struct{}
+	control        chan struct{}
+	workers        sync.WaitGroup
+	workerCtx      context.Context
+	workerCancel   context.CancelFunc
+	queueMax       int
+	promotionDelay time.Duration
+	maxRetries     int
+	touchInterval  time.Duration
+	statsFlush     time.Duration
+	statsPath      string
+	touchQueue     chan string
+	copyFile       func(context.Context, io.Writer, io.Reader, []byte, *promotionTask) (int64, error)
+	sourceStreams  atomic.Int64
+	initializedIn  time.Duration
 
 	hits       atomic.Uint64
 	misses     atomic.Uint64
 	promotions atomic.Uint64
 	failures   atomic.Uint64
 	evictions  atomic.Uint64
+
+	runtime            runtimeStats
+	events             *eventRing
+	sessions           *sessionTracker
+	eventSampleEvery   uint64
+	eventSampleCounter atomic.Uint64
 }
 
 var copyBufferPool = sync.Pool{
@@ -119,13 +122,18 @@ var (
 	resolverInstance Resolver
 )
 
-// GetResolver returns the process-wide resolver. All HTTP routers must share
-// one LRU, promotion registry, and pin set for a cache directory.
+// GetResolver returns the process-wide resolver. All HTTP routers share one
+// LRU, promotion queue, session tracker, and pin registry.
 func GetResolver() Resolver {
 	resolverOnce.Do(func() {
 		resolverInstance = NewResolver()
 	})
 	return resolverInstance
+}
+
+func GetManager() Manager {
+	manager, _ := GetResolver().(Manager)
+	return manager
 }
 
 func NewResolver() Resolver {
@@ -142,42 +150,137 @@ func NewResolver() Resolver {
 		path = filepath.Join(conf.Server.CacheFolder.String(), "hot-music")
 	}
 	return New(Options{
-		Enabled:       conf.Server.HotCache.Enabled,
-		Path:          path,
-		MaxSize:       int64(maxSize),
-		PromoteOnPlay: conf.Server.HotCache.PromoteOnPlay,
+		Enabled:                 true,
+		Path:                    path,
+		MaxSize:                 int64(maxSize),
+		PromoteOnPlay:           conf.Server.HotCache.PromoteOnPlay,
+		SessionWindow:           conf.Server.HotCache.SessionWindow,
+		SessionIdleTimeout:      conf.Server.HotCache.SessionIdleTimeout,
+		MaxSessions:             conf.Server.HotCache.MaxSessions,
+		MinPlaySeconds:          conf.Server.HotCache.MinPlaySeconds,
+		MinPlayPercent:          conf.Server.HotCache.MinPlayPercent,
+		PromotionConcurrency:    conf.Server.HotCache.PromotionConcurrency,
+		QueueMax:                conf.Server.HotCache.QueueMax,
+		PromotionDelayAfterPlay: conf.Server.HotCache.PromotionDelayAfterPlay,
+		PromotionMaxRetries:     conf.Server.HotCache.PromotionMaxRetries,
+		TouchInterval:           conf.Server.HotCache.TouchInterval,
+		StatsEnabled:            conf.Server.HotCache.StatsEnabled,
+		EventsMax:               conf.Server.HotCache.EventsMax,
+		StatsFlushInterval:      conf.Server.HotCache.StatsFlushInterval,
+		EventSampleRate:         conf.Server.HotCache.EventSampleRate,
 	})
 }
 
 // New creates an isolated original-file hot cache. Initialization failures
 // disable only this cache; direct source streaming remains available.
 func New(options Options) Resolver {
-	hardMaxSize := mustParseDefaultSize()
-	if options.MaxSize <= 0 || options.MaxSize > hardMaxSize {
-		options.MaxSize = hardMaxSize
-	}
+	options = normalizeOptions(options)
 	r := &resolver{
-		enabled:       options.Enabled,
-		promoteOnPlay: options.PromoteOnPlay,
-		path:          options.Path,
-		maxSize:       options.MaxSize,
-		entries:       make(map[string]*entry),
-		promoting:     make(map[string]struct{}),
-		promoteSem:    make(chan struct{}, 1),
-		copyFile: func(dst io.Writer, src io.Reader, buffer []byte) (int64, error) {
-			return io.CopyBuffer(dst, src, buffer)
-		},
+		enabled:        options.Enabled,
+		promoteOnPlay:  options.PromoteOnPlay,
+		path:           options.Path,
+		maxSize:        options.MaxSize,
+		entries:        make(map[string]*entry),
+		playing:        make(map[string]int),
+		queueMax:       options.QueueMax,
+		promotionDelay: options.PromotionDelayAfterPlay,
+		maxRetries:     options.PromotionMaxRetries,
+		touchInterval:  options.TouchInterval,
+		statsFlush:     options.StatsFlushInterval,
+		stop:           make(chan struct{}),
+		control:        make(chan struct{}, 1),
+		runtime:        runtimeStats{enabled: options.StatsEnabled},
+		events:         newEventRing(options.EventsMax),
+	}
+	if options.EventSampleRate > 0 {
+		r.eventSampleEvery = max(1, uint64(1/options.EventSampleRate))
 	}
 	if !r.enabled {
 		return r
 	}
-	if err := r.initialize(); err != nil {
+	r.statsPath = filepath.Join(filepath.Dir(r.path), ".hot-cache-stats-v1.json")
+	r.queue = make(chan *promotionTask, options.QueueMax)
+	r.promoting = make(map[string]*promotionTask)
+	r.touchQueue = make(chan string, min(options.QueueMax*2, 512))
+	r.workerCtx, r.workerCancel = context.WithCancel(context.Background())
+	r.copyFile = r.copyWithYield
+	r.sessions = newSessionTracker(r, options)
+
+	started := time.Now()
+	cleanup, err := r.initialize()
+	r.initializedIn = time.Since(started)
+	if err != nil {
+		r.workerCancel()
 		r.enabled = false
 		log.Warn("Original hot cache disabled; direct streaming will be used", "path", r.path, err)
 		return r
 	}
-	log.Info("Initialized original hot cache", "path", r.path, "maxSize", r.maxSize, "entries", len(r.entries), "size", r.used)
+	if r.runtime.enabled {
+		if err := r.loadRuntimeStats(); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Warn("Ignoring invalid Hot Cache statistics snapshot", "path", r.statsPath, err)
+		}
+	}
+	r.startWorkers(options.PromotionConcurrency)
+	r.runtime.orphanCleanup.Add(uint64(cleanup.OrphansRemoved + cleanup.TemporaryRemoved))
+	r.runtime.corruptCleanup.Add(uint64(cleanup.CorruptRemoved))
+	log.Info("Initialized original hot cache", "path", r.path, "maxSize", r.maxSize, "entries", len(r.entries),
+		"size", r.used, "reserved", r.reserved, "elapsed", r.initializedIn,
+		"temporaryRemoved", cleanup.TemporaryRemoved, "orphansRemoved", cleanup.OrphansRemoved,
+		"corruptRemoved", cleanup.CorruptRemoved)
+	r.addEvent(Event{Type: "recovery_cleanup", Category: "recovery", PlaybackSuccess: true,
+		Message: fmt.Sprintf("temporary=%d orphan=%d corrupt=%d", cleanup.TemporaryRemoved, cleanup.OrphansRemoved, cleanup.CorruptRemoved)})
 	return r
+}
+
+func normalizeOptions(options Options) Options {
+	hardMaxSize := mustParseDefaultSize()
+	if options.MaxSize <= 0 || options.MaxSize > hardMaxSize {
+		options.MaxSize = hardMaxSize
+	}
+	if options.SessionWindow <= 0 {
+		options.SessionWindow = 30 * time.Second
+	}
+	if options.SessionIdleTimeout < options.SessionWindow {
+		options.SessionIdleTimeout = max(60*time.Second, options.SessionWindow)
+	}
+	if options.MaxSessions <= 0 {
+		options.MaxSessions = 1024
+	}
+	if options.MinPlaySeconds <= 0 {
+		options.MinPlaySeconds = 20
+	}
+	if options.MinPlayPercent <= 0 || options.MinPlayPercent > 100 {
+		options.MinPlayPercent = 25
+	}
+	// A single HDD copy is intentional: additional workers increase seek
+	// contention on the source volume and hurt first-play latency.
+	options.PromotionConcurrency = 1
+	if options.QueueMax <= 0 {
+		options.QueueMax = 128
+	}
+	options.QueueMax = min(options.QueueMax, 1024)
+	if options.PromotionDelayAfterPlay < 0 {
+		options.PromotionDelayAfterPlay = time.Second
+	}
+	if options.PromotionMaxRetries < 0 {
+		options.PromotionMaxRetries = 2
+	}
+	options.PromotionMaxRetries = min(options.PromotionMaxRetries, 5)
+	if options.TouchInterval <= 0 {
+		options.TouchInterval = 30 * time.Second
+	}
+	if options.StatsFlushInterval <= 0 {
+		options.StatsFlushInterval = 30 * time.Second
+	}
+	options.StatsFlushInterval = min(max(options.StatsFlushInterval, 5*time.Second), 24*time.Hour)
+	if options.EventsMax <= 0 {
+		options.EventsMax = 5000
+	}
+	options.EventsMax = min(options.EventsMax, 20_000)
+	if options.EventSampleRate < 0 || options.EventSampleRate > 1 {
+		options.EventSampleRate = 0.01
+	}
+	return options
 }
 
 func mustParseDefaultSize() int64 {
@@ -185,29 +288,30 @@ func mustParseDefaultSize() int64 {
 	return int64(size)
 }
 
-func (r *resolver) initialize() error {
+func (r *resolver) initialize() (CleanupResult, error) {
+	var result CleanupResult
 	if r.path == "" {
-		return errors.New("cache path is empty")
+		return result, errors.New("cache path is empty")
 	}
 	if err := os.MkdirAll(r.path, 0o750); err != nil {
-		return fmt.Errorf("creating cache directory: %w", err)
+		return result, fmt.Errorf("creating cache directory: %w", err)
 	}
 	probe, err := os.CreateTemp(r.path, ".write-probe-*.tmp")
 	if err != nil {
-		return fmt.Errorf("cache directory is not writable: %w", err)
+		return result, fmt.Errorf("cache directory is not writable: %w", err)
 	}
 	probeName := probe.Name()
 	if closeErr := probe.Close(); closeErr != nil {
 		_ = os.Remove(probeName)
-		return fmt.Errorf("closing cache write probe: %w", closeErr)
+		return result, fmt.Errorf("closing cache write probe: %w", closeErr)
 	}
 	if err := os.Remove(probeName); err != nil {
-		return fmt.Errorf("removing cache write probe: %w", err)
+		return result, fmt.Errorf("removing cache write probe: %w", err)
 	}
 
 	dirEntries, err := os.ReadDir(r.path)
 	if err != nil {
-		return fmt.Errorf("reading cache directory: %w", err)
+		return result, fmt.Errorf("reading cache directory: %w", err)
 	}
 	dataFiles := make(map[string]string)
 	metadataFiles := make(map[string]string)
@@ -220,16 +324,18 @@ func (r *resolver) initialize() error {
 		switch {
 		case strings.HasSuffix(name, ".tmp"):
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("removing incomplete cache file %q: %w", path, err)
+				return result, fmt.Errorf("removing incomplete cache file %q: %w", path, err)
 			}
+			result.TemporaryRemoved++
 		case strings.HasSuffix(name, ".data"):
 			dataFiles[strings.TrimSuffix(name, ".data")] = path
 		case strings.HasSuffix(name, ".json"):
 			metadataFiles[strings.TrimSuffix(name, ".json")] = path
 		default:
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("removing unknown cache file %q: %w", path, err)
+				return result, fmt.Errorf("removing unknown cache file %q: %w", path, err)
 			}
+			result.OrphansRemoved++
 		}
 	}
 
@@ -237,15 +343,18 @@ func (r *resolver) initialize() error {
 		dataPath, ok := dataFiles[key]
 		if !ok {
 			if err := os.Remove(metadataPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("removing orphan metadata %q: %w", metadataPath, err)
+				return result, fmt.Errorf("removing orphan metadata %q: %w", metadataPath, err)
 			}
+			result.OrphansRemoved++
 			continue
 		}
 		loaded, err := loadEntry(key, dataPath, metadataPath)
 		if err != nil {
 			if removeErr := removePair(dataPath, metadataPath); removeErr != nil {
-				return fmt.Errorf("removing invalid cache entry %q: %w", key, removeErr)
+				return result, fmt.Errorf("removing invalid cache entry %q: %w", key, removeErr)
 			}
+			result.CorruptRemoved++
+			delete(dataFiles, key)
 			continue
 		}
 		r.entries[key] = loaded
@@ -254,17 +363,14 @@ func (r *resolver) initialize() error {
 	}
 	for _, dataPath := range dataFiles {
 		if err := os.Remove(dataPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("removing orphan cache data %q: %w", dataPath, err)
+			return result, fmt.Errorf("removing orphan cache data %q: %w", dataPath, err)
 		}
+		result.OrphansRemoved++
 	}
-
-	r.mu.Lock()
-	err = r.evictUntilLocked(0)
-	r.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("enforcing cache limit: %w", err)
+	if err := r.evictUntilLocked(0); err != nil {
+		return result, fmt.Errorf("enforcing cache limit: %w", err)
 	}
-	return nil
+	return result, nil
 }
 
 func loadEntry(key, dataPath, metadataPath string) (*entry, error) {
@@ -296,11 +402,9 @@ func loadEntry(key, dataPath, metadataPath string) (*entry, error) {
 		return nil, err
 	}
 	return &entry{
-		meta:         meta,
-		dataPath:     dataPath,
-		metadataPath: metadataPath,
-		metadataSize: metadataInfo.Size(),
-		lastUsed:     metadataInfo.ModTime(),
+		meta: meta, dataPath: dataPath, metadataPath: metadataPath, metadataSize: metadataInfo.Size(),
+		createdAt: dataInfo.ModTime(), lastUsed: metadataInfo.ModTime(), lastPersisted: metadataInfo.ModTime(),
+		lastRequestHit: metadataInfo.ModTime(),
 	}, nil
 }
 
@@ -310,55 +414,76 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 		return os.Open(sourcePath)
 	}
 
+	openedAt := time.Now()
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil || !sourceInfo.Mode().IsRegular() {
 		r.invalidate(keyFor(mf.ID, sourcePath))
+		r.runtime.sourceInvalidations.Add(1)
+		r.addEvent(Event{Type: "source_deleted", Category: "integrity", MediaID: mf.ID,
+			SourcePath: sourcePath, Message: fmt.Sprint(err), PlaybackSuccess: false})
 		return os.Open(sourcePath)
 	}
+	identity := newStreamIdentity(ctx, mf, sourcePath, sourceInfo.Size(), sourceInfo.ModTime().UnixNano())
 	key := keyFor(mf.ID, sourcePath)
 	now := time.Now()
 
+	fallbackReason := ""
 	r.mu.Lock()
-	if cached := r.entries[key]; cached != nil && !cached.stale && sourceMatchesMedia(cached.meta, mf, sourcePath, sourceInfo) {
-		dataInfo, statErr := os.Stat(cached.dataPath)
-		if statErr == nil && dataInfo.Mode().IsRegular() && dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime {
+	if cached := r.entries[key]; cached != nil && !cached.stale {
+		if !sourceMatchesMedia(cached.meta, mf, sourcePath, sourceInfo) {
+			fallbackReason = "source-changed"
+			r.runtime.sourceInvalidations.Add(1)
+			r.markStaleLocked(cached)
+		} else {
 			file, openErr := os.Open(cached.dataPath)
 			if openErr == nil {
-				cached.active++
-				cached.lastUsed = now
-				r.mu.Unlock()
-				if touchErr := os.Chtimes(cached.metadataPath, now, now); touchErr != nil {
-					_ = file.Close()
-					r.release(key, cached)
-					r.misses.Add(1)
-					log.Debug(ctx, "Could not persist original hot-cache access time; using source", "id", mf.ID, touchErr)
-					return os.Open(sourcePath)
+				dataInfo, statErr := file.Stat()
+				if statErr == nil && dataInfo.Mode().IsRegular() && dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime {
+					cached.active++
+					cached.lastUsed = now
+					cached.lastRequestHit = now
+					cached.requestHits++
+					queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
+					if queueTouch {
+						cached.touchPending = true
+					}
+					r.mu.Unlock()
+					if queueTouch {
+						r.scheduleTouch(key)
+					}
+					r.hits.Add(1)
+					return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
+						cached: true, openedAt: openedAt}, nil
 				}
-				r.hits.Add(1)
-				log.Trace(ctx, "Original hot cache HIT", "id", mf.ID, "path", cached.dataPath)
-				return &pinnedFile{File: file, release: func() { r.release(key, cached) }}, nil
+				_ = file.Close()
 			}
+			fallbackReason = "cache-open-or-metadata-validation-failed"
+			r.markStaleLocked(cached)
 		}
-		r.markStaleLocked(cached)
 	}
 	r.mu.Unlock()
+	if fallbackReason != "" {
+		r.runtime.fallbacks.Add(1)
+		r.runtime.fallbackSuccesses.Add(1)
+		r.runtime.format[validFormatIndex(identity.format)].fallbacks.Add(1)
+		r.addEvent(Event{Type: "fallback_to_source", Category: "hot_cache", MediaID: mf.ID,
+			Title: mf.Title, Artist: mf.Artist, SourcePath: sourcePath, Reason: fallbackReason,
+			FallbackSuccess: true, PlaybackSuccess: true, Resolved: true})
+		if fallbackReason == "source-changed" {
+			r.addEvent(Event{Type: "source_changed", Category: "integrity", MediaID: mf.ID,
+				Title: mf.Title, Artist: mf.Artist, SourcePath: sourcePath, PlaybackSuccess: true, Resolved: true})
+		}
+	}
 
 	file, err := os.Open(sourcePath)
 	if err != nil {
+		r.runtime.sourceReadErrors.Add(1)
+		r.runtime.fallbackFailures.Add(1)
 		return nil, err
 	}
+	r.sourceStreams.Add(1)
 	r.misses.Add(1)
-	log.Trace(ctx, "Original hot cache MISS", "id", mf.ID, "path", sourcePath)
-	if r.promoteOnPlay {
-		sourceID := mf.ID
-		return &promotionFile{
-			File: file,
-			promote: func() {
-				r.schedulePromotion(context.Background(), sourceID, sourcePath, sourceInfo)
-			},
-		}, nil
-	}
-	return file, nil
+	return &observedFile{File: file, owner: r, key: key, identity: identity, openedAt: openedAt}, nil
 }
 
 func (r *resolver) Stats() Stats {
@@ -366,239 +491,101 @@ func (r *resolver) Stats() Stats {
 	bytes := r.used
 	entries := len(r.entries)
 	r.mu.Unlock()
-	return Stats{
-		Hits:       r.hits.Load(),
-		Misses:     r.misses.Load(),
-		Promotions: r.promotions.Load(),
-		Failures:   r.failures.Load(),
-		Evictions:  r.evictions.Load(),
-		Bytes:      bytes,
-		Entries:    entries,
+	return Stats{Hits: r.hits.Load(), Misses: r.misses.Load(), Promotions: r.promotions.Load(),
+		Failures: r.failures.Load(), Evictions: r.evictions.Load(), Bytes: bytes, Entries: entries}
+}
+
+type observedFile struct {
+	*os.File
+	owner    *resolver
+	key      string
+	entry    *entry
+	identity streamIdentity
+	cached   bool
+	openedAt time.Time
+	once     sync.Once
+}
+
+func (f *observedFile) Close() error {
+	err := f.File.Close()
+	f.once.Do(func() {
+		if f.cached {
+			f.owner.release(f.key, f.entry)
+		} else {
+			f.owner.sourceStreams.Add(-1)
+		}
+	})
+	return err
+}
+
+func (f *observedFile) HotCacheHit() bool { return f.cached }
+
+func (f *observedFile) ObservePlayback(ctx context.Context, observation PlaybackObservation) {
+	if observation.TTFB <= 0 {
+		observation.TTFB = time.Since(f.openedAt)
+	}
+	f.owner.sessions.observe(ctx, f.identity, f.cached, observation)
+	f.owner.sampleRequestEvent(f.identity, f.cached, observation)
+	if f.cached {
+		f.owner.mu.Lock()
+		if current := f.owner.entries[f.key]; current == f.entry {
+			current.latestTTFB = observation.TTFB
+			if observation.RangeHeader != "" {
+				current.latestRangeCount++
+			}
+		}
+		f.owner.mu.Unlock()
 	}
 }
 
-func (r *resolver) schedulePromotion(ctx context.Context, sourceID, sourcePath string, sourceInfo os.FileInfo) {
-	key := keyFor(sourceID, sourcePath)
+func (r *resolver) sampleRequestEvent(identity streamIdentity, cached bool, observation PlaybackObservation) {
+	if r.eventSampleEvery == 0 || r.eventSampleCounter.Add(1)%r.eventSampleEvery != 0 {
+		return
+	}
+	eventType := "request_cache_miss"
+	if cached {
+		eventType = "request_cache_hit"
+	}
+	r.addEvent(Event{Type: eventType, Category: "request_sample", MediaID: identity.mediaID,
+		Title: identity.title, Artist: identity.artist, PlaybackSuccess: !observation.Cancelled,
+		Reason: observation.RangeHeader})
+}
+
+func (r *resolver) scheduleTouch(key string) {
+	select {
+	case r.touchQueue <- key:
+	default:
+		r.mu.Lock()
+		if cached := r.entries[key]; cached != nil {
+			cached.touchPending = false
+		}
+		r.mu.Unlock()
+	}
+}
+
+func (r *resolver) persistTouch(key string) {
 	r.mu.Lock()
-	if _, exists := r.promoting[key]; exists {
+	cached := r.entries[key]
+	if cached == nil {
 		r.mu.Unlock()
 		return
 	}
-	if cached := r.entries[key]; cached != nil && cached.active > 0 {
-		r.mu.Unlock()
-		return
-	}
-	r.promoting[key] = struct{}{}
+	path, touchedAt := cached.metadataPath, cached.lastUsed
 	r.mu.Unlock()
-
-	identity := sourceIdentity{id: sourceID, path: sourcePath, size: sourceInfo.Size(), modTime: sourceInfo.ModTime().UnixNano()}
-	go func() {
-		r.promoteSem <- struct{}{}
-		err := r.promote(ctx, key, identity)
-		<-r.promoteSem
-
-		r.mu.Lock()
-		delete(r.promoting, key)
-		r.mu.Unlock()
-		if err != nil {
-			r.failures.Add(1)
-			log.Debug(ctx, "Original hot-cache promotion failed; source streaming was unaffected", "id", identity.id, err)
-		}
-	}()
-}
-
-type sourceIdentity struct {
-	id      string
-	path    string
-	size    int64
-	modTime int64
-}
-
-func (r *resolver) promote(ctx context.Context, key string, source sourceIdentity) error {
-	if source.size <= 0 || source.size > r.maxSize {
-		return nil
-	}
-	sourceFile, err := os.Open(source.path)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-	openedInfo, err := sourceFile.Stat()
-	if err != nil || openedInfo.Size() != source.size || openedInfo.ModTime().UnixNano() != source.modTime {
-		return errors.New("source changed before promotion")
-	}
-
-	meta := metadata{
-		Version:       metadataVersion,
-		Key:           key,
-		SourceID:      source.id,
-		SourcePath:    source.path,
-		SourceSize:    source.size,
-		SourceModTime: source.modTime,
-		DataSize:      source.size,
-		DataModTime:   time.Now().UnixNano(),
-		SHA256:        strings.Repeat("0", sha256.Size*2),
-	}
-	estimatedMetadata, _ := json.Marshal(meta)
-	required := source.size + int64(len(estimatedMetadata)) + 512
+	err := os.Chtimes(path, touchedAt, touchedAt)
 	r.mu.Lock()
-	if err := r.evictUntilLocked(required); err != nil {
-		r.mu.Unlock()
-		return err
+	if current := r.entries[key]; current == cached {
+		current.touchPending = false
+		if err == nil {
+			current.lastPersisted = touchedAt
+		}
 	}
-	r.reserved += required
 	r.mu.Unlock()
-	defer func() {
-		r.mu.Lock()
-		r.reserved -= required
-		r.mu.Unlock()
-	}()
-
-	tempData, err := os.CreateTemp(r.path, key+".*.tmp")
 	if err != nil {
-		return err
+		r.addEvent(Event{Type: "lru_touch_failed", Category: "storage", MediaID: cached.meta.SourceID,
+			CachePath: cached.metadataPath, Message: err.Error(), PlaybackSuccess: true, Resolved: true})
+		log.Debug("Could not persist original hot-cache LRU access time", "mediaID", cached.meta.SourceID, err)
 	}
-	tempDataPath := tempData.Name()
-	defer func() {
-		_ = tempData.Close()
-		_ = os.Remove(tempDataPath)
-	}()
-
-	hasher := sha256.New()
-	buffer := copyBufferPool.Get().(*[]byte)
-	written, copyErr := r.copyFile(io.MultiWriter(tempData, hasher), io.LimitReader(sourceFile, source.size+1), *buffer)
-	copyBufferPool.Put(buffer)
-	if copyErr != nil {
-		return copyErr
-	}
-	if written != source.size {
-		return fmt.Errorf("source size changed during promotion: copied %d, expected %d", written, source.size)
-	}
-	if err := tempData.Sync(); err != nil {
-		return err
-	}
-	if err := tempData.Chmod(0o440); err != nil {
-		return err
-	}
-	dataInfo, err := tempData.Stat()
-	if err != nil {
-		return err
-	}
-	if err := tempData.Close(); err != nil {
-		return err
-	}
-
-	currentInfo, err := os.Stat(source.path)
-	if err != nil || currentInfo.Size() != source.size || currentInfo.ModTime().UnixNano() != source.modTime {
-		return errors.New("source changed during promotion")
-	}
-	meta.DataModTime = dataInfo.ModTime().UnixNano()
-	meta.SHA256 = hex.EncodeToString(hasher.Sum(nil))
-	metadataBytes, err := json.Marshal(meta)
-	if err != nil {
-		return err
-	}
-	if int64(len(metadataBytes)) > required-source.size {
-		return errors.New("cache metadata exceeded reserved capacity")
-	}
-	tempMetadata, err := os.CreateTemp(r.path, key+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tempMetadataPath := tempMetadata.Name()
-	defer func() {
-		_ = tempMetadata.Close()
-		_ = os.Remove(tempMetadataPath)
-	}()
-	if _, err := tempMetadata.Write(metadataBytes); err != nil {
-		return err
-	}
-	if err := tempMetadata.Sync(); err != nil {
-		return err
-	}
-	if err := tempMetadata.Close(); err != nil {
-		return err
-	}
-
-	dataPath := filepath.Join(r.path, key+".data")
-	metadataPath := filepath.Join(r.path, key+".json")
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if existing := r.entries[key]; existing != nil {
-		if existing.active > 0 {
-			return errors.New("cache entry became active during replacement")
-		}
-		if err := r.removeEntryLocked(key, existing); err != nil {
-			return err
-		}
-	}
-	if err := os.Rename(tempDataPath, dataPath); err != nil {
-		return err
-	}
-	if err := os.Rename(tempMetadataPath, metadataPath); err != nil {
-		_ = os.Remove(dataPath)
-		return err
-	}
-	metadataInfo, err := os.Stat(metadataPath)
-	if err != nil {
-		_ = removePair(dataPath, metadataPath)
-		return err
-	}
-	loaded := &entry{
-		meta:         meta,
-		dataPath:     dataPath,
-		metadataPath: metadataPath,
-		metadataSize: metadataInfo.Size(),
-		lastUsed:     metadataInfo.ModTime(),
-	}
-	r.entries[key] = loaded
-	r.used += loaded.meta.DataSize + loaded.metadataSize
-	r.promotions.Add(1)
-	_ = syncDirectory(r.path)
-	log.Trace(ctx, "Promoted original file to hot cache", "id", source.id, "size", source.size)
-	return nil
-}
-
-func (r *resolver) evictUntilLocked(required int64) error {
-	if required > r.maxSize {
-		return errors.New("file is larger than hot-cache capacity")
-	}
-	if r.used+r.reserved+required <= r.maxSize {
-		return nil
-	}
-	candidates := make([]*entry, 0, len(r.entries))
-	for _, cached := range r.entries {
-		if cached.active == 0 {
-			candidates = append(candidates, cached)
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastUsed.Before(candidates[j].lastUsed) })
-	for _, cached := range candidates {
-		if err := r.removeEntryLocked(cached.meta.Key, cached); err != nil {
-			continue
-		}
-		r.evictions.Add(1)
-		if r.used+r.reserved+required <= r.maxSize {
-			return nil
-		}
-	}
-	return errors.New("not enough evictable hot-cache space")
-}
-
-func (r *resolver) removeEntryLocked(key string, cached *entry) error {
-	if cached.active > 0 {
-		cached.stale = true
-		return errors.New("cache entry is active")
-	}
-	if err := removePair(cached.dataPath, cached.metadataPath); err != nil {
-		return err
-	}
-	delete(r.entries, key)
-	r.used -= cached.meta.DataSize + cached.metadataSize
-	if r.used < 0 {
-		r.used = 0
-	}
-	return nil
 }
 
 func (r *resolver) invalidate(key string) {
@@ -625,35 +612,6 @@ func (r *resolver) release(key string, cached *entry) {
 		_ = r.removeEntryLocked(key, cached)
 	}
 	r.mu.Unlock()
-}
-
-type pinnedFile struct {
-	*os.File
-	once    sync.Once
-	release func()
-}
-
-func (f *pinnedFile) Close() error {
-	err := f.File.Close()
-	f.once.Do(f.release)
-	return err
-}
-
-func (f *pinnedFile) HotCacheHit() bool { return true }
-
-// promotionFile defers the second source read until direct playback releases
-// the source. This protects first-play TTFB and throughput on slow HDDs and
-// remote filesystems while keeping promotion fully asynchronous afterwards.
-type promotionFile struct {
-	*os.File
-	once    sync.Once
-	promote func()
-}
-
-func (f *promotionFile) Close() error {
-	err := f.File.Close()
-	f.once.Do(f.promote)
-	return err
 }
 
 func keyFor(sourceID, sourcePath string) string {

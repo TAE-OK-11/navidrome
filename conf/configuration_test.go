@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	. "github.com/onsi/ginkgo/v2"
@@ -172,6 +173,17 @@ var _ = Describe("Configuration", func() {
 			GinkgoT().Setenv("ND_HOT_CACHE_PATH", cachePath)
 			GinkgoT().Setenv("ND_HOT_CACHE_MAX_SIZE", "3GiB")
 			GinkgoT().Setenv("ND_HOT_CACHE_PROMOTE_ON_PLAY", "true")
+			GinkgoT().Setenv("ND_HOT_CACHE_SESSION_WINDOW", "45s")
+			GinkgoT().Setenv("ND_HOT_CACHE_SESSION_IDLE_TIMEOUT", "90s")
+			GinkgoT().Setenv("ND_HOT_CACHE_MIN_PLAY_SECONDS", "15")
+			GinkgoT().Setenv("ND_HOT_CACHE_MIN_PLAY_PERCENT", "30")
+			GinkgoT().Setenv("ND_HOT_CACHE_PROMOTION_CONCURRENCY", "1")
+			GinkgoT().Setenv("ND_HOT_CACHE_QUEUE_MAX", "64")
+			GinkgoT().Setenv("ND_HOT_CACHE_PROMOTION_DELAY_AFTER_PLAY", "2s")
+			GinkgoT().Setenv("ND_HOT_CACHE_STATS_ENABLED", "true")
+			GinkgoT().Setenv("ND_HOT_CACHE_EVENTS_MAX", "1000")
+			GinkgoT().Setenv("ND_HOT_CACHE_STATS_FLUSH_INTERVAL", "15s")
+			GinkgoT().Setenv("ND_HOT_CACHE_EVENT_SAMPLE_RATE", "0.02")
 
 			conf.InitConfig("", true)
 			conf.Load(true)
@@ -180,6 +192,17 @@ var _ = Describe("Configuration", func() {
 			Expect(conf.Server.HotCache.Path.String()).To(Equal(cachePath))
 			Expect(conf.Server.HotCache.MaxSize).To(Equal("3GiB"))
 			Expect(conf.Server.HotCache.PromoteOnPlay).To(BeTrue())
+			Expect(conf.Server.HotCache.SessionWindow).To(Equal(45 * time.Second))
+			Expect(conf.Server.HotCache.SessionIdleTimeout).To(Equal(90 * time.Second))
+			Expect(conf.Server.HotCache.MinPlaySeconds).To(Equal(15))
+			Expect(conf.Server.HotCache.MinPlayPercent).To(Equal(30))
+			Expect(conf.Server.HotCache.PromotionConcurrency).To(Equal(1))
+			Expect(conf.Server.HotCache.QueueMax).To(Equal(64))
+			Expect(conf.Server.HotCache.PromotionDelayAfterPlay).To(Equal(2 * time.Second))
+			Expect(conf.Server.HotCache.StatsEnabled).To(BeTrue())
+			Expect(conf.Server.HotCache.EventsMax).To(Equal(1000))
+			Expect(conf.Server.HotCache.StatsFlushInterval).To(Equal(15 * time.Second))
+			Expect(conf.Server.HotCache.EventSampleRate).To(Equal(0.02))
 		})
 	})
 

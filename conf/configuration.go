@@ -175,10 +175,24 @@ type transcodingOptions struct {
 }
 
 type hotCacheOptions struct {
-	Enabled       bool
-	Path          Dir
-	MaxSize       string
-	PromoteOnPlay bool
+	Enabled                 bool
+	Path                    Dir
+	MaxSize                 string
+	PromoteOnPlay           bool
+	SessionWindow           time.Duration
+	SessionIdleTimeout      time.Duration
+	MaxSessions             int
+	MinPlaySeconds          int
+	MinPlayPercent          int
+	PromotionConcurrency    int
+	QueueMax                int
+	PromotionDelayAfterPlay time.Duration
+	PromotionMaxRetries     int
+	TouchInterval           time.Duration
+	StatsEnabled            bool
+	EventsMax               int
+	StatsFlushInterval      time.Duration
+	EventSampleRate         float64
 }
 
 type subsonicOptions struct {
@@ -848,6 +862,20 @@ func setViperDefaults() {
 	viper.SetDefault("hotcache.path", "")
 	viper.SetDefault("hotcache.maxsize", "3GiB")
 	viper.SetDefault("hotcache.promoteonplay", true)
+	viper.SetDefault("hotcache.sessionwindow", 30*time.Second)
+	viper.SetDefault("hotcache.sessionidletimeout", 60*time.Second)
+	viper.SetDefault("hotcache.maxsessions", 1024)
+	viper.SetDefault("hotcache.minplayseconds", 20)
+	viper.SetDefault("hotcache.minplaypercent", 25)
+	viper.SetDefault("hotcache.promotionconcurrency", 1)
+	viper.SetDefault("hotcache.queuemax", 128)
+	viper.SetDefault("hotcache.promotiondelayafterplay", time.Second)
+	viper.SetDefault("hotcache.promotionmaxretries", 2)
+	viper.SetDefault("hotcache.touchinterval", 30*time.Second)
+	viper.SetDefault("hotcache.statsenabled", true)
+	viper.SetDefault("hotcache.eventsmax", 5000)
+	viper.SetDefault("hotcache.statsflushinterval", 30*time.Second)
+	viper.SetDefault("hotcache.eventsamplerate", 0.01)
 	viper.SetDefault("agents", "deezer,lastfm,listenbrainz")
 	viper.SetDefault("lastfm.enabled", true)
 	viper.SetDefault("lastfm.language", consts.DefaultInfoLanguage)
@@ -941,6 +969,20 @@ func InitConfig(cfgFile string, loadEnvVars bool) {
 		_ = viper.BindEnv("hotcache.path", "ND_HOT_CACHE_PATH", "ND_HOTCACHE_PATH")
 		_ = viper.BindEnv("hotcache.maxsize", "ND_HOT_CACHE_MAX_SIZE", "ND_HOTCACHE_MAXSIZE")
 		_ = viper.BindEnv("hotcache.promoteonplay", "ND_HOT_CACHE_PROMOTE_ON_PLAY", "ND_HOTCACHE_PROMOTEONPLAY")
+		_ = viper.BindEnv("hotcache.sessionwindow", "ND_HOT_CACHE_SESSION_WINDOW", "ND_HOTCACHE_SESSIONWINDOW")
+		_ = viper.BindEnv("hotcache.sessionidletimeout", "ND_HOT_CACHE_SESSION_IDLE_TIMEOUT", "ND_HOTCACHE_SESSIONIDLETIMEOUT")
+		_ = viper.BindEnv("hotcache.maxsessions", "ND_HOT_CACHE_MAX_SESSIONS", "ND_HOTCACHE_MAXSESSIONS")
+		_ = viper.BindEnv("hotcache.minplayseconds", "ND_HOT_CACHE_MIN_PLAY_SECONDS", "ND_HOTCACHE_MINPLAYSECONDS")
+		_ = viper.BindEnv("hotcache.minplaypercent", "ND_HOT_CACHE_MIN_PLAY_PERCENT", "ND_HOTCACHE_MINPLAYPERCENT")
+		_ = viper.BindEnv("hotcache.promotionconcurrency", "ND_HOT_CACHE_PROMOTION_CONCURRENCY", "ND_HOTCACHE_PROMOTIONCONCURRENCY")
+		_ = viper.BindEnv("hotcache.queuemax", "ND_HOT_CACHE_QUEUE_MAX", "ND_HOTCACHE_QUEUEMAX")
+		_ = viper.BindEnv("hotcache.promotiondelayafterplay", "ND_HOT_CACHE_PROMOTION_DELAY_AFTER_PLAY", "ND_HOTCACHE_PROMOTIONDELAYAFTERPLAY")
+		_ = viper.BindEnv("hotcache.promotionmaxretries", "ND_HOT_CACHE_PROMOTION_MAX_RETRIES", "ND_HOTCACHE_PROMOTIONMAXRETRIES")
+		_ = viper.BindEnv("hotcache.touchinterval", "ND_HOT_CACHE_TOUCH_INTERVAL", "ND_HOTCACHE_TOUCHINTERVAL")
+		_ = viper.BindEnv("hotcache.statsenabled", "ND_HOT_CACHE_STATS_ENABLED", "ND_HOTCACHE_STATSENABLED")
+		_ = viper.BindEnv("hotcache.eventsmax", "ND_HOT_CACHE_EVENTS_MAX", "ND_HOTCACHE_EVENTSMAX")
+		_ = viper.BindEnv("hotcache.statsflushinterval", "ND_HOT_CACHE_STATS_FLUSH_INTERVAL", "ND_HOTCACHE_STATSFLUSHINTERVAL")
+		_ = viper.BindEnv("hotcache.eventsamplerate", "ND_HOT_CACHE_EVENT_SAMPLE_RATE", "ND_HOTCACHE_EVENTSAMPLERATE")
 		viper.AutomaticEnv()
 	}
 

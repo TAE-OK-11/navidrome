@@ -115,6 +115,7 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 }
 
 func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
+	users := newAuthUserCache(authUserCacheLimit, authUserCacheTTL)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -125,7 +126,9 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 			username, isInternalAuth := fromInternalOrProxyAuth(r)
 			if username != "" {
 				authType := If(isInternalAuth, "internal", "reverse-proxy")
-				usr, err = ds.User(ctx).FindByUsername(username)
+				usr, err = users.get(ctx, "proxy\x00"+username, func(loadCtx context.Context) (*model.User, error) {
+					return ds.User(loadCtx).FindByUsername(username)
+				})
 				if errors.Is(err, context.Canceled) {
 					log.Debug(ctx, "API: Request canceled when authenticating", "auth", authType, "username", username, "remoteAddr", r.RemoteAddr, err)
 					return
@@ -146,7 +149,9 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				salt := p.StringOr("s", "")
 				jwt := p.StringOr("jwt", "")
 
-				usr, err = ds.User(ctx).FindByUsernameWithPassword(username)
+				usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
+					return ds.User(loadCtx).FindByUsernameWithPassword(username)
+				})
 				if errors.Is(err, context.Canceled) {
 					log.Debug(ctx, "API: Request canceled when authenticating", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
 					return

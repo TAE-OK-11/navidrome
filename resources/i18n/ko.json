@@ -607,7 +607,8 @@
       "moreResults": "처음 25개 결과를 표시합니다. 검색어를 더 구체적으로 입력하세요.",
       "resultCount": "%{count}곡을 찾았습니다",
       "cacheSelected": "선택한 곡 캐싱 (%{count})",
-      "accepted": "%{count}곡을 캐시 대기열에 추가했습니다"
+      "accepted": "%{count}곡을 캐시 대기열에 추가했습니다",
+      "acceptedWithRejected": "%{count}곡을 대기열에 추가했고 %{rejected}곡은 추가하지 못했습니다"
     },
     "columns": {
       "empty": "표시할 항목이 없습니다",

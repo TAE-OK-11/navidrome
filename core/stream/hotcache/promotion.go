@@ -111,7 +111,13 @@ func (r *resolver) waitForTask(task *promotionTask) bool {
 			return false
 		}
 		now := time.Now()
-		if !r.paused.Load() && !now.Before(task.notBefore) && r.sourceStreams.Load() == 0 {
+		replacementActive := false
+		r.mu.Lock()
+		if cached := r.entries[task.key]; cached != nil {
+			replacementActive = cached.active > 0
+		}
+		r.mu.Unlock()
+		if !r.paused.Load() && !now.Before(task.notBefore) && r.sourceStreams.Load() == 0 && !replacementActive {
 			return true
 		}
 		wait := 250 * time.Millisecond
@@ -152,8 +158,12 @@ func (r *resolver) queuePromotion(identity streamIdentity, playedDuration time.D
 
 	r.mu.Lock()
 	if cached := r.entries[key]; cached != nil && !cached.stale {
-		r.mu.Unlock()
-		return nil
+		if entryMatchesIdentity(cached, identity) {
+			r.mu.Unlock()
+			return nil
+		}
+		r.runtime.sourceInvalidations.Add(1)
+		r.markStaleLocked(cached)
 	}
 	if _, exists := r.promoting[key]; exists {
 		r.mu.Unlock()
@@ -185,6 +195,13 @@ func (r *resolver) queuePromotion(identity streamIdentity, playedDuration time.D
 		r.runtime.promotionCancelled.Add(1)
 		return errors.New("hot-cache promotion queue is full")
 	}
+}
+
+func entryMatchesIdentity(cached *entry, identity streamIdentity) bool {
+	return cached.meta.SourceID == identity.mediaID &&
+		cached.meta.SourcePath == identity.sourcePath &&
+		cached.meta.SourceSize == identity.sourceSize &&
+		cached.meta.SourceModTime == identity.sourceModTime
 }
 
 func thresholdLabel(tracker *sessionTracker) string {

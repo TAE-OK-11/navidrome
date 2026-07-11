@@ -1,6 +1,8 @@
 import httpClient from '../dataProvider/httpClient'
 
 const ROOT = '/api/admin/hot-cache'
+const DASHBOARD_TIMEOUT_MS = 10000
+let dashboardRequest = null
 
 const asObject = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -56,8 +58,26 @@ export const hotCacheAction = (path, method = 'POST', headers) =>
 export const getHotCacheEntries = (query, signal) =>
   getHotCache('entries', query, signal).then(normalizePage)
 
-export const getHotCacheDashboard = (signal) =>
-  getHotCache('dashboard', { eventLimit: 200 }, signal).then(normalizeDashboard)
+export const getHotCacheDashboard = () => {
+  if (dashboardRequest) return dashboardRequest
+
+  const controller = new AbortController()
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    DASHBOARD_TIMEOUT_MS,
+  )
+  dashboardRequest = getHotCache(
+    'dashboard',
+    { eventLimit: 200 },
+    controller.signal,
+  )
+    .then(normalizeDashboard)
+    .finally(() => {
+      window.clearTimeout(timeout)
+      dashboardRequest = null
+    })
+  return dashboardRequest
+}
 
 export const getHotCacheCandidates = (query, signal) =>
   getHotCache('candidates', query, signal).then(normalizeCandidates)

@@ -67,6 +67,33 @@ func TestPromotionPauseResumeAndSourceRevalidation(t *testing.T) {
 	})
 }
 
+func TestManualPromotionReplacesChangedSource(t *testing.T) {
+	r := newTestResolverWithQueue(t, 8)
+	path, mf, _ := createSource(t, "manual-refresh", bytes.Repeat([]byte("a"), 32<<10))
+	promoteAndWait(t, r, mf)
+
+	r.Pause()
+	updated := bytes.Repeat([]byte("b"), 48<<10)
+	require.NoError(t, os.WriteFile(path, updated, 0o600))
+	changedAt := time.Now().Add(2 * time.Second)
+	require.NoError(t, os.Chtimes(path, changedAt, changedAt))
+	mf.Size = int64(len(updated))
+	require.NoError(t, r.Promote(context.Background(), mf))
+
+	r.mu.Lock()
+	require.Empty(t, r.entries)
+	require.Len(t, r.promoting, 1)
+	r.mu.Unlock()
+	r.Resume()
+	waitForIdle(t, r)
+
+	file, err := r.Open(context.Background(), mf)
+	require.NoError(t, err)
+	require.True(t, IsHit(file))
+	require.Equal(t, updated, readAndClose(t, file))
+	require.Equal(t, uint64(2), r.Stats().Promotions)
+}
+
 func TestLRUTouchIsBatchedOffRequestPath(t *testing.T) {
 	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
 	_, mf, _ := createSource(t, "touch", bytes.Repeat([]byte("t"), 32<<10))

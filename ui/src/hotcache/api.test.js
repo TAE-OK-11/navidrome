@@ -49,6 +49,20 @@ describe('Hot Cache API', () => {
     expect(dashboard.sessions).toEqual([])
   })
 
+  it('coalesces concurrent dashboard refreshes', async () => {
+    let resolve
+    httpClient.mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const first = getHotCacheDashboard()
+    const second = getHotCacheDashboard()
+    expect(httpClient).toHaveBeenCalledTimes(1)
+    resolve({ json: { status: { health: 'healthy' } } })
+    await expect(first).resolves.toEqual(await second)
+  })
+
   it('sends selected media IDs in one promotion request', async () => {
     httpClient.mockResolvedValue({
       json: { accepted: ['one'], rejected: null },

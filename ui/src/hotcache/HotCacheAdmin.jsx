@@ -149,6 +149,7 @@ const HotCacheAdmin = () => {
   const [initialLoading, setInitialLoading] = useState(true)
   const [confirm, setConfirm] = useState(null)
   const pollErrorShown = useRef(false)
+  const mounted = useRef(true)
 
   const t = useCallback(
     (key, options) => translate(`hotCache.${key}`, options),
@@ -159,11 +160,20 @@ const HotCacheAdmin = () => {
     [t],
   )
 
-  const loadDashboard = useCallback(async (signal) => {
-    const value = await getHotCacheDashboard(signal)
-    setDashboard(value)
-    pollErrorShown.current = false
-    setInitialLoading(false)
+  const loadDashboard = useCallback(async () => {
+    const value = await getHotCacheDashboard()
+    if (mounted.current) {
+      setDashboard(value)
+      pollErrorShown.current = false
+      setInitialLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
   }, [])
 
   const loadEntries = useCallback(
@@ -321,9 +331,13 @@ const HotCacheAdmin = () => {
     setBusy(true)
     try {
       const result = await promoteHotCacheCandidates(selectedCandidates)
+      const rejected = Object.keys(result.rejected).length
       notify(
-        t('manual.accepted', { count: result.accepted.length }),
-        result.accepted.length ? 'info' : 'warning',
+        t(rejected ? 'manual.acceptedWithRejected' : 'manual.accepted', {
+          count: result.accepted.length,
+          rejected,
+        }),
+        rejected ? 'warning' : 'info',
       )
       setSelectedCandidates([])
       await Promise.all([loadDashboard(), loadCandidates()])

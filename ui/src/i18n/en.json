@@ -701,7 +701,8 @@
       "moreResults": "Showing the first 25 results. Refine your search for more.",
       "resultCount": "%{count} tracks found",
       "cacheSelected": "Cache selected (%{count})",
-      "accepted": "%{count} tracks added to the cache queue"
+      "accepted": "%{count} tracks added to the cache queue",
+      "acceptedWithRejected": "%{count} tracks queued; %{rejected} could not be queued"
     },
     "columns": {
       "empty": "No records",

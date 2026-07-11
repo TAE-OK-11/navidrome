@@ -103,6 +103,15 @@ var _ = Describe("Hot Cache administrator API", func() {
 		Expect(result.Accepted).To(Equal([]string{"song-1", "song-2"}))
 		Expect(result.Rejected).ToNot(BeNil())
 	})
+
+	It("rejects trailing JSON in a promotion request", func() {
+		api := &Router{ds: &tests.MockDataStore{MockedMediaFile: tests.CreateMockMediaFileRepo()}}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/promote", bytes.NewBufferString(`{"mediaIds":["song-1"]}{}`))
+		api.hotCachePromoteMany(&hotCacheManagerStub{}).ServeHTTP(recorder, request)
+
+		Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+	})
 })
 
 type hotCacheManagerStub struct {

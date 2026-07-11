@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -229,6 +230,10 @@ func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFun
 			writeHotCacheJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid promotion request"})
 			return
 		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			writeHotCacheJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid promotion request"})
+			return
+		}
 		if len(payload.MediaIDs) == 0 || len(payload.MediaIDs) > 50 {
 			writeHotCacheJSON(w, http.StatusBadRequest, map[string]string{"error": "select between 1 and 50 tracks"})
 			return
@@ -239,7 +244,9 @@ func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFun
 		result := hotCachePromoteResult{Accepted: []string{}, Rejected: map[string]string{}}
 		seen := make(map[string]struct{}, len(payload.MediaIDs))
 		for _, mediaID := range payload.MediaIDs {
+			mediaID = strings.TrimSpace(mediaID)
 			if mediaID == "" {
+				result.Rejected[mediaID] = "media ID is required"
 				continue
 			}
 			if _, duplicate := seen[mediaID]; duplicate {

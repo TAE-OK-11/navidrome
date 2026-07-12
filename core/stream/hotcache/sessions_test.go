@@ -136,16 +136,14 @@ func TestSessionLimitIsRaceSafeAndCleanupIsBounded(t *testing.T) {
 	r.sessions.maxSessions = 2
 	var group sync.WaitGroup
 	for index := range 32 {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			identity := newStreamIdentity(playbackContext("user", fmt.Sprintf("player-%d", index)), mf,
 				mf.AbsolutePath(), mf.Size, time.Now().UnixNano())
 			r.sessions.observe(context.Background(), identity, false, PlaybackObservation{
 				Playback: true, Method: http.MethodGet, RangeHeader: "bytes=0-1023", Elapsed: time.Millisecond,
 				RemoteAddr: fmt.Sprintf("127.0.0.1:%d", index),
 			})
-		}()
+		})
 	}
 	group.Wait()
 	require.LessOrEqual(t, r.sessions.count.Load(), int64(2))

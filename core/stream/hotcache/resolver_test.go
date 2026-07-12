@@ -90,14 +90,12 @@ func TestResolverDeduplicatesConcurrentPromotion(t *testing.T) {
 
 	var group sync.WaitGroup
 	for range 16 {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			file, openErr := r.Open(context.Background(), mf)
 			require.NoError(t, openErr)
 			_, _ = io.Copy(io.Discard, file)
 			require.NoError(t, file.Close())
-		}()
+		})
 	}
 	group.Wait()
 	close(continueCopy)

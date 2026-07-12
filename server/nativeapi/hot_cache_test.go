@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 
@@ -132,9 +133,7 @@ func (w *hotCacheWarmerStub) PreCache(id model.ArtworkID) {
 
 func (m *hotCacheManagerStub) MediaStates([]string) map[string]string {
 	result := make(map[string]string, len(m.states))
-	for key, value := range m.states {
-		result[key] = value
-	}
+	maps.Copy(result, m.states)
 	return result
 }
 

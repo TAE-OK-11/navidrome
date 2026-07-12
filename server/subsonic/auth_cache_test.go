@@ -22,13 +22,11 @@ func TestAuthUserCacheDeduplicatesBurstAndExpires(t *testing.T) {
 
 	var group sync.WaitGroup
 	for range 32 {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			user, err := cache.get(context.Background(), "PASSWORD\x00User", load)
 			require.NoError(t, err)
 			require.Equal(t, "user", user.ID)
-		}()
+		})
 	}
 	group.Wait()
 	require.Equal(t, int32(1), loads.Load())

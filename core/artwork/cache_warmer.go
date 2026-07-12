@@ -17,6 +17,7 @@ import (
 
 type CacheWarmer interface {
 	PreCache(artID model.ArtworkID)
+	PreCacheOnDemand(artID model.ArtworkID)
 }
 
 // NewCacheWarmer creates a new CacheWarmer instance. The CacheWarmer will pre-cache Artwork images in the background
@@ -24,7 +25,7 @@ type CacheWarmer interface {
 // image size, as well as the size defined by the UICoverArtSize config option.
 func NewCacheWarmer(artwork Artwork, cache cache.FileCache) CacheWarmer {
 	// If image cache is disabled, return a NOOP implementation
-	if conf.Server.ImageCacheSize == "0" || !conf.Server.EnableArtworkPrecache {
+	if conf.Server.ImageCacheSize == "0" {
 		return &noopCacheWarmer{}
 	}
 
@@ -41,6 +42,7 @@ func NewCacheWarmer(artwork Artwork, cache cache.FileCache) CacheWarmer {
 		wakeSignal:   make(chan struct{}, 1),
 		coverArtSize: conf.Server.UICoverArtSize,
 		concurrency:  max(1, conf.Server.DevArtworkMaxRequests),
+		automatic:    conf.Server.EnableArtworkPrecache,
 	}
 
 	// Create a context with a fake admin user, to be able to pre-cache Playlist CoverArts
@@ -57,9 +59,17 @@ type cacheWarmer struct {
 	wakeSignal   chan struct{}
 	coverArtSize int
 	concurrency  int
+	automatic    bool
 }
 
 func (a *cacheWarmer) PreCache(artID model.ArtworkID) {
+	if !a.automatic {
+		return
+	}
+	a.PreCacheOnDemand(artID)
+}
+
+func (a *cacheWarmer) PreCacheOnDemand(artID model.ArtworkID) {
 	if a.cache.Disabled(context.Background()) {
 		return
 	}
@@ -163,3 +173,5 @@ func NoopCacheWarmer() CacheWarmer {
 type noopCacheWarmer struct{}
 
 func (a *noopCacheWarmer) PreCache(model.ArtworkID) {}
+
+func (a *noopCacheWarmer) PreCacheOnDemand(model.ArtworkID) {}

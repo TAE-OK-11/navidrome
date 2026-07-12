@@ -277,7 +277,7 @@ func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFun
 			}
 			if api.cacheWarmer != nil {
 				if artworkID := mediaFile.CoverArtID(); artworkID.ID != "" {
-					api.cacheWarmer.PreCache(artworkID)
+					api.cacheWarmer.PreCacheOnDemand(artworkID)
 				}
 			}
 			err = manager.Promote(ctx, mediaFile)

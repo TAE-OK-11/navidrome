@@ -131,6 +131,10 @@ func (w *hotCacheWarmerStub) PreCache(id model.ArtworkID) {
 	w.ids = append(w.ids, id.ID)
 }
 
+func (w *hotCacheWarmerStub) PreCacheOnDemand(id model.ArtworkID) {
+	w.ids = append(w.ids, id.ID)
+}
+
 func (m *hotCacheManagerStub) MediaStates([]string) map[string]string {
 	result := make(map[string]string, len(m.states))
 	maps.Copy(result, m.states)

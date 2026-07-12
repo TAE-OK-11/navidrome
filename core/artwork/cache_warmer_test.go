@@ -45,11 +45,12 @@ var _ = Describe("CacheWarmer", func() {
 			Expect(ok).To(BeTrue())
 		})
 
-		It("returns noop when EnableArtworkPrecache is false", func() {
+		It("keeps on-demand warming available when automatic precache is false", func() {
 			conf.Server.EnableArtworkPrecache = false
 			cw := NewCacheWarmer(aw, fc)
-			_, ok := cw.(*noopCacheWarmer)
+			warmer, ok := cw.(*cacheWarmer)
 			Expect(ok).To(BeTrue())
+			Expect(warmer.automatic).To(BeFalse())
 		})
 
 		It("returns real implementation when properly configured", func() {
@@ -98,6 +99,20 @@ var _ = Describe("CacheWarmer", func() {
 			cw.mutex.Lock()
 			defer cw.mutex.Unlock()
 			Expect(len(cw.buffer)).To(Equal(1))
+		})
+
+		It("allows selected on-demand warming when automatic precache is disabled", func() {
+			conf.Server.EnableArtworkPrecache = false
+			fc.SetReady(false)
+			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+
+			cw.PreCache(model.MustParseArtworkID("al-automatic"))
+			cw.PreCacheOnDemand(model.MustParseArtworkID("al-selected"))
+
+			cw.mutex.Lock()
+			defer cw.mutex.Unlock()
+			Expect(cw.buffer).To(HaveKey(model.MustParseArtworkID("al-selected")))
+			Expect(cw.buffer).ToNot(HaveKey(model.MustParseArtworkID("al-automatic")))
 		})
 	})
 

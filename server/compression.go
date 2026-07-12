@@ -246,7 +246,14 @@ func (w *compressResponseWriter) Close() error {
 }
 
 func (w *compressResponseWriter) Flush() {
-	_ = w.flushBuffered()
+	if err := w.flushBuffered(); err != nil {
+		return
+	}
+	if flusher, ok := w.writer.(interface{ Flush() error }); ok {
+		if err := flusher.Flush(); err != nil {
+			return
+		}
+	}
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
@@ -293,14 +300,15 @@ func (w *compressResponseWriter) start(body []byte) error {
 		return nil
 	}
 
+	writer, err := newCompressionWriter(w.ResponseWriter, profile)
+	if err != nil {
+		w.raw = true
+		w.ResponseWriter.WriteHeader(status)
+		return nil
+	}
 	w.encoding = profile.encoding
 	setCompressionHeaders(w.Header(), w.encoding)
 	w.ResponseWriter.WriteHeader(status)
-
-	writer, err := newCompressionWriter(w.ResponseWriter, profile)
-	if err != nil {
-		return err
-	}
 	w.writer = writer
 	return nil
 }
@@ -493,6 +501,10 @@ func (w *pooledBrotliWriter) Write(p []byte) (int, error) {
 	return w.writer.Write(p)
 }
 
+func (w *pooledBrotliWriter) Flush() error {
+	return w.writer.Flush()
+}
+
 func (w *pooledBrotliWriter) Close() error {
 	err := w.writer.Close()
 	w.pool.Put(w.writer)
@@ -521,6 +533,10 @@ func newPooledZstdWriter(w io.Writer, level int) (io.WriteCloser, error) {
 
 func (w *pooledZstdWriter) Write(p []byte) (int, error) {
 	return w.writer.Write(p)
+}
+
+func (w *pooledZstdWriter) Flush() error {
+	return w.writer.Flush()
 }
 
 func (w *pooledZstdWriter) Close() error {
@@ -555,6 +571,10 @@ func newPooledGzipWriter(w io.Writer, level int) (io.WriteCloser, error) {
 
 func (w *pooledGzipWriter) Write(p []byte) (int, error) {
 	return w.writer.Write(p)
+}
+
+func (w *pooledGzipWriter) Flush() error {
+	return w.writer.Flush()
 }
 
 func (w *pooledGzipWriter) Close() error {

@@ -468,6 +468,25 @@ var _ = Describe("middlewares", func() {
 			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
 			Expect(rec.Body.String()).To(ContainSubstring("event: ping"))
 		})
+
+		It("flushes compressed bytes before the handler returns", func() {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "zstd")
+			rec := httptest.NewRecorder()
+			flushedBytes := 0
+			streamingHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(strings.Repeat(responseBody, 32)))
+				w.(http.Flusher).Flush()
+				flushedBytes = rec.Body.Len()
+			})
+
+			compressMiddleware()(streamingHandler).ServeHTTP(rec, req)
+
+			Expect(flushedBytes).To(BeNumerically(">", 0))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+		})
 	})
 
 	Describe("PrecompressedFileServer", func() {

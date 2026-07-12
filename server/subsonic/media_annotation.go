@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -280,6 +281,7 @@ func (api *Router) ReportPlayback(r *http.Request) (*responses.Subsonic, error) 
 		IgnoreScrobble: ignoreScrobble,
 		ClientId:       clientId,
 		ClientName:     client,
+		HeartbeatTTL:   max(2*conf.Server.UIPlaybackReportInterval+5*time.Second, 30*time.Second),
 	})
 	if err != nil {
 		log.Error(ctx, "Error in ReportPlayback", "mediaId", mediaId, "state", state, err)

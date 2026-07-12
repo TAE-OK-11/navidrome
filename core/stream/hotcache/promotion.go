@@ -91,7 +91,7 @@ func (r *resolver) promotionWorker() {
 
 func (r *resolver) maintenanceWorker() {
 	defer r.workers.Done()
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {

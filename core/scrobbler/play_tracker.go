@@ -58,6 +58,7 @@ type ReportPlaybackParams struct {
 	IgnoreScrobble bool
 	ClientId       string
 	ClientName     string
+	HeartbeatTTL   time.Duration
 }
 
 type nowPlayingEntry struct {
@@ -258,6 +259,14 @@ func remainingTTL(durationSec float32, positionMs int64, rate float64) time.Dura
 	return time.Duration(remainingSec+5) * time.Second
 }
 
+func activePlaybackTTL(durationSec float32, positionMs int64, rate float64, heartbeatTTL time.Duration) time.Duration {
+	ttl := remainingTTL(durationSec, positionMs, rate)
+	if heartbeatTTL > 0 {
+		ttl = min(ttl, heartbeatTTL)
+	}
+	return ttl
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -284,7 +293,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 			PlaybackRate: params.PlaybackRate,
 			LastReport:   now,
 		}
-		err = p.playMap.AddWithTTL(clientId, info, remainingTTL(mf.Duration, params.PositionMs, params.PlaybackRate))
+		err = p.playMap.AddWithTTL(clientId, info, activePlaybackTTL(mf.Duration, params.PositionMs, params.PlaybackRate, params.HeartbeatTTL))
 		if err != nil {
 			log.Warn(ctx, "Error adding PlaybackSession to cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, err)
 		}
@@ -312,7 +321,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		info.LastReport = now
 		ttl := 30 * time.Minute
 		if params.State == StatePlaying {
-			ttl = remainingTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate)
+			ttl = activePlaybackTTL(info.MediaFile.Duration, params.PositionMs, params.PlaybackRate, params.HeartbeatTTL)
 		}
 		log.Trace(ctx, "Updating PlaybackSession in cache", "clientId", clientId, "mediaId", params.MediaId, "state", params.State, "positionMs", params.PositionMs, "playbackRate", params.PlaybackRate, "ttl", ttl)
 		err := p.playMap.AddWithTTL(clientId, info, ttl)

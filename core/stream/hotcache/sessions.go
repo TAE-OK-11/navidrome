@@ -120,6 +120,7 @@ type playSession struct {
 	key              sessionKey
 	started          time.Time
 	lastActivity     time.Time
+	cancelledAt      time.Time
 	cached           bool
 	requestCount     uint64
 	rangeCount       uint64
@@ -138,8 +139,9 @@ type playSession struct {
 }
 
 type sessionShard struct {
-	mu       sync.Mutex
-	sessions map[sessionKey]*playSession
+	mu             sync.Mutex
+	sessions       map[sessionKey]*playSession
+	activeRequests map[sessionKey]uint32
 }
 
 type sessionTracker struct {
@@ -165,8 +167,25 @@ func newSessionTracker(owner *resolver, options Options) *sessionTracker {
 	}
 	for i := range tracker.shards {
 		tracker.shards[i].sessions = make(map[sessionKey]*playSession)
+		tracker.shards[i].activeRequests = make(map[sessionKey]uint32)
 	}
 	return tracker
+}
+
+const cancelledSessionGrace = 3 * time.Second
+
+func (t *sessionTracker) begin(identity streamIdentity, observation PlaybackObservation) {
+	if !observation.Playback || observation.Method == http.MethodHead || t.owner.shuttingDown.Load() {
+		return
+	}
+	key := identity.sessionKey(observation.RemoteAddr, observation.UserAgent)
+	shard := &t.shards[sessionShardIndex(key)]
+	shard.mu.Lock()
+	shard.activeRequests[key]++
+	if session := shard.sessions[key]; session != nil {
+		session.cancelledAt = time.Time{}
+	}
+	shard.mu.Unlock()
 }
 
 func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, cached bool, observation PlaybackObservation) {
@@ -198,6 +217,7 @@ func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, c
 	var threshold *playSession
 
 	shard.mu.Lock()
+	activeRequests := shard.activeRequests[key]
 	session := shard.sessions[key]
 	if session != nil && now.Sub(session.lastActivity) > t.window {
 		delete(shard.sessions, key)
@@ -231,6 +251,11 @@ func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, c
 		session.sendfile = session.sendfile || observation.Sendfile
 		if observation.Cancelled {
 			session.cancellations++
+			if activeRequests <= 1 {
+				session.cancelledAt = now
+			}
+		} else {
+			session.cancelledAt = time.Time{}
 		}
 		if rangeInfo.requested {
 			session.rangeCount++
@@ -270,6 +295,11 @@ func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, c
 				t.owner.runtime.sessionSeekOperations.Add(1)
 			}
 		}
+	}
+	if activeRequests <= 1 {
+		delete(shard.activeRequests, key)
+	} else {
+		shard.activeRequests[key] = activeRequests - 1
 	}
 	shard.mu.Unlock()
 
@@ -363,7 +393,9 @@ func (t *sessionTracker) cleanup(now time.Time, shutdown bool) {
 		var ended []*playSession
 		shard.mu.Lock()
 		for key, session := range shard.sessions {
-			if shutdown || now.Sub(session.lastActivity) > t.idleTimeout {
+			active := shard.activeRequests[key] > 0
+			cancelled := !session.cancelledAt.IsZero() && now.Sub(session.cancelledAt) >= cancelledSessionGrace
+			if shutdown || !active && (cancelled || now.Sub(session.lastActivity) > t.idleTimeout) {
 				delete(shard.sessions, key)
 				t.count.Add(-1)
 				ended = append(ended, session)
@@ -393,12 +425,13 @@ func (t *sessionTracker) finish(session *playSession, shutdown bool) {
 			Title: session.identity.title, Artist: session.identity.artist, SessionID: session.id,
 			Reason: "session-ended-before-threshold", PlaybackSuccess: true})
 	}
-	if shutdown && !session.thresholdReached && !session.cached {
+	cancelled := shutdown || !session.cancelledAt.IsZero()
+	if cancelled && !session.thresholdReached && !session.cached {
 		session.thresholdState = "cancelled"
 	}
 	t.owner.addEvent(Event{Type: "play_session_ended", Category: "playback", MediaID: session.identity.mediaID,
 		Title: session.identity.title, Artist: session.identity.artist, SessionID: session.id,
-		Reason: session.thresholdState, PlaybackSuccess: true})
+		Reason: session.thresholdState, PlaybackSuccess: !cancelled})
 	if log.IsGreaterOrEqualTo(log.LevelDebug) {
 		log.Debug("Hot cache play session ended", "mediaID", session.identity.mediaID, "sessionID", session.id,
 			"requests", session.requestCount, "ranges", session.rangeCount, "seeks", session.seekCount,

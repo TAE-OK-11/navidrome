@@ -68,6 +68,15 @@ type PlaybackObservation struct {
 	Sendfile      bool
 }
 
+// BeginPlayback reports an active direct-play request. Tracking starts before
+// ServeContent so a cancelled range request is not mistaken for a stopped
+// player when its replacement request is already active.
+func BeginPlayback(file io.ReadCloser, observation PlaybackObservation) {
+	if observer, ok := file.(interface{ BeginPlayback(PlaybackObservation) }); ok {
+		observer.BeginPlayback(observation)
+	}
+}
+
 // ObservePlayback reports a completed HTTP request without exposing the
 // resolver implementation to the streaming package.
 func ObservePlayback(file io.ReadCloser, ctx context.Context, observation PlaybackObservation) {

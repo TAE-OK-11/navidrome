@@ -338,6 +338,17 @@ var _ = Describe("PlayTracker", func() {
 			Expect(playing).To(BeEmpty())
 		})
 
+		It("expires heartbeat sessions when the client disappears", func() {
+			err := tracker.ReportPlayback(ctx, ReportPlaybackParams{
+				MediaId: "123", PositionMs: 0, State: StatePlaying, PlaybackRate: 1.0,
+				ClientId: defaultClientId, HeartbeatTTL: 20 * time.Millisecond,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(tracker.playMap.Len()).To(Equal(1))
+
+			Eventually(tracker.playMap.Len).Should(Equal(0))
+		})
+
 		It("full lifecycle: starting -> playing -> paused -> playing -> stopped", func() {
 			err := tracker.ReportPlayback(ctx, ReportPlaybackParams{
 				MediaId: "123", PositionMs: 0, State: "starting", PlaybackRate: 1.0, ClientId: defaultClientId,

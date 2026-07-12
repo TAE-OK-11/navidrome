@@ -96,6 +96,41 @@ func TestDifferentPlayerAndTimeoutCreateNewSessions(t *testing.T) {
 	require.Equal(t, uint64(3), r.Status().PlaySessions)
 }
 
+func TestCancelledSessionEndsAfterGracePeriod(t *testing.T) {
+	r, mf := newPolicyResolver(t, 100*time.Second)
+	identity := newStreamIdentity(playbackContext("user", "player"), mf, mf.AbsolutePath(), mf.Size, time.Now().UnixNano())
+	observation := PlaybackObservation{
+		Playback: true, Method: http.MethodGet, RangeHeader: "bytes=0-65535", Elapsed: time.Second,
+		RemoteAddr: "127.0.0.1:1234", UserAgent: "cancelled-client", Cancelled: true,
+	}
+	r.sessions.observe(context.Background(), identity, false, observation)
+	reference := time.Now()
+
+	r.sessions.cleanup(reference.Add(cancelledSessionGrace/2), false)
+	require.Len(t, r.Sessions(), 1)
+	r.sessions.cleanup(reference.Add(cancelledSessionGrace+time.Second), false)
+	require.Empty(t, r.Sessions())
+}
+
+func TestReplacementRangeKeepsCancelledSessionActive(t *testing.T) {
+	r, mf := newPolicyResolver(t, 100*time.Second)
+	identity := newStreamIdentity(playbackContext("user", "player"), mf, mf.AbsolutePath(), mf.Size, time.Now().UnixNano())
+	observation := PlaybackObservation{
+		Playback: true, Method: http.MethodGet, RangeHeader: "bytes=0-65535", Elapsed: time.Second,
+		RemoteAddr: "127.0.0.1:1234", UserAgent: "seeking-client", Cancelled: true,
+	}
+	r.sessions.observe(context.Background(), identity, false, observation)
+	r.sessions.begin(identity, observation)
+
+	r.sessions.cleanup(time.Now().Add(2*time.Minute), false)
+	require.Len(t, r.Sessions(), 1)
+
+	observation.Cancelled = false
+	observation.RangeHeader = "bytes=65536-131071"
+	r.sessions.observe(context.Background(), identity, false, observation)
+	require.Len(t, r.Sessions(), 1)
+}
+
 func TestSessionLimitIsRaceSafeAndCleanupIsBounded(t *testing.T) {
 	r, mf := newPolicyResolver(t, 100*time.Second)
 	r.sessions.maxSessions = 2

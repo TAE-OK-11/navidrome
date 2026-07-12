@@ -183,6 +183,7 @@ var _ = Describe("MediaAnnotationController", func() {
 			Expect(playTracker.ReportedPlayback[0].IgnoreScrobble).To(BeFalse())
 			Expect(playTracker.ReportedPlayback[0].ClientId).To(Equal("p1"))
 			Expect(playTracker.ReportedPlayback[0].ClientName).To(BeEmpty())
+			Expect(playTracker.ReportedPlayback[0].HeartbeatTTL).To(BeNumerically(">", 0))
 		})
 	})
 })

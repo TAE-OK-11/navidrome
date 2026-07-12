@@ -203,6 +203,13 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 			observed = newObservedResponseWriter(w)
 			writer = observed
 		}
+		observation := hotcache.PlaybackObservation{
+			Playback: s.playback, RangeHeader: r.Header.Get("Range"), Method: r.Method,
+			RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(),
+		}
+		if observed != nil {
+			hotcache.BeginPlayback(s.ReadCloser, observation)
+		}
 		content := io.ReadSeeker(s)
 		// Preserve file-backed readers so net/http can use sendfile for direct
 		// play and completed transcoding-cache hits.
@@ -216,12 +223,12 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
 		if observed != nil {
 			cancelled := r.Context().Err() != nil || expectedClientDisconnect(observed.writeErr)
-			hotcache.ObservePlayback(s.ReadCloser, ctx, hotcache.PlaybackObservation{
-				Playback: s.playback, RangeHeader: r.Header.Get("Range"), Method: r.Method,
-				RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Elapsed: time.Since(started),
-				TTFB: observed.ttfb(), Cancelled: cancelled, BytesExpected: observed.bytes,
-				Sendfile: observed.readerFromUsed && observed.readerFromFast,
-			})
+			observation.Elapsed = time.Since(started)
+			observation.TTFB = observed.ttfb()
+			observation.Cancelled = cancelled
+			observation.BytesExpected = observed.bytes
+			observation.Sendfile = observed.readerFromUsed && observed.readerFromFast
+			hotcache.ObservePlayback(s.ReadCloser, ctx, observation)
 			if observed.writeErr != nil {
 				if cancelled {
 					hotcache.RecordTransportEvent(true, "expected_broken_pipe", "client_cancelled", s.mf.ID, observed.writeErr.Error())

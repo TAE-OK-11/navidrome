@@ -522,6 +522,10 @@ func (f *observedFile) Close() error {
 
 func (f *observedFile) HotCacheHit() bool { return f.cached }
 
+func (f *observedFile) BeginPlayback(observation PlaybackObservation) {
+	f.owner.sessions.begin(f.identity, observation)
+}
+
 func (f *observedFile) ObservePlayback(ctx context.Context, observation PlaybackObservation) {
 	if observation.TTFB <= 0 {
 		observation.TTFB = time.Since(f.openedAt)

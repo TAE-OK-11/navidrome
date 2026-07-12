@@ -28,6 +28,32 @@ func TestPromotionQueueBoundAndCancellation(t *testing.T) {
 	require.Zero(t, r.Stats().Entries)
 }
 
+func TestCancelledPromotionRejectsRequeueUntilWorkerAcknowledges(t *testing.T) {
+	r := newTestResolverWithQueue(t, 8)
+	_, blocker, _ := createSource(t, "cancel-blocker", bytes.Repeat([]byte("b"), 64<<10))
+	_, target, _ := createSource(t, "cancel-requeue", bytes.Repeat([]byte("c"), 64<<10))
+	started := make(chan struct{})
+	continueCopy := make(chan struct{})
+	r.copyFile = func(_ context.Context, dst io.Writer, src io.Reader, buffer []byte, task *promotionTask) (int64, error) {
+		if task.identity.mediaID == blocker.ID {
+			close(started)
+			<-continueCopy
+		}
+		return io.CopyBuffer(dst, src, buffer)
+	}
+	require.NoError(t, r.Promote(context.Background(), blocker))
+	<-started
+	require.NoError(t, r.Promote(context.Background(), target))
+	require.NoError(t, r.Cancel(target.ID))
+	require.Equal(t, "cancelling", r.MediaStates([]string{target.ID})[target.ID])
+	require.ErrorContains(t, r.Promote(context.Background(), target), "cancellation is pending")
+	close(continueCopy)
+	waitForIdle(t, r)
+	require.NoError(t, r.Promote(context.Background(), target))
+	waitForIdle(t, r)
+	require.Equal(t, uint64(2), r.Stats().Promotions)
+}
+
 func TestPromotionPauseResumeAndSourceRevalidation(t *testing.T) {
 	t.Run("pause prevents active copy until resume", func(t *testing.T) {
 		r := newTestResolverWithQueue(t, 8)

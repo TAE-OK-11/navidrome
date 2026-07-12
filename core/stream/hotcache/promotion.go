@@ -165,8 +165,11 @@ func (r *resolver) queuePromotion(identity streamIdentity, playedDuration time.D
 		r.runtime.sourceInvalidations.Add(1)
 		r.markStaleLocked(cached)
 	}
-	if _, exists := r.promoting[key]; exists {
+	if existing := r.promoting[key]; existing != nil {
 		r.mu.Unlock()
+		if existing.cancelled.Load() {
+			return errors.New("hot-cache promotion cancellation is pending")
+		}
 		return nil
 	}
 	if len(r.promoting) >= r.queueMax {

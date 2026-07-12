@@ -320,6 +320,49 @@ func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 	})
 }
 
+func BenchmarkManagerMediaStates(b *testing.B) {
+	r := &resolver{
+		entries:   make(map[string]*entry, 3000),
+		promoting: make(map[string]*promotionTask),
+	}
+	requested := make([]string, 0, 25)
+	for i := range 3000 {
+		mediaID := fmt.Sprintf("benchmark-media-%04d", i)
+		key := keyFor(mediaID, "")
+		r.entries[key] = &entry{meta: metadata{Key: key, SourceID: mediaID}}
+		if i%120 == 0 {
+			requested = append(requested, mediaID)
+		}
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		states := r.MediaStates(requested)
+		if len(states) != len(requested) {
+			b.Fatalf("got %d states, want %d", len(states), len(requested))
+		}
+	}
+}
+
+func BenchmarkManagerEntries(b *testing.B) {
+	r := &resolver{entries: make(map[string]*entry, 3000), playing: make(map[string]int)}
+	now := time.Now()
+	for i := range 3000 {
+		mediaID := fmt.Sprintf("benchmark-media-%04d", i)
+		key := keyFor(mediaID, "")
+		r.entries[key] = &entry{
+			meta:     metadata{Key: key, SourceID: mediaID, Title: mediaID, DataSize: 4 << 20},
+			lastUsed: now.Add(-time.Duration(i) * time.Second),
+		}
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		page := r.Entries(EntryQuery{Sort: "recent", Order: "desc", Limit: 25})
+		if page.Total != 3000 || len(page.Items) != 25 {
+			b.Fatalf("got total=%d items=%d", page.Total, len(page.Items))
+		}
+	}
+}
+
 type testingTB interface {
 	Helper()
 	TempDir() string

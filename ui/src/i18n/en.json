@@ -750,6 +750,7 @@
       "cacheState_cached": "Cached",
       "cacheState_queued": "Queued",
       "cacheState_copying": "Copying",
+      "cacheState_cancelling": "Cancelling",
       "thresholdState_probe": "Monitoring",
       "thresholdState_cached": "Cache hit",
       "thresholdState_threshold-wait": "Waiting for threshold",

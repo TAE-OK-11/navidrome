@@ -107,26 +107,38 @@ func (r *resolver) Sessions() []SessionSnapshot {
 
 func (r *resolver) Entries(query EntryQuery) EntryPage {
 	r.mu.Lock()
-	ordered := make([]*entry, 0, len(r.entries))
+	snapshots := make([]EntrySnapshot, 0, len(r.entries))
+	lastUsed := make([]time.Time, 0, len(r.entries))
 	for _, cached := range r.entries {
-		ordered = append(ordered, cached)
-	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].lastUsed.Before(ordered[j].lastUsed) })
-	ranks := make(map[string]int, len(ordered))
-	for i, cached := range ordered {
-		ranks[cached.meta.Key] = i + 1
-	}
-	items := make([]EntrySnapshot, 0, len(ordered))
-	for _, cached := range ordered {
-		item := entrySnapshot(cached, ranks[cached.meta.Key], r.playing[cached.meta.SourceID] > 0)
-		if entryMatches(item, query) {
-			items = append(items, item)
-		}
+		snapshots = append(snapshots, entrySnapshot(cached, 0, r.playing[cached.meta.SourceID] > 0))
+		lastUsed = append(lastUsed, cached.lastUsed)
 	}
 	r.mu.Unlock()
 
-	sortEntries(items, query.Sort, query.Order)
-	total := len(items)
+	order := make([]int, len(snapshots))
+	for index := range order {
+		order[index] = index
+	}
+	sort.Slice(order, func(i, j int) bool { return lastUsed[order[i]].Before(lastUsed[order[j]]) })
+	for rank, index := range order {
+		snapshots[index].LRURank = rank + 1
+		snapshots[index].ExpectedEvictionRank = rank + 1
+	}
+	filtered := order[:0]
+	for _, index := range order {
+		if entryMatches(snapshots[index], query) {
+			filtered = append(filtered, index)
+		}
+	}
+
+	descending := strings.EqualFold(query.Order, "desc")
+	sort.SliceStable(filtered, func(i, j int) bool {
+		if descending {
+			return entrySnapshotLess(snapshots[filtered[j]], snapshots[filtered[i]], query.Sort)
+		}
+		return entrySnapshotLess(snapshots[filtered[i]], snapshots[filtered[j]], query.Sort)
+	})
+	total := len(filtered)
 	offset := max(query.Offset, 0)
 	limit := query.Limit
 	if limit <= 0 {
@@ -136,7 +148,12 @@ func (r *resolver) Entries(query EntryQuery) EntryPage {
 	if offset >= total {
 		return EntryPage{Items: []EntrySnapshot{}, Total: total}
 	}
-	return EntryPage{Items: items[offset:min(total, offset+limit)], Total: total}
+	end := min(total, offset+limit)
+	items := make([]EntrySnapshot, end-offset)
+	for index := offset; index < end; index++ {
+		items[index-offset] = snapshots[filtered[index]]
+	}
+	return EntryPage{Items: items, Total: total}
 }
 
 func entrySnapshot(cached *entry, rank int, playing bool) EntrySnapshot {
@@ -183,30 +200,21 @@ func entryMatches(item EntrySnapshot, query EntryQuery) bool {
 	}
 }
 
-func sortEntries(items []EntrySnapshot, field, order string) {
-	descending := strings.EqualFold(order, "desc")
-	less := func(i, j int) bool {
-		switch strings.ToLower(field) {
-		case "recent", "lastrequesthit":
-			return items[i].LastRequestHit.Before(items[j].LastRequestHit)
-		case "sessionhits":
-			return items[i].SessionHits < items[j].SessionHits
-		case "requesthits":
-			return items[i].RequestHits < items[j].RequestHits
-		case "largest", "size":
-			return items[i].FileSize < items[j].FileSize
-		case "slowest", "ttfb":
-			return items[i].LatestTTFB < items[j].LatestTTFB
-		default:
-			return items[i].LRURank < items[j].LRURank
-		}
+func entrySnapshotLess(left, right EntrySnapshot, field string) bool {
+	switch strings.ToLower(field) {
+	case "recent", "lastrequesthit":
+		return left.LastRequestHit.Before(right.LastRequestHit)
+	case "sessionhits":
+		return left.SessionHits < right.SessionHits
+	case "requesthits":
+		return left.RequestHits < right.RequestHits
+	case "largest", "size":
+		return left.FileSize < right.FileSize
+	case "slowest", "ttfb":
+		return left.LatestTTFB < right.LatestTTFB
+	default:
+		return left.LRURank < right.LRURank
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if descending {
-			return less(j, i)
-		}
-		return less(i, j)
-	})
 }
 
 func (r *resolver) Queue() []QueueItemSnapshot {
@@ -307,33 +315,26 @@ func (r *resolver) Formats() []FormatSnapshot {
 // bounded pass. It is used by the administrator search UI and never touches
 // the streaming hot path.
 func (r *resolver) MediaStates(mediaIDs []string) map[string]string {
-	wanted := make(map[string]struct{}, len(mediaIDs))
 	result := make(map[string]string, len(mediaIDs))
-	for _, mediaID := range mediaIDs {
-		if mediaID != "" {
-			wanted[mediaID] = struct{}{}
-		}
-	}
-	if len(wanted) == 0 {
-		return result
-	}
-
 	r.mu.Lock()
-	for _, cached := range r.entries {
-		if _, ok := wanted[cached.meta.SourceID]; ok && !cached.stale {
-			result[cached.meta.SourceID] = "cached"
-		}
-	}
-	for _, task := range r.promoting {
-		mediaID := task.identity.mediaID
-		if _, ok := wanted[mediaID]; !ok || task.cancelled.Load() {
+	for _, mediaID := range mediaIDs {
+		if mediaID == "" {
 			continue
 		}
-		state := "queued"
-		if task == r.current || task.state == "copying" {
-			state = "copying"
+		key := keyFor(mediaID, "")
+		if cached := r.entries[key]; cached != nil && !cached.stale {
+			result[mediaID] = "cached"
 		}
-		result[mediaID] = state
+		if task := r.promoting[key]; task != nil {
+			state := "queued"
+			switch {
+			case task.cancelled.Load():
+				state = "cancelling"
+			case task == r.current || task.state == "copying":
+				state = "copying"
+			}
+			result[mediaID] = state
+		}
 	}
 	r.mu.Unlock()
 	return result
@@ -369,23 +370,20 @@ func (r *resolver) Remove(mediaID string) error {
 	if r.playing[mediaID] > 0 {
 		return errors.New("cache entry is currently playing")
 	}
-	for _, task := range r.promoting {
-		if task.identity.mediaID == mediaID && !task.cancelled.Load() {
-			return errors.New("cache entry is being promoted")
-		}
+	key := keyFor(mediaID, "")
+	if task := r.promoting[key]; task != nil && !task.cancelled.Load() {
+		return errors.New("cache entry is being promoted")
 	}
-	for key, cached := range r.entries {
-		if cached.meta.SourceID == mediaID {
-			if cached.active > 0 {
-				return errors.New("cache entry is pinned")
-			}
-			if err := r.removeEntryLocked(key, cached); err != nil {
-				return err
-			}
-			r.addEvent(Event{Type: "manual_remove", Category: "admin_action", MediaID: mediaID,
-				Reason: "administrator", PlaybackSuccess: true, Resolved: true})
-			return nil
+	if cached := r.entries[key]; cached != nil {
+		if cached.active > 0 {
+			return errors.New("cache entry is pinned")
 		}
+		if err := r.removeEntryLocked(key, cached); err != nil {
+			return err
+		}
+		r.addEvent(Event{Type: "manual_remove", Category: "admin_action", MediaID: mediaID,
+			Reason: "administrator", PlaybackSuccess: true, Resolved: true})
+		return nil
 	}
 	return model.ErrNotFound
 }
@@ -393,13 +391,11 @@ func (r *resolver) Remove(mediaID string) error {
 func (r *resolver) Cancel(mediaID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, task := range r.promoting {
-		if task.identity.mediaID == mediaID {
-			task.cancelled.Store(true)
-			task.state = "cancelled"
-			r.notifyControl()
-			return nil
-		}
+	if task := r.promoting[keyFor(mediaID, "")]; task != nil {
+		task.cancelled.Store(true)
+		task.state = "cancelled"
+		r.notifyControl()
+		return nil
 	}
 	return model.ErrNotFound
 }
@@ -579,12 +575,9 @@ func (r *resolver) sessionEnded(mediaID string) {
 func (r *resolver) noteSessionHit(mediaID string) {
 	now := time.Now()
 	r.mu.Lock()
-	for _, cached := range r.entries {
-		if cached.meta.SourceID == mediaID {
-			cached.sessionHits++
-			cached.lastSessionHit = now
-			break
-		}
+	if cached := r.entries[keyFor(mediaID, "")]; cached != nil {
+		cached.sessionHits++
+		cached.lastSessionHit = now
 	}
 	r.mu.Unlock()
 }

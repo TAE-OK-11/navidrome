@@ -656,6 +656,7 @@
       "cacheState_cached": "캐시됨",
       "cacheState_queued": "대기 중",
       "cacheState_copying": "복사 중",
+      "cacheState_cancelling": "취소 처리 중",
       "thresholdState_probe": "재생 확인 중",
       "thresholdState_cached": "캐시 적중",
       "thresholdState_threshold-wait": "캐싱 조건 대기",

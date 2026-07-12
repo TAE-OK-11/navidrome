@@ -110,6 +110,8 @@ type resolver struct {
 	eventSampleCounter atomic.Uint64
 }
 
+var _ Manager = (*resolver)(nil)
+
 var copyBufferPool = sync.Pool{
 	New: func() any {
 		buffer := make([]byte, copyBufferSize)

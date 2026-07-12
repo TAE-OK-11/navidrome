@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/go-chi/chi/v5"
 	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/log"
@@ -242,6 +243,7 @@ func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFun
 		ctx, cancel := context.WithTimeout(request.Context(), hotCacheAdminTimeout)
 		defer cancel()
 		result := hotCachePromoteResult{Accepted: []string{}, Rejected: map[string]string{}}
+		mediaIDs := make([]string, 0, len(payload.MediaIDs))
 		seen := make(map[string]struct{}, len(payload.MediaIDs))
 		for _, mediaID := range payload.MediaIDs {
 			mediaID = strings.TrimSpace(mediaID)
@@ -253,10 +255,32 @@ func (api *Router) hotCachePromoteMany(manager hotcache.Manager) http.HandlerFun
 				continue
 			}
 			seen[mediaID] = struct{}{}
-			mediaFile, err := api.ds.MediaFile(ctx).GetForStreaming(mediaID)
-			if err == nil {
-				err = manager.Promote(ctx, mediaFile)
+			mediaIDs = append(mediaIDs, mediaID)
+		}
+
+		files, err := api.ds.MediaFile(ctx).GetAll(model.QueryOptions{
+			Max: len(mediaIDs), Filters: squirrel.Eq{"media_file.id": mediaIDs},
+		})
+		if err != nil {
+			writeHotCacheJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		filesByID := make(map[string]*model.MediaFile, len(files))
+		for index := range files {
+			filesByID[files[index].ID] = &files[index]
+		}
+		for _, mediaID := range mediaIDs {
+			mediaFile := filesByID[mediaID]
+			if mediaFile == nil {
+				result.Rejected[mediaID] = model.ErrNotFound.Error()
+				continue
 			}
+			if api.cacheWarmer != nil {
+				if artworkID := mediaFile.CoverArtID(); artworkID.ID != "" {
+					api.cacheWarmer.PreCache(artworkID)
+				}
+			}
+			err = manager.Promote(ctx, mediaFile)
 			if err != nil {
 				result.Rejected[mediaID] = err.Error()
 				continue

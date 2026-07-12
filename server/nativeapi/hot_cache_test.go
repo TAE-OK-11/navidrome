@@ -88,8 +88,9 @@ var _ = Describe("Hot Cache administrator API", func() {
 
 	It("queues selected tracks once in a single request", func() {
 		repo := tests.CreateMockMediaFileRepo()
-		repo.SetData(model.MediaFiles{{ID: "song-1"}, {ID: "song-2"}})
-		api := &Router{ds: &tests.MockDataStore{MockedMediaFile: repo}}
+		repo.SetData(model.MediaFiles{{ID: "song-1", AlbumID: "album-1"}, {ID: "song-2", AlbumID: "album-2"}})
+		warmer := &hotCacheWarmerStub{}
+		api := &Router{ds: &tests.MockDataStore{MockedMediaFile: repo}, cacheWarmer: warmer}
 		manager := &hotCacheManagerStub{}
 		body := bytes.NewBufferString(`{"mediaIds":["song-1","song-1","song-2"]}`)
 		recorder := httptest.NewRecorder()
@@ -102,6 +103,7 @@ var _ = Describe("Hot Cache administrator API", func() {
 		Expect(json.Unmarshal(recorder.Body.Bytes(), &result)).To(Succeed())
 		Expect(result.Accepted).To(Equal([]string{"song-1", "song-2"}))
 		Expect(result.Rejected).ToNot(BeNil())
+		Expect(warmer.ids).To(ConsistOf("album-1", "album-2"))
 	})
 
 	It("rejects trailing JSON in a promotion request", func() {
@@ -118,6 +120,14 @@ type hotCacheManagerStub struct {
 	hotcache.Manager
 	states   map[string]string
 	promoted []string
+}
+
+type hotCacheWarmerStub struct {
+	ids []string
+}
+
+func (w *hotCacheWarmerStub) PreCache(id model.ArtworkID) {
+	w.ids = append(w.ids, id.ID)
 }
 
 func (m *hotCacheManagerStub) MediaStates([]string) map[string]string {

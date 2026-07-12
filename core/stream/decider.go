@@ -337,7 +337,7 @@ func (s *deciderService) computeTranscodedStream(ctx context.Context, lookup *tr
 		Codec:      strings.ToLower(profile.AudioCodec),
 		SampleRate: normalizeSourceSampleRate(src.SampleRate, src.Codec),
 		Channels:   src.Channels,
-		BitDepth:   normalizeSourceBitDepth(src.BitDepth, src.Codec),
+		BitDepth:   targetBitDepth(src.BitDepth, src.Codec, targetIsLossless),
 		IsLossless: targetIsLossless,
 	}
 	if ts.Codec == "" {

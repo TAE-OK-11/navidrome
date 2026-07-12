@@ -208,14 +208,15 @@ func (m *Manager) loadEnabledPlugins(ctx context.Context) error {
 			start := time.Now()
 			log.Debug(ctx, "Loading enabled plugin", "plugin", plugin.ID, "path", plugin.Path)
 
-			// Panic recovery
-			defer func() {
-				if r := recover(); r != nil {
-					log.Error(ctx, "Panic while loading plugin", "plugin", plugin.ID, "panic", r)
+			if err := recoverPluginLoad(func() error { return m.loadPluginWithConfig(&plugin) }); err != nil {
+				m.mu.RLock()
+				_, partiallyLoaded := m.plugins[plugin.ID]
+				m.mu.RUnlock()
+				if partiallyLoaded {
+					if unloadErr := m.unloadPlugin(plugin.ID); unloadErr != nil {
+						log.Error(ctx, "Failed to unload partially loaded plugin", "plugin", plugin.ID, unloadErr)
+					}
 				}
-			}()
-
-			if err := m.loadPluginWithConfig(&plugin); err != nil {
 				// Store error in DB
 				plugin.LastError = err.Error()
 				plugin.Enabled = false
@@ -248,6 +249,15 @@ func (m *Manager) loadEnabledPlugins(ctx context.Context) error {
 	}
 
 	return g.Wait()
+}
+
+func recoverPluginLoad(load func() error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic while loading plugin: %v", recovered)
+		}
+	}()
+	return load()
 }
 
 // loadPluginWithConfig loads a plugin with configuration from DB.

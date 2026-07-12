@@ -420,7 +420,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	n, err := stream.Serve(ctx, w, r)
-	if err != nil || n == 0 {
+	if err != nil || (n == 0 && r.Method != http.MethodHead) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 	return nil, nil

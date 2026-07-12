@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
@@ -114,6 +115,18 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(s.Seekable()).To(BeFalse())
 			Expect(s.Duration()).To(Equal(float32(257.0)))
 		})
+		It("does not consume a non-seekable transcode stream for HEAD requests", func() {
+			reader := &readTrackingCloser{reads: make(chan struct{}, 1)}
+			s := stream.NewStream(mf, "mp3", 64, reader)
+			DeferCleanup(s.Close)
+			req := httptest.NewRequest(http.MethodHead, "/stream", nil)
+			resp := httptest.NewRecorder()
+
+			n, err := s.Serve(ctx, resp, req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(n).To(BeZero())
+			Consistently(reader.reads, 100*time.Millisecond).ShouldNot(Receive())
+		})
 		It("rejects transcode requests beyond MaxConcurrent with ErrTooManyTranscodes", func() {
 			// Use an ffmpeg whose Read blocks indefinitely so the cache's
 			// background copy can't drain the source and release the slot —
@@ -191,3 +204,14 @@ var _ = Describe("MediaStreamer", func() {
 		})
 	})
 })
+
+type readTrackingCloser struct {
+	reads chan struct{}
+}
+
+func (r *readTrackingCloser) Read([]byte) (int, error) {
+	r.reads <- struct{}{}
+	return 0, io.EOF
+}
+
+func (*readTrackingCloser) Close() error { return nil }

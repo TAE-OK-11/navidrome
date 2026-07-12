@@ -247,7 +247,6 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	}
 
 	if r.Method == http.MethodHead {
-		go func() { _, _ = io.Copy(io.Discard, s) }()
 		return 0, nil
 	}
 

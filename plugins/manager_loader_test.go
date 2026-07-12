@@ -1,10 +1,24 @@
 package plugins
 
 import (
+	"errors"
+
 	"github.com/navidrome/navidrome/model"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+var _ = Describe("recoverPluginLoad", func() {
+	It("returns regular load errors unchanged", func() {
+		expected := errors.New("load failed")
+		Expect(recoverPluginLoad(func() error { return expected })).To(MatchError(expected))
+	})
+
+	It("turns a loader panic into a persistent load error", func() {
+		err := recoverPluginLoad(func() error { panic("broken host service") })
+		Expect(err).To(MatchError(ContainSubstring("panic while loading plugin: broken host service")))
+	})
+})
 
 var _ = Describe("parsePluginConfig", func() {
 	It("returns nil for empty string", func() {

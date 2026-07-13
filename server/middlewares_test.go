@@ -493,12 +493,13 @@ var _ = Describe("middlewares", func() {
 		It("serves precompressed brotli assets when available", func() {
 			body := strings.Repeat("console.log('navidrome');", 64)
 			fileSystem := fstest.MapFS{
-				"assets/index.js":    &fstest.MapFile{Data: []byte(body)},
-				"assets/index.js.br": &fstest.MapFile{Data: encodeBrotli(body, 5)},
-				"assets/index.js.gz": &fstest.MapFile{Data: encodeGzip(body, 9)},
+				"assets/index.js":     &fstest.MapFile{Data: []byte(body)},
+				"assets/index.js.br":  &fstest.MapFile{Data: encodeBrotli(body, 5)},
+				"assets/index.js.zst": &fstest.MapFile{Data: encodeZstd(body)},
+				"assets/index.js.gz":  &fstest.MapFile{Data: encodeGzip(body, 9)},
 			}
 			req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
-			req.Header.Set("Accept-Encoding", "gzip, br")
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
 			rec := httptest.NewRecorder()
 
 			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
@@ -507,6 +508,25 @@ var _ = Describe("middlewares", func() {
 			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
 			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
 			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(body))
+		})
+
+		It("serves precompressed zstd assets when brotli is unavailable", func() {
+			body := strings.Repeat("console.log('navidrome');", 64)
+			fileSystem := fstest.MapFS{
+				"assets/index.js":     &fstest.MapFile{Data: []byte(body)},
+				"assets/index.js.zst": &fstest.MapFile{Data: encodeZstd(body)},
+				"assets/index.js.gz":  &fstest.MapFile{Data: encodeGzip(body, 9)},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
+			req.Header.Set("Accept-Encoding", "zstd, gzip")
+			rec := httptest.NewRecorder()
+
+			PrecompressedFileServer(fileSystem).ServeHTTP(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusOK))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(rec.Header().Values("Vary")).To(ContainElement("Accept-Encoding"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(body))
 		})
 
 		It("does not serve precompressed variants for range requests", func() {
@@ -785,4 +805,11 @@ func decodeZstd(data []byte) string {
 	out, err := io.ReadAll(reader)
 	Expect(err).NotTo(HaveOccurred())
 	return string(out)
+}
+
+func encodeZstd(data string) []byte {
+	writer, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
+	Expect(err).NotTo(HaveOccurred())
+	defer writer.Close()
+	return writer.EncodeAll([]byte(data), nil)
 }

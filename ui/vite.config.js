@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 const frontendPort = parseInt(process.env.PORT) || 4533
 const backendPort = frontendPort + 100
+const sourceMapsEnabled = process.env.ND_UI_SOURCEMAP !== 'false'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -36,7 +37,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
-    sourcemap: true,
+    sourcemap: sourceMapsEnabled,
   },
   test: {
     globals: true,

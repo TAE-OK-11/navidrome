@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.25
+
 FROM --platform=$BUILDPLATFORM ghcr.io/crazy-max/osxcross:14.5-debian AS osxcross
 
 ########################################################################################################################

@@ -17,13 +17,18 @@ func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 			fallback.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasSuffix(r.URL.Path, ".br") || strings.HasSuffix(r.URL.Path, ".gz") {
+		if strings.HasSuffix(r.URL.Path, ".br") ||
+			strings.HasSuffix(r.URL.Path, ".zst") ||
+			strings.HasSuffix(r.URL.Path, ".gz") {
 			fallback.ServeHTTP(w, r)
 			return
 		}
 
 		accepted := acceptedCompressionEncodings(r.Header.Get("Accept-Encoding"))
 		if accepted.brotli && servePrecompressedAsset(w, r, fileSystem, ".br", string(compressionBrotli)) {
+			return
+		}
+		if accepted.zstd && servePrecompressedAsset(w, r, fileSystem, ".zst", string(compressionZstd)) {
 			return
 		}
 		if accepted.gzip && servePrecompressedAsset(w, r, fileSystem, ".gz", string(compressionGzip)) {

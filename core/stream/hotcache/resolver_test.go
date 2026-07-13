@@ -182,6 +182,21 @@ func TestResolverSourceCloseIsIdempotent(t *testing.T) {
 	require.Zero(t, r.sourceStreams.Load())
 }
 
+func TestResolverRejectsNonRegularSource(t *testing.T) {
+	musicPath := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(musicPath, "directory.flac"), 0o700))
+	mf := &model.MediaFile{ID: "directory", LibraryPath: musicPath, Path: "directory.flac", Suffix: "flac"}
+	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
+
+	file, err := r.Open(context.Background(), mf)
+	require.Nil(t, file)
+	require.ErrorIs(t, err, os.ErrInvalid)
+	require.Zero(t, r.sourceStreams.Load())
+	require.Zero(t, r.Stats().Misses)
+	require.Equal(t, uint64(1), r.runtime.sourceReadErrors.Load())
+	require.Zero(t, r.runtime.fallbackFailures.Load())
+}
+
 func TestResolverEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "cache")
 	r := newTestResolver(t, cachePath, 3500)
@@ -255,6 +270,8 @@ func TestResolverInvalidatesChangedAndDeletedSources(t *testing.T) {
 	_, err = r.Open(context.Background(), mf)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Equal(t, 0, r.Stats().Entries)
+	require.Equal(t, uint64(1), r.runtime.sourceReadErrors.Load())
+	require.Equal(t, uint64(1), r.runtime.fallbackFailures.Load())
 }
 
 func TestResolverRecoversTemporaryAndCorruptFiles(t *testing.T) {
@@ -330,7 +347,9 @@ func TestResolverEnforcesThreeGiBHardLimit(t *testing.T) {
 func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 	data := bytes.Repeat([]byte("benchmark-audio-block"), 1<<15)
 	_, mf, _ := createSource(b, "benchmark", data)
+	_, missMF, _ := createSource(b, "benchmark-miss", data)
 	r := newTestResolver(b, filepath.Join(b.TempDir(), "cache"), 8<<20)
+	missResolver := newTestResolver(b, filepath.Join(b.TempDir(), "miss-cache"), 8<<20)
 	disabled := New(Options{})
 	promoteAndWait(b, r, mf)
 
@@ -347,6 +366,16 @@ func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 	b.Run("resolver-disabled", func(b *testing.B) {
 		for range b.N {
 			file, err := disabled.Open(context.Background(), mf)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_, _ = io.Copy(io.Discard, file)
+			_ = file.Close()
+		}
+	})
+	b.Run("hot-cache-miss", func(b *testing.B) {
+		for range b.N {
+			file, err := missResolver.Open(context.Background(), missMF)
 			if err != nil {
 				b.Fatal(err)
 			}

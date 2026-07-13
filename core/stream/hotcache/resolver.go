@@ -417,70 +417,114 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 	}
 
 	openedAt := time.Now()
-	sourceInfo, err := os.Stat(sourcePath)
-	if err != nil || !sourceInfo.Mode().IsRegular() {
-		r.invalidate(keyFor(mf.ID, sourcePath))
-		r.runtime.sourceInvalidations.Add(1)
-		r.addEvent(Event{Type: "source_deleted", Category: "integrity", MediaID: mf.ID,
-			SourcePath: sourcePath, Message: fmt.Sprint(err), PlaybackSuccess: false})
-		return os.Open(sourcePath)
-	}
-	identity := newStreamIdentity(ctx, mf, sourcePath, sourceInfo.Size(), sourceInfo.ModTime().UnixNano())
 	key := keyFor(mf.ID, sourcePath)
 	now := time.Now()
-
-	fallbackReason := ""
 	r.mu.Lock()
-	if cached := r.entries[key]; cached != nil && !cached.stale {
-		if !sourceMatchesMedia(cached.meta, mf, sourcePath, sourceInfo) {
-			fallbackReason = "source-changed"
-			r.runtime.sourceInvalidations.Add(1)
+	cached := r.entries[key]
+	if cached == nil || cached.stale {
+		r.mu.Unlock()
+		return r.openSource(ctx, mf, sourcePath, key, openedAt, "", false)
+	}
+	// Pin once, then keep path and cache-file I/O outside the global lock.
+	cached.active++
+	r.mu.Unlock()
+
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil || !sourceInfo.Mode().IsRegular() {
+		r.mu.Lock()
+		if current := r.entries[key]; current == cached {
 			r.markStaleLocked(cached)
-		} else {
-			// Pin before file I/O so eviction cannot remove the entry while
-			// concurrent cache hits open and validate it outside the global lock.
-			cached.active++
-			r.mu.Unlock()
-			file, openErr := os.Open(cached.dataPath)
-			var dataInfo os.FileInfo
-			if openErr == nil {
-				dataInfo, openErr = file.Stat()
-			}
-			dataValid := openErr == nil && dataInfo.Mode().IsRegular() &&
-				dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime
-			r.mu.Lock()
-			current := r.entries[key]
-			if current == cached && !cached.stale && dataValid {
-				cached.lastUsed = now
-				cached.lastRequestHit = now
-				cached.requestHits++
-				queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
-				if queueTouch {
-					cached.touchPending = true
-				}
-				r.mu.Unlock()
-				if queueTouch {
-					r.scheduleTouch(key)
-				}
-				r.hits.Add(1)
-				return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
-					cached: true, openedAt: openedAt}, nil
-			}
-			if current == cached && !dataValid {
-				r.markStaleLocked(cached)
-			}
-			r.mu.Unlock()
-			if file != nil {
-				_ = file.Close()
-			}
-			r.release(key, cached)
-			r.mu.Lock()
-			fallbackReason = "cache-open-or-metadata-validation-failed"
 		}
+		r.mu.Unlock()
+		r.release(key, cached)
+		r.runtime.sourceInvalidations.Add(1)
+		return r.openSource(ctx, mf, sourcePath, key, openedAt, "source-metadata-validation-failed", true)
+	}
+	identity := newStreamIdentity(ctx, mf, sourcePath, sourceInfo.Size(), sourceInfo.ModTime().UnixNano())
+	if !sourceMatchesMedia(cached.meta, mf, sourcePath, sourceInfo) {
+		r.mu.Lock()
+		if current := r.entries[key]; current == cached {
+			r.markStaleLocked(cached)
+		}
+		r.mu.Unlock()
+		r.release(key, cached)
+		r.runtime.sourceInvalidations.Add(1)
+		return r.openSource(ctx, mf, sourcePath, key, openedAt, "source-changed", true)
+	}
+
+	file, openErr := os.Open(cached.dataPath)
+	var dataInfo os.FileInfo
+	if openErr == nil {
+		dataInfo, openErr = file.Stat()
+	}
+	dataValid := openErr == nil && dataInfo.Mode().IsRegular() &&
+		dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime
+	r.mu.Lock()
+	current := r.entries[key]
+	if current == cached && !cached.stale && dataValid {
+		cached.lastUsed = now
+		cached.lastRequestHit = now
+		cached.requestHits++
+		queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
+		if queueTouch {
+			cached.touchPending = true
+		}
+		r.mu.Unlock()
+		if queueTouch {
+			r.scheduleTouch(key)
+		}
+		r.hits.Add(1)
+		return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
+			cached: true, openedAt: openedAt}, nil
+	}
+	if current == cached && !dataValid {
+		r.markStaleLocked(cached)
 	}
 	r.mu.Unlock()
+	if file != nil {
+		_ = file.Close()
+	}
+	r.release(key, cached)
+	return r.openSource(ctx, mf, sourcePath, key, openedAt, "cache-open-or-metadata-validation-failed", false)
+}
+
+func (r *resolver) openSource(ctx context.Context, mf *model.MediaFile, sourcePath, key string, openedAt time.Time,
+	fallbackReason string, sourceInvalidated bool,
+) (File, error) {
 	if fallbackReason != "" {
 		r.runtime.fallbacks.Add(1)
+	}
+
+	file, err := os.Open(sourcePath)
+	var sourceInfo os.FileInfo
+	if err == nil {
+		sourceInfo, err = file.Stat()
+		if err == nil && !sourceInfo.Mode().IsRegular() {
+			err = fmt.Errorf("source %q is not a regular file: %w", sourcePath, os.ErrInvalid)
+		}
+	}
+	if err != nil {
+		if file != nil {
+			_ = file.Close()
+		}
+		r.invalidate(key)
+		if !sourceInvalidated {
+			r.runtime.sourceInvalidations.Add(1)
+		}
+		r.runtime.sourceReadErrors.Add(1)
+		if fallbackReason != "" {
+			r.runtime.fallbackFailures.Add(1)
+			r.addEvent(Event{Type: "fallback_to_source", Category: "hot_cache", MediaID: mf.ID,
+				Title: mf.Title, Artist: mf.Artist, SourcePath: sourcePath, Reason: fallbackReason,
+				FallbackSuccess: false, PlaybackSuccess: false, Message: err.Error()})
+		}
+		r.addEvent(Event{Type: "source_deleted", Category: "integrity", MediaID: mf.ID,
+			Title: mf.Title, Artist: mf.Artist, SourcePath: sourcePath, Message: err.Error(), PlaybackSuccess: false})
+		return nil, err
+	}
+
+	identity := newStreamIdentity(ctx, mf, sourcePath, sourceInfo.Size(), sourceInfo.ModTime().UnixNano())
+	if fallbackReason != "" {
 		r.runtime.fallbackSuccesses.Add(1)
 		r.runtime.format[validFormatIndex(identity.format)].fallbacks.Add(1)
 		r.addEvent(Event{Type: "fallback_to_source", Category: "hot_cache", MediaID: mf.ID,
@@ -490,13 +534,6 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 			r.addEvent(Event{Type: "source_changed", Category: "integrity", MediaID: mf.ID,
 				Title: mf.Title, Artist: mf.Artist, SourcePath: sourcePath, PlaybackSuccess: true, Resolved: true})
 		}
-	}
-
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		r.runtime.sourceReadErrors.Add(1)
-		r.runtime.fallbackFailures.Add(1)
-		return nil, err
 	}
 	r.sourceStreams.Add(1)
 	r.misses.Add(1)

@@ -8,22 +8,22 @@ import (
 
 var _ = Describe("schedulerRequired", func() {
 	var (
-		pluginsEnabled  bool
-		devOptimizeDB   bool
-		backupSchedule  string
-		scannerEnabled  bool
-		scannerSchedule string
+		pluginsEnabled   bool
+		scheduledAnalyze bool
+		backupSchedule   string
+		scannerEnabled   bool
+		scannerSchedule  string
 	)
 
 	BeforeEach(func() {
 		pluginsEnabled = conf.Server.Plugins.Enabled
-		devOptimizeDB = conf.Server.DevOptimizeDB
+		scheduledAnalyze = conf.Server.EnableScheduledDBAnalyze
 		backupSchedule = conf.Server.Backup.Schedule
 		scannerEnabled = conf.Server.Scanner.Enabled
 		scannerSchedule = conf.Server.Scanner.Schedule
 
 		conf.Server.Plugins.Enabled = false
-		conf.Server.DevOptimizeDB = false
+		conf.Server.EnableScheduledDBAnalyze = false
 		conf.Server.Backup.Schedule = ""
 		conf.Server.Scanner.Enabled = true
 		conf.Server.Scanner.Schedule = ""
@@ -31,7 +31,7 @@ var _ = Describe("schedulerRequired", func() {
 
 	AfterEach(func() {
 		conf.Server.Plugins.Enabled = pluginsEnabled
-		conf.Server.DevOptimizeDB = devOptimizeDB
+		conf.Server.EnableScheduledDBAnalyze = scheduledAnalyze
 		conf.Server.Backup.Schedule = backupSchedule
 		conf.Server.Scanner.Enabled = scannerEnabled
 		conf.Server.Scanner.Schedule = scannerSchedule
@@ -56,8 +56,8 @@ var _ = Describe("schedulerRequired", func() {
 		Expect(schedulerRequired()).To(BeTrue())
 	})
 
-	It("starts the scheduler for DB optimization", func() {
-		conf.Server.DevOptimizeDB = true
+	It("starts the scheduler for DB analysis", func() {
+		conf.Server.EnableScheduledDBAnalyze = true
 		Expect(schedulerRequired()).To(BeTrue())
 	})
 })

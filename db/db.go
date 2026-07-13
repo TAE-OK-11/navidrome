@@ -6,7 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"runtime"
-	"strings"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 	"github.com/navidrome/navidrome/conf"
@@ -56,13 +56,6 @@ func Db() *sql.DB {
 		maxConns := maxOpenConns()
 		db.SetMaxOpenConns(maxConns)
 		db.SetMaxIdleConns(maxConns)
-		if conf.Server.DevOptimizeDB {
-			_, err = db.Exec("PRAGMA optimize=0x10002")
-			if err != nil {
-				fatalOnReadonlyDB("Error applying PRAGMA optimize", err)
-				log.Error("Error applying PRAGMA optimize", err)
-			}
-		}
 		return db
 	})
 }
@@ -83,9 +76,6 @@ func configureSQLiteConn(conn *sqlite3.SQLiteConn) error {
 func Close(ctx context.Context) {
 	// Ignore cancellations when closing the DB
 	ctx = context.WithoutCancel(ctx)
-
-	// Run optimize before closing
-	Optimize(ctx)
 
 	log.Info(ctx, "Closing Database")
 	err := Db().Close()
@@ -128,58 +118,16 @@ func Init(ctx context.Context) func() {
 		log.Fatal(ctx, "Failed to apply new migrations", err)
 	}
 
-	if hasSchemaChanges && conf.Server.DevOptimizeDB {
-		log.Debug(ctx, "Applying PRAGMA optimize after schema changes")
-		_, err = db.ExecContext(ctx, "PRAGMA optimize")
+	if hasSchemaChanges {
+		log.Debug(ctx, "Running ANALYZE after schema changes")
+		err = optimizeAt(ctx, db, time.Now())
 		if err != nil {
-			fatalOnReadonlyDB("Error applying PRAGMA optimize after schema changes", err)
-			log.Error(ctx, "Error applying PRAGMA optimize", err)
+			log.Error(ctx, "Error running ANALYZE", err)
 		}
 	}
 
 	return func() {
 		Close(ctx)
-	}
-}
-
-// Optimize runs PRAGMA optimize on each connection in the pool
-func Optimize(ctx context.Context) {
-	if !conf.Server.DevOptimizeDB {
-		return
-	}
-	numConns := Db().Stats().OpenConnections
-	if numConns == 0 {
-		log.Debug(ctx, "No open connections to optimize")
-		return
-	}
-	log.Debug(ctx, "Optimizing open connections", "numConns", numConns)
-	var conns []*sql.Conn
-	for range numConns {
-		conn, err := Db().Conn(ctx)
-		if err != nil {
-			fatalOnReadonlyDB("Error getting connection from pool", err)
-			log.Error(ctx, "Error getting connection from pool", err)
-			continue
-		}
-		conns = append(conns, conn)
-		_, err = conn.ExecContext(ctx, "PRAGMA optimize;")
-		if err != nil {
-			fatalOnReadonlyDB("Error running PRAGMA optimize", err)
-			log.Error(ctx, "Error running PRAGMA optimize", err)
-		}
-	}
-
-	// Return all connections to the Connection Pool
-	for _, conn := range conns {
-		if conn != nil {
-			_ = conn.Close()
-		}
-	}
-}
-
-func fatalOnReadonlyDB(msg string, err error) {
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "readonly database") {
-		log.Fatal(msg, err)
 	}
 }
 

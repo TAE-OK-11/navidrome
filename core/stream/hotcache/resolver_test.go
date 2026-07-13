@@ -105,6 +105,43 @@ func TestResolverDeduplicatesConcurrentPromotion(t *testing.T) {
 	require.Equal(t, 1, r.Stats().Entries)
 }
 
+func TestResolverHandlesConcurrentCacheHits(t *testing.T) {
+	_, mf, expected := createSource(t, "parallel-hits", bytes.Repeat([]byte("parallel"), 32<<10))
+	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 4<<20)
+	promoteAndWait(t, r, mf)
+
+	errCh := make(chan error, 32)
+	var group sync.WaitGroup
+	for range 32 {
+		group.Go(func() {
+			file, err := r.Open(context.Background(), mf)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			actual, err := io.ReadAll(file)
+			if err == nil && !bytes.Equal(actual, expected) {
+				err = fmt.Errorf("cached bytes differ from source")
+			}
+			if closeErr := file.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				errCh <- err
+			}
+		})
+	}
+	group.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	cached := onlyEntry(t, r)
+	require.Zero(t, cached.active)
+	require.Equal(t, uint64(32), r.Stats().Hits)
+}
+
 func TestResolverDefersPromotionUntilPlaybackCloses(t *testing.T) {
 	_, mf, expected := createSource(t, "deferred", bytes.Repeat([]byte("d"), 4096))
 	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
@@ -132,6 +169,17 @@ func TestResolverDefersPromotionUntilPlaybackCloses(t *testing.T) {
 		t.Fatal("promotion did not start after playback closed")
 	}
 	waitForIdle(t, r)
+}
+
+func TestResolverSourceCloseIsIdempotent(t *testing.T) {
+	_, mf, _ := createSource(t, "close-once", []byte("source"))
+	r := newTestResolver(t, filepath.Join(t.TempDir(), "cache"), 1<<20)
+	file, err := r.Open(context.Background(), mf)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), r.sourceStreams.Load())
+	require.NoError(t, file.Close())
+	require.NoError(t, file.Close())
+	require.Zero(t, r.sourceStreams.Load())
 }
 
 func TestResolverEvictsLeastRecentlyUsedEntry(t *testing.T) {
@@ -315,6 +363,18 @@ func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 			_, _ = io.Copy(io.Discard, file)
 			_ = file.Close()
 		}
+	})
+	b.Run("hot-cache-hit-parallel", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				file, err := r.Open(context.Background(), mf)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_, _ = io.Copy(io.Discard, file)
+				_ = file.Close()
+			}
+		})
 	})
 }
 

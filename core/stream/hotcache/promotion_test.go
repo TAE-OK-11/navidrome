@@ -157,6 +157,32 @@ func TestReadonlyPromotionFailureNeverAffectsSource(t *testing.T) {
 	require.False(t, IsHit(file))
 }
 
+func TestPromotionCopyResumesWhenSourceStreamCloses(t *testing.T) {
+	r := newTestResolverWithQueue(t, 8)
+	r.sourceStreams.Add(1)
+	task := &promotionTask{}
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.copyWithYield(context.Background(), io.Discard, bytes.NewReader([]byte("cache me")), make([]byte, 32), task)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("copy completed while a source stream was active: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	r.sourceStreams.Add(-1)
+	r.notifyControl()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("copy did not resume promptly after source playback closed")
+	}
+}
+
 func newTestResolverWithQueue(t *testing.T, queueMax int) *resolver {
 	t.Helper()
 	created := New(Options{

@@ -437,30 +437,45 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 			r.runtime.sourceInvalidations.Add(1)
 			r.markStaleLocked(cached)
 		} else {
+			// Pin before file I/O so eviction cannot remove the entry while
+			// concurrent cache hits open and validate it outside the global lock.
+			cached.active++
+			r.mu.Unlock()
 			file, openErr := os.Open(cached.dataPath)
+			var dataInfo os.FileInfo
 			if openErr == nil {
-				dataInfo, statErr := file.Stat()
-				if statErr == nil && dataInfo.Mode().IsRegular() && dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime {
-					cached.active++
-					cached.lastUsed = now
-					cached.lastRequestHit = now
-					cached.requestHits++
-					queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
-					if queueTouch {
-						cached.touchPending = true
-					}
-					r.mu.Unlock()
-					if queueTouch {
-						r.scheduleTouch(key)
-					}
-					r.hits.Add(1)
-					return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
-						cached: true, openedAt: openedAt}, nil
+				dataInfo, openErr = file.Stat()
+			}
+			dataValid := openErr == nil && dataInfo.Mode().IsRegular() &&
+				dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime
+			r.mu.Lock()
+			current := r.entries[key]
+			if current == cached && !cached.stale && dataValid {
+				cached.lastUsed = now
+				cached.lastRequestHit = now
+				cached.requestHits++
+				queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
+				if queueTouch {
+					cached.touchPending = true
 				}
+				r.mu.Unlock()
+				if queueTouch {
+					r.scheduleTouch(key)
+				}
+				r.hits.Add(1)
+				return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
+					cached: true, openedAt: openedAt}, nil
+			}
+			if current == cached && !dataValid {
+				r.markStaleLocked(cached)
+			}
+			r.mu.Unlock()
+			if file != nil {
 				_ = file.Close()
 			}
+			r.release(key, cached)
+			r.mu.Lock()
 			fallbackReason = "cache-open-or-metadata-validation-failed"
-			r.markStaleLocked(cached)
 		}
 	}
 	r.mu.Unlock()
@@ -506,18 +521,20 @@ type observedFile struct {
 	cached   bool
 	openedAt time.Time
 	once     sync.Once
+	closeErr error
 }
 
 func (f *observedFile) Close() error {
-	err := f.File.Close()
 	f.once.Do(func() {
+		f.closeErr = f.File.Close()
 		if f.cached {
 			f.owner.release(f.key, f.entry)
 		} else {
 			f.owner.sourceStreams.Add(-1)
 		}
+		f.owner.notifyControl()
 	})
-	return err
+	return f.closeErr
 }
 
 func (f *observedFile) HotCacheHit() bool { return f.cached }
@@ -614,7 +631,7 @@ func (r *resolver) release(key string, cached *entry) {
 	if cached.active > 0 {
 		cached.active--
 	}
-	if cached.active == 0 && cached.stale {
+	if cached.active == 0 && cached.stale && r.entries[key] == cached {
 		_ = r.removeEntryLocked(key, cached)
 	}
 	r.mu.Unlock()

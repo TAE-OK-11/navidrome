@@ -106,6 +106,12 @@ func (r *resolver) maintenanceWorker() {
 }
 
 func (r *resolver) waitForTask(task *promotionTask) bool {
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
 	for {
 		if task.cancelled.Load() || r.shuttingDown.Load() {
 			return false
@@ -124,7 +130,11 @@ func (r *resolver) waitForTask(task *promotionTask) bool {
 		if !r.paused.Load() && now.Before(task.notBefore) {
 			wait = min(wait, time.Until(task.notBefore))
 		}
-		timer := time.NewTimer(wait)
+		if timer == nil {
+			timer = time.NewTimer(wait)
+		} else {
+			timer.Reset(wait)
+		}
 		select {
 		case <-r.stop:
 			timer.Stop()
@@ -479,13 +489,28 @@ func (r *resolver) promote(ctx context.Context, task *promotionTask) error {
 
 func (r *resolver) copyWithYield(ctx context.Context, dst io.Writer, src io.Reader, buffer []byte, task *promotionTask) (int64, error) {
 	var written int64
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
 	for {
 		for r.sourceStreams.Load() > 0 || r.paused.Load() {
-			timer := time.NewTimer(10 * time.Millisecond)
+			if timer == nil {
+				timer = time.NewTimer(250 * time.Millisecond)
+			} else {
+				timer.Reset(250 * time.Millisecond)
+			}
 			select {
 			case <-ctx.Done():
 				timer.Stop()
 				return written, ctx.Err()
+			case <-r.stop:
+				timer.Stop()
+				return written, context.Canceled
+			case <-r.control:
+				timer.Stop()
 			case <-timer.C:
 			}
 		}

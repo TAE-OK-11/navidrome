@@ -220,27 +220,10 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 			content = source
 		}
 		started := time.Now()
-		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
 		if observed != nil {
-			cancelled := r.Context().Err() != nil || expectedClientDisconnect(observed.writeErr)
-			observation.Elapsed = time.Since(started)
-			observation.TTFB = observed.ttfb()
-			observation.Cancelled = cancelled
-			observation.BytesExpected = observed.bytes
-			observation.Sendfile = observed.readerFromUsed && observed.readerFromFast
-			hotcache.ObservePlayback(s.ReadCloser, ctx, observation)
-			if observed.writeErr != nil {
-				if cancelled {
-					hotcache.RecordTransportEvent(true, "expected_broken_pipe", "client_cancelled", s.mf.ID, observed.writeErr.Error())
-					log.Debug(ctx, "Direct stream ended after client cancellation", "mediaID", s.mf.ID, observed.writeErr)
-				} else {
-					hotcache.RecordTransportEvent(false, "unexpected_broken_pipe", "transport_error", s.mf.ID, observed.writeErr.Error())
-					log.Warn(ctx, "Unexpected direct stream transport error", "mediaID", s.mf.ID, observed.writeErr)
-				}
-			} else if cancelled {
-				hotcache.RecordTransportEvent(true, "client_cancelled", "context_cancelled", s.mf.ID, "request context cancelled")
-			}
+			defer s.finishPlaybackObservation(ctx, r, observed, observation, started)
 		}
+		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
 		return -1, nil
 	}
 
@@ -278,6 +261,29 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		log.Trace(ctx, "Success sending transcoded file", "id", id, "size", c)
 	}
 	return c, nil
+}
+
+func (s *Stream) finishPlaybackObservation(ctx context.Context, r *http.Request, observed *observedResponseWriter,
+	observation hotcache.PlaybackObservation, started time.Time,
+) {
+	cancelled := r.Context().Err() != nil || expectedClientDisconnect(observed.writeErr)
+	observation.Elapsed = time.Since(started)
+	observation.TTFB = observed.ttfb()
+	observation.Cancelled = cancelled
+	observation.BytesExpected = observed.bytes
+	observation.Sendfile = observed.readerFromUsed && observed.readerFromFast
+	hotcache.ObservePlayback(s.ReadCloser, ctx, observation)
+	if observed.writeErr != nil {
+		if cancelled {
+			hotcache.RecordTransportEvent(true, "expected_broken_pipe", "client_cancelled", s.mf.ID, observed.writeErr.Error())
+			log.Debug(ctx, "Direct stream ended after client cancellation", "mediaID", s.mf.ID, observed.writeErr)
+		} else {
+			hotcache.RecordTransportEvent(false, "unexpected_broken_pipe", "transport_error", s.mf.ID, observed.writeErr.Error())
+			log.Warn(ctx, "Unexpected direct stream transport error", "mediaID", s.mf.ID, observed.writeErr)
+		}
+	} else if cancelled {
+		hotcache.RecordTransportEvent(true, "client_cancelled", "context_cancelled", s.mf.ID, "request context cancelled")
+	}
 }
 
 // NewStream creates a non-seekable Stream from the given components.

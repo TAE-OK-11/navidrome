@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"time"
 
 	"github.com/navidrome/navidrome/consts"
@@ -73,6 +74,25 @@ var _ = Describe("Optimize", func() {
 		Expect(stat).To(Equal("3000 3000"))
 		Expect(getProperty(consts.LastDBAnalyzeAtKey)).To(Equal(now.Format(time.RFC3339Nano)))
 		Expect(getProperty(consts.DBAnalyzePendingKey)).To(Equal("0"))
+	})
+
+	It("reloads planner statistics on every configured private-cache connection", func() {
+		path := filepath.Join(GinkgoT().TempDir(), "planner.db")
+		privateDB, err := sql.Open(db.Dialect, path)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(privateDB.Close)
+		privateDB.SetMaxOpenConns(2)
+		privateDB.SetMaxIdleConns(2)
+
+		_, err = privateDB.Exec("create table probe(id integer primary key, flag int)")
+		Expect(err).ToNot(HaveOccurred())
+		_, err = privateDB.Exec("create index probe_flag_private on probe(flag)")
+		Expect(err).ToNot(HaveOccurred())
+		_, err = privateDB.Exec("analyze")
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(db.ReloadPlannerStats(ctx, privateDB)).To(Succeed())
+		Expect(privateDB.Stats().OpenConnections).To(Equal(2))
 	})
 
 	It("runs when no previous analysis was recorded", func() {

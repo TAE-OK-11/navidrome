@@ -138,8 +138,43 @@ func optimizeAt(ctx context.Context, db *sql.DB, now time.Time) error {
 	if err != nil {
 		return recordAnalyzeError(ctx, db, now, fmt.Errorf("running ANALYZE: %w", err))
 	}
+	if err = reloadPlannerStatistics(ctx, db); err != nil {
+		return recordAnalyzeError(ctx, db, now, fmt.Errorf("reloading planner statistics: %w", err))
+	}
 	if err = recordAnalyzeSuccess(ctx, db, now); err != nil {
 		return recordAnalyzeError(ctx, db, now, err)
+	}
+	return nil
+}
+
+// ANALYZE updates statistics through one pooled connection. Private-cache SQLite
+// connections keep their own in-memory planner statistics, so reload every
+// configured connection before reporting the maintenance operation as complete.
+func reloadPlannerStatistics(ctx context.Context, db *sql.DB) error {
+	stats := db.Stats()
+	connectionCount := stats.MaxOpenConnections
+	if connectionCount <= 0 {
+		connectionCount = max(1, stats.OpenConnections)
+	}
+
+	connections := make([]*sql.Conn, 0, connectionCount)
+	defer func() {
+		for _, connection := range connections {
+			_ = connection.Close()
+		}
+	}()
+
+	for range connectionCount {
+		connection, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		connections = append(connections, connection)
+	}
+	for _, connection := range connections {
+		if _, err := connection.ExecContext(ctx, "ANALYZE sqlite_schema"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -6,5 +6,6 @@ var (
 	BackupPath           = backupPath
 	OptimizeDBAt         = optimizeAt
 	OptimizeDBIfNeeded   = optimizeIfNeeded
+	ReloadPlannerStats   = reloadPlannerStatistics
 	RecordAnalyzeFailure = recordAnalyzeFailure
 )

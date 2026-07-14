@@ -55,7 +55,7 @@ func callSearch[T any](ctx context.Context, s searchFunc[T], q string, options m
 			start := time.Now()
 			*result, err = s(q, options)
 			if err != nil {
-				log.Error(ctx, "Error searching "+typ, "query", q, "elapsed", time.Since(start), err)
+				logSearchFailure(ctx, "Error searching "+typ, q, time.Since(start), err)
 			} else {
 				log.Trace(ctx, "Search for "+typ+" completed", "query", q, "elapsed", time.Since(start))
 			}
@@ -63,10 +63,25 @@ func callSearch[T any](ctx context.Context, s searchFunc[T], q string, options m
 		}
 		*result, err = s(q, options)
 		if err != nil {
-			log.Error(ctx, "Error searching", "query", q, err)
+			logSearchFailure(ctx, "Error searching", q, 0, err)
 		}
 		return nil
 	}
+}
+
+func logSearchFailure(ctx context.Context, message, query string, elapsed time.Duration, err error) {
+	args := make([]any, 0, 7)
+	args = append(args, ctx, message, "query", query)
+	if elapsed > 0 {
+		args = append(args, "elapsed", elapsed)
+	}
+	args = append(args, err)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		args[1] = "Search request canceled"
+		log.Debug(args...)
+		return
+	}
+	log.Error(args...)
 }
 
 func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderIds []int) (mediaFiles model.MediaFiles, albums model.Albums, artists model.Artists) {

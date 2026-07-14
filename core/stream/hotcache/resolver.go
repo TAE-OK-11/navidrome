@@ -134,7 +134,10 @@ func GetResolver() Resolver {
 }
 
 func GetManager() Manager {
-	manager, _ := GetResolver().(Manager)
+	manager, ok := GetResolver().(Manager)
+	if !ok {
+		return disabledResolverInstance
+	}
 	return manager
 }
 
@@ -176,6 +179,9 @@ func NewResolver() Resolver {
 // New creates an isolated original-file hot cache. Initialization failures
 // disable only this cache; direct source streaming remains available.
 func New(options Options) Resolver {
+	if !options.Enabled {
+		return disabledResolverInstance
+	}
 	options = normalizeOptions(options)
 	r := &resolver{
 		enabled:        options.Enabled,
@@ -196,9 +202,6 @@ func New(options Options) Resolver {
 	}
 	if options.EventSampleRate > 0 {
 		r.eventSampleEvery = max(1, uint64(1/options.EventSampleRate))
-	}
-	if !r.enabled {
-		return r
 	}
 	r.statsPath = filepath.Join(filepath.Dir(r.path), ".hot-cache-stats-v1.json")
 	r.queue = make(chan *promotionTask, options.QueueMax)
@@ -233,6 +236,8 @@ func New(options Options) Resolver {
 		Message: fmt.Sprintf("temporary=%d orphan=%d corrupt=%d", cleanup.TemporaryRemoved, cleanup.OrphansRemoved, cleanup.CorruptRemoved)})
 	return r
 }
+
+func (r *resolver) CacheEnabled() bool { return r.enabled }
 
 func normalizeOptions(options Options) Options {
 	hardMaxSize := mustParseDefaultSize()

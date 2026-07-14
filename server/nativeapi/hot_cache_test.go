@@ -87,6 +87,18 @@ var _ = Describe("Hot Cache administrator API", func() {
 		Expect(page.Items[1].CacheState).To(Equal("cached"))
 	})
 
+	It("does not query candidate storage while the cache is disabled", func() {
+		api := &Router{}
+		manager := &hotCacheManagerStub{disabled: true}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/candidates?search=song", nil)
+
+		api.hotCacheCandidates(manager).ServeHTTP(recorder, request)
+
+		Expect(recorder.Code).To(Equal(http.StatusOK))
+		Expect(recorder.Body.String()).To(ContainSubstring(`"items":[]`))
+	})
+
 	It("queues selected tracks once in a single request", func() {
 		repo := tests.CreateMockMediaFileRepo()
 		repo.SetData(model.MediaFiles{{ID: "song-1", AlbumID: "album-1"}, {ID: "song-2", AlbumID: "album-2"}})
@@ -121,6 +133,7 @@ type hotCacheManagerStub struct {
 	hotcache.Manager
 	states   map[string]string
 	promoted []string
+	disabled bool
 }
 
 type hotCacheWarmerStub struct {
@@ -139,6 +152,10 @@ func (m *hotCacheManagerStub) MediaStates([]string) map[string]string {
 	result := make(map[string]string, len(m.states))
 	maps.Copy(result, m.states)
 	return result
+}
+
+func (m *hotCacheManagerStub) Status() hotcache.StatusSnapshot {
+	return hotcache.StatusSnapshot{Enabled: !m.disabled}
 }
 
 func (m *hotCacheManagerStub) Promote(_ context.Context, mediaFile *model.MediaFile) error {

@@ -359,6 +359,38 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(body))
 		})
 
+		It("compresses exported M3U API responses", func() {
+			req := httptest.NewRequest(http.MethodGet, "/api/playlist/123/tracks", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+			body := strings.Repeat("#EXTINF:180,Artist - Track\n/stream/123\n", 64)
+			playlistHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "audio/x-mpegurl")
+				_, _ = w.Write([]byte(body))
+			})
+
+			compressMiddleware()(playlistHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(body))
+		})
+
+		It("compresses streaming NDJSON API responses", func() {
+			req := httptest.NewRequest(http.MethodGet, "/api/inspect", nil)
+			req.Header.Set("Accept-Encoding", "zstd")
+			rec := httptest.NewRecorder()
+			body := strings.Repeat("{\"type\":\"media\",\"ok\":true}\n", 64)
+			ndjsonHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				_, _ = w.Write([]byte(body))
+			})
+
+			compressMiddleware()(ndjsonHandler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(body))
+		})
+
 		It("uses gzip level fallback when preferred encodings are unavailable", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "gzip")
@@ -448,6 +480,35 @@ var _ = Describe("middlewares", func() {
 
 			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
 			Expect(rec.Body.String()).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("does not wrap public shared media endpoints", func() {
+			req := httptest.NewRequest(http.MethodGet, "/share/s/token", nil)
+			req.Header.Set("Accept-Encoding", "gzip, zstd, br")
+			rec := httptest.NewRecorder()
+
+			compressMiddleware()(handler).ServeHTTP(rec, req)
+
+			Expect(rec.Header().Get("Content-Encoding")).To(BeEmpty())
+			Expect(rec.Body.String()).To(Equal(strings.Repeat(responseBody, 32)))
+		})
+
+		It("preserves ReaderFrom for known binary responses", func() {
+			underlying := &readerFromResponseWriter{header: make(http.Header)}
+			writer := &compressResponseWriter{
+				ResponseWriter: underlying,
+				accepted:       acceptedCompressions{zstd: true},
+				path:           "/background-image",
+			}
+			writer.Header().Set("Content-Type", "image/jpeg")
+			body := strings.Repeat("binary-image-data", 1024)
+
+			count, err := io.Copy(writer, struct{ io.Reader }{strings.NewReader(body)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(writer.Close()).To(Succeed())
+			Expect(count).To(Equal(int64(len(body))))
+			Expect(underlying.readerFromUsed).To(BeTrue())
+			Expect(underlying.body.String()).To(Equal(body))
 		})
 
 		It("does not break streaming flush support", func() {

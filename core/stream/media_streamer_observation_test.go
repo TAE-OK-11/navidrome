@@ -60,3 +60,16 @@ func TestSeekableStreamObservesPlaybackWhenResponseWriterPanics(t *testing.T) {
 	require.Equal(t, 1, observed.begins)
 	require.Equal(t, 1, observed.observes)
 }
+
+func TestMediaStreamerBypassesDisabledHotCache(t *testing.T) {
+	directory := t.TempDir()
+	require.NoError(t, os.WriteFile(directory+"/track.flac", []byte("audio payload"), 0o600))
+	mf := &model.MediaFile{ID: "track", LibraryPath: directory, Path: "track.flac", Suffix: "flac"}
+	streamer := NewMediaStreamer(nil, nil, nil, hotcache.New(hotcache.Options{})).(*mediaStreamer)
+
+	require.Nil(t, streamer.resolver)
+	result, err := streamer.NewStream(context.Background(), mf, Request{Format: "raw"})
+	require.NoError(t, err)
+	require.IsType(t, &os.File{}, result.ReadCloser)
+	require.NoError(t, result.Close())
+}

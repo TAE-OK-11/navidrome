@@ -344,6 +344,24 @@ func TestResolverEnforcesThreeGiBHardLimit(t *testing.T) {
 	require.Equal(t, int64(3<<30), r.maxSize)
 }
 
+func TestDisabledResolverUsesDirectSourceWithoutCacheState(t *testing.T) {
+	_, mf, expected := createSource(t, "disabled", []byte("direct source payload"))
+	cachePath := filepath.Join(t.TempDir(), "must-not-exist")
+	resolver := New(Options{Enabled: false, Path: cachePath, MaxSize: 1 << 20})
+
+	require.False(t, IsEnabled(resolver))
+	require.False(t, resolver.(Manager).Status().Enabled)
+	require.Equal(t, "disabled", resolver.(Manager).Status().Health)
+	require.Equal(t, map[string]string{mf.ID: "disabled"}, resolver.(Manager).MediaStates([]string{mf.ID}))
+
+	file, err := resolver.Open(context.Background(), mf)
+	require.NoError(t, err)
+	require.IsType(t, &os.File{}, file)
+	require.Equal(t, expected, readAndClose(t, file))
+	_, err = os.Stat(cachePath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
 func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 	data := bytes.Repeat([]byte("benchmark-audio-block"), 1<<15)
 	_, mf, _ := createSource(b, "benchmark", data)
@@ -370,6 +388,26 @@ func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 				b.Fatal(err)
 			}
 			_, _ = io.Copy(io.Discard, file)
+			_ = file.Close()
+		}
+	})
+	b.Run("direct-open-close", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			file, err := os.Open(mf.AbsolutePath())
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = file.Close()
+		}
+	})
+	b.Run("resolver-disabled-open-close", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			file, err := disabled.Open(context.Background(), mf)
+			if err != nil {
+				b.Fatal(err)
+			}
 			_ = file.Close()
 		}
 	})

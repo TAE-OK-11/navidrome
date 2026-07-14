@@ -1,10 +1,27 @@
 package server
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"testing"
 )
+
+type readerFromResponseWriter struct {
+	header         http.Header
+	body           bytes.Buffer
+	readerFromUsed bool
+}
+
+func (w *readerFromResponseWriter) Header() http.Header { return w.header }
+func (*readerFromResponseWriter) WriteHeader(int)       {}
+func (w *readerFromResponseWriter) Write(p []byte) (int, error) {
+	return w.body.Write(p)
+}
+func (w *readerFromResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	w.readerFromUsed = true
+	return w.body.ReadFrom(r)
+}
 
 type benchmarkResponseWriter struct {
 	header http.Header

@@ -32,6 +32,9 @@ type MediaStreamer interface {
 type TranscodingCache cache.FileCache
 
 func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCache, resolver hotcache.Resolver) MediaStreamer {
+	if !hotcache.IsEnabled(resolver) {
+		resolver = nil
+	}
 	return &mediaStreamer{
 		ds:         ds,
 		transcoder: t,
@@ -89,14 +92,14 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 	var format string
 	var bitRate int
 	var cached bool
-	defer func() {
-		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+	if log.IsGreaterOrEqualTo(log.LevelDebug) {
+		defer func() {
 			log.Debug(ctx, "Streaming file request", "mediaID", mf.ID, "title", mf.Title, "artist", mf.Artist,
 				"format", format, "cached", cached, "bitRate", bitRate, "sampleRate", req.SampleRate,
 				"bitDepth", req.BitDepth, "channels", req.Channels, "user", userName(ctx),
 				"transcoding", format != "raw", "originalFormat", mf.Suffix, "originalBitRate", mf.BitRate)
-		}
-	}()
+		}()
+	}
 
 	format = req.Format
 	bitRate = req.BitRate
@@ -108,15 +111,25 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 	filePath := mf.AbsolutePath()
 
 	if format == "raw" {
-		log.Debug(ctx, "Streaming RAW file", "id", mf.ID, "path", filePath,
-			"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
-			"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
-			"selectedBitrate", bitRate, "selectedFormat", format)
-		f, err := ms.resolver.Open(ctx, mf)
+		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Debug(ctx, "Streaming RAW file", "id", mf.ID, "path", filePath,
+				"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
+				"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
+				"selectedBitrate", bitRate, "selectedFormat", format)
+		}
+		var f hotcache.File
+		var err error
+		if ms.resolver == nil {
+			f, err = os.Open(filePath)
+		} else {
+			f, err = ms.resolver.Open(ctx, mf)
+		}
 		if err != nil {
 			return nil, err
 		}
-		cached = hotcache.IsHit(f)
+		if ms.resolver != nil {
+			cached = hotcache.IsHit(f)
+		}
 		s.ReadCloser = f
 		s.Seeker = f
 		s.format = mf.Suffix
@@ -149,10 +162,12 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 	s.ReadCloser = r
 	s.Seeker = r.Seeker
 
-	log.Debug(ctx, "Streaming TRANSCODED file", "id", mf.ID, "path", filePath,
-		"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
-		"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
-		"selectedBitrate", bitRate, "selectedFormat", format, "cached", cached, "seekable", s.Seekable())
+	if log.IsGreaterOrEqualTo(log.LevelDebug) {
+		log.Debug(ctx, "Streaming TRANSCODED file", "id", mf.ID, "path", filePath,
+			"requestBitrate", req.BitRate, "requestFormat", req.Format, "requestOffset", req.Offset,
+			"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
+			"selectedBitrate", bitRate, "selectedFormat", format, "cached", cached, "seekable", s.Seekable())
+	}
 
 	return s, nil
 }
@@ -232,7 +247,9 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 
 	if req.Params(r).BoolOr("estimateContentLength", false) {
 		length := strconv.Itoa(s.EstimatedContentLength())
-		log.Trace(ctx, "Estimated content-length", "contentLength", length)
+		if log.IsGreaterOrEqualTo(log.LevelTrace) {
+			log.Trace(ctx, "Estimated content-length", "contentLength", length)
+		}
 		w.Header().Set("Content-Length", length)
 	}
 
@@ -258,7 +275,9 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 			"Check that ffmpeg supports the requested codec. Enable Trace logging for ffmpeg stderr details",
 			"id", id, "format", s.ContentType())
 	} else {
-		log.Trace(ctx, "Success sending transcoded file", "id", id, "size", c)
+		if log.IsGreaterOrEqualTo(log.LevelTrace) {
+			log.Trace(ctx, "Success sending transcoded file", "id", id, "size", c)
+		}
 	}
 	return c, nil
 }

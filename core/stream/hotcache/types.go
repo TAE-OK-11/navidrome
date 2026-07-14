@@ -24,6 +24,14 @@ type Resolver interface {
 	Stats() Stats
 }
 
+// IsEnabled reports whether a resolver owns an active original-file cache.
+// Callers can select a direct source-file path once during construction instead
+// of paying cache dispatch and observation costs on every stream request.
+func IsEnabled(resolver Resolver) bool {
+	state, ok := resolver.(interface{ CacheEnabled() bool })
+	return ok && state.CacheEnabled()
+}
+
 // Manager is the control-plane surface used by the administrator API. None of
 // these methods are called from direct streaming unless explicitly documented.
 type Manager interface {

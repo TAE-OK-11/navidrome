@@ -43,7 +43,9 @@ var (
 	}
 	brotliLargeWriterPool sync.Pool
 	brotliHugeWriterPool  sync.Pool
+	brotliWrapperPool     sync.Pool
 	zstdGeneralWriterPool sync.Pool
+	zstdWrapperPool       sync.Pool
 	gzipFallbackPool      sync.Pool
 	gzipWrapperPool       sync.Pool
 )
@@ -51,16 +53,12 @@ var (
 func compressMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodHead || r.Header.Get("Range") != "" {
+			if r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
 			acceptEncoding := r.Header.Get("Accept-Encoding")
 			if acceptEncoding == "" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if isMediaResponsePath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -107,12 +105,13 @@ func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
 func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompressions {
 	var accepted acceptedCompressions
 	for part := range strings.SplitSeq(acceptEncoding, ",") {
-		switch strings.TrimSpace(strings.ToLower(part)) {
-		case string(compressionBrotli):
+		part = strings.TrimSpace(part)
+		switch {
+		case strings.EqualFold(part, string(compressionBrotli)):
 			accepted.brotli = true
-		case string(compressionZstd):
+		case strings.EqualFold(part, string(compressionZstd)):
 			accepted.zstd = true
-		case string(compressionGzip):
+		case strings.EqualFold(part, string(compressionGzip)):
 			accepted.gzip = true
 		}
 	}
@@ -180,7 +179,10 @@ func isMediaResponsePath(path string) bool {
 		strings.HasSuffix(path, "/rest/download") ||
 		strings.HasSuffix(path, "/rest/getTranscodeStream") ||
 		strings.HasSuffix(path, "/rest/getCoverArt") ||
-		strings.HasSuffix(path, "/rest/getAvatar")
+		strings.HasSuffix(path, "/rest/getAvatar") ||
+		strings.Contains(path, "/share/s/") ||
+		strings.Contains(path, "/share/d/") ||
+		strings.Contains(path, "/share/img/")
 }
 
 type compressResponseWriter struct {
@@ -227,6 +229,48 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// ReadFrom preserves the underlying ResponseWriter fast path for known binary
+// responses. This matters for handlers backed by files: hiding ReaderFrom from
+// net/http disables its sendfile optimization even when compression is skipped.
+func (w *compressResponseWriter) ReadFrom(source io.Reader) (int64, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.writer != nil {
+		return io.Copy(w.writer, source)
+	}
+	if w.raw {
+		return copyResponseBody(w.ResponseWriter, source)
+	}
+
+	contentType := responseContentType(w.Header(), nil)
+	if contentType != "" && !isCompressibleResponse(w.status, w.Header(), contentType) {
+		w.raw = true
+		w.ResponseWriter.WriteHeader(w.status)
+		return copyResponseBody(w.ResponseWriter, source)
+	}
+	if contentType != "" && w.Header().Get("Content-Length") != "" {
+		if err := w.start(nil); err != nil {
+			return 0, err
+		}
+		if w.writer != nil {
+			return io.Copy(w.writer, source)
+		}
+		return copyResponseBody(w.ResponseWriter, source)
+	}
+
+	// Keep the normal response-size decision logic when the handler has not
+	// supplied enough metadata to decide without reading the body.
+	return io.Copy(struct{ io.Writer }{w}, source)
+}
+
+func copyResponseBody(destination http.ResponseWriter, source io.Reader) (int64, error) {
+	if readerFrom, ok := destination.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(source)
+	}
+	return io.Copy(struct{ io.Writer }{destination}, source)
 }
 
 func (w *compressResponseWriter) Close() error {
@@ -441,6 +485,15 @@ func isCompressibleContentType(contentType string) bool {
 		"application/x-javascript",
 		"application/manifest+json",
 		"application/problem+json",
+		"application/x-ndjson",
+		"application/yaml",
+		"application/x-yaml",
+		"application/toml",
+		"application/wasm",
+		"application/vnd.apple.mpegurl",
+		"application/x-mpegurl",
+		"audio/mpegurl",
+		"audio/x-mpegurl",
 		"image/svg+xml":
 		return true
 	default:
@@ -483,11 +536,18 @@ type pooledBrotliWriter struct {
 
 func newPooledBrotliWriter(w io.Writer, level int) io.WriteCloser {
 	pool := brotliPool(level)
+	pooled, _ := brotliWrapperPool.Get().(*pooledBrotliWriter)
+	if pooled == nil {
+		pooled = &pooledBrotliWriter{}
+	}
+	pooled.pool = pool
 	if writer, ok := pool.Get().(*brotli.Writer); ok {
 		writer.Reset(w)
-		return &pooledBrotliWriter{writer: writer, pool: pool}
+		pooled.writer = writer
+		return pooled
 	}
-	return &pooledBrotliWriter{writer: brotli.NewWriterLevel(w, level), pool: pool}
+	pooled.writer = brotli.NewWriterLevel(w, level)
+	return pooled
 }
 
 func brotliPool(level int) *sync.Pool {
@@ -506,8 +566,14 @@ func (w *pooledBrotliWriter) Flush() error {
 }
 
 func (w *pooledBrotliWriter) Close() error {
+	if w.writer == nil {
+		return nil
+	}
 	err := w.writer.Close()
 	w.pool.Put(w.writer)
+	w.writer = nil
+	w.pool = nil
+	brotliWrapperPool.Put(w)
 	return err
 }
 
@@ -517,18 +583,25 @@ type pooledZstdWriter struct {
 }
 
 func newPooledZstdWriter(w io.Writer, level int) (io.WriteCloser, error) {
+	pooled, _ := zstdWrapperPool.Get().(*pooledZstdWriter)
+	if pooled == nil {
+		pooled = &pooledZstdWriter{pool: &zstdGeneralWriterPool}
+	}
 	if writer, ok := zstdGeneralWriterPool.Get().(*zstd.Encoder); ok {
 		writer.Reset(w)
-		return &pooledZstdWriter{writer: writer, pool: &zstdGeneralWriterPool}, nil
+		pooled.writer = writer
+		return pooled, nil
 	}
 	writer, err := zstd.NewWriter(w,
 		zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)),
 		zstd.WithEncoderConcurrency(1),
 	)
 	if err != nil {
+		zstdWrapperPool.Put(pooled)
 		return nil, err
 	}
-	return &pooledZstdWriter{writer: writer, pool: &zstdGeneralWriterPool}, nil
+	pooled.writer = writer
+	return pooled, nil
 }
 
 func (w *pooledZstdWriter) Write(p []byte) (int, error) {
@@ -540,8 +613,13 @@ func (w *pooledZstdWriter) Flush() error {
 }
 
 func (w *pooledZstdWriter) Close() error {
+	if w.writer == nil {
+		return nil
+	}
 	err := w.writer.Close()
 	w.pool.Put(w.writer)
+	w.writer = nil
+	zstdWrapperPool.Put(w)
 	return err
 }
 

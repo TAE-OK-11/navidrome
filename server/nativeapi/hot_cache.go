@@ -183,6 +183,10 @@ func (api *Router) addHotCacheRoutes(r chi.Router) {
 
 func (api *Router) hotCacheCandidates(manager hotcache.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, request *http.Request) {
+		if !manager.Status().Enabled {
+			writeHotCacheJSON(w, http.StatusOK, hotCacheCandidatePage{Items: []hotCacheCandidate{}})
+			return
+		}
 		search := strings.TrimSpace(request.URL.Query().Get("search"))
 		if len([]rune(search)) < 2 {
 			writeHotCacheJSON(w, http.StatusOK, hotCacheCandidatePage{Items: []hotCacheCandidate{}})

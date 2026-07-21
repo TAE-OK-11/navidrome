@@ -29,7 +29,7 @@ var _ = Describe("HTTP server protocols", func() {
 		Expect(server.WriteTimeout).To(BeZero(), "streaming responses must not have a whole-response deadline")
 		Expect(server.Protocols.HTTP1()).To(BeTrue())
 		Expect(server.Protocols.HTTP2()).To(BeTrue())
-		Expect(server.Protocols.UnencryptedHTTP2()).To(BeTrue())
+		Expect(server.Protocols.UnencryptedHTTP2()).To(BeFalse())
 	})
 
 	It("serves HTTP/1.1 clients", func() {
@@ -52,16 +52,17 @@ var _ = Describe("HTTP server protocols", func() {
 		Expect(resp.ProtoMajor).To(Equal(1))
 	})
 
-	It("serves unencrypted HTTP/2 clients on the same listener", func() {
+	It("serves HTTP/2 clients over TLS", func() {
 		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
 		testServer.Config = newHTTPServer(testServer.Config.Handler)
-		testServer.Start()
+		testServer.EnableHTTP2 = true
+		testServer.StartTLS()
 		DeferCleanup(testServer.Close)
 
 		protocols := new(http.Protocols)
-		protocols.SetUnencryptedHTTP2(true)
+		protocols.SetHTTP2(true)
 		client := testServer.Client()
 		client.Transport.(*http.Transport).Protocols = protocols
 

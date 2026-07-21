@@ -154,7 +154,6 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)
-	protocols.SetUnencryptedHTTP2(true)
 
 	return &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,

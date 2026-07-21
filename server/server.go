@@ -36,7 +36,15 @@ type Server struct {
 	insights metrics.Insights
 }
 
-const serverStartupGracePeriod = 10 * time.Millisecond
+const (
+	serverStartupGracePeriod = 10 * time.Millisecond
+	serverIdleTimeout        = 2 * time.Minute
+	serverMaxHeaderBytes     = 32 << 10
+
+	serverTCPKeepAliveIdle     = 60 * time.Second
+	serverTCPKeepAliveInterval = 10 * time.Second
+	serverTCPKeepAliveCount    = 3
+)
 
 func New(ds model.DataStore, broker events.Broker, insights metrics.Insights) *Server {
 	s := &Server{ds: ds, broker: broker, insights: insights}
@@ -65,11 +73,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	// Mount the router for the frontend assets
 	s.MountRouter("WebUI", consts.URLPathUI, s.frontendAssetsHandler())
 
-	// Create a new http.Server with the specified read header timeout and handler
-	server := &http.Server{
-		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
-		Handler:           s.router,
-	}
+	server := newHTTPServer(s.router)
 
 	// Determine if TLS is enabled
 	tlsEnabled := tlsCert != "" && tlsKey != ""
@@ -92,7 +96,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		}
 	} else {
 		addr = fmt.Sprintf("%s:%d", addr, port)
-		listener, err = net.Listen("tcp", addr)
+		listener, err = createTCPListener(ctx, addr)
 		if err != nil {
 			return fmt.Errorf("creating tcp listener: %w", err)
 		}
@@ -124,7 +128,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Could not start server. Aborting", err)
 		return fmt.Errorf("starting server: %w", err)
 	case <-time.After(serverStartupGracePeriod):
-		log.Info(ctx, "----> Navidrome server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled)
+		log.Info(ctx, "----> Navidrome server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", server.Protocols.String())
 	}
 
 	// Wait for a signal to terminate
@@ -144,6 +148,37 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Unexpected error in http.Shutdown()", err)
 	}
 	return nil
+}
+
+func newHTTPServer(handler http.Handler) *http.Server {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	return &http.Server{
+		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
+		IdleTimeout:       serverIdleTimeout,
+		MaxHeaderBytes:    serverMaxHeaderBytes,
+		Protocols:         protocols,
+		Handler:           handler,
+	}
+}
+
+func createTCPListener(ctx context.Context, address string) (net.Listener, error) {
+	config := net.ListenConfig{
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     serverTCPKeepAliveIdle,
+			Interval: serverTCPKeepAliveInterval,
+			Count:    serverTCPKeepAliveCount,
+		},
+	}
+	listener, err := config.Listen(ctx, "tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("creating tcp listener: %w", err)
+	}
+	return listener, nil
 }
 
 func createUnixSocketFile(socketPath string, socketPerm string) (net.Listener, error) {

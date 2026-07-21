@@ -7,15 +7,71 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/navidrome/navidrome/conf/configtest"
+	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+var _ = Describe("HTTP server protocols", func() {
+	It("configures bounded headers and persistent connection timeouts", func() {
+		server := newHTTPServer(http.NotFoundHandler())
+
+		Expect(server.ReadHeaderTimeout).To(Equal(consts.ServerReadHeaderTimeout))
+		Expect(server.IdleTimeout).To(Equal(serverIdleTimeout))
+		Expect(server.MaxHeaderBytes).To(Equal(serverMaxHeaderBytes))
+		Expect(server.WriteTimeout).To(BeZero(), "streaming responses must not have a whole-response deadline")
+		Expect(server.Protocols.HTTP1()).To(BeTrue())
+		Expect(server.Protocols.HTTP2()).To(BeTrue())
+		Expect(server.Protocols.UnencryptedHTTP2()).To(BeTrue())
+	})
+
+	It("serves HTTP/1.1 clients", func() {
+		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		testServer.Config = newHTTPServer(testServer.Config.Handler)
+		testServer.Start()
+		DeferCleanup(testServer.Close)
+
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		client := testServer.Client()
+		client.Transport.(*http.Transport).Protocols = protocols
+
+		resp, err := client.Get(testServer.URL)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(resp.Body.Close)
+		Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
+		Expect(resp.ProtoMajor).To(Equal(1))
+	})
+
+	It("serves unencrypted HTTP/2 clients on the same listener", func() {
+		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		testServer.Config = newHTTPServer(testServer.Config.Handler)
+		testServer.Start()
+		DeferCleanup(testServer.Close)
+
+		protocols := new(http.Protocols)
+		protocols.SetUnencryptedHTTP2(true)
+		client := testServer.Client()
+		client.Transport.(*http.Transport).Protocols = protocols
+
+		resp, err := client.Get(testServer.URL)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(resp.Body.Close)
+		Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
+		Expect(resp.ProtoMajor).To(Equal(2))
+	})
+})
 
 var _ = Describe("createUnixSocketFile", func() {
 	var socketPath string

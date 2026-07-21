@@ -17,10 +17,10 @@ func TestAddLibraryTableBindsMusicFolder(t *testing.T) {
 	defer database.Close()
 
 	if _, err = database.Exec(`
-		create table property (id text);
-		create table media_file (id text);
-		create table album (id text);
-		create table artist (id text);
+		create table property (id text primary key);
+		create table media_file (id text primary key);
+		create table album (id text primary key);
+		create table artist (id text primary key);
 	`); err != nil {
 		t.Fatal(err)
 	}

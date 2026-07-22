@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -18,6 +19,46 @@ import (
 // subsonicAPIVersion is the Subsonic API version used for plugin calls.
 // This is defined locally to avoid import cycle with server/subsonic.
 const subsonicAPIVersion = "1.16.1"
+
+const subsonicAPIResponseBodyLimit int64 = 10 * 1024 * 1024
+
+var errSubsonicAPIResponseTooLarge = errors.New("SubsonicAPI response body exceeds limit")
+
+type cappedResponseRecorder struct {
+	*httptest.ResponseRecorder
+	limit     int64
+	remaining int64
+	err       error
+}
+
+func newCappedResponseRecorder(limit int64) *cappedResponseRecorder {
+	return &cappedResponseRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		limit:            limit,
+		remaining:        limit,
+	}
+}
+
+func (r *cappedResponseRecorder) Write(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+
+	if int64(len(p)) <= r.remaining {
+		n, err := r.ResponseRecorder.Write(p)
+		r.remaining -= int64(n)
+		return n, err
+	}
+
+	n := 0
+	if r.remaining > 0 {
+		allowed := int(r.remaining)
+		n, _ = r.ResponseRecorder.Write(p[:allowed])
+		r.remaining -= int64(n)
+	}
+	r.err = fmt.Errorf("%w: %d bytes", errSubsonicAPIResponseTooLarge, r.limit)
+	return n, r.err
+}
 
 // subsonicAPIServiceImpl implements host.SubsonicAPIService.
 // It provides plugins with access to Navidrome's Subsonic API.
@@ -53,7 +94,7 @@ func newSubsonicAPIService(pluginID string, router SubsonicRouter, ds model.Data
 // executeRequest handles URL parsing, validation, permission checks, HTTP request creation,
 // and router invocation. Shared between Call and CallRaw.
 // If setJSON is true, the 'f=json' query parameter is added.
-func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string, setJSON bool) (*httptest.ResponseRecorder, error) {
+func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string, setJSON bool) (*cappedResponseRecorder, error) {
 	if s.router == nil {
 		return nil, fmt.Errorf("SubsonicAPI router not available")
 	}
@@ -94,12 +135,11 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 		RawQuery: query.Encode(),
 	}
 
-	// Create HTTP request with a fresh context to avoid Chi RouteContext pollution.
-	// Using http.NewRequest (instead of http.NewRequestWithContext) ensures the internal
-	// SubsonicAPI call doesn't inherit routing information from the parent handler,
-	// which would cause Chi to invoke the wrong handler. Authentication context is
-	// explicitly added in the next step via request.WithInternalAuth.
-	httpReq, err := http.NewRequest("GET", finalURL.String(), nil)
+	// Preserve cancellation, deadlines, and request-scoped values while shadowing only
+	// Chi's route context. A typed nil makes the internal router build a fresh route
+	// context instead of reusing routing state from the parent handler.
+	cleanCtx := context.WithValue(ctx, chi.RouteCtxKey, (*chi.Context)(nil))
+	httpReq, err := http.NewRequestWithContext(cleanCtx, "GET", finalURL.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -108,11 +148,15 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 	authCtx := request.WithInternalAuth(httpReq.Context(), username)
 	httpReq = httpReq.WithContext(authCtx)
 
-	// Use ResponseRecorder to capture the response
-	recorder := httptest.NewRecorder()
+	// Bound captured responses before CallRaw can copy them into Wasm memory or a
+	// plugin can amplify them through base64/JSON encoding.
+	recorder := newCappedResponseRecorder(subsonicAPIResponseBodyLimit)
 
 	// Call the subsonic router
 	s.router.ServeHTTP(recorder, httpReq)
+	if recorder.err != nil {
+		return nil, recorder.err
+	}
 
 	return recorder, nil
 }

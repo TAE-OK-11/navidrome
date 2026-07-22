@@ -16,6 +16,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -66,10 +67,15 @@ func handleImageUpload(saveFn func(ctx context.Context, reader io.Reader, ext st
 			return
 		}
 		defer file.Close()
-		_, format, err := image.DecodeConfig(file)
+		config, format, err := image.DecodeConfig(file)
 		if err != nil {
 			log.Error(ctx, "Uploaded file is not a valid image", err)
 			http.Error(w, "invalid image file", http.StatusBadRequest)
+			return
+		}
+		if err := artwork.ValidateImageConfig(config); err != nil {
+			log.Warn(ctx, "Uploaded image dimensions rejected", "width", config.Width, "height", config.Height, err)
+			http.Error(w, "image dimensions exceed allowed limits", http.StatusBadRequest)
 			return
 		}
 		if seeker, ok := file.(io.Seeker); ok {

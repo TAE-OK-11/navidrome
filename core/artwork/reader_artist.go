@@ -135,7 +135,7 @@ func (a *artistReader) fromArtistArtPriority(ctx context.Context, priority strin
 			ff = append(ff, a.fromArtistImageFolder(ctx))
 		case strings.HasPrefix(pattern, "album/"):
 			if a.lib.FS != nil {
-				ff = append(ff, fromExternalFile(ctx, a.lib.FS, a.imgFiles, strings.TrimPrefix(pattern, "album/")))
+				ff = append(ff, fromExternalFile(ctx, a.lib, a.imgFiles, strings.TrimPrefix(pattern, "album/")))
 			}
 		default:
 			ff = append(ff, fromArtistFolder(ctx, a.lib.FS, a.lib.absRoot, a.artistFolder, pattern))
@@ -163,7 +163,7 @@ func fromArtistFolder(ctx context.Context, libFS fs.FS, libPath, artistFolder, p
 		rel = filepath.ToSlash(rel)
 		current := artistFolder
 		for range maxArtistFolderTraversalDepth {
-			reader, hit, err := findImageInFolder(ctx, libFS, rel, current, pattern)
+			reader, hit, err := findImageInFolder(ctx, libFS, libPath, rel, current, pattern)
 			if err == nil {
 				return reader, hit, nil
 			}
@@ -181,7 +181,7 @@ func fromArtistFolder(ctx context.Context, libFS fs.FS, libPath, artistFolder, p
 // matching image. absFolder is used only for the returned display path and log
 // messages so callers see absolute-looking paths consistent with the rest of
 // the artwork pipeline.
-func findImageInFolder(ctx context.Context, libFS fs.FS, relFolder, absFolder, pattern string) (io.ReadCloser, string, error) {
+func findImageInFolder(ctx context.Context, libFS fs.FS, libPath, relFolder, absFolder, pattern string) (io.ReadCloser, string, error) {
 	log.Trace(ctx, "looking for artist image", "pattern", pattern, "folder", absFolder)
 	globPattern := pattern
 	if relFolder != "." {
@@ -207,7 +207,7 @@ func findImageInFolder(ctx context.Context, libFS fs.FS, relFolder, absFolder, p
 	slices.SortFunc(imagePaths, compareImageFiles)
 
 	for _, p := range imagePaths {
-		f, err := libFS.Open(p)
+		f, err := openArtworkFS(libFS, libPath, p)
 		if err != nil {
 			log.Warn(ctx, "Could not open cover art file", "file", p, err)
 			continue

@@ -133,7 +133,7 @@ var _ = Describe("ShareRepository", func() {
 		})
 	})
 
-	Describe("Playlist share library scoping", func() {
+	Describe("Share owner library scoping", func() {
 		var otherLib model.Library
 		var owner model.User
 		var plsID string
@@ -145,9 +145,12 @@ var _ = Describe("ShareRepository", func() {
 			lr := NewLibraryRepository(adminCtx, GetDBXBuilder())
 			otherLib = model.Library{ID: 0, Name: "Share Other Library", Path: "/share/other/lib"}
 			Expect(lr.Put(&otherLib)).To(Succeed())
+			albumRepo := NewAlbumRepository(adminCtx, GetDBXBuilder())
+			Expect(albumRepo.Put(&model.Album{ID: "share-album-other", LibraryID: otherLib.ID, Name: "Share Other Album", AlbumArtistID: "share-artist"})).To(Succeed())
+			Expect(albumRepo.Put(&model.Album{ID: "share-album-ok", LibraryID: 1, Name: "Share OK Album", AlbumArtistID: "share-artist"})).To(Succeed())
 			mr := NewMediaFileRepository(adminCtx, GetDBXBuilder())
-			Expect(mr.Put(&model.MediaFile{ID: "share-other", LibraryID: otherLib.ID, Path: "s/other.mp3", Title: "ShareOther"})).To(Succeed())
-			Expect(mr.Put(&model.MediaFile{ID: "share-ok", LibraryID: 1, Path: "s/ok.mp3", Title: "ShareOK"})).To(Succeed())
+			Expect(mr.Put(&model.MediaFile{ID: "share-other", LibraryID: otherLib.ID, AlbumID: "share-album-other", AlbumArtistID: "share-artist", Path: "s/other.mp3", Title: "ShareOther"})).To(Succeed())
+			Expect(mr.Put(&model.MediaFile{ID: "share-ok", LibraryID: 1, AlbumID: "share-album-ok", AlbumArtistID: "share-artist", Path: "s/ok.mp3", Title: "ShareOK"})).To(Succeed())
 
 			// Non-admin owner with access to library 1 only
 			owner = createUserWithLibraries("share-owner", []int{1})
@@ -177,11 +180,13 @@ var _ = Describe("ShareRepository", func() {
 		AfterEach(func() {
 			adminCtx := request.WithUser(log.NewContext(GinkgoT().Context()), adminUser)
 			b := GetDBXBuilder()
-			_, _ = b.NewQuery(`DELETE FROM share WHERE id = 'share-scope'`).Execute()
+			_, _ = b.NewQuery(`DELETE FROM share WHERE user_id = {:user}`).Bind(map[string]any{"user": owner.ID}).Execute()
 			pr := NewPlaylistRepository(adminCtx, b)
 			_ = pr.Delete(plsID)
 			mr := NewMediaFileRepository(adminCtx, b).(*mediaFileRepository)
 			_, _ = mr.executeSQL(squirrel.Delete("media_file").Where(squirrel.Eq{"id": []string{"share-other", "share-ok"}}))
+			ar := NewAlbumRepository(adminCtx, b).(*albumRepository)
+			_, _ = ar.executeSQL(squirrel.Delete("album").Where(squirrel.Eq{"id": []string{"share-album-other", "share-album-ok"}}))
 			lr := NewLibraryRepository(adminCtx, b).(*libraryRepository)
 			_ = lr.delete(squirrel.Eq{"id": otherLib.ID})
 			_ = NewUserRepository(adminCtx, b).Delete(owner.ID)
@@ -197,6 +202,77 @@ var _ = Describe("ShareRepository", func() {
 			Expect(share.Tracks).To(ContainElement(HaveField("ID", "share-ok")))
 			Expect(share.Tracks).ToNot(ContainElement(HaveField("ID", "share-other")),
 				"a track outside the owner's libraries must not appear in the share")
+		})
+
+		It("applies the owner's libraries to media-file shares", func() {
+			_, err := GetDBXBuilder().NewQuery(`
+				INSERT INTO share (id, user_id, description, resource_type, resource_ids, created_at, updated_at)
+				VALUES ({:id}, {:user}, {:desc}, {:type}, {:ids}, {:created}, {:updated})
+			`).Bind(map[string]any{
+				"id": "share-media-scope", "user": owner.ID, "desc": "Media scope",
+				"type": "media_file", "ids": "share-ok,share-other", "created": time.Now(), "updated": time.Now(),
+			}).Execute()
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() { _, _ = GetDBXBuilder().NewQuery(`DELETE FROM share WHERE id = 'share-media-scope'`).Execute() })
+
+			headlessRepo := NewShareRepository(GinkgoT().Context(), GetDBXBuilder())
+			share, err := headlessRepo.Get("share-media-scope")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.Tracks).To(ConsistOf(HaveField("ID", "share-ok")))
+		})
+
+		It("applies the owner's libraries to album and artist shares", func() {
+			for _, row := range []struct {
+				id, resourceType, resourceIDs string
+			}{
+				{id: "share-album-scope", resourceType: "album", resourceIDs: "share-album-ok,share-album-other"},
+				{id: "share-artist-scope", resourceType: "artist", resourceIDs: "share-artist"},
+			} {
+				_, err := GetDBXBuilder().NewQuery(`
+					INSERT INTO share (id, user_id, description, resource_type, resource_ids, created_at, updated_at)
+					VALUES ({:id}, {:user}, {:desc}, {:type}, {:ids}, {:created}, {:updated})
+				`).Bind(map[string]any{
+					"id": row.id, "user": owner.ID, "desc": "Scope",
+					"type": row.resourceType, "ids": row.resourceIDs, "created": time.Now(), "updated": time.Now(),
+				}).Execute()
+				Expect(err).ToNot(HaveOccurred())
+				id := row.id
+				DeferCleanup(func() {
+					_, _ = GetDBXBuilder().NewQuery(`DELETE FROM share WHERE id = {:id}`).Bind(map[string]any{"id": id}).Execute()
+				})
+
+				headlessRepo := NewShareRepository(GinkgoT().Context(), GetDBXBuilder())
+				share, err := headlessRepo.Get(row.id)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(share.Albums).To(ConsistOf(HaveField("ID", "share-album-ok")))
+				Expect(share.Tracks).To(ConsistOf(HaveField("ID", "share-ok")))
+			}
+		})
+
+		It("stops loading media after the owner's library access is revoked", func() {
+			_, err := GetDBXBuilder().NewQuery(`
+				INSERT INTO share (id, user_id, description, resource_type, resource_ids, created_at, updated_at)
+				VALUES ({:id}, {:user}, {:desc}, {:type}, {:ids}, {:created}, {:updated})
+			`).Bind(map[string]any{
+				"id": "share-revoked-scope", "user": owner.ID, "desc": "Revocation scope",
+				"type": "media_file", "ids": "share-ok", "created": time.Now(), "updated": time.Now(),
+			}).Execute()
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = GetDBXBuilder().NewQuery(`DELETE FROM share WHERE id = 'share-revoked-scope'`).Execute()
+			})
+
+			headlessRepo := NewShareRepository(GinkgoT().Context(), GetDBXBuilder())
+			share, err := headlessRepo.Get("share-revoked-scope")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.Tracks).To(ConsistOf(HaveField("ID", "share-ok")))
+
+			adminCtx := request.WithUser(log.NewContext(GinkgoT().Context()), adminUser)
+			ur := NewUserRepository(adminCtx, GetDBXBuilder())
+			Expect(ur.SetUserLibraries(owner.ID, nil)).To(Succeed())
+			share, err = headlessRepo.Get("share-revoked-scope")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(share.Tracks).To(BeEmpty())
 		})
 
 		It("returns no tracks when the playlist is not visible to the owner", func() {

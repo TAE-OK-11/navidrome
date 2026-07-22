@@ -31,14 +31,17 @@ import (
 var (
 	ErrNoUsers         = errors.New("no users created")
 	ErrUnauthenticated = errors.New("request not authenticated")
+	errAdminExists     = errors.New("initial admin already exists")
 )
+
+const maxAuthRequestBodySize = 8 << 10
 
 func login(ds model.DataStore) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		username, password, err := getCredentialsFromBody(r)
+		username, password, err := getCredentialsFromBody(w, r)
 		if err != nil {
 			log.Error(r, "Parsing request body", err)
-			_ = rest.RespondWithError(w, http.StatusUnprocessableEntity, err.Error())
+			respondCredentialDecodeError(w, err)
 			return
 		}
 
@@ -94,11 +97,16 @@ func buildAuthPayload(user *model.User) map[string]any {
 	return payload
 }
 
-func getCredentialsFromBody(r *http.Request) (username string, password string, err error) {
+func getCredentialsFromBody(w http.ResponseWriter, r *http.Request) (username string, password string, err error) {
 	data := make(map[string]string)
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBodySize)
 	decoder := json.NewDecoder(r.Body)
 	if err = decoder.Decode(&data); err != nil {
 		log.Error(r, "parsing request body", err)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return "", "", err
+		}
 		err = errors.New("invalid request payload")
 		return
 	}
@@ -107,24 +115,37 @@ func getCredentialsFromBody(r *http.Request) (username string, password string, 
 	return username, password, nil
 }
 
+func respondCredentialDecodeError(w http.ResponseWriter, err error) {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		_ = rest.RespondWithError(w, http.StatusRequestEntityTooLarge, "Request body too large")
+		return
+	}
+	_ = rest.RespondWithError(w, http.StatusUnprocessableEntity, "Invalid request payload")
+}
+
 func createAdmin(ds model.DataStore) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		username, password, err := getCredentialsFromBody(r)
+		username, password, err := getCredentialsFromBody(w, r)
 		if err != nil {
 			log.Error(r, "parsing request body", err)
-			_ = rest.RespondWithError(w, http.StatusUnprocessableEntity, err.Error())
+			respondCredentialDecodeError(w, err)
 			return
 		}
-		c, err := ds.User(r.Context()).CountAll()
-		if err != nil {
-			_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if c > 0 {
+		err = ds.WithTxImmediate(func(tx model.DataStore) error {
+			c, err := tx.User(r.Context()).CountAll()
+			if err != nil {
+				return err
+			}
+			if c > 0 {
+				return errAdminExists
+			}
+			return createAdminUser(r.Context(), tx, username, password)
+		}, "create initial admin")
+		if errors.Is(err, errAdminExists) {
 			_ = rest.RespondWithError(w, http.StatusForbidden, "Cannot create another first admin")
 			return
 		}
-		err = createAdminUser(r.Context(), ds, username, password)
 		if err != nil {
 			_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -149,7 +170,7 @@ func createAdminUser(ctx context.Context, ds model.DataStore, username, password
 	if err != nil {
 		log.Error(ctx, "Could not create initial user", "user", initialUser, err)
 	}
-	return nil
+	return err
 }
 
 func validateLogin(userRepo model.UserRepository, userName, password string) (*model.User, error) {
@@ -304,24 +325,38 @@ func handleLoginFromHeaders(ds model.DataStore, r *http.Request) map[string]any 
 	user, err := userRepo.FindByUsernameWithPassword(username)
 	if user == nil || err != nil {
 		log.Info(r, "User passed in header not found", "user", username)
-		// Check if this is the first user being created
-		count, _ := userRepo.CountAll()
-		isFirstUser := count == 0
+		err = ds.WithTxImmediate(func(tx model.DataStore) error {
+			txUserRepo := tx.User(r.Context())
+			user, err = txUserRepo.FindByUsernameWithPassword(username)
+			if err == nil && user != nil {
+				return nil
+			}
+			if err != nil && !errors.Is(err, model.ErrNotFound) {
+				return err
+			}
 
-		newUser := model.User{
-			ID:          id.NewRandom(),
-			UserName:    username,
-			Name:        username,
-			Email:       "",
-			NewPassword: consts.PasswordAutogenPrefix + id.NewRandom(),
-			IsAdmin:     isFirstUser, // Make the first user an admin
-		}
-		err := userRepo.Put(&newUser)
+			count, err := txUserRepo.CountAll()
+			if err != nil {
+				return err
+			}
+			newUser := model.User{
+				ID:          id.NewRandom(),
+				UserName:    username,
+				Name:        username,
+				Email:       "",
+				NewPassword: consts.PasswordAutogenPrefix + id.NewRandom(),
+				IsAdmin:     count == 0,
+			}
+			if err = txUserRepo.Put(&newUser); err != nil {
+				return err
+			}
+			user, err = txUserRepo.FindByUsernameWithPassword(username)
+			return err
+		}, "create external authentication user")
 		if err != nil {
 			log.Error(r, "Could not create new user", "user", username, err)
 			return nil
 		}
-		user, err = userRepo.FindByUsernameWithPassword(username)
 		if user == nil || err != nil {
 			log.Error(r, "Created user but failed to fetch it", "user", username)
 			return nil

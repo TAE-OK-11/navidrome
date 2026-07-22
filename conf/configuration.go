@@ -394,9 +394,12 @@ func Load(noConfigDump bool) {
 		if mkErr := os.MkdirAll(filepath.Dir(Server.LogFile), os.ModePerm); mkErr != nil {
 			logFatal(fmt.Sprintf("Error creating log file directory: %s", mkErr.Error()))
 		}
-		out, err = os.OpenFile(Server.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		out, err = os.OpenFile(Server.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
 			logFatal(fmt.Sprintf("Error opening log file %s: %s", Server.LogFile, err.Error()))
+		}
+		if chmodErr := out.Chmod(0600); chmodErr != nil {
+			logFatal(fmt.Sprintf("Error securing log file %s: %s", Server.LogFile, chmodErr.Error()))
 		}
 		log.SetOutput(out)
 	} else if os.Getenv("ND_SYSTEMD_PRIORITY_LOGGING") != "" && os.Getenv("JOURNAL_STREAM") != "" {
@@ -856,9 +859,9 @@ func setViperDefaults() {
 	viper.SetDefault("subsonic.enableaveragerating", true)
 	viper.SetDefault("subsonic.legacyclients", "DSub")
 	viper.SetDefault("subsonic.minimalclients", "SubMusic")
-	viper.SetDefault("transcoding.maxconcurrent", 0)
-	viper.SetDefault("transcoding.maxconcurrentperuser", 0)
-	viper.SetDefault("transcoding.enablecancellation", false)
+	viper.SetDefault("transcoding.maxconcurrent", max(1, min(runtime.NumCPU(), 4)))
+	viper.SetDefault("transcoding.maxconcurrentperuser", 2)
+	viper.SetDefault("transcoding.enablecancellation", true)
 	viper.SetDefault("hotcache.enabled", false)
 	viper.SetDefault("hotcache.path", "")
 	viper.SetDefault("hotcache.maxsize", "3GiB")

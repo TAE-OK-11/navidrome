@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/model"
@@ -69,6 +70,28 @@ var _ = Describe("Share", func() {
 				_, err := repo.Save(entity)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(entity.Contents).To(Equal("私の中の幻想的世界観及びその顕現を想起させたある現実で..."))
+			})
+
+			It("validates every resource ID before persisting the share", func() {
+				entity := &model.Share{Description: "test", ResourceIDs: "123,missing"}
+				_, err := repo.Save(entity)
+				Expect(err).To(MatchError(model.ErrNotFound))
+			})
+
+			It("rejects resource IDs that resolve to different types", func() {
+				_ = ds.MediaFile(ctx).Put(&model.MediaFile{ID: "456", Title: "Track"})
+				entity := &model.Share{Description: "test", ResourceIDs: "123,456"}
+				_, err := repo.Save(entity)
+				var validationErr *rest.ValidationError
+				Expect(errors.As(err, &validationErr)).To(BeTrue())
+			})
+
+			It("preserves valid multi-resource shares of one type", func() {
+				_ = ds.Album(ctx).Put(&model.Album{ID: "124", Name: "Second Album"})
+				entity := &model.Share{Description: "test", ResourceIDs: "123,124"}
+				_, err := repo.Save(entity)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(entity.ResourceType).To(Equal("album"))
 			})
 		})
 

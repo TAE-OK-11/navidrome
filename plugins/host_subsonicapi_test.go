@@ -3,14 +3,19 @@
 package plugins
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"path/filepath"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/model"
@@ -446,6 +451,63 @@ var _ = Describe("SubsonicAPIService", func() {
 			_, err := service.Call(ctx, "/ping?u=testuser")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("router not available"))
+		})
+	})
+
+	Describe("Internal Request Safety", func() {
+		It("preserves cancellation from the plugin callback context", func() {
+			started := make(chan struct{})
+			observed := make(chan error, 1)
+			blockingRouter := http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+				close(started)
+				<-req.Context().Done()
+				observed <- req.Context().Err()
+			})
+			service := newSubsonicAPIService("test-plugin", blockingRouter, dataStore, nil, true)
+			ctx, cancel := context.WithCancel(GinkgoT().Context())
+			DeferCleanup(cancel)
+
+			done := make(chan error, 1)
+			go func() {
+				_, err := service.Call(ctx, "/ping?u=testuser")
+				done <- err
+			}()
+
+			Eventually(started).Should(BeClosed())
+			cancel()
+			Eventually(observed).Should(Receive(Equal(context.Canceled)))
+			Eventually(done).Should(Receive(BeNil()))
+		})
+
+		It("removes parent Chi routing state without dropping the parent context", func() {
+			internalRouter := chi.NewRouter()
+			internalRouter.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("pong"))
+			})
+			service := newSubsonicAPIService("test-plugin", internalRouter, dataStore, nil, true)
+
+			outerRouter := chi.NewRouter()
+			outerRouter.Get("/invoke", func(w http.ResponseWriter, req *http.Request) {
+				response, err := service.Call(req.Context(), "/ping?u=testuser")
+				Expect(err).ToNot(HaveOccurred())
+				_, _ = w.Write([]byte(response))
+			})
+
+			recorder := httptest.NewRecorder()
+			outerRouter.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/invoke", nil))
+			Expect(recorder.Code).To(Equal(http.StatusOK))
+			Expect(recorder.Body.String()).To(Equal("pong"))
+		})
+
+		It("rejects responses that exceed the capture limit", func() {
+			largeRouter := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(bytes.Repeat([]byte{'x'}, int(subsonicAPIResponseBodyLimit+1)))
+			})
+			service := newSubsonicAPIService("test-plugin", largeRouter, dataStore, nil, true)
+
+			_, _, err := service.CallRaw(GinkgoT().Context(), "/download?u=testuser")
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, errSubsonicAPIResponseTooLarge)).To(BeTrue())
 		})
 	})
 })

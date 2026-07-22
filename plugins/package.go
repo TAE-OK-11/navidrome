@@ -16,6 +16,9 @@ const (
 
 	// wasmFileName is the name of the WebAssembly module inside the package.
 	wasmFileName = "plugin.wasm"
+
+	maxManifestUncompressedSize = 1 << 20  // 1 MiB
+	maxWASMUncompressedSize     = 64 << 20 // 64 MiB
 )
 
 // ndpPackage represents a loaded .ndp plugin package.
@@ -35,29 +38,23 @@ func openPackage(ndpPath string) (*ndpPackage, error) {
 	}
 	defer zr.Close()
 
-	var manifestBytes []byte
-	var wasmBytes []byte
-
-	for _, f := range zr.File {
-		switch f.Name {
-		case manifestFileName:
-			manifestBytes, err = readZipFile(f)
-			if err != nil {
-				return nil, fmt.Errorf("reading manifest: %w", err)
-			}
-		case wasmFileName:
-			wasmBytes, err = readZipFile(f)
-			if err != nil {
-				return nil, fmt.Errorf("reading wasm: %w", err)
-			}
-		}
+	manifestFile, wasmFile, err := findPackageFiles(zr.File)
+	if err != nil {
+		return nil, err
 	}
-
-	if manifestBytes == nil {
+	if manifestFile == nil {
 		return nil, errors.New("package missing manifest.json")
 	}
-	if wasmBytes == nil {
+	if wasmFile == nil {
 		return nil, errors.New("package missing plugin.wasm")
+	}
+	manifestBytes, err := readZipFile(manifestFile, maxManifestUncompressedSize)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	wasmBytes, err := readZipFile(wasmFile, maxWASMUncompressedSize)
+	if err != nil {
+		return nil, fmt.Errorf("reading wasm: %w", err)
 	}
 
 	// Parse and validate manifest
@@ -83,31 +80,64 @@ func ReadManifest(ndpPath string) (*Manifest, error) {
 	}
 	defer zr.Close()
 
-	for _, f := range zr.File {
-		if f.Name == manifestFileName {
-			manifestBytes, err := readZipFile(f)
-			if err != nil {
-				return nil, fmt.Errorf("reading manifest: %w", err)
-			}
-
-			manifest, err := ParseManifest(manifestBytes)
-			if err != nil {
-				return nil, fmt.Errorf("parsing manifest: %w", err)
-			}
-
-			return manifest, nil
-		}
+	manifestFile, _, err := findPackageFiles(zr.File)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, errors.New("package missing manifest.json")
+	if manifestFile == nil {
+		return nil, errors.New("package missing manifest.json")
+	}
+	manifestBytes, err := readZipFile(manifestFile, maxManifestUncompressedSize)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	manifest, err := ParseManifest(manifestBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+	return manifest, nil
 }
 
-// readZipFile reads the contents of a file from a zip archive.
-func readZipFile(f *zip.File) ([]byte, error) {
+func findPackageFiles(files []*zip.File) (manifest, wasm *zip.File, err error) {
+	for _, f := range files {
+		switch f.Name {
+		case manifestFileName:
+			if manifest != nil {
+				return nil, nil, fmt.Errorf("package contains duplicate %s", manifestFileName)
+			}
+			manifest = f
+		case wasmFileName:
+			if wasm != nil {
+				return nil, nil, fmt.Errorf("package contains duplicate %s", wasmFileName)
+			}
+			wasm = f
+		}
+	}
+	return manifest, wasm, nil
+}
+
+// readZipFile reads a bounded file from a zip archive. The metadata check
+// rejects obvious bombs early; the streaming limit also protects against
+// malformed archives whose declared size is inaccurate.
+func readZipFile(f *zip.File, maxSize int64) ([]byte, error) {
+	if f.UncompressedSize64 > uint64(maxSize) {
+		return nil, fmt.Errorf("%s uncompressed size %d exceeds limit %d", f.Name, f.UncompressedSize64, maxSize)
+	}
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	return io.ReadAll(rc)
+	return readLimited(rc, maxSize)
+}
+
+func readLimited(r io.Reader, maxSize int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxSize {
+		return nil, fmt.Errorf("uncompressed content exceeds limit %d", maxSize)
+	}
+	return data, nil
 }

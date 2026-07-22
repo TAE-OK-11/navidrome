@@ -53,7 +53,7 @@ func (f sourceFunc) String() string {
 	return name
 }
 
-func fromExternalFile(ctx context.Context, libFS fs.FS, files []string, pattern string) sourceFunc {
+func fromExternalFile(ctx context.Context, lib libraryView, files []string, pattern string) sourceFunc {
 	return func() (io.ReadCloser, string, error) {
 		for _, file := range files {
 			_, name := filepath.Split(file)
@@ -65,7 +65,7 @@ func fromExternalFile(ctx context.Context, libFS fs.FS, files []string, pattern 
 			if !match {
 				continue
 			}
-			f, err := libFS.Open(file)
+			f, err := lib.OpenArtwork(file)
 			if err != nil {
 				log.Warn(ctx, "Could not open cover art file", "file", file, err)
 				continue
@@ -210,7 +210,7 @@ func fromAlbumExternalSource(ctx context.Context, al model.Album, provider exter
 }
 
 func fromURL(ctx context.Context, imageUrl *url.URL) (io.ReadCloser, string, error) {
-	hc := http.Client{Timeout: 5 * time.Second}
+	hc := newArtworkHTTPClient()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, imageUrl.String(), nil)
 	req.Header.Set("User-Agent", consts.HTTPUserAgent)
 	resp, err := hc.Do(req) //nolint:gosec
@@ -221,5 +221,10 @@ func fromURL(ctx context.Context, imageUrl *url.URL) (io.ReadCloser, string, err
 		resp.Body.Close()
 		return nil, "", fmt.Errorf("error retrieving artwork from %s: %s", imageUrl, resp.Status)
 	}
-	return resp.Body, imageUrl.String(), nil
+	body, err := boundedArtworkResponse(resp)
+	if err != nil {
+		resp.Body.Close()
+		return nil, "", err
+	}
+	return body, imageUrl.String(), nil
 }

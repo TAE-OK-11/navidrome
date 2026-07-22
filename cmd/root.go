@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -160,14 +161,32 @@ func startServer(ctx context.Context) func() error {
 			p.WriteInitialMetrics(ctx)
 			a.MountRouter("Prometheus metrics", conf.Server.Prometheus.MetricsPath, p.GetHandler())
 		}
-		if conf.Server.DevEnableProfiler {
+		if conf.Server.DevEnableProfiler && profilerAllowedAddress(conf.Server.Address) {
 			a.MountRouter("Profiling", "/debug", middleware.Profiler())
+		} else if conf.Server.DevEnableProfiler {
+			log.Warn("Profiler disabled because the server address is not loopback-only", "address", conf.Server.Address)
 		}
 		if strings.HasPrefix(conf.Server.UILoginBackgroundURL, "/") {
 			a.MountRouter("Background images", conf.Server.UILoginBackgroundURL, backgrounds.NewHandler())
 		}
 		return a.Run(ctx, conf.Server.Address, conf.Server.Port, conf.Server.TLSCert, conf.Server.TLSKey)
 	}
+}
+
+func profilerAllowedAddress(address string) bool {
+	if strings.HasPrefix(address, "unix:") {
+		return true
+	}
+	host := strings.TrimSpace(address)
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // schedulePeriodicScan schedules a periodic scan of the music library, if configured.

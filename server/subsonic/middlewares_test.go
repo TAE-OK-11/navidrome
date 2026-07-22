@@ -194,6 +194,22 @@ var _ = Describe("Middlewares", func() {
 				Expect(w.Body.String()).To(ContainSubstring(`code="40"`))
 				Expect(next.called).To(BeFalse())
 			})
+
+			It("rate limits repeated failed credentials without limiting successful requests", func() {
+				DeferCleanup(configtest.SetupConfig())
+				conf.Server.AuthRequestLimit = 2
+				conf.Server.AuthWindowLength = time.Minute
+				cp := authenticate(ds)(next)
+
+				for range 2 {
+					cp.ServeHTTP(httptest.NewRecorder(), newGetRequest("u=admin", "p=INVALID"))
+				}
+				limited := httptest.NewRecorder()
+				cp.ServeHTTP(limited, newGetRequest("u=admin", "p=wordpass"))
+
+				Expect(limited.Header().Get("Retry-After")).NotTo(BeEmpty())
+				Expect(next.called).To(BeFalse())
+			})
 		})
 
 		When("using token authentication", func() {
@@ -349,6 +365,58 @@ var _ = Describe("Middlewares", func() {
 
 			Expect(w.Body.String()).To(ContainSubstring(`code="0"`))
 			Expect(next.called).To(BeFalse())
+		})
+	})
+
+	Describe("RejectCrossSiteProxyMutation", func() {
+		BeforeEach(func() {
+			DeferCleanup(configtest.SetupConfig())
+			conf.Server.ExtAuth.TrustedSources = "192.168.1.1/32"
+			conf.Server.ExtAuth.UserHeader = "Remote-User"
+		})
+
+		It("rejects cross-site browser requests authenticated by the trusted proxy", func() {
+			r := newGetRequest()
+			r.Header.Set("Remote-User", "admin")
+			r.Header.Set("Sec-Fetch-Site", "cross-site")
+			r = r.WithContext(request.WithReverseProxyIp(r.Context(), "192.168.1.1"))
+
+			rejectCrossSiteProxyMutation(next).ServeHTTP(w, r)
+
+			Expect(w.Body.String()).To(ContainSubstring(`code="50"`))
+			Expect(next.called).To(BeFalse())
+		})
+
+		It("allows same-site proxy requests", func() {
+			r := newGetRequest()
+			r.Header.Set("Remote-User", "admin")
+			r.Header.Set("Sec-Fetch-Site", "same-origin")
+			r = r.WithContext(request.WithReverseProxyIp(r.Context(), "192.168.1.1"))
+
+			rejectCrossSiteProxyMutation(next).ServeHTTP(w, r)
+
+			Expect(next.called).To(BeTrue())
+		})
+
+		It("rejects a cross-origin proxy request even without Fetch Metadata", func() {
+			r := newGetRequest()
+			r.Header.Set("Remote-User", "admin")
+			r.Header.Set("Origin", "https://attacker.example")
+			r = r.WithContext(request.WithReverseProxyIp(r.Context(), "192.168.1.1"))
+
+			rejectCrossSiteProxyMutation(next).ServeHTTP(w, r)
+
+			Expect(w.Body.String()).To(ContainSubstring(`code="50"`))
+			Expect(next.called).To(BeFalse())
+		})
+
+		It("does not affect explicit Subsonic credentials", func() {
+			r := newGetRequest("u=admin", "p=wordpass")
+			r.Header.Set("Sec-Fetch-Site", "cross-site")
+
+			rejectCrossSiteProxyMutation(next).ServeHTTP(w, r)
+
+			Expect(next.called).To(BeTrue())
 		})
 	})
 

@@ -259,5 +259,18 @@ var _ = Describe("Logger", func() {
 			msg := "getLyrics.view?v=1.2.0&c=iSub&u=user_name&p=first%20and%20other%20words&title=Title"
 			Expect(Redact(msg)).To(Equal("getLyrics.view?v=1.2.0&c=iSub&u=user_name&p=[REDACTED]&title=Title"))
 		})
+
+		DescribeTable("redacts secrets with punctuation and callback credentials",
+			func(input, secret string) {
+				output := Redact(input)
+				Expect(output).NotTo(ContainSubstring(secret))
+				Expect(output).To(ContainSubstring("[REDACTED]"))
+			},
+			Entry("serialized bearer header", `{"Authorization":["Bearer eyJhbGciOi.test-token"]}`, "eyJhbGciOi.test-token"),
+			Entry("Last.fm callback token", `/callback?uid=user-1&token=a.b-c_123`, "a.b-c_123"),
+			Entry("Prometheus password", `Prometheus:{Password:"p@ss-word.with:punc"}`, "p@ss-word.with:punc"),
+			Entry("API key", `ApiKey:"key.with-punctuation/and+symbols"`, "key.with-punctuation/and+symbols"),
+			Entry("secret", `Secret:"secret.with-punctuation/and+symbols"`, "secret.with-punctuation/and+symbols"),
+		)
 	})
 })

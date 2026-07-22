@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -60,6 +62,65 @@ var _ = Describe("Auth", func() {
 				Expect(parsed["name"]).To(Equal("Johndoe"))
 				Expect(parsed["id"]).ToNot(BeEmpty())
 				Expect(parsed["token"]).ToNot(BeEmpty())
+			})
+		})
+
+		Describe("bootstrap security controls", func() {
+			It("rejects oversized login and create-admin credential bodies before reading them fully", func() {
+				for path, handler := range map[string]func(model.DataStore) func(http.ResponseWriter, *http.Request){
+					"/login":       login,
+					"/createAdmin": createAdmin,
+				} {
+					req := httptest.NewRequest("POST", path, strings.NewReader(`{"username":"`+strings.Repeat("a", maxAuthRequestBodySize)+`","password":"secret"}`))
+					resp := httptest.NewRecorder()
+
+					handler(&tests.MockDataStore{})(resp, req)
+
+					Expect(resp.Code).To(Equal(http.StatusRequestEntityTooLarge), path)
+				}
+			})
+
+			It("returns the repository error when creating the initial admin fails", func() {
+				repo := tests.CreateMockUserRepo()
+				repo.Error = errors.New("put failed")
+				ds := &tests.MockDataStore{MockedUser: repo}
+
+				err := createAdminUser(context.Background(), ds, "johndoe", "secret")
+
+				Expect(err).To(MatchError("put failed"))
+			})
+
+			It("serializes concurrent initial-admin creation", func() {
+				repo := newSynchronizedUserRepo()
+				base := &tests.MockDataStore{MockedUser: repo}
+				ds := &serializedImmediateDataStore{DataStore: base}
+				start := make(chan struct{})
+				codes := make(chan int, 2)
+				var wg sync.WaitGroup
+
+				for i, username := range []string{"legitimate", "racer"} {
+					wg.Add(1)
+					go func(i int, username string) {
+						defer wg.Done()
+						<-start
+						req := httptest.NewRequest("POST", "/createAdmin", strings.NewReader(fmt.Sprintf(`{"username":%q,"password":%q}`, username, fmt.Sprintf("secret-%d", i))))
+						resp := httptest.NewRecorder()
+						createAdmin(ds)(resp, req)
+						codes <- resp.Code
+					}(i, username)
+				}
+				close(start)
+				wg.Wait()
+				close(codes)
+
+				var gotCodes []int
+				for code := range codes {
+					gotCodes = append(gotCodes, code)
+				}
+				Expect(gotCodes).To(ConsistOf(http.StatusOK, http.StatusForbidden))
+				Expect(repo.userCount()).To(Equal(1))
+				Expect(repo.adminCount()).To(Equal(1))
+				Expect(ds.immediateCalls).To(Equal(2))
 			})
 		})
 
@@ -341,5 +402,127 @@ var _ = Describe("Auth", func() {
 			Expect(err).To(BeNil())
 			Expect(u.IsAdmin).To(BeFalse())
 		})
+
+		It("serializes concurrent external-auth first-user creation", func() {
+			repo := newSynchronizedUserRepo()
+			base := &tests.MockDataStore{MockedUser: repo}
+			ds := &serializedImmediateDataStore{DataStore: base}
+			start := make(chan struct{})
+			results := make(chan map[string]any, 2)
+			var wg sync.WaitGroup
+
+			for _, username := range []string{"external-one", "external-two"} {
+				wg.Add(1)
+				go func(username string) {
+					defer wg.Done()
+					<-start
+					req := httptest.NewRequest("GET", "/", nil)
+					req = req.WithContext(request.WithReverseProxyIp(req.Context(), trustedIP))
+					req.Header.Set("Remote-User", username)
+					results <- handleLoginFromHeaders(ds, req)
+				}(username)
+			}
+			close(start)
+			wg.Wait()
+			close(results)
+
+			var adminResults int
+			for result := range results {
+				Expect(result).ToNot(BeNil())
+				if result["isAdmin"] == true {
+					adminResults++
+				}
+			}
+			Expect(adminResults).To(Equal(1))
+			Expect(repo.userCount()).To(Equal(2))
+			Expect(repo.adminCount()).To(Equal(1))
+			Expect(ds.immediateCalls).To(Equal(2))
+		})
 	})
 })
+
+type serializedImmediateDataStore struct {
+	model.DataStore
+	mu             sync.Mutex
+	immediateCalls int
+}
+
+func (s *serializedImmediateDataStore) WithTxImmediate(block func(tx model.DataStore) error, _ ...string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.immediateCalls++
+	return block(s)
+}
+
+type synchronizedUserRepo struct {
+	model.UserRepository
+	mu    sync.Mutex
+	users map[string]model.User
+}
+
+func newSynchronizedUserRepo() *synchronizedUserRepo {
+	return &synchronizedUserRepo{users: map[string]model.User{}}
+}
+
+func (r *synchronizedUserRepo) CountAll(...model.QueryOptions) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return int64(len(r.users)), nil
+}
+
+func (r *synchronizedUserRepo) Put(user *model.User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	copy := *user
+	if copy.NewPassword != "" {
+		copy.Password = copy.NewPassword
+	}
+	r.users[strings.ToLower(copy.UserName)] = copy
+	return nil
+}
+
+func (r *synchronizedUserRepo) FindByUsername(username string) (*model.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	user, ok := r.users[strings.ToLower(username)]
+	if !ok {
+		return nil, model.ErrNotFound
+	}
+	copy := user
+	return &copy, nil
+}
+
+func (r *synchronizedUserRepo) FindByUsernameWithPassword(username string) (*model.User, error) {
+	return r.FindByUsername(username)
+}
+
+func (r *synchronizedUserRepo) UpdateLastLoginAt(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, user := range r.users {
+		if user.ID == id {
+			user.LastLoginAt = new(time.Now())
+			r.users[key] = user
+			return nil
+		}
+	}
+	return model.ErrNotFound
+}
+
+func (r *synchronizedUserRepo) userCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.users)
+}
+
+func (r *synchronizedUserRepo) adminCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	count := 0
+	for _, user := range r.users {
+		if user.IsAdmin {
+			count++
+		}
+	}
+	return count
+}

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +118,7 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 
 func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 	users := newAuthUserCache(authUserCacheLimit, authUserCacheTTL)
+	failures := newAuthFailureLimiter(4096)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -148,6 +151,12 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				token := p.StringOr("t", "")
 				salt := p.StringOr("s", "")
 				jwt := p.StringOr("jwt", "")
+				failureKey := authenticationFailureKey(r)
+				if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
+					w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+					sendError(w, r, newError(responses.ErrorAuthenticationFail))
+					return
+				}
 
 				usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
 					return ds.User(loadCtx).FindByUsernameWithPassword(username)
@@ -167,6 +176,11 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 						log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
 					}
 				}
+				if err != nil {
+					failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+				} else {
+					failures.succeeded(failureKey)
+				}
 			}
 
 			if err != nil {
@@ -178,6 +192,108 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+type authFailureEntry struct {
+	count int
+	reset time.Time
+}
+
+type authFailureLimiter struct {
+	mu      sync.Mutex
+	entries map[string]authFailureEntry
+	limit   int
+}
+
+func newAuthFailureLimiter(limit int) *authFailureLimiter {
+	return &authFailureLimiter{entries: make(map[string]authFailureEntry), limit: limit}
+}
+
+func authenticationFailureKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return strings.ToLower(host)
+}
+
+func (l *authFailureLimiter) allow(key string, now time.Time, requestLimit int, window time.Duration) (time.Duration, bool) {
+	if requestLimit <= 0 || window <= 0 {
+		return 0, true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry, ok := l.entries[key]
+	if !ok || !now.Before(entry.reset) {
+		if ok {
+			delete(l.entries, key)
+		}
+		return 0, true
+	}
+	if entry.count < requestLimit {
+		return 0, true
+	}
+	return entry.reset.Sub(now), false
+}
+
+func (l *authFailureLimiter) failed(key string, now time.Time, window time.Duration) {
+	if window <= 0 {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry, ok := l.entries[key]
+	if !ok || !now.Before(entry.reset) {
+		if len(l.entries) >= l.limit {
+			for candidate, value := range l.entries {
+				if !now.Before(value.reset) {
+					delete(l.entries, candidate)
+				}
+			}
+		}
+		if len(l.entries) >= l.limit {
+			var oldestKey string
+			var oldestReset time.Time
+			for candidate, value := range l.entries {
+				if oldestKey == "" || value.reset.Before(oldestReset) {
+					oldestKey, oldestReset = candidate, value.reset
+				}
+			}
+			delete(l.entries, oldestKey)
+		}
+		entry = authFailureEntry{reset: now.Add(window)}
+	}
+	entry.count++
+	l.entries[key] = entry
+}
+
+func (l *authFailureLimiter) succeeded(key string) {
+	l.mu.Lock()
+	delete(l.entries, key)
+	l.mu.Unlock()
+}
+
+func rejectCrossSiteProxyMutation(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, internal := fromInternalOrProxyAuth(r)
+		if username != "" && !internal && isCrossSiteBrowserRequest(r) {
+			sendError(w, r, newError(responses.ErrorAuthorizationFail))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isCrossSiteBrowserRequest(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+		return true
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	parsed, err := url.Parse(origin)
+	return err != nil || parsed.Host == "" || !strings.EqualFold(parsed.Host, r.Host)
 }
 
 func adminOnly(next http.Handler) http.Handler {

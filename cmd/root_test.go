@@ -61,3 +61,21 @@ var _ = Describe("schedulerRequired", func() {
 		Expect(schedulerRequired()).To(BeTrue())
 	})
 })
+
+var _ = Describe("profilerAllowedAddress", func() {
+	DescribeTable("only allows local-only listeners",
+		func(address string, allowed bool) {
+			Expect(profilerAllowedAddress(address)).To(Equal(allowed))
+		},
+		Entry("localhost", "localhost", true),
+		Entry("IPv4 loopback", "127.0.0.1", true),
+		Entry("IPv4 loopback with port", "127.0.0.1:4533", true),
+		Entry("IPv6 loopback", "::1", true),
+		Entry("bracketed IPv6 loopback", "[::1]:4533", true),
+		Entry("unix socket", "unix:/run/navidrome.sock", true),
+		Entry("all IPv4 interfaces", "0.0.0.0", false),
+		Entry("all IPv6 interfaces", "::", false),
+		Entry("LAN address", "192.168.1.10", false),
+		Entry("empty address", "", false),
+	)
+})

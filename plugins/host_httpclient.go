@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -45,8 +46,16 @@ func newHTTPService(pluginName string, permission *HTTPPermission) *httpServiceI
 		pluginName:    pluginName,
 		requiredHosts: requiredHosts,
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if len(requiredHosts) == 0 {
+		// A proxy resolves the target outside this process, so the default
+		// internet-only policy cannot verify the selected dial IP. Explicit
+		// allowlists retain the normal proxy behavior.
+		transport.Proxy = nil
+		transport.DialContext = svc.dialPublicContext
+	}
 	svc.client = &http.Client{
-		Transport: http.DefaultTransport,
+		Transport: transport,
 		// Timeout is set per-request via context deadline, not here.
 		// CheckRedirect validates hosts and enforces redirect limits.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -65,6 +74,47 @@ func newHTTPService(pluginName string, permission *HTTPPermission) *httpServiceI
 		},
 	}
 	return svc
+}
+
+// dialPublicContext resolves and pins the destination before dialing. This
+// prevents DNS aliases and rebinding from bypassing the default SSRF policy.
+// It is used only when requiredHosts is empty; explicit allowlists preserve
+// their existing semantics, including intentionally allowed private hosts.
+func (s *httpServiceImpl) dialPublicContext(ctx context.Context, network, address string) (net.Conn, error) {
+	hostname, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("parsing dial address %q: %w", address, err)
+	}
+	lookupNetwork := "ip"
+	if strings.HasSuffix(network, "4") {
+		lookupNetwork = "ip4"
+	} else if strings.HasSuffix(network, "6") {
+		lookupNetwork = "ip6"
+	}
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, lookupNetwork, hostname)
+	if err != nil {
+		return nil, fmt.Errorf("resolving host %q: %w", hostname, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("resolving host %q: no addresses", hostname)
+	}
+	for _, ip := range ips {
+		if isBlockedOutboundIP(ip) {
+			log.Warn(ctx, "HTTP dial to special-use address blocked", "plugin", s.pluginName, "host", hostname, "ip", ip)
+			return nil, fmt.Errorf("host %q resolves to disallowed address %s", hostname, ip)
+		}
+	}
+
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	var lastErr error
+	for _, ip := range ips {
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, lastErr
 }
 
 func (s *httpServiceImpl) Send(ctx context.Context, request host.HTTPRequest) (*host.HTTPResponse, error) {
@@ -184,20 +234,67 @@ func extractHostname(hostStr string) string {
 	return hostStr
 }
 
-// isPrivateOrLoopback returns true if the given hostname resolves to or is
-// a private, loopback, or link-local IP address. This includes:
-// IPv4: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-// IPv6: ::1, fc00::/7, fe80::/10
-// It also blocks "localhost" by name.
+// isPrivateOrLoopback rejects literal special-use addresses and localhost by
+// name. Hostname resolution is checked and pinned separately at dial time.
 func isPrivateOrLoopback(hostname string) bool {
-	if strings.EqualFold(hostname, "localhost") {
+	if strings.EqualFold(strings.TrimSuffix(hostname, "."), "localhost") {
 		return true
 	}
-	ip := net.ParseIP(hostname)
-	if ip == nil {
+	ip, err := netip.ParseAddr(hostname)
+	if err != nil {
 		return false
 	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+	return isBlockedOutboundIP(ip)
+}
+
+var blockedOutboundPrefixes = []netip.Prefix{
+	// IPv4 special-use networks (IANA IPv4 Special-Purpose Address Registry).
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.31.196.0/24"),
+	netip.MustParsePrefix("192.52.193.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("192.175.48.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	// IPv6 special-use networks (including IPv4 translation/tunneling ranges).
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("2001::/23"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2620:4f:8000::/48"),
+	netip.MustParsePrefix("3fff::/20"),
+	netip.MustParsePrefix("5f00::/16"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("ff00::/8"),
+}
+
+func isBlockedOutboundIP(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	if ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
+		return true
+	}
+	for _, prefix := range blockedOutboundPrefixes {
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Verify interface implementation

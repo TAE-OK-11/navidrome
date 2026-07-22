@@ -112,7 +112,7 @@ func (api *Router) routes() http.Handler {
 		h(r, "getMusicFolders", api.GetMusicFolders)
 		h(r, "getGenres", api.GetGenres)
 		h(r, "getScanStatus", api.GetScanStatus)
-		h(r.With(adminOnly), "startScan", api.StartScan)
+		h(r.With(adminOnly, rejectCrossSiteProxyMutation), "startScan", api.StartScan)
 
 		// Subsonic endpoints, grouped by controller
 		r.Group(func(r chi.Router) {
@@ -145,6 +145,7 @@ func (api *Router) routes() http.Handler {
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
+			r.Use(rejectCrossSiteProxyMutation)
 			h(r, "setRating", api.SetRating)
 			h(r, "star", api.Star)
 			h(r, "unstar", api.Unstar)
@@ -155,19 +156,19 @@ func (api *Router) routes() http.Handler {
 			r.Use(getPlayer(api.players))
 			h(r, "getPlaylists", api.GetPlaylists)
 			h(r, "getPlaylist", api.GetPlaylist)
-			h(r, "createPlaylist", api.CreatePlaylist)
-			h(r, "deletePlaylist", api.DeletePlaylist)
-			h(r, "updatePlaylist", api.UpdatePlaylist)
+			h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
+			h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
+			h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
 			h(r, "getBookmarks", api.GetBookmarks)
-			h(r, "createBookmark", api.CreateBookmark)
-			h(r, "deleteBookmark", api.DeleteBookmark)
+			h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
+			h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
 			h(r, "getPlayQueue", api.GetPlayQueue)
 			h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
-			h(r, "savePlayQueue", api.SavePlayQueue)
-			h(r, "savePlayQueueByIndex", api.SavePlayQueueByIndex)
+			h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
+			h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(getPlayer(api.players))
@@ -205,6 +206,7 @@ func (api *Router) routes() http.Handler {
 			h(r, "getInternetRadioStations", api.GetInternetRadios)
 			r.Group(func(r chi.Router) {
 				r.Use(adminOnly)
+				r.Use(rejectCrossSiteProxyMutation)
 				h(r, "createInternetRadioStation", api.CreateInternetRadio)
 				h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
 				h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
@@ -214,9 +216,9 @@ func (api *Router) routes() http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(getPlayer(api.players))
 				h(r, "getShares", api.GetShares)
-				h(r, "createShare", api.CreateShare)
-				h(r, "updateShare", api.UpdateShare)
-				h(r, "deleteShare", api.DeleteShare)
+				h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
+				h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
+				h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
 			})
 		} else {
 			h501(r, "getShares", "createShare", "updateShare", "deleteShare")
@@ -225,6 +227,7 @@ func (api *Router) routes() http.Handler {
 		if conf.Server.Jukebox.Enabled {
 			r.Group(func(r chi.Router) {
 				r.Use(getPlayer(api.players))
+				r.Use(rejectCrossSiteProxyMutation)
 				h(r, "jukeboxControl", api.JukeboxControl)
 			})
 		} else {

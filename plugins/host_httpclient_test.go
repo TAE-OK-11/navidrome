@@ -55,6 +55,12 @@ var _ = Describe("httpServiceImpl", func() {
 			Expect(err.Error()).To(ContainSubstring("private/loopback"))
 		})
 
+		It("should block localhost aliases after DNS resolution", func() {
+			_, err := svc.dialPublicContext(context.Background(), "tcp", "localhost.:80")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("disallowed address"))
+		})
+
 		It("should block requests to private IPs (10.x)", func() {
 			_, err := svc.Send(context.Background(), host.HTTPRequest{
 				Method:    "GET",
@@ -120,7 +126,7 @@ var _ = Describe("httpServiceImpl", func() {
 			// but it should NOT fail with a "private/loopback" error
 			_, err := svc.Send(context.Background(), host.HTTPRequest{
 				Method:    "GET",
-				URL:       "http://203.0.113.1:1/test", // TEST-NET-3, non-routable but not private
+				URL:       "http://8.8.8.8:1/test",
 				TimeoutMs: 100,
 			})
 			// Should get a network error, not a permission error
@@ -538,6 +544,7 @@ var _ = Describe("isPrivateOrLoopback", func() {
 	It("should detect localhost by name", func() {
 		Expect(isPrivateOrLoopback("localhost")).To(BeTrue())
 		Expect(isPrivateOrLoopback("LOCALHOST")).To(BeTrue())
+		Expect(isPrivateOrLoopback("localhost.")).To(BeTrue())
 	})
 
 	It("should detect 10.x.x.x private range", func() {
@@ -568,10 +575,21 @@ var _ = Describe("isPrivateOrLoopback", func() {
 		Expect(isPrivateOrLoopback("fe80::1")).To(BeTrue())
 	})
 
+	It("should detect unspecified and special-use ranges", func() {
+		Expect(isPrivateOrLoopback("0.0.0.0")).To(BeTrue())
+		Expect(isPrivateOrLoopback("100.64.0.1")).To(BeTrue())
+		Expect(isPrivateOrLoopback("192.0.2.1")).To(BeTrue())
+		Expect(isPrivateOrLoopback("198.51.100.1")).To(BeTrue())
+		Expect(isPrivateOrLoopback("203.0.113.1")).To(BeTrue())
+		Expect(isPrivateOrLoopback("224.0.0.1")).To(BeTrue())
+		Expect(isPrivateOrLoopback("::")).To(BeTrue())
+		Expect(isPrivateOrLoopback("2001:db8::1")).To(BeTrue())
+	})
+
 	It("should allow public IPs", func() {
 		Expect(isPrivateOrLoopback("8.8.8.8")).To(BeFalse())
-		Expect(isPrivateOrLoopback("203.0.113.1")).To(BeFalse())
-		Expect(isPrivateOrLoopback("2001:db8::1")).To(BeFalse())
+		Expect(isPrivateOrLoopback("1.1.1.1")).To(BeFalse())
+		Expect(isPrivateOrLoopback("2606:4700:4700::1111")).To(BeFalse())
 	})
 
 	It("should allow non-IP hostnames (DNS names)", func() {

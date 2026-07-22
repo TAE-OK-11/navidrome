@@ -47,6 +47,7 @@ var _ = Describe("Playlist artwork resolution", func() {
 		// └── MyList.jpg               ← matched by sidecar (same basename, case-insensitive)
 		It("returns the sidecar image", func() {
 			dir := GinkgoT().TempDir()
+			allowLocalArtworkDir(dir)
 			m3uPath := filepath.Join(dir, "MyList.m3u")
 			Expect(os.WriteFile(m3uPath, []byte("#EXTM3U\n"), 0600)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(dir, "MyList.jpg"), imageBytes("sidecar"), 0600)).To(Succeed())
@@ -63,6 +64,7 @@ var _ = Describe("Playlist artwork resolution", func() {
 		// └── MyList.PNG               ← matched case-insensitively
 		It("matches case-insensitively", func() {
 			dir := GinkgoT().TempDir()
+			allowLocalArtworkDir(dir)
 			m3uPath := filepath.Join(dir, "MyList.m3u")
 			Expect(os.WriteFile(m3uPath, []byte("#EXTM3U\n"), 0600)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(dir, "MyList.PNG"), imageBytes("sidecar-png"), 0600)).To(Succeed())
@@ -79,6 +81,7 @@ var _ = Describe("Playlist artwork resolution", func() {
 		It("returns the local file regardless of EnableM3UExternalAlbumArt", func() {
 			conf.Server.EnableM3UExternalAlbumArt = false // local paths bypass the toggle
 			dir := GinkgoT().TempDir()
+			allowLocalArtworkDir(dir)
 			imgPath := filepath.Join(dir, "cover.jpg")
 			Expect(os.WriteFile(imgPath, imageBytes("external-local"), 0600)).To(Succeed())
 

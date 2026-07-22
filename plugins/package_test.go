@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -195,6 +196,64 @@ var _ = Describe("ndpPackage", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("subsonicapi"))
 			Expect(err.Error()).To(ContainSubstring("users"))
+		})
+	})
+
+	Describe("package archive safety", func() {
+		It("rejects duplicate manifest entries consistently", func() {
+			ndpPath := filepath.Join(tmpDir, "duplicate-manifest.ndp")
+			f, err := os.Create(ndpPath)
+			Expect(err).ToNot(HaveOccurred())
+			zw := newTestZipWriter(f)
+			Expect(zw.addFile(manifestFileName, []byte(`{"name":"First","author":"test","version":"1.0.0"}`))).To(Succeed())
+			Expect(zw.addFile(wasmFileName, []byte{0x00, 0x61, 0x73, 0x6d})).To(Succeed())
+			Expect(zw.addFile(manifestFileName, []byte(`{"name":"Second","author":"test","version":"1.0.0"}`))).To(Succeed())
+			Expect(zw.close()).To(Succeed())
+			Expect(f.Close()).To(Succeed())
+
+			_, err = ReadManifest(ndpPath)
+			Expect(err).To(MatchError(ContainSubstring("duplicate manifest.json")))
+			_, err = openPackage(ndpPath)
+			Expect(err).To(MatchError(ContainSubstring("duplicate manifest.json")))
+		})
+
+		It("rejects duplicate wasm entries consistently", func() {
+			ndpPath := filepath.Join(tmpDir, "duplicate-wasm.ndp")
+			f, err := os.Create(ndpPath)
+			Expect(err).ToNot(HaveOccurred())
+			zw := newTestZipWriter(f)
+			Expect(zw.addFile(manifestFileName, []byte(`{"name":"Test","author":"test","version":"1.0.0"}`))).To(Succeed())
+			Expect(zw.addFile(wasmFileName, []byte{0x00, 0x61, 0x73, 0x6d})).To(Succeed())
+			Expect(zw.addFile(wasmFileName, []byte{0x00, 0x61, 0x73, 0x6d})).To(Succeed())
+			Expect(zw.close()).To(Succeed())
+			Expect(f.Close()).To(Succeed())
+
+			_, err = ReadManifest(ndpPath)
+			Expect(err).To(MatchError(ContainSubstring("duplicate plugin.wasm")))
+			_, err = openPackage(ndpPath)
+			Expect(err).To(MatchError(ContainSubstring("duplicate plugin.wasm")))
+		})
+
+		It("rejects manifest metadata over the hard limit", func() {
+			ndpPath := filepath.Join(tmpDir, "large-manifest.ndp")
+			f, err := os.Create(ndpPath)
+			Expect(err).ToNot(HaveOccurred())
+			zw := newTestZipWriter(f)
+			Expect(zw.addFile(manifestFileName, []byte(strings.Repeat(" ", maxManifestUncompressedSize+1)))).To(Succeed())
+			Expect(zw.addFile(wasmFileName, []byte{0x00, 0x61, 0x73, 0x6d})).To(Succeed())
+			Expect(zw.close()).To(Succeed())
+			Expect(f.Close()).To(Succeed())
+
+			_, err = ReadManifest(ndpPath)
+			Expect(err).To(MatchError(ContainSubstring("exceeds limit")))
+		})
+
+		It("enforces the streaming limit independently of zip metadata", func() {
+			_, err := readLimited(strings.NewReader("123456789"), 8)
+			Expect(err).To(MatchError(ContainSubstring("exceeds limit")))
+			data, err := readLimited(strings.NewReader("12345678"), 8)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("12345678"))
 		})
 	})
 })

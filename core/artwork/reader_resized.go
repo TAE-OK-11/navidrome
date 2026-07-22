@@ -113,6 +113,13 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading image data: %w", err)
 	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := ValidateImageConfig(config); err != nil {
+		return nil, 0, err
+	}
 
 	// Preserve animation for animated images
 	if isAnimatedGIF(data) {
@@ -149,6 +156,13 @@ func toFastScaleType(img image.Image) image.Image {
 }
 
 func resizeStaticImage(data []byte, size int, square bool) (io.Reader, int, error) {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := ValidateImageConfig(config); err != nil {
+		return nil, 0, err
+	}
 	original, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, err

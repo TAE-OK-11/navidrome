@@ -31,6 +31,28 @@ var _ = Describe("middlewares", func() {
 	BeforeEach(func() {
 		DeferCleanup(configtest.SetupConfig())
 	})
+	Describe("headersForLogging", func() {
+		It("redacts authentication material without changing the request headers", func() {
+			headers := http.Header{
+				"Authorization":      []string{"Bearer secret.jwt"},
+				"X-Nd-Authorization": []string{"token"},
+				"Cookie":             []string{"session=secret"},
+				"X-Api-Key":          []string{"punctuated.secret-value"},
+				"X-Request-Token":    []string{"another-secret"},
+				"User-Agent":         []string{"safe-client"},
+			}
+
+			logged := headersForLogging(headers)
+
+			Expect(logged.Get("Authorization")).To(Equal("[REDACTED]"))
+			Expect(logged.Get("X-Nd-Authorization")).To(Equal("[REDACTED]"))
+			Expect(logged.Get("Cookie")).To(Equal("[REDACTED]"))
+			Expect(logged.Get("X-Api-Key")).To(Equal("[REDACTED]"))
+			Expect(logged.Get("X-Request-Token")).To(Equal("[REDACTED]"))
+			Expect(logged.Get("User-Agent")).To(Equal("safe-client"))
+			Expect(headers.Get("Authorization")).To(Equal("Bearer secret.jwt"))
+		})
+	})
 	Describe("robotsTXT", func() {
 		var nextCalled bool
 		next := func(w http.ResponseWriter, r *http.Request) {

@@ -60,6 +60,12 @@ var _ = Describe("ListenBrainz Auth Router", func() {
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
 
+		It("rejects an oversized token body without contacting ListenBrainz", func() {
+			req = httptest.NewRequest("PUT", "/listenbrainz/link", strings.NewReader(`{"token":"`+strings.Repeat("a", maxLinkRequestBodySize)+`"}`))
+			r.link(resp, req)
+			Expect(resp.Code).To(Equal(http.StatusRequestEntityTooLarge))
+		})
+
 		It("returns bad request when the token is invalid", func() {
 			httpClient.Res = http.Response{
 				Body:       io.NopCloser(bytes.NewBufferString(`{"code": 200, "message": "Token invalid.", "valid": false}`)),

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -69,6 +70,17 @@ var _ = Describe("Configuration", func() {
 			viper.Set("enablescheduleddbanalyze", false)
 			conf.Load(true)
 			Expect(conf.Server.EnableScheduledDBAnalyze).To(BeFalse())
+		})
+	})
+
+	Describe("transcoding resource limits", func() {
+		It("uses bounded and cancellable defaults", func() {
+			conf.Load(true)
+
+			Expect(conf.Server.Transcoding.MaxConcurrent).To(BeNumerically(">=", 1))
+			Expect(conf.Server.Transcoding.MaxConcurrent).To(BeNumerically("<=", 4))
+			Expect(conf.Server.Transcoding.MaxConcurrentPerUser).To(Equal(2))
+			Expect(conf.Server.Transcoding.EnableCancellation).To(BeTrue())
 		})
 	})
 
@@ -256,6 +268,22 @@ var _ = Describe("Configuration", func() {
 			}).To(PanicWith(ContainSubstring("Invalid BaseURL")))
 		})
 
+	})
+
+	It("restricts an existing log file to the owner", func() {
+		if runtime.GOOS == "windows" {
+			Skip("POSIX file modes are not enforced on Windows")
+		}
+		logFile := filepath.Join(GinkgoT().TempDir(), "navidrome.log")
+		Expect(os.WriteFile(logFile, []byte("existing"), 0644)).To(Succeed())
+		Expect(os.Chmod(logFile, 0644)).To(Succeed())
+		viper.Set("logfile", logFile)
+
+		conf.Load(true)
+
+		info, err := os.Stat(logFile)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Mode().Perm()).To(Equal(os.FileMode(0600)))
 	})
 
 	Describe("ValidateMaxImageUploadSize", func() {

@@ -48,7 +48,7 @@ func requestLogger(next http.Handler) http.Handler {
 			"responseSize", ww.BytesWritten(),
 		}
 		if log.IsGreaterOrEqualTo(log.LevelTrace) {
-			headers, _ := json.Marshal(r.Header)
+			headers, _ := json.Marshal(headersForLogging(r.Header))
 			logArgs = append(logArgs, "header", string(headers))
 		} else if log.IsGreaterOrEqualTo(log.LevelDebug) {
 			logArgs = append(logArgs, "userAgent", r.UserAgent())
@@ -63,6 +63,19 @@ func requestLogger(next http.Handler) http.Handler {
 			log.Debug(logArgs...)
 		}
 	})
+}
+
+func headersForLogging(headers http.Header) http.Header {
+	redacted := headers.Clone()
+	for name := range redacted {
+		lowerName := strings.ToLower(name)
+		if lowerName == "authorization" || lowerName == "x-nd-authorization" || lowerName == "cookie" ||
+			strings.Contains(lowerName, "token") || strings.Contains(lowerName, "secret") ||
+			strings.Contains(lowerName, "api-key") || strings.Contains(lowerName, "apikey") {
+			redacted.Set(name, "[REDACTED]")
+		}
+	}
+	return redacted
 }
 
 func loggerInjector(next http.Handler) http.Handler {

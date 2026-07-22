@@ -98,26 +98,41 @@ func (r *shareRepositoryWrapper) Save(entity any) (string, error) {
 		s.ExpiresAt = new(time.Now().Add(conf.Server.DefaultShareExpiration))
 	}
 
-	firstId, _, _ := strings.Cut(s.ResourceIDs, ",")
-	v, err := model.GetEntityByID(r.ctx, r.ds, firstId)
-	if err != nil {
-		return "", err
+	resourceIDs := strings.Split(s.ResourceIDs, ",")
+	if len(resourceIDs) == 0 || resourceIDs[0] == "" {
+		return "", &rest.ValidationError{Errors: map[string]string{"resourceIds": "ra.validation.required"}}
 	}
-	switch v.(type) {
-	case *model.Artist:
-		s.ResourceType = "artist"
+	// ResourceType is derived from authorized entities, never trusted from the request body.
+	s.ResourceType = ""
+	for _, resourceID := range resourceIDs {
+		if resourceID == "" {
+			return "", &rest.ValidationError{Errors: map[string]string{"resourceIds": "ra.validation.invalid"}}
+		}
+		v, err := model.GetEntityByID(r.ctx, r.ds, resourceID)
+		if err != nil {
+			return "", err
+		}
+		resourceType := shareResourceType(v)
+		if resourceType == "" {
+			log.Error(r.ctx, "Invalid Resource ID", "id", resourceID)
+			return "", model.ErrNotFound
+		}
+		if s.ResourceType != "" && s.ResourceType != resourceType {
+			return "", &rest.ValidationError{Errors: map[string]string{"resourceIds": "ra.validation.invalid"}}
+		}
+		s.ResourceType = resourceType
+	}
+
+	switch s.ResourceType {
+	case "artist":
 		s.Contents = r.contentsLabelFromArtist(s.ID, s.ResourceIDs)
-	case *model.Album:
-		s.ResourceType = "album"
+	case "album":
 		s.Contents = r.contentsLabelFromAlbums(s.ID, s.ResourceIDs)
-	case *model.Playlist:
-		s.ResourceType = "playlist"
+	case "playlist":
 		s.Contents = r.contentsLabelFromPlaylist(s.ID, s.ResourceIDs)
-	case *model.MediaFile:
-		s.ResourceType = "media_file"
+	case "media_file":
 		s.Contents = r.contentsLabelFromMediaFiles(s.ID, s.ResourceIDs)
 	default:
-		log.Error(r.ctx, "Invalid Resource ID", "id", firstId)
 		return "", model.ErrNotFound
 	}
 
@@ -125,6 +140,21 @@ func (r *shareRepositoryWrapper) Save(entity any) (string, error) {
 
 	id, err = r.Persistable.Save(s)
 	return id, err
+}
+
+func shareResourceType(resource any) string {
+	switch resource.(type) {
+	case *model.Artist:
+		return "artist"
+	case *model.Album:
+		return "album"
+	case *model.Playlist:
+		return "playlist"
+	case *model.MediaFile:
+		return "media_file"
+	default:
+		return ""
+	}
 }
 
 func (r *shareRepositoryWrapper) Update(id string, entity any, _ ...string) error {

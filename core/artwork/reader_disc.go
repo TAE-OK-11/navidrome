@@ -167,7 +167,7 @@ func (d *discArtworkReader) fromDiscSubtitle(ctx context.Context, subtitle strin
 			if !strings.EqualFold(stem, subtitle) {
 				continue
 			}
-			f, err := d.lib.FS.Open(file)
+			f, err := d.lib.OpenArtwork(file)
 			if err != nil {
 				log.Warn(ctx, "Could not open disc art file", "file", file, err)
 				continue
@@ -239,7 +239,7 @@ func (d *discArtworkReader) fromExternalFile(ctx context.Context, pattern string
 					if num != d.discNumber {
 						continue
 					}
-					f, err := d.lib.FS.Open(file)
+					f, err := d.lib.OpenArtwork(file)
 					if err != nil {
 						log.Warn(ctx, "Could not open disc art file", "file", file, err)
 						continue
@@ -255,7 +255,7 @@ func (d *discArtworkReader) fromExternalFile(ctx context.Context, pattern string
 		}
 
 		for _, file := range fallbacks {
-			f, err := d.lib.FS.Open(file)
+			f, err := d.lib.OpenArtwork(file)
 			if err != nil {
 				log.Warn(ctx, "Could not open disc art file", "file", file, err)
 				continue

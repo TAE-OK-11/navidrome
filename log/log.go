@@ -25,9 +25,14 @@ type LevelFunc = func(ctx any, msg any, keyValuePairs ...any)
 var redacted = &Hook{
 	AcceptedLevels: logrus.AllLevels,
 	RedactionList: []string{
+		// Structured log field names. Keep this first so secrets passed as
+		// key/value pairs are removed independently of their formatting.
+		`(?i)^(?:authorization|x-nd-authorization|cookie|token|.*password.*|.*secret.*|.*api[_-]?key.*)$`,
+
 		// Keys from the config
-		"(ApiKey:\")[\\w]*",
-		"(Secret:\")[\\w]*",
+		`(?i)(ApiKey:[\s]*")[^"]*`,
+		`(?i)(Secret:[\s]*")[^"]*`,
+		`(?i)(Password:[\s]*")[^"]*`,
 		"(PasswordEncryptionKey:[\\s]*\")[^\"]*",
 		"(UserHeader:[\\s]*\")[^\"]*",
 		"(TrustedSources:[\\s]*\")[^\"]*",
@@ -48,6 +53,10 @@ var redacted = &Hook{
 
 		// External services query params
 		"([^\\w]api_key=)[\\w]+",
+		`(?i)([?&](?:uid|token)=)[^&\s]+`,
+
+		// Authorization headers serialized by request tracing.
+		`(?i)("?(?:authorization|x-nd-authorization)"?\s*:\s*\[?\s*"?)[^"\],\s]+(?:\s+[^"\],\s]+)?`,
 	},
 }
 

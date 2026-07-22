@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
@@ -80,7 +81,7 @@ func (a *playlistArtworkReader) fromPlaylistUploadedImage() sourceFunc {
 }
 
 func (a *playlistArtworkReader) fromPlaylistSidecar(ctx context.Context) sourceFunc {
-	return fromLocalFile(findPlaylistSidecarPath(ctx, a.pl.Path))
+	return fromLibraryLocalFile(ctx, a.a.ds, findPlaylistSidecarPath(ctx, a.pl.Path))
 }
 
 func (a *playlistArtworkReader) fromPlaylistExternalImage(ctx context.Context) sourceFunc {
@@ -99,7 +100,41 @@ func (a *playlistArtworkReader) fromPlaylistExternalImage(ctx context.Context) s
 			}
 			return fromURL(ctx, parsed)
 		}
-		return fromLocalFile(imgURL)()
+		return fromLibraryLocalFile(ctx, a.a.ds, imgURL)()
+	}
+}
+
+func fromLibraryLocalFile(ctx context.Context, ds model.DataStore, path string) sourceFunc {
+	return func() (io.ReadCloser, string, error) {
+		if path == "" {
+			return nil, "", nil
+		}
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return nil, "", err
+		}
+		libraries, err := ds.Library(ctx).GetAll()
+		if err != nil {
+			return nil, "", err
+		}
+		for _, library := range libraries {
+			resolvedRoot, rootErr := filepath.EvalSymlinks(library.Path)
+			if rootErr != nil || !pathWithinRoot(resolvedRoot, target) {
+				continue
+			}
+			rel, relErr := filepath.Rel(resolvedRoot, target)
+			if relErr != nil {
+				continue
+			}
+			root, rootErr := os.OpenRoot(resolvedRoot)
+			if rootErr != nil {
+				continue
+			}
+			f, openErr := root.Open(rel)
+			_ = root.Close()
+			return f, target, openErr
+		}
+		return nil, "", fmt.Errorf("artwork path %q resolves outside accessible library roots", path)
 	}
 }
 
@@ -196,7 +231,7 @@ func (a *playlistArtworkReader) loadTiles(ctx context.Context) ([]image.Image, e
 }
 
 func (a *playlistArtworkReader) createTile(_ context.Context, r io.ReadCloser) (image.Image, error) {
-	img, _, err := image.Decode(r)
+	img, _, err := DecodeImage(r)
 	if err != nil {
 		return nil, err
 	}

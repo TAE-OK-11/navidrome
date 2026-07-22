@@ -17,7 +17,7 @@ var _ = Describe("fromExternalFile", func() {
 		fsys := fstest.MapFS{
 			"Artist/Album/cover.jpg": &fstest.MapFile{Data: []byte("cover-bytes")},
 		}
-		f := fromExternalFile(GinkgoT().Context(), fsys, []string{"Artist/Album/cover.jpg"}, "cover.*")
+		f := fromExternalFile(GinkgoT().Context(), libraryView{FS: osDirFS{fsys}}, []string{"Artist/Album/cover.jpg"}, "cover.*")
 		r, path, err := f()
 		Expect(err).ToNot(HaveOccurred())
 		defer r.Close()
@@ -30,7 +30,7 @@ var _ = Describe("fromExternalFile", func() {
 		fsys := fstest.MapFS{
 			"Artist/Album/something.txt": &fstest.MapFile{Data: []byte("x")},
 		}
-		f := fromExternalFile(GinkgoT().Context(), fsys, []string{"Artist/Album/something.txt"}, "cover.*")
+		f := fromExternalFile(GinkgoT().Context(), libraryView{FS: osDirFS{fsys}}, []string{"Artist/Album/something.txt"}, "cover.*")
 		_, _, err := f()
 		Expect(err).To(HaveOccurred())
 	})
@@ -40,7 +40,7 @@ var _ = Describe("fromExternalFile", func() {
 			"a/cover.jpg": &fstest.MapFile{Data: []byte("a")},
 		}
 		// "missing/cover.jpg" is in candidates but not in the FS — should be skipped.
-		f := fromExternalFile(GinkgoT().Context(), fsys, []string{"missing/cover.jpg", "a/cover.jpg"}, "cover.*")
+		f := fromExternalFile(GinkgoT().Context(), libraryView{FS: osDirFS{fsys}}, []string{"missing/cover.jpg", "a/cover.jpg"}, "cover.*")
 		r, path, err := f()
 		Expect(err).ToNot(HaveOccurred())
 		defer r.Close()

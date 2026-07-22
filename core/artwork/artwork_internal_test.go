@@ -392,8 +392,10 @@ var _ = Describe("Artwork", func() {
 				tmpDir := GinkgoT().TempDir()
 				imgPath := filepath.Join(tmpDir, "cover.jpg")
 				Expect(os.WriteFile(imgPath, []byte("external image data"), 0600)).To(Succeed())
+				ds.Library(ctx).(*tests.MockLibraryRepo).SetData(model.Libraries{{ID: 1, Path: tmpDir}})
 
 				reader := &playlistArtworkReader{
+					a:  aw,
 					pl: model.Playlist{ExternalImageURL: imgPath},
 				}
 				r, path, err := reader.fromPlaylistExternalImage(ctx)()
@@ -417,6 +419,7 @@ var _ = Describe("Artwork", func() {
 
 			It("returns error when local file does not exist", func() {
 				reader := &playlistArtworkReader{
+					a:  aw,
 					pl: model.Playlist{ExternalImageURL: "/non/existent/path/cover.jpg"},
 				}
 				r, _, err := reader.fromPlaylistExternalImage(ctx)()
@@ -442,8 +445,10 @@ var _ = Describe("Artwork", func() {
 				tmpDir := GinkgoT().TempDir()
 				imgPath := filepath.Join(tmpDir, "cover.jpg")
 				Expect(os.WriteFile(imgPath, []byte("local image"), 0600)).To(Succeed())
+				ds.Library(ctx).(*tests.MockLibraryRepo).SetData(model.Libraries{{ID: 1, Path: tmpDir}})
 
 				reader := &playlistArtworkReader{
+					a:  aw,
 					pl: model.Playlist{ExternalImageURL: imgPath},
 				}
 				r, path, err := reader.fromPlaylistExternalImage(ctx)()

@@ -24,6 +24,8 @@ type sessionKeysRepo interface {
 	Delete(ctx context.Context, userId string) error
 }
 
+const maxLinkRequestBodySize = 8 << 10
+
 type Router struct {
 	http.Handler
 	ds          model.DataStore
@@ -78,9 +80,15 @@ func (s *Router) link(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	var payload tokenPayload
+	r.Body = http.MaxBytesReader(w, r.Body, maxLinkRequestBodySize)
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			_ = rest.RespondWithError(w, http.StatusRequestEntityTooLarge, "Request body too large")
+			return
+		}
+		_ = rest.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 	if payload.Token == "" {

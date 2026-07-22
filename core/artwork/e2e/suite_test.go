@@ -98,6 +98,13 @@ func scan() {
 	Expect(err).ToNot(HaveOccurred())
 }
 
+func allowLocalArtworkDir(dir string) {
+	GinkgoHelper()
+	lib := model.Library{ID: 2, Name: "Local artwork test", Path: dir}
+	Expect(ds.Library(ctx).Put(&lib)).To(Succeed())
+	Expect(ds.User(ctx).SetUserLibraries("admin-1", []int{1, 2})).To(Succeed())
+}
+
 func firstAlbum() model.Album {
 	GinkgoHelper()
 	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{})

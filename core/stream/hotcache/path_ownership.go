@@ -24,7 +24,8 @@ const (
 // dedicated to Navidrome before the resolver is allowed to scan or clean it.
 // Empty directories and directories with a strong legacy hot-cache signature
 // are adopted by creating an ownership marker. Other non-empty directories are
-// rejected without modifying their contents.
+// rejected without modifying their contents. The validated canonical path is
+// written back to configuration so a symlink cannot later redirect cleanup.
 func PrepareConfiguredPath() error {
 	if !conf.Server.HotCache.Enabled {
 		return nil
@@ -33,46 +34,70 @@ func PrepareConfiguredPath() error {
 	if path == "" {
 		path = filepath.Join(conf.Server.CacheFolder.String(), "hot-music")
 	}
-	return prepareOwnedCachePath(path)
-}
-
-func prepareOwnedCachePath(path string) error {
-	if strings.TrimSpace(path) == "" {
-		return errors.New("hot-cache path is empty")
-	}
-
-	info, err := os.Stat(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		if err := os.MkdirAll(path, 0o750); err != nil {
-			return fmt.Errorf("creating hot-cache directory %q: %w", path, err)
-		}
-	case err != nil:
-		return fmt.Errorf("inspecting hot-cache directory %q: %w", path, err)
-	case !info.IsDir():
-		return fmt.Errorf("hot-cache path %q is not a directory", path)
-	}
-
-	if err := verifyHotCacheOwnership(path); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	resolved, err := prepareOwnedCachePath(path)
+	if err != nil {
 		return err
 	}
+	conf.Server.HotCache.Path = conf.NewDir(resolved)
+	return nil
+}
 
-	entries, err := os.ReadDir(path)
+func prepareOwnedCachePath(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("hot-cache path is empty")
+	}
+	absolutePath, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("reading hot-cache directory %q: %w", path, err)
+		return "", fmt.Errorf("resolving absolute hot-cache path %q: %w", path, err)
+	}
+
+	info, err := os.Stat(absolutePath)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		if err := os.MkdirAll(absolutePath, 0o750); err != nil {
+			return "", fmt.Errorf("creating hot-cache directory %q: %w", absolutePath, err)
+		}
+	case err != nil:
+		return "", fmt.Errorf("inspecting hot-cache directory %q: %w", absolutePath, err)
+	case !info.IsDir():
+		return "", fmt.Errorf("hot-cache path %q is not a directory", absolutePath)
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absolutePath)
+	if err != nil {
+		return "", fmt.Errorf("resolving hot-cache directory %q: %w", absolutePath, err)
+	}
+	resolvedInfo, err := os.Stat(resolvedPath)
+	if err != nil {
+		return "", fmt.Errorf("inspecting resolved hot-cache directory %q: %w", resolvedPath, err)
+	}
+	if !resolvedInfo.IsDir() {
+		return "", fmt.Errorf("resolved hot-cache path %q is not a directory", resolvedPath)
+	}
+
+	if err := verifyHotCacheOwnership(resolvedPath); err == nil {
+		return resolvedPath, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+
+	entries, err := os.ReadDir(resolvedPath)
+	if err != nil {
+		return "", fmt.Errorf("reading hot-cache directory %q: %w", resolvedPath, err)
 	}
 	if len(entries) > 0 {
-		legacy, err := isRecognizedLegacyHotCache(path, entries)
+		legacy, err := isRecognizedLegacyHotCache(resolvedPath, entries)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if !legacy {
-			return fmt.Errorf("refusing non-empty hot-cache directory %q without a Navidrome ownership marker", path)
+			return "", fmt.Errorf("refusing non-empty hot-cache directory %q without a Navidrome ownership marker", resolvedPath)
 		}
 	}
-	return createHotCacheOwnership(path)
+	if err := createHotCacheOwnership(resolvedPath); err != nil {
+		return "", err
+	}
+	return resolvedPath, nil
 }
 
 func ownershipDirectory(path string) string {

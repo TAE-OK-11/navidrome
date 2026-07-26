@@ -99,7 +99,7 @@ func (r *resolver) persistRuntimeStats() error {
 	if err != nil {
 		return fmt.Errorf("writing statistics snapshot: %w", err)
 	}
-	if err := os.Rename(temporaryPath, r.statsPath); err != nil {
+	if err := replaceFile(temporaryPath, r.statsPath); err != nil {
 		return fmt.Errorf("publishing statistics snapshot: %w", err)
 	}
 	return nil

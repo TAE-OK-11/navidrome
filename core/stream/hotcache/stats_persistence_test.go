@@ -26,6 +26,21 @@ func TestRuntimeStatisticsPersistAcrossRestart(t *testing.T) {
 	require.Equal(t, uint64(7), second.Formats()[1].RequestHits)
 }
 
+func TestRuntimeStatisticsCanReplaceExistingSnapshot(t *testing.T) {
+	options := testOptions(t)
+	resolver := New(options).(*resolver)
+	t.Cleanup(func() { require.NoError(t, resolver.Shutdown(context.Background())) })
+
+	resolver.runtime.requestHits.Store(1)
+	require.NoError(t, resolver.persistRuntimeStats())
+	resolver.runtime.requestHits.Store(2)
+	require.NoError(t, resolver.persistRuntimeStats())
+
+	restored := New(options).(*resolver)
+	t.Cleanup(func() { require.NoError(t, restored.Shutdown(context.Background())) })
+	require.Equal(t, uint64(2), restored.Status().RequestHits)
+}
+
 func TestInvalidRuntimeStatisticsDoNotDisableCache(t *testing.T) {
 	options := testOptions(t)
 	statsPath := filepath.Join(filepath.Dir(options.Path), ".hot-cache-stats-v1.json")

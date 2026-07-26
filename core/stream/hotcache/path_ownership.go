@@ -160,15 +160,13 @@ func createHotCacheOwnership(path string) error {
 	if err := marker.Close(); err != nil {
 		return fmt.Errorf("closing hot-cache ownership marker %q: %w", markerPath, err)
 	}
-	if err := syncDirectory(path); err != nil {
-		return fmt.Errorf("syncing hot-cache directory %q: %w", path, err)
-	}
 	cleanup = false
 	return nil
 }
 
 func isRecognizedLegacyHotCache(path string, entries []os.DirEntry) (bool, error) {
-	foundCacheFile := false
+	dataKeys := make(map[string]struct{})
+	metadataKeys := make(map[string]struct{})
 	for _, item := range entries {
 		if item.IsDir() {
 			return false, nil
@@ -184,10 +182,11 @@ func isRecognizedLegacyHotCache(path string, entries []os.DirEntry) (bool, error
 		name := item.Name()
 		switch {
 		case strings.HasSuffix(name, ".data"):
-			if !validHotCacheKey(strings.TrimSuffix(name, ".data")) {
+			key := strings.TrimSuffix(name, ".data")
+			if !validHotCacheKey(key) {
 				return false, nil
 			}
-			foundCacheFile = true
+			dataKeys[key] = struct{}{}
 		case strings.HasSuffix(name, ".json"):
 			key := strings.TrimSuffix(name, ".json")
 			if !validHotCacheKey(key) {
@@ -200,18 +199,25 @@ func isRecognizedLegacyHotCache(path string, entries []os.DirEntry) (bool, error
 			if !valid {
 				return false, nil
 			}
-			foundCacheFile = true
+			metadataKeys[key] = struct{}{}
 		case strings.HasSuffix(name, ".tmp"):
 			key, _, ok := strings.Cut(name, ".")
 			if !ok || !validHotCacheKey(key) {
 				return false, nil
 			}
-			foundCacheFile = true
 		default:
 			return false, nil
 		}
 	}
-	return foundCacheFile, nil
+	if len(metadataKeys) == 0 || len(dataKeys) != len(metadataKeys) {
+		return false, nil
+	}
+	for key := range dataKeys {
+		if _, ok := metadataKeys[key]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func validHotCacheKey(key string) bool {

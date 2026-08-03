@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 )
 
 const (
@@ -20,6 +22,26 @@ const (
 	maxManifestUncompressedSize = 1 << 20  // 1 MiB
 	maxWASMUncompressedSize     = 64 << 20 // 64 MiB
 )
+
+// validPluginID reports whether id is usable. It names a directory under
+// DataFolder/plugins, so a path-like one would point at another plugin's data.
+func validPluginID(id string) bool {
+	if id == "." || id == ".." || strings.ContainsAny(id, `/\`) || !filepath.IsLocal(id) {
+		return false
+	}
+	// Windows drops trailing dots and spaces, so "foo." and "foo" would end up
+	// sharing a directory
+	return strings.TrimRight(id, ". ") == id
+}
+
+// pluginIDFromPath derives the plugin ID from a package path.
+func pluginIDFromPath(path string) (string, bool) {
+	id := strings.TrimSuffix(filepath.Base(path), PackageExtension)
+	if !validPluginID(id) {
+		return "", false
+	}
+	return id, true
+}
 
 // ndpPackage represents a loaded .ndp plugin package.
 // It contains the manifest and wasm bytes read from the archive.

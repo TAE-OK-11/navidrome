@@ -150,11 +150,12 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	// Measure server startup time
 	startupTime := time.Since(consts.ServerStart)
 
-	// Wait a short time to make sure the server has started successfully
+	// Wait a short time to make sure the server has started successfully.
+	var runErr error
 	select {
 	case err := <-errC:
 		log.Error(ctx, "Could not start server. Aborting", err)
-		return fmt.Errorf("starting server: %w", err)
+		runErr = fmt.Errorf("starting server: %w", err)
 	case <-time.After(serverStartupGracePeriod):
 		protocols := server.Protocols.String()
 		if h3 != nil {
@@ -163,12 +164,16 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", protocols)
 	}
 
-	// Wait for a signal to terminate
-	select {
-	case err := <-errC:
-		return fmt.Errorf("running server: %w", err)
-	case <-ctx.Done():
-		// If the context is done (i.e. the server should stop), proceed to shutting down the server
+	// Wait for a signal to terminate or for either listener to fail. All exit
+	// paths converge on the shutdown block so the sibling listener is never
+	// left running after an error.
+	if runErr == nil {
+		select {
+		case err := <-errC:
+			runErr = fmt.Errorf("running server: %w", err)
+		case <-ctx.Done():
+			// If the context is done, proceed to shutting down the servers.
+		}
 	}
 
 	// Try to stop all HTTP servers gracefully.
@@ -194,7 +199,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 			log.Error(ctx, "Unexpected error while shutting down HTTP server", err)
 		}
 	}
-	return nil
+	return runErr
 }
 
 func newHTTPServer(handler http.Handler) *http.Server {

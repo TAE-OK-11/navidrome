@@ -1,4 +1,4 @@
-name: JBS Navidrome CI and GHCR
+name: JBS Navidrome Debian 13 CI and GHCR
 
 on:
   push:
@@ -16,21 +16,45 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOCKER_BUILD_SUMMARY: "false"
+  DEBIAN_FRONTEND: noninteractive
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+  DOCKER_BUILD_SUMMARY: "true"
 
 permissions:
   contents: read
 
 jobs:
   frontend:
-    name: Frontend lint, test and build
+    name: Frontend build on Debian 13
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: public.ecr.aws/docker/library/debian:13-slim
     env:
       NODE_OPTIONS: --max_old_space_size=4096
     defaults:
       run:
         working-directory: ui
     steps:
+      - name: Bootstrap Debian 13
+        working-directory: /
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
+            gzip \
+            python3 \
+            tar \
+            xz-utils
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$ID" = "debian"
+          test "$VERSION_ID" = "13"
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
@@ -51,13 +75,35 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
+      - name: Build production UI
         run: npm run build
 
   go-lint:
-    name: Go lint and generated files
+    name: Go validation on Debian 13
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: public.ecr.aws/docker/library/debian:13-slim
     steps:
+      - name: Bootstrap Debian 13
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
+            gzip \
+            pkg-config \
+            tar \
+            xz-utils \
+            zlib1g-dev
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$ID" = "debian"
+          test "$VERSION_ID" = "13"
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -95,10 +141,36 @@ jobs:
             exit 1
           fi
 
-  go-linux:
-    name: Go tests (Linux)
+  go-test:
+    name: Go tests on Debian 13
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: public.ecr.aws/docker/library/debian:13-slim
     steps:
+      - name: Bootstrap Debian 13
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            curl \
+            ffmpeg \
+            git \
+            gzip \
+            libwebp-dev \
+            mpv \
+            pkg-config \
+            sqlite3 \
+            tar \
+            xz-utils \
+            zlib1g-dev
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$ID" = "debian"
+          test "$VERSION_ID" = "13"
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
@@ -106,98 +178,50 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify Debian toolchain
+        shell: bash
+        run: |
+          cat /etc/debian_version
+          go version
+          gcc --version
+          ffmpeg -version | head -n 1
+
       - name: Download dependencies
         run: go mod download
 
       - name: Test
+        env:
+          CGO_ENABLED: "1"
         run: go test -shuffle=on -tags netgo,sqlite_fts5 -race ./... -v
 
-      - name: Test ndpgen
+      - name: Build and test ndpgen
         shell: bash
         run: |
           cd plugins/cmd/ndpgen
           go test -shuffle=on -v
-          go build -o ndpgen .
+          go build -trimpath -o ndpgen .
           ./ndpgen --help
 
-  go-windows:
-    name: Go tests (Windows)
-    runs-on: windows-2022
-    env:
-      FFMPEG_VERSION: "7.1"
-      FFMPEG_REPOSITORY: navidrome/ffmpeg-windows-builds
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          install: mingw-w64-x86_64-gcc
-          update: false
-
-      - name: Add MinGW to PATH
-        shell: bash
-        run: echo "C:/msys64/mingw64/bin" >> "$GITHUB_PATH"
-
-      - name: Cache FFmpeg
-        id: ffmpeg-cache
-        uses: actions/cache@v6
-        with:
-          path: C:/ffmpeg
-          key: ffmpeg-${{ env.FFMPEG_VERSION }}-win64
-
-      - name: Download FFmpeg
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $asset = "ffmpeg-n${env:FFMPEG_VERSION}-latest-win64-gpl-${env:FFMPEG_VERSION}"
-          $url = "https://github.com/${env:FFMPEG_REPOSITORY}/releases/download/latest/$asset.zip"
-          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath C:/ffmpeg-extracted
-          New-Item -ItemType Directory -Force -Path C:/ffmpeg/bin | Out-Null
-          Copy-Item "C:/ffmpeg-extracted/$asset/bin/ffmpeg.exe" C:/ffmpeg/bin
-          Copy-Item "C:/ffmpeg-extracted/$asset/bin/ffprobe.exe" C:/ffmpeg/bin
-
-      - name: Add FFmpeg to PATH
-        shell: bash
-        run: echo "C:/ffmpeg/bin" >> "$GITHUB_PATH"
-
-      - name: Verify toolchain
-        shell: pwsh
-        run: |
-          go version
-          where.exe gcc
-          gcc --version
-          ffmpeg -version
-          ffprobe -version
-
-      - name: Download dependencies
-        shell: bash
-        run: go mod download
-
-      - name: Test
-        shell: bash
-        env:
-          CGO_ENABLED: "1"
-        run: go test -shuffle=on -tags netgo,sqlite_fts5 ./... -v
-
-      - name: Test ndpgen
-        shell: pwsh
-        run: |
-          Set-Location plugins/cmd/ndpgen
-          go test -shuffle=on -v
-          go build -o ndpgen.exe .
-          ./ndpgen.exe --help
-
   i18n:
-    name: Validate translations
+    name: Translation validation on Debian 13
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: public.ecr.aws/docker/library/debian:13-slim
     steps:
+      - name: Bootstrap Debian 13
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates \
+            git \
+            jq
+          rm -rf /var/lib/apt/lists/*
+          . /etc/os-release
+          test "$ID" = "debian"
+          test "$VERSION_ID" = "13"
+
       - uses: actions/checkout@v7
 
       - name: Validate JSON
@@ -212,21 +236,21 @@ jobs:
         run: ./.github/workflows/validate-translations.sh -v
 
   validate-image:
-    name: Build and smoke-test image
+    name: Build Debian 13 slim image
     if: github.event_name != 'push'
     needs:
       - frontend
       - go-lint
-      - go-linux
-      - go-windows
+      - go-test
       - i18n
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build amd64 image
+      - name: Build amd64 Debian 13 image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -235,20 +259,34 @@ jobs:
           load: true
           push: false
           tags: jbs-navidrome:ci
-          cache-from: type=gha,scope=pr-amd64
-          cache-to: type=gha,mode=max,scope=pr-amd64
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_TAG=pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha,scope=debian13-pr-amd64
+          cache-to: type=gha,mode=max,scope=debian13-pr-amd64
 
-      - name: Smoke test
+      - name: Verify Debian 13 slim runtime
+        shell: bash
+        run: |
+          docker run --rm --entrypoint /bin/sh jbs-navidrome:ci -ec '
+            . /etc/os-release
+            test "$ID" = "debian"
+            test "$VERSION_ID" = "13"
+            ffmpeg -version >/dev/null
+            mpv --version >/dev/null
+            sqlite3 --version >/dev/null
+          '
+
+      - name: Smoke test Navidrome
         run: docker run --rm jbs-navidrome:ci --help
 
   publish-platform:
-    name: Publish ${{ matrix.platform }} digest
+    name: Publish Debian 13 ${{ matrix.platform }} digest
     if: github.event_name == 'push'
     needs:
       - frontend
       - go-lint
-      - go-linux
-      - go-windows
+      - go-test
       - i18n
     permissions:
       contents: read
@@ -264,6 +302,7 @@ jobs:
             runner: ubuntu-24.04-arm
             artifact: arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
 
@@ -280,7 +319,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Build and push by digest
+      - name: Build Debian 13 image and push by digest
         id: build
         uses: docker/build-push-action@v7
         with:
@@ -290,9 +329,15 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.vendor=JBS Networks
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_TAG=${{ github.ref_name }}
           outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.artifact }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.artifact }}
+          cache-from: type=gha,scope=debian13-${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=debian13-${{ matrix.artifact }}
+          provenance: mode=max
+          sbom: true
 
       - name: Export digest
         shell: bash
@@ -310,7 +355,7 @@ jobs:
           retention-days: 1
 
   publish-manifest:
-    name: Publish GHCR manifest
+    name: Publish Debian 13 GHCR manifest
     if: github.event_name == 'push'
     needs:
       - publish-platform
@@ -349,7 +394,7 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=sha-
 
-      - name: Create and push manifest
+      - name: Create and push multi-architecture manifest
         working-directory: ${{ runner.temp }}/digests
         env:
           IMAGE: ${{ steps.image.outputs.name }}
@@ -366,7 +411,8 @@ jobs:
           done
           docker buildx imagetools create "${args[@]}"
 
-      - name: Inspect manifest
+      - name: Inspect published manifest
         env:
           IMAGE: ${{ steps.image.outputs.name }}
-        run: docker buildx imagetools inspect "$IMAGE@${{ needs.publish-platform.outputs.digest }}" || docker buildx imagetools inspect "$IMAGE:sha-${GITHUB_SHA::7}"
+        shell: bash
+        run: docker buildx imagetools inspect "$IMAGE:sha-${GITHUB_SHA::7}"

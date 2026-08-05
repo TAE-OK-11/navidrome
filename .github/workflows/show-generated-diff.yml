@@ -1,11 +1,7 @@
 name: Show generated diff
 
 on:
-  push:
-    branches:
-      - agent/perf-deps-i18n-20260805
-    paths:
-      - .github/workflows/show-generated-diff.yml
+  pull_request:
 
 permissions:
   contents: read

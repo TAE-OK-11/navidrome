@@ -73,19 +73,27 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	// Mount the router for the frontend assets
 	s.MountRouter("WebUI", consts.URLPathUI, s.frontendAssetsHandler())
 
-	server := newHTTPServer(s.router)
-
-	// Determine if TLS is enabled
+	// Determine if TLS and HTTP/3 are enabled.
 	tlsEnabled := tlsCert != "" && tlsKey != ""
+	http3Enabled := conf.HTTP3Enabled()
+	unixSocket := strings.HasPrefix(addr, "unix:")
 
-	// Validate TLS certificates before starting the server
+	if http3Enabled && !tlsEnabled {
+		return errors.New("HTTP/3 requires TLSCert and TLSKey")
+	}
+	if http3Enabled && unixSocket {
+		return errors.New("HTTP/3 is not supported with Unix sockets")
+	}
+
+	// Validate TLS certificates before starting the server.
 	if tlsEnabled {
 		if err := validateTLSCertificates(tlsCert, tlsKey); err != nil {
 			return err
 		}
 	}
 
-	// Create a listener based on the address type (either Unix socket or TCP)
+	// Create a listener based on the address type (either Unix socket or TCP).
+	listenAddr := addr
 	var listener net.Listener
 	var err error
 	if after, ok := strings.CutPrefix(addr, "unix:"); ok {
@@ -95,27 +103,47 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 			return err
 		}
 	} else {
-		addr = fmt.Sprintf("%s:%d", addr, port)
-		listener, err = createTCPListener(ctx, addr)
+		listenAddr = fmt.Sprintf("%s:%d", addr, port)
+		listener, err = createTCPListener(ctx, listenAddr)
 		if err != nil {
 			return fmt.Errorf("creating tcp listener: %w", err)
 		}
 	}
 
-	// Start the server in a new goroutine and send an error signal to errC if there's an error
-	errC := make(chan error)
+	server := newHTTPServer(s.router)
+
+	var h3 *http3Runtime
+	if http3Enabled {
+		h3, err = newHTTP3Runtime(ctx, listenAddr, s.router, tlsCert, tlsKey)
+		if err != nil {
+			_ = listener.Close()
+			return err
+		}
+		server.Handler = h3.advertise(s.router)
+	}
+
+	// Start the enabled servers in goroutines and report unexpected failures.
+	errC := make(chan error, 2)
+	if h3 != nil {
+		go func() {
+			err := h3.serve()
+			if !isExpectedHTTP3ServerClose(err) {
+				errC <- fmt.Errorf("serving HTTP/3: %w", err)
+			}
+		}()
+	}
 	go func() {
 		var err error
 		if tlsEnabled {
 			// Start the HTTPS server
-			log.Info("Starting server with TLS (HTTPS) enabled", "tlsCert", tlsCert, "tlsKey", tlsKey)
+			log.Info("Starting server with TLS (HTTPS) enabled", "tlsCert", tlsCert, "tlsKey", tlsKey, "http3Enabled", http3Enabled)
 			err = server.ServeTLS(listener, tlsCert, tlsKey)
 		} else {
 			// Start the HTTP server
 			err = server.Serve(listener)
 		}
 		if !errors.Is(err, http.ErrServerClosed) {
-			errC <- err
+			errC <- fmt.Errorf("serving HTTP/1.1 and HTTP/2: %w", err)
 		}
 	}()
 
@@ -128,7 +156,11 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Could not start server. Aborting", err)
 		return fmt.Errorf("starting server: %w", err)
 	case <-time.After(serverStartupGracePeriod):
-		log.Info(ctx, "----> Navidrome server is ready!", "address", addr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", server.Protocols.String())
+		protocols := server.Protocols.String()
+		if h3 != nil {
+			protocols += " HTTP/3"
+		}
+		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", protocols)
 	}
 
 	// Wait for a signal to terminate
@@ -139,13 +171,28 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		// If the context is done (i.e. the server should stop), proceed to shutting down the server
 	}
 
-	// Try to stop the HTTP server gracefully
-	log.Info(ctx, "Stopping HTTP server")
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// Try to stop all HTTP servers gracefully.
+	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	server.SetKeepAlivesEnabled(false)
-	if err := server.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		log.Error(ctx, "Unexpected error in http.Shutdown()", err)
+
+	shutdownErrC := make(chan error, 2)
+	shutdownCount := 1
+	go func() {
+		shutdownErrC <- server.Shutdown(shutdownCtx)
+	}()
+	if h3 != nil {
+		shutdownCount++
+		go func() {
+			shutdownErrC <- h3.shutdown(shutdownCtx)
+		}()
+	}
+
+	for range shutdownCount {
+		if err := <-shutdownErrC; err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			log.Error(ctx, "Unexpected error while shutting down HTTP server", err)
+		}
 	}
 	return nil
 }

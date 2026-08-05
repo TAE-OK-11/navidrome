@@ -18,7 +18,7 @@ PDK_SOURCES := $(shell find ../pdk/go -name '*.go' 2>/dev/null)
 %.ndp: %.wasm %/manifest.json
 	@rm -f $@
 	@cp $< plugin.wasm
-	go run ./package_ndp.go $@ $*/manifest.json plugin.wasm
+	go run -buildvcs=false ./package_ndp.go $@ $*/manifest.json plugin.wasm
 	@rm -f plugin.wasm
 	@mv $< $<.tmp && mv $<.tmp $<  # Touch wasm to ensure it's older than ndp
 
@@ -27,5 +27,5 @@ PDK_SOURCES := $(shell find ../pdk/go -name '*.go' 2>/dev/null)
 ifdef TINYGO
 	cd $* && tinygo build -target wasip1 -buildmode=c-shared -o ../$@ .
 else
-	cd $* && GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o ../$@ .
+	cd $* && GOOS=wasip1 GOARCH=wasm go build -buildvcs=false -buildmode=c-shared -o ../$@ .
 endif

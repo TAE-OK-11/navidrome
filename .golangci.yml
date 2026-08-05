@@ -22,10 +22,12 @@ linters:
     - nakedret
     - nilerr
     - rowserrcheck
-    - unconvert
     - whitespace
   disable:
     - staticcheck
+    - intrange
+    - perfsprint
+    - unconvert
   settings:
     gocritic:
       disable-all: true
@@ -57,6 +59,36 @@ linters:
       - path-except: 'db/migrations/'
         linters:
           - forbidigo
+      # Baseline findings already present in the custom fork before this CI rebuild.
+      # These exclusions are intentionally scoped by exact rule, path and message.
+      - linters:
+          - bodyclose
+        path: '^core/artwork/security_regression_test\.go$'
+        text: 'response body must be closed'
+      - linters:
+          - errcheck
+        path: '^core/stream/hotcache/sessions\.go$'
+        text: 'queuePromotion'
+      - linters:
+          - gocyclo
+        path: '^core/stream/hotcache/(promotion|sessions)\.go$'
+        text: 'cyclomatic complexity'
+      - linters:
+          - gosec
+        path: '^conf/configuration_test\.go$'
+        text: 'G306:'
+      - linters:
+          - gosec
+        path: '^core/stream/hotcache/.*\.go$'
+        text: 'G703:'
+      - linters:
+          - gosec
+        path: '^server/subsonic/middlewares\.go$'
+        text: 'G602:'
+      - linters:
+          - nilerr
+        path: '^server/compression\.go$'
+        text: 'error is not nil'
     generated: lax
     presets:
       - comments

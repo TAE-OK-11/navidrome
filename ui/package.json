@@ -2,6 +2,10 @@
   "name": "ui",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25",
+    "npm": ">=11"
+  },
   "scripts": {
     "start": "vite",
     "build": "vite build && node bin/precompress-build-assets.mjs",

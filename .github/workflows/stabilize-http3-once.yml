@@ -1,0 +1,468 @@
+name: Stabilize HTTP3 once
+
+on:
+  push:
+    branches:
+      - feat/http3-quic-go
+
+permissions:
+  contents: write
+
+jobs:
+  stabilize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/http3-quic-go
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply HTTP3 stability and build optimizations
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > server/http3.go <<'EOF'
+          package server
+
+          import (
+          	"context"
+          	"crypto/tls"
+          	"errors"
+          	"fmt"
+          	"net"
+          	"net/http"
+          	"sync"
+          	"time"
+
+          	"github.com/quic-go/quic-go"
+          	"github.com/quic-go/quic-go/http3"
+          )
+
+          const (
+          	serverQUICHandshakeIdleTimeout = 5 * time.Second
+          	serverQUICKeepAlivePeriod      = 30 * time.Second
+          	serverHTTP3IdleTimeout         = 5 * time.Minute
+          	serverHTTP3AltSvcMaxAge        = 30 * 24 * time.Hour
+          )
+
+          type http3Runtime struct {
+          	server       *http3.Server
+          	packetConn   net.PacketConn
+          	altSvcHeader string
+
+          	shutdownOnce sync.Once
+          	shutdownErr  error
+          }
+
+          func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, certFile, keyFile string) (*http3Runtime, error) {
+          	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+          	if err != nil {
+          		return nil, fmt.Errorf("loading HTTP/3 TLS certificate/key pair: %w", err)
+          	}
+
+          	packetConn, err := (&net.ListenConfig{}).ListenPacket(ctx, "udp", addr)
+          	if err != nil {
+          		return nil, fmt.Errorf("creating HTTP/3 UDP listener: %w", err)
+          	}
+
+          	_, port, err := net.SplitHostPort(packetConn.LocalAddr().String())
+          	if err != nil {
+          		_ = packetConn.Close()
+          		return nil, fmt.Errorf("determining HTTP/3 listener port: %w", err)
+          	}
+
+          	tlsConfig := &tls.Config{
+          		Certificates: []tls.Certificate{cert},
+          		MinVersion:   tls.VersionTLS13,
+          	}
+
+          	server := &http3.Server{
+          		Addr:           packetConn.LocalAddr().String(),
+          		TLSConfig:      tlsConfig,
+          		Handler:        handler,
+          		MaxHeaderBytes: serverMaxHeaderBytes,
+          		IdleTimeout:    serverHTTP3IdleTimeout,
+          		QUICConfig: &quic.Config{
+          			HandshakeIdleTimeout:   serverQUICHandshakeIdleTimeout,
+          			MaxIdleTimeout:         serverHTTP3IdleTimeout,
+          			KeepAlivePeriod:        serverQUICKeepAlivePeriod,
+          			Allow0RTT:               false,
+          			DisablePathMTUDiscovery: false,
+          		},
+          	}
+
+          	return &http3Runtime{
+          		server:       server,
+          		packetConn:   packetConn,
+          		altSvcHeader: fmt.Sprintf(`h3=":%s"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
+          	}, nil
+          }
+
+          func (r *http3Runtime) serve() error {
+          	return r.server.Serve(r.packetConn)
+          }
+
+          func (r *http3Runtime) advertise(next http.Handler) http.Handler {
+          	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+          		w.Header().Set("Alt-Svc", r.altSvcHeader)
+          		next.ServeHTTP(w, req)
+          	})
+          }
+
+          func (r *http3Runtime) shutdown(ctx context.Context) error {
+          	r.shutdownOnce.Do(func() {
+          		gracefulErr := r.server.Shutdown(ctx)
+          		var forceErr error
+          		if gracefulErr != nil {
+          			forceErr = r.server.Close()
+          		}
+          		closeErr := r.packetConn.Close()
+
+          		r.shutdownErr = errors.Join(
+          			normalizeHTTP3CloseError(gracefulErr),
+          			normalizeHTTP3CloseError(forceErr),
+          			normalizeHTTP3CloseError(closeErr),
+          		)
+          	})
+          	return r.shutdownErr
+          }
+
+          func normalizeHTTP3CloseError(err error) error {
+          	if isExpectedHTTP3ServerClose(err) {
+          		return nil
+          	}
+          	return err
+          }
+
+          func isExpectedHTTP3ServerClose(err error) bool {
+          	return err == nil || errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) || errors.Is(err, quic.ErrServerClosed)
+          }
+          EOF
+
+          cat > server/shutdown.go <<'EOF'
+          package server
+
+          import (
+          	"context"
+          	"errors"
+          	"net/http"
+          )
+
+          func shutdownHTTPServer(ctx context.Context, server *http.Server) error {
+          	shutdownErr := server.Shutdown(ctx)
+          	if shutdownErr == nil {
+          		return nil
+          	}
+
+          	closeErr := server.Close()
+          	if errors.Is(closeErr, http.ErrServerClosed) {
+          		closeErr = nil
+          	}
+          	return errors.Join(shutdownErr, closeErr)
+          }
+          EOF
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "server/server.go",
+              "\tserverStartupGracePeriod = 10 * time.Millisecond\n\tserverIdleTimeout        = 2 * time.Minute\n\tserverMaxHeaderBytes     = 32 << 10\n",
+              "\tserverStartupGracePeriod = 10 * time.Millisecond\n\tserverShutdownTimeout    = 10 * time.Second\n\tserverIdleTimeout        = 2 * time.Minute\n\tserverMaxHeaderBytes     = 32 << 10\n",
+          )
+          replace_once(
+              "server/server.go",
+              "\t\tlistener, err = createTCPListener(ctx, listenAddr)\n\t\tif err != nil {\n\t\t\treturn fmt.Errorf(\"creating tcp listener: %w\", err)\n\t\t}\n",
+              "\t\tlistener, err = createTCPListener(ctx, listenAddr)\n\t\tif err != nil {\n\t\t\treturn fmt.Errorf(\"creating tcp listener: %w\", err)\n\t\t}\n\t\t// Reuse the exact address selected by the TCP listener. This is\n\t\t// especially important for port 0, hostnames and dual-stack wildcard\n\t\t// addresses, where resolving or binding the UDP listener independently\n\t\t// could advertise a different endpoint.\n\t\tlistenAddr = listener.Addr().String()\n",
+          )
+          replace_once(
+              "server/server.go",
+              "\tshutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)\n",
+              "\tshutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)\n",
+          )
+          replace_once(
+              "server/server.go",
+              "\t\tshutdownErrC <- server.Shutdown(shutdownCtx)\n",
+              "\t\tshutdownErrC <- shutdownHTTPServer(shutdownCtx, server)\n",
+          )
+          PY
+
+          cat > server/http3_test.go <<'EOF'
+          package server
+
+          import (
+          	"context"
+          	"crypto/tls"
+          	"crypto/x509"
+          	"fmt"
+          	"net/http"
+          	"net/http/httptest"
+          	"os"
+          	"path/filepath"
+          	"time"
+
+          	"github.com/quic-go/quic-go/http3"
+          	. "github.com/onsi/ginkgo/v2"
+          	. "github.com/onsi/gomega"
+          )
+
+          var _ = Describe("HTTP/3 support", func() {
+          	const testDataDir = "server/testdata"
+
+          	It("serves repeated requests over a reusable QUIC connection", func() {
+          		certFile := filepath.Join(testDataDir, "test_cert.pem")
+          		keyFile := filepath.Join(testDataDir, "test_key.pem")
+
+          		runtime, err := newHTTP3Runtime(
+          			GinkgoT().Context(),
+          			"127.0.0.1:0",
+          			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          				w.WriteHeader(http.StatusNoContent)
+          			}),
+          			certFile,
+          			keyFile,
+          		)
+          		Expect(err).ToNot(HaveOccurred())
+          		Expect(runtime.server.QUICConfig.Allow0RTT).To(BeFalse())
+          		Expect(runtime.server.QUICConfig.DisablePathMTUDiscovery).To(BeFalse())
+          		Expect(runtime.server.IdleTimeout).To(Equal(serverHTTP3IdleTimeout))
+
+          		serveErrC := make(chan error, 1)
+          		go func() {
+          			serveErrC <- runtime.serve()
+          		}()
+          		DeferCleanup(func() {
+          			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+          			defer cancel()
+          			_ = runtime.shutdown(ctx)
+          			select {
+          			case <-serveErrC:
+          			case <-time.After(time.Second):
+          			}
+          		})
+
+          		certPEM, err := os.ReadFile(certFile)
+          		Expect(err).ToNot(HaveOccurred())
+          		roots := x509.NewCertPool()
+          		Expect(roots.AppendCertsFromPEM(certPEM)).To(BeTrue())
+
+          		transport := &http3.Transport{
+          			TLSClientConfig: &tls.Config{
+          				RootCAs:    roots,
+          				MinVersion: tls.VersionTLS13,
+          			},
+          		}
+          		DeferCleanup(func() {
+          			_ = transport.Close()
+          		})
+
+          		client := &http.Client{
+          			Transport: transport,
+          			Timeout:   5 * time.Second,
+          		}
+          		url := fmt.Sprintf("https://%s/ping", runtime.packetConn.LocalAddr().String())
+
+          		for range 3 {
+          			var protoMajor int
+          			Eventually(func() error {
+          				resp, err := client.Get(url)
+          				if err != nil {
+          					return err
+          				}
+          				defer resp.Body.Close()
+          				if resp.StatusCode != http.StatusNoContent {
+          					return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+          				}
+          				protoMajor = resp.ProtoMajor
+          				return nil
+          			}, 2*time.Second, 100*time.Millisecond).Should(Succeed())
+          			Expect(protoMajor).To(Equal(3))
+          		}
+          	})
+
+          	It("shuts down idempotently", func() {
+          		certFile := filepath.Join(testDataDir, "test_cert.pem")
+          		keyFile := filepath.Join(testDataDir, "test_key.pem")
+          		runtime, err := newHTTP3Runtime(
+          			GinkgoT().Context(),
+          			"127.0.0.1:0",
+          			http.NotFoundHandler(),
+          			certFile,
+          			keyFile,
+          		)
+          		Expect(err).ToNot(HaveOccurred())
+
+          		serveErrC := make(chan error, 1)
+          		go func() { serveErrC <- runtime.serve() }()
+
+          		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+          		defer cancel()
+          		Expect(runtime.shutdown(ctx)).To(Succeed())
+          		Expect(runtime.shutdown(ctx)).To(Succeed())
+          		Eventually(serveErrC, time.Second).Should(Receive())
+          	})
+
+          	It("advertises the HTTP/3 endpoint to HTTP/1.1 and HTTP/2 clients", func() {
+          		runtime := &http3Runtime{altSvcHeader: `h3=":4533"; ma=2592000`}
+          		handler := runtime.advertise(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          			w.WriteHeader(http.StatusNoContent)
+          		}))
+
+          		recorder := httptest.NewRecorder()
+          		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "https://example.test/ping", nil))
+
+          		Expect(recorder.Code).To(Equal(http.StatusNoContent))
+          		Expect(recorder.Header().Get("Alt-Svc")).To(Equal(`h3=":4533"; ma=2592000`))
+          	})
+          })
+          EOF
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          p = Path("Makefile")
+          text = p.read_text()
+          marker = "GO_BUILD_TAGS=netgo,sqlite_fts5$(if $(EXTRA_BUILD_TAGS),$(comma)$(EXTRA_BUILD_TAGS))\n"
+          if text.count(marker) != 1:
+              raise SystemExit("Makefile: GO_BUILD_TAGS marker mismatch")
+          text = text.replace(marker, marker + "PGO ?= auto\nGO_BUILD_FLAGS=-trimpath -pgo=$(PGO)\n", 1)
+
+          old = "\tgo build -ldflags=\"-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)\" -tags=$(GO_BUILD_TAGS)\n.PHONY: build\n"
+          new = "\tgo build $(GO_BUILD_FLAGS) -ldflags=\"-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)\" -tags=$(GO_BUILD_TAGS)\n.PHONY: build\n\npgo-build: ##@Build Build with a representative default.pgo profile\n\t@test -s default.pgo || (echo \"ERROR: default.pgo is missing or empty\" && exit 1)\n\t$(MAKE) build PGO=default.pgo\n.PHONY: pgo-build\n"
+          if text.count(old) != 1:
+              raise SystemExit("Makefile: build target marker mismatch")
+          text = text.replace(old, new, 1)
+
+          text = text.replace(
+              "\t\t--build-arg GIT_SHA=${GIT_SHA} \\\n\t\t--output \"./binaries\" --target binary .",
+              "\t\t--build-arg GIT_SHA=${GIT_SHA} \\\n\t\t--build-arg PGO=$(PGO) \\\n\t\t--output \"./binaries\" --target binary .",
+              1,
+          )
+          text = text.replace(
+              "\t\t--build-arg GIT_SHA=${GIT_SHA} \\\n\t\t--tag $(DOCKER_TAG) .",
+              "\t\t--build-arg GIT_SHA=${GIT_SHA} \\\n\t\t--build-arg PGO=$(PGO) \\\n\t\t--tag $(DOCKER_TAG) .",
+              1,
+          )
+          text = text.replace("-p 4533:4533 ", "-p 4533:4533/tcp -p 4533:4533/udp ")
+          p.write_text(text)
+
+          p = Path("Dockerfile")
+          text = p.read_text()
+          if text.count("ARG GIT_TAG\n\nRUN") != 2:
+              raise SystemExit("Dockerfile: expected two GIT_TAG markers")
+          text = text.replace("ARG GIT_TAG\n\nRUN", "ARG GIT_TAG\nARG PGO=auto\n\nRUN")
+          if text.count('go build -tags="${BUILD_TAGS}"') != 2:
+              raise SystemExit("Dockerfile: expected two go build markers")
+          text = text.replace('go build -tags="${BUILD_TAGS}"', 'go build -trimpath -pgo="${PGO}" -tags="${BUILD_TAGS}"')
+          if text.count("EXPOSE ${ND_PORT}") != 1:
+              raise SystemExit("Dockerfile: EXPOSE marker mismatch")
+          text = text.replace("EXPOSE ${ND_PORT}", "EXPOSE ${ND_PORT}/tcp ${ND_PORT}/udp", 1)
+          p.write_text(text)
+          PY
+
+          mkdir -p docs/developers docs/usage contrib/sysctl
+          cat > docs/developers/pgo.md <<'EOF'
+          # Profile-guided optimization
+
+          Navidrome builds accept Go's `-pgo` build option through the `PGO` Make variable and Docker build argument.
+
+          The default is `PGO=auto`. Go automatically uses `default.pgo` when that file exists beside Navidrome's main package in the repository root. Without that file, the build remains a normal optimized Go build.
+
+          Use a representative production CPU pprof profile rather than a microbenchmark or a mostly idle profile:
+
+          ```sh
+          cp /path/to/representative-cpu.pprof default.pgo
+          make pgo-build
+          make docker-image PGO=default.pgo
+          ```
+
+          Disable PGO explicitly when diagnosing build or performance differences:
+
+          ```sh
+          make build PGO=off
+          make docker-image PGO=off
+          ```
+
+          PGO optimizes the complete Go program, including standard-library and dependency packages. Keep the profile under review like any other build input and refresh it from representative workloads as the application changes.
+
+          Go does not expose a traditional whole-program LTO switch for Go code. Passing C/C++ `-flto` flags to the external linker would only affect compatible C objects, would not optimize Go packages together, and would make Navidrome's multi-platform CGO cross-builds less reliable, so LTO is intentionally not enabled.
+          EOF
+
+          cat > docs/usage/http3.md <<'EOF'
+          # HTTP/3 deployment notes
+
+          Enable HTTP/3 with TLS and publish the configured Navidrome port over both TCP and UDP:
+
+          ```env
+          ND_ENABLEHTTP3=true
+          ND_TLSCERT=/path/to/fullchain.pem
+          ND_TLSKEY=/path/to/privkey.pem
+          ```
+
+          ```yaml
+          ports:
+            - "4533:4533/tcp"
+            - "4533:4533/udp"
+          ```
+
+          quic-go automatically uses Linux Generic Segmentation Offload when the kernel supports it and automatically falls back when it does not. Path MTU discovery is enabled.
+
+          For high-throughput QUIC on Linux, raise the kernel maximum UDP socket buffers before starting Navidrome:
+
+          ```sh
+          sudo sysctl --system
+          ```
+
+          A ready-to-install example is available at `contrib/sysctl/99-navidrome-quic.conf`. Container port publishing does not change the host kernel limits, so apply the settings on the Docker host.
+          EOF
+
+          cat > contrib/sysctl/99-navidrome-quic.conf <<'EOF'
+          # Recommended by quic-go for high-throughput QUIC transfers.
+          net.core.rmem_max = 7340032
+          net.core.wmem_max = 7340032
+          EOF
+
+          gofmt -w server/http3.go server/http3_test.go server/shutdown.go server/server.go
+          go mod tidy
+
+      - name: Test HTTP3 and PGO plumbing
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -tags=netgo,sqlite_fts5 ./server
+          go test -tags=netgo,sqlite_fts5 -run '^$' -cpuprofile=/tmp/navidrome-bootstrap.pprof ./server
+          go test -c -tags=netgo,sqlite_fts5 -pgo=/tmp/navidrome-bootstrap.pprof -o /tmp/navidrome-server.test ./server
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stabilize-http3-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/http3.go server/http3_test.go server/server.go server/shutdown.go Makefile Dockerfile go.mod go.sum docs/developers/pgo.md docs/usage/http3.md contrib/sysctl/99-navidrome-quic.conf
+          git commit -m "perf(server): stabilize HTTP/3 and add PGO builds"
+          git push origin HEAD:feat/http3-quic-go

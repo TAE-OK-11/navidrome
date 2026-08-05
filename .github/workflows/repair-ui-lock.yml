@@ -1,0 +1,47 @@
+name: Repair UI package lock
+
+on:
+  push:
+    branches:
+      - fix/jbs-ghcr-build-system
+    paths:
+      - .github/workflows/repair-ui-lock.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/jbs-ghcr-build-system
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Regenerate lockfile
+        working-directory: ui
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify npm ci
+        working-directory: ui
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Commit lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- ui/package-lock.json; then
+            echo "package-lock.json is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui/package-lock.json
+          git commit -m "fix(ui): regenerate npm lockfile"
+          git push origin HEAD:fix/jbs-ghcr-build-system

@@ -59,9 +59,11 @@ func ValidateConfig(manifest *Manifest, configJSON string) error {
 		}
 	}
 
-	// Compile the schema
+	// Compile the schema. jsonschema accepts standard JSON container types, so
+	// strip the generated named-map type before passing the schema as an interface.
 	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("schema.json", manifest.Config.Schema); err != nil {
+	schemaData := map[string]any(manifest.Config.Schema)
+	if err := compiler.AddResource("schema.json", schemaData); err != nil {
 		return fmt.Errorf("adding schema resource: %w", err)
 	}
 

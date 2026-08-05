@@ -35,6 +35,23 @@ type archiver struct {
 	shares Share
 }
 
+type loadedShareContextKey struct{}
+
+// WithLoadedShare attaches an already validated share to the request context.
+// Share.Load records a visit, so the archiver must reuse the loaded value rather
+// than loading it a second time for the same download.
+func WithLoadedShare(ctx context.Context, share *model.Share) context.Context {
+	if share == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, loadedShareContextKey{}, share)
+}
+
+func loadedShareFromContext(ctx context.Context, id string) (*model.Share, bool) {
+	share, ok := ctx.Value(loadedShareContextKey{}).(*model.Share)
+	return share, ok && share != nil && share.ID == id
+}
+
 func (a *archiver) ZipAlbum(ctx context.Context, id string, format string, bitrate int, out io.Writer) error {
 	return a.zipAlbums(ctx, id, format, bitrate, out, squirrel.Eq{"album_id": id})
 }
@@ -101,9 +118,13 @@ func (a *archiver) albumFilename(mf model.MediaFile, format string, isMultiDisc 
 }
 
 func (a *archiver) ZipShare(ctx context.Context, id string, out io.Writer) error {
-	s, err := a.shares.Load(ctx, id)
-	if err != nil {
-		return err
+	s, ok := loadedShareFromContext(ctx, id)
+	if !ok {
+		var err error
+		s, err = a.shares.Load(ctx, id)
+		if err != nil {
+			return err
+		}
 	}
 	if !s.Downloadable {
 		return model.ErrNotAuthorized

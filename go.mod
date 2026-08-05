@@ -72,6 +72,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require github.com/quic-go/qpack v0.6.0 // indirect
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect

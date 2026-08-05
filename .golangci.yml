@@ -54,6 +54,27 @@ linters:
           - gosec
         path: _test\.go
         text: "G703"
+      # This test deliberately starts with a permissive file and verifies that
+      # configuration loading tightens it to owner-only permissions.
+      - linters:
+          - gosec
+        path: conf/configuration_test\.go
+        text: "G306"
+      # Compression initialization failure intentionally falls back to the raw
+      # response path; returning the setup error would drop a valid response.
+      - linters:
+          - nilerr
+        path: server/compression\.go
+      # uint64 is the parser's native type and is compared against the signed
+      # storage limit before conversion to int64. The expression is deliberate.
+      - linters:
+          - unconvert
+        path: core/stream/hotcache/resolver\.go
+      # Promotion is a transactional sequence with shared cleanup paths. Its
+      # complexity is explicit and covered by promotion tests.
+      - linters:
+          - gocyclo
+        path: core/stream/hotcache/promotion\.go
       - path-except: 'db/migrations/'
         linters:
           - forbidigo

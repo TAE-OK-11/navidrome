@@ -4,28 +4,35 @@ package plugins
 
 import "encoding/json"
 import "fmt"
+import "unicode/utf8"
 
 // Artwork service permissions for generating artwork URLs
 type ArtworkPermission struct {
 	// Explanation for why artwork access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // Cache service permissions for storing and retrieving data
 type CachePermission struct {
 	// Explanation for why cache access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // Configuration schema for the plugin using JSON Schema (draft-07) and optional
 // JSONForms UI Schema
 type ConfigDefinition struct {
 	// JSON Schema (draft-07) defining the plugin's configuration options
-	Schema map[string]interface{} `json:"schema" yaml:"schema" mapstructure:"schema"`
+	Schema ConfigDefinitionSchema `json:"schema" yaml:"schema" mapstructure:"schema"`
 
 	// Optional JSONForms UI Schema for customizing form layout
-	UiSchema map[string]interface{} `json:"uiSchema,omitempty" yaml:"uiSchema,omitempty" mapstructure:"uiSchema,omitempty"`
+	UiSchema ConfigDefinitionUiSchema `json:"uiSchema,omitempty,omitzero" yaml:"uiSchema,omitempty" mapstructure:"uiSchema,omitempty"`
 }
+
+// JSON Schema (draft-07) defining the plugin's configuration options
+type ConfigDefinitionSchema map[string]interface{}
+
+// Optional JSONForms UI Schema for customizing form layout
+type ConfigDefinitionUiSchema map[string]interface{}
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (j *ConfigDefinition) UnmarshalJSON(value []byte) error {
@@ -48,30 +55,30 @@ func (j *ConfigDefinition) UnmarshalJSON(value []byte) error {
 // HTTP access permissions for a plugin
 type HTTPPermission struct {
 	// Explanation for why HTTP access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 
 	// List of required host patterns for HTTP requests (e.g., 'api.example.com',
 	// '*.musicbrainz.org')
-	RequiredHosts []string `json:"requiredHosts,omitempty" yaml:"requiredHosts,omitempty" mapstructure:"requiredHosts,omitempty"`
+	RequiredHosts []string `json:"requiredHosts,omitempty,omitzero" yaml:"requiredHosts,omitempty" mapstructure:"requiredHosts,omitempty"`
 }
 
 // Key-value store permissions for persistent plugin storage
 type KVStorePermission struct {
 	// Maximum storage size (e.g., '1MB', '500KB'). Default: 1MB
-	MaxSize *string `json:"maxSize,omitempty" yaml:"maxSize,omitempty" mapstructure:"maxSize,omitempty"`
+	MaxSize *string `json:"maxSize,omitempty,omitzero" yaml:"maxSize,omitempty" mapstructure:"maxSize,omitempty"`
 
 	// Explanation for why key-value store access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // Library service permissions for accessing library metadata and optionally
 // filesystem
 type LibraryPermission struct {
 	// Whether the plugin requires read-only filesystem access to library directories
-	Filesystem bool `json:"filesystem,omitempty" yaml:"filesystem,omitempty" mapstructure:"filesystem,omitempty"`
+	Filesystem bool `json:"filesystem,omitempty,omitzero" yaml:"filesystem,omitempty" mapstructure:"filesystem,omitempty"`
 
 	// Explanation for why library access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -98,22 +105,22 @@ type Manifest struct {
 	Author string `json:"author" yaml:"author" mapstructure:"author"`
 
 	// Config corresponds to the JSON schema field "config".
-	Config *ConfigDefinition `json:"config,omitempty" yaml:"config,omitempty" mapstructure:"config,omitempty"`
+	Config *ConfigDefinition `json:"config,omitempty,omitzero" yaml:"config,omitempty" mapstructure:"config,omitempty"`
 
 	// A brief description of what the plugin does
-	Description *string `json:"description,omitempty" yaml:"description,omitempty" mapstructure:"description,omitempty"`
+	Description *string `json:"description,omitempty,omitzero" yaml:"description,omitempty" mapstructure:"description,omitempty"`
 
 	// The display name of the plugin
 	Name string `json:"name" yaml:"name" mapstructure:"name"`
 
 	// Permissions corresponds to the JSON schema field "permissions".
-	Permissions *Permissions `json:"permissions,omitempty" yaml:"permissions,omitempty" mapstructure:"permissions,omitempty"`
+	Permissions *Permissions `json:"permissions,omitempty,omitzero" yaml:"permissions,omitempty" mapstructure:"permissions,omitempty"`
 
 	// The version of the plugin (semver recommended)
 	Version string `json:"version" yaml:"version" mapstructure:"version"`
 
 	// URL to the plugin's website or repository
-	Website *string `json:"website,omitempty" yaml:"website,omitempty" mapstructure:"website,omitempty"`
+	Website *string `json:"website,omitempty,omitzero" yaml:"website,omitempty" mapstructure:"website,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -136,13 +143,13 @@ func (j *Manifest) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &plain); err != nil {
 		return err
 	}
-	if len(plain.Author) < 1 {
+	if utf8.RuneCountInString(string(plain.Author)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "author", 1)
 	}
-	if len(plain.Name) < 1 {
+	if utf8.RuneCountInString(string(plain.Name)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "name", 1)
 	}
-	if len(plain.Version) < 1 {
+	if utf8.RuneCountInString(string(plain.Version)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "version", 1)
 	}
 	*j = Manifest(plain)
@@ -152,55 +159,55 @@ func (j *Manifest) UnmarshalJSON(value []byte) error {
 // Permissions required by the plugin
 type Permissions struct {
 	// Artwork corresponds to the JSON schema field "artwork".
-	Artwork *ArtworkPermission `json:"artwork,omitempty" yaml:"artwork,omitempty" mapstructure:"artwork,omitempty"`
+	Artwork *ArtworkPermission `json:"artwork,omitempty,omitzero" yaml:"artwork,omitempty" mapstructure:"artwork,omitempty"`
 
 	// Cache corresponds to the JSON schema field "cache".
-	Cache *CachePermission `json:"cache,omitempty" yaml:"cache,omitempty" mapstructure:"cache,omitempty"`
+	Cache *CachePermission `json:"cache,omitempty,omitzero" yaml:"cache,omitempty" mapstructure:"cache,omitempty"`
 
 	// Http corresponds to the JSON schema field "http".
-	Http *HTTPPermission `json:"http,omitempty" yaml:"http,omitempty" mapstructure:"http,omitempty"`
+	Http *HTTPPermission `json:"http,omitempty,omitzero" yaml:"http,omitempty" mapstructure:"http,omitempty"`
 
 	// Kvstore corresponds to the JSON schema field "kvstore".
-	Kvstore *KVStorePermission `json:"kvstore,omitempty" yaml:"kvstore,omitempty" mapstructure:"kvstore,omitempty"`
+	Kvstore *KVStorePermission `json:"kvstore,omitempty,omitzero" yaml:"kvstore,omitempty" mapstructure:"kvstore,omitempty"`
 
 	// Library corresponds to the JSON schema field "library".
-	Library *LibraryPermission `json:"library,omitempty" yaml:"library,omitempty" mapstructure:"library,omitempty"`
+	Library *LibraryPermission `json:"library,omitempty,omitzero" yaml:"library,omitempty" mapstructure:"library,omitempty"`
 
 	// Scheduler corresponds to the JSON schema field "scheduler".
-	Scheduler *SchedulerPermission `json:"scheduler,omitempty" yaml:"scheduler,omitempty" mapstructure:"scheduler,omitempty"`
+	Scheduler *SchedulerPermission `json:"scheduler,omitempty,omitzero" yaml:"scheduler,omitempty" mapstructure:"scheduler,omitempty"`
 
 	// Subsonicapi corresponds to the JSON schema field "subsonicapi".
-	Subsonicapi *SubsonicAPIPermission `json:"subsonicapi,omitempty" yaml:"subsonicapi,omitempty" mapstructure:"subsonicapi,omitempty"`
+	Subsonicapi *SubsonicAPIPermission `json:"subsonicapi,omitempty,omitzero" yaml:"subsonicapi,omitempty" mapstructure:"subsonicapi,omitempty"`
 
 	// Taskqueue corresponds to the JSON schema field "taskqueue".
-	Taskqueue *TaskQueuePermission `json:"taskqueue,omitempty" yaml:"taskqueue,omitempty" mapstructure:"taskqueue,omitempty"`
+	Taskqueue *TaskQueuePermission `json:"taskqueue,omitempty,omitzero" yaml:"taskqueue,omitempty" mapstructure:"taskqueue,omitempty"`
 
 	// Users corresponds to the JSON schema field "users".
-	Users *UsersPermission `json:"users,omitempty" yaml:"users,omitempty" mapstructure:"users,omitempty"`
+	Users *UsersPermission `json:"users,omitempty,omitzero" yaml:"users,omitempty" mapstructure:"users,omitempty"`
 
 	// Websocket corresponds to the JSON schema field "websocket".
-	Websocket *WebSocketPermission `json:"websocket,omitempty" yaml:"websocket,omitempty" mapstructure:"websocket,omitempty"`
+	Websocket *WebSocketPermission `json:"websocket,omitempty,omitzero" yaml:"websocket,omitempty" mapstructure:"websocket,omitempty"`
 }
 
 // Scheduler service permissions for scheduling tasks
 type SchedulerPermission struct {
 	// Explanation for why scheduler access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // SubsonicAPI service permissions. Requires 'users' permission to be declared.
 type SubsonicAPIPermission struct {
 	// Explanation for why SubsonicAPI access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // Task queue permissions for background task processing
 type TaskQueuePermission struct {
 	// Maximum total concurrent workers across all queues. Default: 1
-	MaxConcurrency int `json:"maxConcurrency,omitempty" yaml:"maxConcurrency,omitempty" mapstructure:"maxConcurrency,omitempty"`
+	MaxConcurrency int `json:"maxConcurrency,omitempty,omitzero" yaml:"maxConcurrency,omitempty" mapstructure:"maxConcurrency,omitempty"`
 
 	// Explanation for why task queue access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -215,7 +222,7 @@ func (j *TaskQueuePermission) UnmarshalJSON(value []byte) error {
 		return err
 	}
 	if v, ok := raw["maxConcurrency"]; !ok || v == nil {
-		plain.MaxConcurrency = 1.0
+		plain.MaxConcurrency = 1
 	}
 	if 1 > plain.MaxConcurrency {
 		return fmt.Errorf("field %s: must be >= %v", "maxConcurrency", 1)
@@ -227,15 +234,15 @@ func (j *TaskQueuePermission) UnmarshalJSON(value []byte) error {
 // Users service permissions for accessing user information
 type UsersPermission struct {
 	// Explanation for why users access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 }
 
 // WebSocket service permissions for establishing WebSocket connections
 type WebSocketPermission struct {
 	// Explanation for why WebSocket access is needed
-	Reason *string `json:"reason,omitempty" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
+	Reason *string `json:"reason,omitempty,omitzero" yaml:"reason,omitempty" mapstructure:"reason,omitempty"`
 
 	// List of required host patterns for WebSocket connections (e.g.,
 	// 'api.example.com', '*.musicbrainz.org')
-	RequiredHosts []string `json:"requiredHosts,omitempty" yaml:"requiredHosts,omitempty" mapstructure:"requiredHosts,omitempty"`
+	RequiredHosts []string `json:"requiredHosts,omitempty,omitzero" yaml:"requiredHosts,omitempty" mapstructure:"requiredHosts,omitempty"`
 }

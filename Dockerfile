@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.25
 
 ########################################################################################################################
-### Build Navidrome UI on Debian 13 (Trixie)
+### Build Navidrome UI on Debian 13 slim (Trixie)
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:24-trixie-slim AS ui
 
 WORKDIR /workspace/ui
@@ -21,22 +21,41 @@ COPY ui/ ./
 RUN npm run build -- --outDir=/out/ui
 
 ########################################################################################################################
-### Build Navidrome Linux binary on Debian 13 (Trixie / glibc)
-FROM public.ecr.aws/docker/library/golang:1.26.5-trixie AS build
+### Build Navidrome Linux binary on Debian 13 slim (Trixie / glibc)
+FROM public.ecr.aws/docker/library/debian:13-slim AS build
 
+ARG GO_VERSION=1.26.5
+ARG GO_SHA256_AMD64=5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053
+ARG GO_SHA256_ARM64=fe4789e92b1f33358680864bbe8704289e7bb5fc207d80623c308935bd696d49
+ARG TARGETARCH
 ARG GIT_SHA=unknown
 ARG GIT_TAG=dev
+
+ENV GOPATH=/go \
+    PATH="/usr/local/go/bin:/go/bin:${PATH}"
 
 WORKDIR /workspace
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
       ca-certificates \
+      curl \
       file \
       git \
       libwebp-dev \
       pkg-config \
+      tar \
       zlib1g-dev \
+    && case "${TARGETARCH}" in \
+         amd64) go_sha256="${GO_SHA256_AMD64}" ;; \
+         arm64) go_sha256="${GO_SHA256_ARM64}" ;; \
+         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+       esac \
+    && curl -fsSLo /tmp/go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
+    && echo "${go_sha256}  /tmp/go.tar.gz" | sha256sum -c - \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm -f /tmp/go.tar.gz \
+    && go version \
     && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./

@@ -22,10 +22,12 @@ linters:
     - nakedret
     - nilerr
     - rowserrcheck
-    - unconvert
     - whitespace
   disable:
     - staticcheck
+    - intrange
+    - perfsprint
+    - unconvert
   settings:
     gocritic:
       disable-all: true

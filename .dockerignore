@@ -1,4 +1,8 @@
 .DS_Store
+.git
+.github
+.idea
+.vscode
 ui/node_modules
 ui/build
 !ui/build/.gitkeep
@@ -14,6 +18,7 @@ tmp
 dist
 binaries
 cache
+coverage
 music
 music.old
 !Dockerfile

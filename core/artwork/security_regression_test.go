@@ -72,7 +72,10 @@ func TestSafeArtworkDialerBlocksResolvedPrivateAddressAndRedirect(t *testing.T) 
 		},
 	}
 	client := &http.Client{Transport: &http.Transport{DialContext: dialer.DialContext}}
-	_, err := client.Get("http://initial.test/start")
+	resp, err := client.Get("http://initial.test/start")
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil || !strings.Contains(err.Error(), "disallowed address") {
 		t.Fatalf("expected redirected private address to be blocked, got %v", err)
 	}

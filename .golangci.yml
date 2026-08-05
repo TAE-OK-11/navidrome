@@ -79,7 +79,7 @@ linters:
         text: 'G306:'
       - linters:
           - gosec
-        path: '^core/stream/hotcache/(promotion|resolver)\.go$'
+        path: '^core/stream/hotcache/.*\.go$'
         text: 'G703:'
       - linters:
           - gosec

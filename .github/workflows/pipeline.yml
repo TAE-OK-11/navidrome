@@ -1,4 +1,5 @@
-name: "Pipeline: Test, Lint, Build"
+name: JBS Navidrome CI and GHCR
+
 on:
   push:
     branches:
@@ -8,121 +9,102 @@ on:
   pull_request:
     branches:
       - master
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ startsWith(github.ref, 'refs/tags/v') && 'tag' || 'branch' }}-${{ github.ref }}
+  group: jbs-navidrome-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') && 'true' || 'false' }}
+  DOCKER_BUILD_SUMMARY: "false"
+
+permissions:
+  contents: read
 
 jobs:
-  git-version:
-    name: Get version info
-    runs-on: ubuntu-latest
-    outputs:
-      git_tag: ${{ steps.git-version.outputs.GIT_TAG }}
-      git_sha: ${{ steps.git-version.outputs.GIT_SHA }}
+  frontend:
+    name: Frontend lint, test and build
+    runs-on: ubuntu-24.04
+    env:
+      NODE_OPTIONS: --max_old_space_size=4096
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check formatting
+        run: npm run check-formatting
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  go-lint:
+    name: Go lint and generated files
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Show git version info
-        run: |
-          echo "git describe (dirty): $(git describe --dirty --always --tags)"
-          echo "git describe --tags --abbrev=0: $(git describe --tags --abbrev=0)"
-          echo "git tag: $(git tag --sort=-committerdate | head -n 1)"
-          echo "github_ref: $GITHUB_REF"
-          echo "github_head_sha: ${{ github.event.pull_request.head.sha }}"
-          git tag -l
-      - name: Determine git current SHA and latest tag
-        id: git-version
-        run: |
-          GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -n "$GIT_TAG" ]; then
-            if [[ "$GITHUB_REF" != refs/tags/* ]]; then
-              GIT_TAG=${GIT_TAG}-SNAPSHOT
-            fi
-            echo "GIT_TAG=$GIT_TAG" >> $GITHUB_OUTPUT
-          fi
-          GIT_SHA=$(git rev-parse --short HEAD)
-          PR_NUM=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-          if [[ $PR_NUM != "null" ]]; then
-            GIT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-8)
-            GIT_SHA="pr-${PR_NUM}/${GIT_SHA}"
-          fi
-          echo "GIT_SHA=$GIT_SHA" >> $GITHUB_OUTPUT
-          
-          echo "GIT_TAG=$GIT_TAG"
-          echo "GIT_SHA=$GIT_SHA"
-
-  go-lint:
-    name: Lint Go code
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.10.1
           problem-matchers: true
-          args: --timeout 2m
+          args: --timeout 5m
 
-      - name: Run go goimports
-        run: go run golang.org/x/tools/cmd/goimports@latest -w `find . -name '*.go' | grep -v '_gen.go$' | grep -v '.pb.go$'`
-      - run: go mod tidy
-      - name: Verify no changes from goimports and go mod tidy
+      - name: Verify formatting and module files
+        shell: bash
         run: |
-          git status --porcelain
-          if [ -n "$(git status --porcelain)" ]; then
-            echo 'To fix this check, run "make format" and commit the changes'
+          go run golang.org/x/tools/cmd/goimports@latest -w $(find . -name '*.go' -not -name '*_gen.go' -not -name '*.pb.go')
+          go mod tidy
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git diff --exit-code
+            echo 'Run "make format" and commit the generated changes.' >&2
             exit 1
           fi
 
-      - name: Run go generate
-        run: go generate ./...
-      - name: Verify no changes from go generate
+      - name: Verify generated code
+        shell: bash
         run: |
-          git status --porcelain
-          if [ -n "$(git status --porcelain)" ]; then
-            echo 'Generated code is out of date. Run "make gen" and commit the changes'
+          go generate ./...
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git diff --exit-code
+            echo 'Run "make gen" and commit the generated changes.' >&2
             exit 1
           fi
 
-  validate-migrations:
-    name: Validate DB migrations
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+  go-linux:
+    name: Go tests (Linux)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      # Refresh the base branch so the check compares against its CURRENT tip,
-      # not the (possibly stale) commit the PR was opened against.
-      - name: Fetch latest base branch
-        run: git fetch --no-tags origin "+refs/heads/${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
-      - name: Validate migration ordering and naming
-        env:
-          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
-        run: ./.github/workflows/validate-migrations.sh
-
-  go:
-    name: Test Go code
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Download dependencies
         run: go mod download
@@ -131,6 +113,7 @@ jobs:
         run: go test -shuffle=on -tags netgo,sqlite_fts5 -race ./... -v
 
       - name: Test ndpgen
+        shell: bash
         run: |
           cd plugins/cmd/ndpgen
           go test -shuffle=on -v
@@ -138,7 +121,7 @@ jobs:
           ./ndpgen --help
 
   go-windows:
-    name: Test Go code (Windows)
+    name: Go tests (Windows)
     runs-on: windows-2022
     env:
       FFMPEG_VERSION: "7.1"
@@ -149,6 +132,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -156,32 +140,32 @@ jobs:
           install: mingw-w64-x86_64-gcc
           update: false
 
-      - name: Add mingw64 to PATH
+      - name: Add MinGW to PATH
         shell: bash
-        run: echo "C:/msys64/mingw64/bin" >> $GITHUB_PATH
+        run: echo "C:/msys64/mingw64/bin" >> "$GITHUB_PATH"
 
-      - name: Cache ffmpeg
+      - name: Cache FFmpeg
         id: ffmpeg-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
-          path: C:\ffmpeg
+          path: C:/ffmpeg
           key: ffmpeg-${{ env.FFMPEG_VERSION }}-win64
 
-      - name: Download ffmpeg
+      - name: Download FFmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $asset = "ffmpeg-n${env:FFMPEG_VERSION}-latest-win64-gpl-${env:FFMPEG_VERSION}"
           $url = "https://github.com/${env:FFMPEG_REPOSITORY}/releases/download/latest/$asset.zip"
           Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath C:\ffmpeg-extracted
-          New-Item -ItemType Directory -Force -Path C:\ffmpeg\bin | Out-Null
-          Copy-Item "C:\ffmpeg-extracted\$asset\bin\ffmpeg.exe"  C:\ffmpeg\bin
-          Copy-Item "C:\ffmpeg-extracted\$asset\bin\ffprobe.exe" C:\ffmpeg\bin
+          Expand-Archive ffmpeg.zip -DestinationPath C:/ffmpeg-extracted
+          New-Item -ItemType Directory -Force -Path C:/ffmpeg/bin | Out-Null
+          Copy-Item "C:/ffmpeg-extracted/$asset/bin/ffmpeg.exe" C:/ffmpeg/bin
+          Copy-Item "C:/ffmpeg-extracted/$asset/bin/ffprobe.exe" C:/ffmpeg/bin
 
-      - name: Add ffmpeg to PATH
+      - name: Add FFmpeg to PATH
         shell: bash
-        run: echo "C:/ffmpeg/bin" >> $GITHUB_PATH
+        run: echo "C:/ffmpeg/bin" >> "$GITHUB_PATH"
 
       - name: Verify toolchain
         shell: pwsh
@@ -205,328 +189,184 @@ jobs:
       - name: Test ndpgen
         shell: pwsh
         run: |
-          cd plugins\cmd\ndpgen
+          Set-Location plugins/cmd/ndpgen
           go test -shuffle=on -v
           go build -o ndpgen.exe .
-          .\ndpgen.exe --help
+          ./ndpgen.exe --help
 
-  js:
-    name: Test JS code
-    runs-on: ubuntu-latest
-    env:
-      NODE_OPTIONS: "--max_old_space_size=4096"
+  i18n:
+    name: Validate translations
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: "npm"
-          cache-dependency-path: "**/package-lock.json"
 
-      - name: npm install dependencies
+      - name: Validate JSON
+        shell: bash
         run: |
-          cd ui
-          npm ci
-
-      - name: npm lint
-        run: |
-          cd ui
-          npm run check-formatting && npm run lint
-
-      - name: npm test
-        run: |
-          cd ui
-          npm test
-
-      - name: npm build
-        run: |
-          cd ui
-          npm run build
-
-  i18n-lint:
-    name: Lint i18n files
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - run: |
-          set -e
+          set -euo pipefail
           for file in resources/i18n/*.json; do
-            echo "Validating $file"
-            if ! jq empty "$file" 2>error.log; then
-              error_message=$(cat error.log)
-              line_number=$(echo "$error_message" | grep -oP 'line \K[0-9]+')
-              echo "::error file=$file,line=$line_number::$error_message"
-              exit 1
-            fi
+            jq empty "$file"
           done
-      - run: ./.github/workflows/validate-translations.sh -v
 
+      - name: Validate translations
+        run: ./.github/workflows/validate-translations.sh -v
 
-  build:
-    name: Build
-    needs: [js, go, go-windows, go-lint, i18n-lint, git-version, validate-migrations]
+  validate-image:
+    name: Build and smoke-test image
+    if: github.event_name != 'push'
+    needs:
+      - frontend
+      - go-lint
+      - go-linux
+      - go-windows
+      - i18n
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: jbs-navidrome:ci
+          cache-from: type=gha,scope=pr-amd64
+          cache-to: type=gha,mode=max,scope=pr-amd64
+
+      - name: Smoke test
+        run: docker run --rm jbs-navidrome:ci --help
+
+  publish-platform:
+    name: Publish ${{ matrix.platform }} digest
+    if: github.event_name == 'push'
+    needs:
+      - frontend
+      - go-lint
+      - go-linux
+      - go-windows
+      - i18n
     permissions:
       contents: read
       packages: write
-    # validate-migrations only runs on pull_request, so it is "skipped" on push/tag
-    # builds. Run Build unless a dependency actually failed — a *skipped* dependency
-    # (the migration check on non-PR events) must not block release builds.
-    if: ${{ !cancelled() && !failure() }}
     strategy:
+      fail-fast: false
       matrix:
-        platform: [ linux/amd64, linux/arm64, linux/arm/v5, linux/arm/v6, linux/arm/v7, linux/386, linux/riscv64, darwin/amd64, darwin/arm64, windows/amd64, windows/386 ]
-    runs-on: ubuntu-latest
-    env:
-      IS_LINUX: ${{ startsWith(matrix.platform, 'linux/') && 'true' || 'false' }}
-      IS_ARMV5: ${{ matrix.platform == 'linux/arm/v5' && 'true' || 'false' }}
-      DOCKER_BUILD_SUMMARY: false
-      GIT_SHA: ${{ needs.git-version.outputs.git_sha }}
-      GIT_TAG: ${{ needs.git-version.outputs.git_tag }}
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            artifact: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            artifact: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Sanitize platform name
-        id: set-platform
-        run: |
-          PLATFORM=$(echo ${{ matrix.platform }} | tr '/' '_')
-          echo "PLATFORM=$PLATFORM" >> $GITHUB_ENV
-
       - uses: actions/checkout@v7
 
-      - name: Prepare Docker Buildx
-        uses: ./.github/actions/prepare-docker
-        id: docker
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Build Binaries
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
           platforms: ${{ matrix.platform }}
-          outputs: |
-            type=local,dest=./output/${{ env.PLATFORM }}
-          target: binary
-          build-args: |
-            GIT_SHA=${{ env.GIT_SHA }}
-            GIT_TAG=${{ env.GIT_TAG }}
-
-      - name: Set up QEMU for smoke test
-        if: env.IS_LINUX == 'true'
-        uses: docker/setup-qemu-action@v3
-
-      # The binary is static, so binfmt+qemu runs it directly on the runner.
-      # Catches startup crashes in cross-compiled binaries before they ship,
-      # e.g. the broken ifunc relocations on 32-bit arm from issue #5738.
-      - name: Smoke-test binary
-        if: env.IS_LINUX == 'true'
-        run: |
-          BIN=./output/${{ env.PLATFORM }}/navidrome
-          chmod +x "$BIN"
-          "$BIN" --help >/dev/null
-          echo "OK: ${{ matrix.platform }} binary starts"
-
-      - name: Upload Binaries
-        uses: actions/upload-artifact@v7
-        with:
-          name: navidrome-${{ env.PLATFORM }}
-          path: ./output
-          retention-days: 7
-
-      - name: Build and push image by digest
-        id: push-image
-        if: github.event_name != 'pull_request' && env.IS_LINUX == 'true' && env.IS_ARMV5 == 'false'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.docker.outputs.labels }}
-          build-args: |
-            GIT_SHA=${{ env.GIT_SHA }}
-            GIT_TAG=${{ env.GIT_TAG }}
-          outputs: |
-            type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ steps.image.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.artifact }}
 
       - name: Export digest
-        if: github.event_name != 'pull_request' && env.IS_LINUX == 'true' && env.IS_ARMV5 == 'false'
+        shell: bash
         run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.push-image.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"          
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request' && env.IS_LINUX == 'true' && env.IS_ARMV5 == 'false'
         with:
-          name: digests-${{ env.PLATFORM }}
-          path: /tmp/digests/*
+          name: digests-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  push-manifest-ghcr:
-    name: Push to GHCR
+  publish-manifest:
+    name: Publish GHCR manifest
+    if: github.event_name == 'push'
+    needs:
+      - publish-platform
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && !failure() }}
-    env:
-      REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Normalize image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Download digests
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          path: /tmp/digests
+          path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
 
-      - name: Prepare Docker Buildx
-        uses: ./.github/actions/prepare-docker
-        id: docker
+      - uses: docker/login-action@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create manifest list and push to ghcr.io
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map(select(startswith("ghcr.io"))) | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)          
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Inspect image in ghcr.io
-        run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.docker.outputs.version }}
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=sha-
 
-  cleanup-digests:
-    name: Cleanup digest artifacts
-    runs-on: ubuntu-latest
-    needs: [push-manifest-ghcr]
-    if: always() && needs.push-manifest-ghcr.result == 'success'
-    steps:
-      - name: Delete unnecessary digest artifacts
+      - name: Create and push manifest
+        working-directory: ${{ runner.temp }}/digests
         env:
-          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          TAGS_JSON: ${{ steps.meta.outputs.json }}
+        shell: bash
         run: |
-          for artifact in $(gh api repos/${{ github.repository }}/actions/artifacts | jq -r '.artifacts[] | select(.name | startswith("digests-")) | .id'); do
-            gh api --method DELETE repos/${{ github.repository }}/actions/artifacts/$artifact
+          mapfile -t TAGS < <(jq -r '.tags[]' <<< "$TAGS_JSON")
+          args=()
+          for tag in "${TAGS[@]}"; do
+            args+=(--tag "$tag")
           done
+          for digest in *; do
+            args+=("$IMAGE@sha256:$digest")
+          done
+          docker buildx imagetools create "${args[@]}"
 
-  msi:
-    name: Build Windows installers
-    needs: [build, git-version]
-    runs-on: ubuntu-24.04
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/download-artifact@v8
-        with:
-          path: ./binaries
-          pattern: navidrome-windows*
-          merge-multiple: true
-
-      - name: Install Wix
-        run: sudo apt-get install -y wixl jq
-
-      - name: Build MSI
+      - name: Inspect manifest
         env:
-          GIT_TAG: ${{ needs.git-version.outputs.git_tag }}
-        run: |
-          rm -rf binaries/msi
-          sudo GIT_TAG=$GIT_TAG release/wix/build_msi.sh ${GITHUB_WORKSPACE} 386
-          sudo GIT_TAG=$GIT_TAG release/wix/build_msi.sh ${GITHUB_WORKSPACE} amd64
-          du -h binaries/msi/*.msi
-
-      - name: Upload MSI files
-        uses: actions/upload-artifact@v7
-        with:
-          name: navidrome-windows-installers
-          path: binaries/msi/*.msi
-          retention-days: 7
-
-  release:
-    name: Package/Release
-    needs: [build, msi]
-    runs-on: ubuntu-latest
-    outputs:
-      package_list: ${{ steps.set-package-list.outputs.package_list }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - uses: actions/download-artifact@v8
-        with:
-          path: ./binaries
-          pattern: navidrome-*
-          merge-multiple: true
-
-      - run: ls -lR ./binaries
-
-      - name: Set RELEASE_FLAGS for snapshot releases
-        if: env.IS_RELEASE == 'false'
-        run: echo 'RELEASE_FLAGS=--skip=publish --snapshot' >> $GITHUB_ENV
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          version: '2.16.0'
-          args: "release --clean -f release/goreleaser.yml ${{ env.RELEASE_FLAGS }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Remove build artifacts
-        run: |
-          ls -l ./dist
-          rm ./dist/*.tar.gz ./dist/*.zip
-
-      - name: Upload all-packages artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: packages
-          path: dist/navidrome_0*
-
-      - id: set-package-list
-        name: Export list of generated packages
-        run: |
-          cd dist
-          set +x
-          ITEMS=$(ls navidrome_0* | sed 's/^navidrome_0[^_]*_linux_//' | jq -R -s -c 'split("\n")[:-1]')
-          echo $ITEMS
-          echo "package_list=${ITEMS}" >> $GITHUB_OUTPUT
-
-  upload-packages:
-    name: Upload Linux PKG
-    runs-on: ubuntu-latest
-    needs: [release]
-    strategy:
-      matrix:
-        item: ${{ fromJson(needs.release.outputs.package_list) }}
-    steps:
-      - name: Download all-packages artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: packages
-          path: ./dist
-
-      - name: Upload all-packages artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: navidrome_linux_${{ matrix.item }}
-          path: dist/navidrome_0*_linux_${{ matrix.item }}
-
-#  delete-artifacts:
-#    name: Delete unused artifacts
-#    runs-on: ubuntu-latest
-#    needs: [upload-packages]
-#    steps:
-#      - name: Delete all-packages artifact
-#        env:
-#          GH_TOKEN: ${{ github.token }}
-#        run: |
-#          for artifact in $(gh api repos/${{ github.repository }}/actions/artifacts | jq -r '.artifacts[] | select(.name | startswith("packages")) | .id'); do
-#            gh api --method DELETE repos/${{ github.repository }}/actions/artifacts/$artifact
-#          done
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: docker buildx imagetools inspect "$IMAGE@${{ needs.publish-platform.outputs.digest }}" || docker buildx imagetools inspect "$IMAGE:sha-${GITHUB_SHA::7}"

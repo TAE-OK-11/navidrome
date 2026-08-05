@@ -48,6 +48,7 @@ require (
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/prometheus/client_golang v1.23.2
+	github.com/quic-go/quic-go v0.59.1
 	github.com/rjeczalik/notify v0.9.3
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
@@ -100,8 +101,8 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
-	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
+	github.com/lann/builder v0.0.0-20150810152359-62de8c45dee0
+	github.com/lann/ps v0.0.0-20150810152359-62de8c45dee0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/dsig v1.3.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect

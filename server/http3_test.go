@@ -11,15 +11,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/quic-go/quic-go/http3"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/quic-go/quic-go/http3"
 )
 
 var _ = Describe("HTTP/3 support", func() {
 	const testDataDir = "server/testdata"
 
-	It("serves requests over QUIC", func() {
+	It("serves repeated requests over a reusable QUIC connection", func() {
 		certFile := filepath.Join(testDataDir, "test_cert.pem")
 		keyFile := filepath.Join(testDataDir, "test_key.pem")
 
@@ -33,6 +33,9 @@ var _ = Describe("HTTP/3 support", func() {
 			keyFile,
 		)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(runtime.server.QUICConfig.Allow0RTT).To(BeFalse())
+		Expect(runtime.server.QUICConfig.DisablePathMTUDiscovery).To(BeFalse())
+		Expect(runtime.server.IdleTimeout).To(Equal(serverHTTP3IdleTimeout))
 
 		serveErrC := make(chan error, 1)
 		go func() {
@@ -69,21 +72,44 @@ var _ = Describe("HTTP/3 support", func() {
 		}
 		url := fmt.Sprintf("https://%s/ping", runtime.packetConn.LocalAddr().String())
 
-		var protoMajor int
-		Eventually(func() error {
-			resp, err := client.Get(url)
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNoContent {
-				return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-			}
-			protoMajor = resp.ProtoMajor
-			return nil
-		}, 2*time.Second, 100*time.Millisecond).Should(Succeed())
+		for range 3 {
+			var protoMajor int
+			Eventually(func() error {
+				resp, err := client.Get(url)
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode != http.StatusNoContent {
+					return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+				}
+				protoMajor = resp.ProtoMajor
+				return nil
+			}, 2*time.Second, 100*time.Millisecond).Should(Succeed())
+			Expect(protoMajor).To(Equal(3))
+		}
+	})
 
-		Expect(protoMajor).To(Equal(3))
+	It("shuts down idempotently", func() {
+		certFile := filepath.Join(testDataDir, "test_cert.pem")
+		keyFile := filepath.Join(testDataDir, "test_key.pem")
+		runtime, err := newHTTP3Runtime(
+			GinkgoT().Context(),
+			"127.0.0.1:0",
+			http.NotFoundHandler(),
+			certFile,
+			keyFile,
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		serveErrC := make(chan error, 1)
+		go func() { serveErrC <- runtime.serve() }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		Expect(runtime.shutdown(ctx)).To(Succeed())
+		Expect(runtime.shutdown(ctx)).To(Succeed())
+		Eventually(serveErrC, time.Second).Should(Receive())
 	})
 
 	It("advertises the HTTP/3 endpoint to HTTP/1.1 and HTTP/2 clients", func() {

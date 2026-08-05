@@ -3,6 +3,8 @@ NODE_VERSION=$(shell cat .nvmrc)
 
 comma:=,
 GO_BUILD_TAGS=netgo,sqlite_fts5$(if $(EXTRA_BUILD_TAGS),$(comma)$(EXTRA_BUILD_TAGS))
+PGO ?= auto
+GO_BUILD_FLAGS=-trimpath -pgo=$(PGO)
 
 # Set global environment variables, required for most targets
 export ND_ENABLEINSIGHTSCOLLECTOR=false
@@ -144,8 +146,13 @@ setup-git: ##@Development Setup Git hooks (pre-commit and pre-push)
 .PHONY: setup-git
 
 build: check_go_env buildjs ##@Build Build the project
-	go build -ldflags="-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" -tags=$(GO_BUILD_TAGS)
+	go build $(GO_BUILD_FLAGS) -ldflags="-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" -tags=$(GO_BUILD_TAGS)
 .PHONY: build
+
+pgo-build: ##@Build Build with a representative default.pgo profile
+	@test -s default.pgo || (echo "ERROR: default.pgo is missing or empty" && exit 1)
+	$(MAKE) build PGO=default.pgo
+.PHONY: pgo-build
 
 buildall: deprecated build
 .PHONY: buildall
@@ -176,6 +183,7 @@ docker-build: ##@Cross_Compilation Cross-compile for any supported platform (che
 		--platform $(PLATFORMS) \
 		--build-arg GIT_TAG=${GIT_TAG} \
 		--build-arg GIT_SHA=${GIT_SHA} \
+		--build-arg PGO=$(PGO) \
 		--output "./binaries" --target binary .
 .PHONY: docker-build
 
@@ -187,6 +195,7 @@ docker-image: ##@Cross_Compilation Build Docker image, tagged as `deluan/navidro
 		--platform $(IMAGE_PLATFORMS) \
 		--build-arg GIT_TAG=${GIT_TAG} \
 		--build-arg GIT_SHA=${GIT_SHA} \
+		--build-arg PGO=$(PGO) \
 		--tag $(DOCKER_TAG) .
 .PHONY: docker-image
 
@@ -210,7 +219,7 @@ docker-run: ##@Development Run a Navidrome Docker image. Usage: make docker-run 
 		  VOLUMES="$$VOLUMES -v $$MUSIC_FOLDER:/music:ro"; \
 	  	fi; \
 	fi; \
-	echo "Running: docker run --rm -p 4533:4533 $$VOLUMES $(tag)"; docker run --rm -p 4533:4533 $$VOLUMES $(tag)
+	echo "Running: docker run --rm -p 4533:4533/tcp -p 4533:4533/udp $$VOLUMES $(tag)"; docker run --rm -p 4533:4533/tcp -p 4533:4533/udp $$VOLUMES $(tag)
 .PHONY: docker-run
 
 package: docker-build ##@Cross_Compilation Create binaries and packages for ALL supported platforms

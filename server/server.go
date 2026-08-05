@@ -38,6 +38,7 @@ type Server struct {
 
 const (
 	serverStartupGracePeriod = 10 * time.Millisecond
+	serverShutdownTimeout    = 10 * time.Second
 	serverIdleTimeout        = 2 * time.Minute
 	serverMaxHeaderBytes     = 32 << 10
 
@@ -108,6 +109,11 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		if err != nil {
 			return fmt.Errorf("creating tcp listener: %w", err)
 		}
+		// Reuse the exact address selected by the TCP listener. This is
+		// especially important for port 0, hostnames and dual-stack wildcard
+		// addresses, where resolving or binding the UDP listener independently
+		// could advertise a different endpoint.
+		listenAddr = listener.Addr().String()
 	}
 
 	server := newHTTPServer(s.router)
@@ -178,14 +184,14 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 
 	// Try to stop all HTTP servers gracefully.
 	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 	server.SetKeepAlivesEnabled(false)
 
 	shutdownErrC := make(chan error, 2)
 	shutdownCount := 1
 	go func() {
-		shutdownErrC <- server.Shutdown(shutdownCtx)
+		shutdownErrC <- shutdownHTTPServer(shutdownCtx, server)
 	}()
 	if h3 != nil {
 		shutdownCount++

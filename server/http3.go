@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	serverQUICHandshakeIdleTimeout = 10 * time.Second
+	serverQUICHandshakeIdleTimeout = 5 * time.Second
 	serverQUICKeepAlivePeriod      = 30 * time.Second
+	serverHTTP3IdleTimeout         = 5 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 30 * 24 * time.Hour
 )
 
@@ -23,6 +25,9 @@ type http3Runtime struct {
 	server       *http3.Server
 	packetConn   net.PacketConn
 	altSvcHeader string
+
+	shutdownOnce sync.Once
+	shutdownErr  error
 }
 
 func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, certFile, keyFile string) (*http3Runtime, error) {
@@ -48,15 +53,17 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	}
 
 	server := &http3.Server{
-		Addr:           addr,
+		Addr:           packetConn.LocalAddr().String(),
 		TLSConfig:      tlsConfig,
 		Handler:        handler,
 		MaxHeaderBytes: serverMaxHeaderBytes,
-		IdleTimeout:    serverIdleTimeout,
+		IdleTimeout:    serverHTTP3IdleTimeout,
 		QUICConfig: &quic.Config{
-			HandshakeIdleTimeout: serverQUICHandshakeIdleTimeout,
-			MaxIdleTimeout:       serverIdleTimeout,
-			KeepAlivePeriod:      serverQUICKeepAlivePeriod,
+			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
+			MaxIdleTimeout:          serverHTTP3IdleTimeout,
+			KeepAlivePeriod:         serverQUICKeepAlivePeriod,
+			Allow0RTT:               false,
+			DisablePathMTUDiscovery: false,
 		},
 	}
 
@@ -79,12 +86,28 @@ func (r *http3Runtime) advertise(next http.Handler) http.Handler {
 }
 
 func (r *http3Runtime) shutdown(ctx context.Context) error {
-	shutdownErr := r.server.Shutdown(ctx)
-	closeErr := r.packetConn.Close()
-	if errors.Is(closeErr, net.ErrClosed) {
-		closeErr = nil
+	r.shutdownOnce.Do(func() {
+		gracefulErr := r.server.Shutdown(ctx)
+		var forceErr error
+		if gracefulErr != nil {
+			forceErr = r.server.Close()
+		}
+		closeErr := r.packetConn.Close()
+
+		r.shutdownErr = errors.Join(
+			normalizeHTTP3CloseError(gracefulErr),
+			normalizeHTTP3CloseError(forceErr),
+			normalizeHTTP3CloseError(closeErr),
+		)
+	})
+	return r.shutdownErr
+}
+
+func normalizeHTTP3CloseError(err error) error {
+	if isExpectedHTTP3ServerClose(err) {
+		return nil
 	}
-	return errors.Join(shutdownErr, closeErr)
+	return err
 }
 
 func isExpectedHTTP3ServerClose(err error) bool {

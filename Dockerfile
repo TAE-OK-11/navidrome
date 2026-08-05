@@ -28,13 +28,18 @@ COPY --from=xx-build /out/ /usr/bin/
 
 ########################################################################################################################
 ### Build Navidrome UI
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:lts-alpine AS ui
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:24.18.0-alpine AS ui
 WORKDIR /app
 
-# Install node dependencies
+ENV npm_config_audit=false \
+    npm_config_fund=false
+
+# Install node dependencies. Keep npm's content-addressable cache between
+# builds while npm ci still recreates node_modules from the lockfile.
 COPY ui/package.json ui/package-lock.json ./
 COPY ui/bin/ ./bin/
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --prefer-offline
 
 # Build bundle
 COPY ui/ ./

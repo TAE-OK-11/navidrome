@@ -1,0 +1,24 @@
+name: Show generated diff
+
+on:
+  push:
+    branches:
+      - agent/perf-deps-i18n-20260805
+    paths:
+      - .github/workflows/show-generated-diff.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Generate plugin manifest
+        run: go generate ./plugins
+      - name: Print generated diff
+        run: git --no-pager diff -- plugins/manifest_gen.go

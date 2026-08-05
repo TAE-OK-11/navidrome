@@ -49,6 +49,7 @@ COPY --from=ui /out/ui ./ui/build
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod <<'EOF'
 set -eux
+mkdir -p /out
 BUILD_TAGS="$(./release/build-tags.sh)"
 CGO_ENABLED=1 go build \
   -trimpath \

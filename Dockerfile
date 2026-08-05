@@ -1,185 +1,118 @@
 # syntax=docker/dockerfile:1.25
 
-FROM --platform=$BUILDPLATFORM ghcr.io/crazy-max/osxcross:14.5-debian AS osxcross
-
 ########################################################################################################################
-### Build xx (original image: tonistiigi/xx)
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/alpine:3.20 AS xx-build
+### Build Navidrome UI on Debian 13 (Trixie)
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:24-trixie-slim AS ui
 
-# v1.9.0
-ENV XX_VERSION=a5592eab7a57895e8d385394ff12241bc65ecd50
+WORKDIR /workspace/ui
 
-RUN apk add -U --no-cache git
-RUN git clone https://github.com/tonistiigi/xx && \
-    cd xx && \
-    git checkout ${XX_VERSION} && \
-    mkdir -p /out && \
-    cp src/xx-* /out/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      git \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN cd /out && \
-    ln -s xx-cc /out/xx-clang && \
-    ln -s xx-cc /out/xx-clang++ && \
-    ln -s xx-cc /out/xx-c++ && \
-    ln -s xx-apt /out/xx-apt-get
-
-# xx mimics the original tonistiigi/xx image
-FROM scratch AS xx
-COPY --from=xx-build /out/ /usr/bin/
-
-########################################################################################################################
-### Build Navidrome UI
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:lts-alpine AS ui
-WORKDIR /app
-
-# Install node dependencies
 COPY ui/package.json ui/package-lock.json ./
 COPY ui/bin/ ./bin/
-RUN npm ci
 
-# Build bundle
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
+
 COPY ui/ ./
-RUN npm run build -- --outDir=/build
-
-FROM scratch AS ui-bundle
-COPY --from=ui /build /build
+RUN npm run build -- --outDir=/out/ui
 
 ########################################################################################################################
-### Build Navidrome binary for Docker image (dynamic musl, enables native libwebp via dlopen)
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26.5-alpine AS build-alpine
-COPY --from=xx / /
+### Build Navidrome Linux binary on Debian 13 (Trixie / glibc)
+FROM public.ecr.aws/docker/library/golang:1.26.5-trixie AS build
 
-ARG TARGETPLATFORM
-
-RUN apk add --no-cache clang lld file git
-RUN xx-apk add --no-cache gcc musl-dev zlib-dev
-RUN xx-verify --setup
+ARG GIT_SHA=unknown
+ARG GIT_TAG=dev
 
 WORKDIR /workspace
 
-RUN --mount=type=bind,source=. \
-    --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/go/pkg/mod \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      file \
+      git \
+      libwebp-dev \
+      pkg-config \
+      zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
-ARG GIT_SHA
-ARG GIT_TAG
+COPY . ./
+COPY --from=ui /out/ui ./ui/build
 
-RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
-    --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/go/pkg/mod <<EOT
-    set -e
-    xx-go --wrap
-    export CGO_ENABLED=1
-    BUILD_TAGS=$(./release/build-tags.sh)
-    # -latomic is required on 32-bit arm (arm/v6, arm/v7) so SQLite's 64-bit atomics resolve.
-    go build -tags="${BUILD_TAGS}" -ldflags="-w -s \
-        -linkmode=external -extldflags '-latomic' \
-        -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
-        -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
-        -o /out/navidrome .
-    # Fail the build if native libwebp (purego) leaked into a 32-bit binary (issue #5738).
-    ./release/verify-binary.sh /out/navidrome
-    # Fail the build if the binary is accidentally statically linked: dlopen (and
-    # therefore native libwebp detection) only works with a dynamic interpreter.
-    file /out/navidrome | grep -q "dynamically linked" || { echo "ERROR: /out/navidrome is not dynamically linked"; file /out/navidrome; exit 1; }
-EOT
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod <<'EOF'
+set -eux
+BUILD_TAGS="$(./release/build-tags.sh)"
+CGO_ENABLED=1 go build \
+  -trimpath \
+  -buildvcs=false \
+  -tags="${BUILD_TAGS}" \
+  -ldflags="-w -s -linkmode=external -extldflags '-Wl,-z,relro,-z,now' \
+    -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
+    -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
+  -o /out/navidrome .
+
+./release/verify-binary.sh /out/navidrome
+file /out/navidrome
+test "$(ldd /out/navidrome | grep -c 'not found' || true)" -eq 0
+EOF
 
 ########################################################################################################################
-### Build Navidrome binary for standalone distribution (static glibc, cross-compiled)
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26.5-trixie AS base
-RUN apt-get update && apt-get install -y clang lld
-COPY --from=xx / /
-WORKDIR /workspace
-
-FROM --platform=$BUILDPLATFORM base AS build
-
-# Install build dependencies for the target platform
-ARG TARGETPLATFORM
-
-RUN xx-apt install -y binutils gcc g++ libc6-dev zlib1g-dev
-RUN xx-verify --setup
-
-RUN --mount=type=bind,source=. \
-    --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/go/pkg/mod \
-    go mod download
-
-ARG GIT_SHA
-ARG GIT_TAG
-
-RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
-    --mount=from=osxcross,src=/osxcross/SDK,target=/xx-sdk,ro \
-    --mount=type=cache,target=/root/.cache \
-    --mount=type=cache,target=/go/pkg/mod <<EOT
-    set -e
-
-    # Setup CGO cross-compilation environment
-    xx-go --wrap
-    export CGO_ENABLED=1
-    cat "$(go env GOENV)" 2>/dev/null || true
-
-    # Only Darwin (macOS) requires clang (default), Windows requires gcc, everything else can use any compiler.
-    # So let's use gcc for everything except Darwin.
-    if [ "$(xx-info os)" != "darwin" ]; then
-        export CC=$(xx-info)-gcc
-        export CXX=$(xx-info)-g++
-        export LD_EXTRA="-extldflags '-static -latomic'"
-    fi
-    # GNU ld corrupts the R_ARM_IRELATIVE addends of libatomic's ifunc resolvers
-    # (wrong address, Thumb bit lost) once .text outgrows the 16MB Thumb branch
-    # range, making static arm binaries jump to garbage inside glibc's ifunc
-    # resolution and crash before main() (issue #5738). Link 32-bit arm with LLD,
-    # which emits correct addends.
-    if [ "$(xx-info arch)" = "arm" ]; then
-        export LD_EXTRA="-extldflags '-static -latomic -fuse-ld=lld'"
-    fi
-    if [ "$(xx-info os)" = "windows" ]; then
-        export EXT=".exe"
-    fi
-
-    BUILD_TAGS=$(./release/build-tags.sh)
-    go build -tags="${BUILD_TAGS}" -ldflags="${LD_EXTRA} -w -s \
-        -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
-        -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
-        -o /out/navidrome${EXT} .
-    # Fail the build if native libwebp (purego) leaked into a 32-bit binary (issue #5738).
-    ./release/verify-binary.sh /out/navidrome*
-EOT
-
-# Verify if the binary was built for the correct platform and it is statically linked
-RUN xx-verify --static /out/navidrome*
-
+### Standalone Debian 13 binary output
 FROM scratch AS binary
-COPY --from=build /out /
+COPY --from=build /out/navidrome /navidrome
 
 ########################################################################################################################
-### Build Final Image
-FROM public.ecr.aws/docker/library/alpine:3.20 AS final
-LABEL maintainer="deluan@navidrome.org"
-LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
+### Debian 13 slim runtime image
+FROM public.ecr.aws/docker/library/debian:13-slim AS final
 
-# Install runtime dependencies
-# - libwebp + symlinks: enables native WebP encoding via purego/dlopen
-RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux && \
-    for lib in libwebp libwebpdemux libwebpmux; do \
-        target=$(ls /usr/lib/$lib.so.* 2>/dev/null | head -1) && \
-        [ -n "$target" ] && ln -sf "$target" /usr/lib/$lib.so; \
-    done
+ARG GIT_SHA=unknown
+ARG GIT_TAG=dev
 
-# Copy navidrome binary (musl build for Docker, enables native libwebp)
-COPY --from=build-alpine /out/navidrome /app/
+LABEL org.opencontainers.image.title="JBS Navidrome" \
+      org.opencontainers.image.description="JBS Networks custom Navidrome on Debian 13 slim" \
+      org.opencontainers.image.vendor="JBS Networks" \
+      org.opencontainers.image.source="https://github.com/TAE-OK-11/navidrome" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.version="${GIT_TAG}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      ffmpeg \
+      libwebp7 \
+      libwebpdemux2 \
+      libwebpmux3 \
+      mpv \
+      sqlite3 \
+      tzdata \
+    && for lib in libwebp libwebpdemux libwebpmux; do \
+         target="$(find /usr/lib -name "${lib}.so.*" -print -quit)"; \
+         if [ -n "${target}" ]; then \
+           ln -sf "$(basename "${target}")" "$(dirname "${target}")/${lib}.so"; \
+         fi; \
+       done \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+COPY --from=build /out/navidrome /app/navidrome
 
 VOLUME ["/data", "/music"]
-ENV ND_MUSICFOLDER=/music
-ENV ND_DATAFOLDER=/data
-ENV ND_CONFIGFILE=/data/navidrome.toml
-ENV ND_PORT=4533
+
+ENV ND_MUSICFOLDER=/music \
+    ND_DATAFOLDER=/data \
+    ND_CONFIGFILE=/data/navidrome.toml \
+    ND_PORT=4533 \
+    PATH="/app:${PATH}"
+
 RUN touch /.nddockerenv
 
-EXPOSE ${ND_PORT}
+EXPOSE 4533
 WORKDIR /app
-ENV PATH="/app:${PATH}"
-
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["/app/navidrome"]

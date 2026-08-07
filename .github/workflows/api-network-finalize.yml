@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: api-network-finalize
+  cancel-in-progress: true
+
 jobs:
   finalize:
     if: github.actor != 'github-actions[bot]'
@@ -25,6 +29,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Apply measured compression and API hardening
+        id: patch
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -110,17 +115,22 @@ jobs:
           PY
           gofmt -w server/compression.go server/compression_policy_test.go server/subsonic/api.go
       - name: Update compression dependency
+        id: deps
         run: |
           set -euo pipefail
           go get github.com/klauspost/compress@v1.19.1
           go mod tidy
           go mod verify
       - name: Test affected packages
+        id: tests
         run: |
-          set -euo pipefail
-          go test ./server ./server/subsonic -count=1
-          go test ./server -run '^$' -bench '^BenchmarkCompressionLargeSingleWrite$' -benchtime=250ms -count=1
+          set -o pipefail
+          {
+            go test ./server ./server/subsonic -count=1
+            go test ./server -run '^$' -bench '^BenchmarkCompressionLargeSingleWrite$' -benchtime=250ms -count=1
+          } 2>&1 | tee /tmp/api-finalize.log
       - name: Commit validated changes
+        if: success()
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -128,3 +138,19 @@ jobs:
           git add server/compression.go server/compression_policy_test.go server/subsonic/api.go go.mod go.sum
           git commit -m "perf(api): apply measured compression and TTFB optimizations"
           git push origin HEAD:perf/jbs-ghcr-quic-network
+      - name: Record failure diagnostics
+        if: failure()
+        run: |
+          set -euo pipefail
+          cp /tmp/api-finalize.log /tmp/api-finalize.saved 2>/dev/null || printf 'Failure occurred before tests produced output.\n' > /tmp/api-finalize.saved
+          git reset --hard HEAD
+          mkdir -p .github/benchmark-results
+          {
+            printf 'Finalize source commit: %s\n\n' "$GITHUB_SHA"
+            cat /tmp/api-finalize.saved
+          } > .github/benchmark-results/api-finalize-failure.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/benchmark-results/api-finalize-failure.txt
+          git commit -m "test: record API finalization failure"
+          git push origin HEAD:perf/jbs-ghcr-quic-network || true

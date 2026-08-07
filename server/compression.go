@@ -96,9 +96,13 @@ func shouldBypassCompressionRequest(r *http.Request) bool {
 }
 
 type acceptedCompressions struct {
-	brotli float64
-	zstd   float64
-	gzip   float64
+	brotli bool
+	zstd   bool
+	gzip   bool
+
+	brotliQuality float64
+	zstdQuality   float64
+	gzipQuality   float64
 }
 
 type compressionProfile struct {
@@ -108,20 +112,34 @@ type compressionProfile struct {
 }
 
 func (a acceptedCompressions) hasAny() bool {
-	return a.brotli > 0 || a.zstd > 0 || a.gzip > 0
+	return a.brotli || a.zstd || a.gzip
 }
 
 func (a acceptedCompressions) quality(encoding compressionEncoding) float64 {
 	switch encoding {
 	case compressionBrotli:
-		return a.brotli
+		if a.brotliQuality > 0 {
+			return a.brotliQuality
+		}
+		if a.brotli {
+			return 1
+		}
 	case compressionZstd:
-		return a.zstd
+		if a.zstdQuality > 0 {
+			return a.zstdQuality
+		}
+		if a.zstd {
+			return 1
+		}
 	case compressionGzip:
-		return a.gzip
-	default:
-		return 0
+		if a.gzipQuality > 0 {
+			return a.gzipQuality
+		}
+		if a.gzip {
+			return 1
+		}
 	}
+	return 0
 }
 
 func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
@@ -137,11 +155,11 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 		part = strings.TrimSpace(part)
 		switch {
 		case strings.EqualFold(part, string(compressionBrotli)):
-			accepted.brotli = 1
+			accepted.brotli = true
 		case strings.EqualFold(part, string(compressionZstd)):
-			accepted.zstd = 1
+			accepted.zstd = true
 		case strings.EqualFold(part, string(compressionGzip)):
-			accepted.gzip = 1
+			accepted.gzip = true
 		}
 	}
 	return accepted
@@ -159,13 +177,16 @@ func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompression
 		quality := encodingQuality(params)
 		switch token {
 		case string(compressionBrotli):
-			accepted.brotli = quality
+			accepted.brotli = quality > 0
+			accepted.brotliQuality = quality
 			brotliSet = true
 		case string(compressionZstd):
-			accepted.zstd = quality
+			accepted.zstd = quality > 0
+			accepted.zstdQuality = quality
 			zstdSet = true
 		case string(compressionGzip):
-			accepted.gzip = quality
+			accepted.gzip = quality > 0
+			accepted.gzipQuality = quality
 			gzipSet = true
 		case "*":
 			wildcardQuality = quality
@@ -175,13 +196,16 @@ func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompression
 
 	if wildcardSet {
 		if !brotliSet {
-			accepted.brotli = wildcardQuality
+			accepted.brotli = wildcardQuality > 0
+			accepted.brotliQuality = wildcardQuality
 		}
 		if !zstdSet {
-			accepted.zstd = wildcardQuality
+			accepted.zstd = wildcardQuality > 0
+			accepted.zstdQuality = wildcardQuality
 		}
 		if !gzipSet {
-			accepted.gzip = wildcardQuality
+			accepted.gzip = wildcardQuality > 0
+			accepted.gzipQuality = wildcardQuality
 		}
 	}
 

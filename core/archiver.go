@@ -89,6 +89,9 @@ func closeZip(ctx context.Context, z *zip.Writer, id string) error {
 
 func closeZipAfterError(ctx context.Context, z *zip.Writer, id string, cause error) error {
 	closeErr := closeZip(ctx, z, id)
+	if closeErr == nil {
+		return cause
+	}
 	return errors.Join(cause, closeErr)
 }
 

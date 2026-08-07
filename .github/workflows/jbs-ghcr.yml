@@ -39,7 +39,7 @@ env:
 
 jobs:
   verify-network:
-    name: Verify network and compression
+    name: Verify network, 0-RTT and compression
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           go mod download
           go mod verify
-      - name: Test HTTP server, QUIC and compression
+      - name: Test HTTP server, guarded QUIC 0-RTT and compression
         run: |
           set -euo pipefail
           go test ./server -count=1
@@ -87,20 +87,10 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=jbs-latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=ref,event=branch
-            type=sha,prefix=sha-,format=short
-          labels: |
-            org.opencontainers.image.title=JBS Navidrome
-            org.opencontainers.image.description=JBS Networks optimized Navidrome with HTTP/3, Zstd API compression, PGO and LLVM LTO
-            org.opencontainers.image.vendor=JBS Networks
-            org.opencontainers.image.source=https://github.com/TAE-OK-11/navidrome
-            jbs.network.http3=quic-go
-            jbs.network.api-compression=zstd
-            jbs.optimization=go-pgo,llvm-full-lto,goamd64-v3,jemalloc
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/jbs-ghcr-quic-network' }}
+            type=sha,format=short,prefix=sha-
 
-      - name: Build and push to GHCR
-        id: build
+      - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -109,29 +99,12 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild }}
+          cache-from: type=gha,scope=jbs-navidrome-amd64
+          cache-to: type=gha,scope=jbs-navidrome-amd64,mode=max
           build-args: |
             GIT_SHA=${{ github.sha }}
-            GIT_TAG=${{ github.ref_name }}
-            NAVIDROME_BUILD_CORES=4
-            GOAMD64_VERSION=v3
-            GO_PGO_ENABLED=${{ inputs.pgo != false }}
-            GO_PGO_BENCHTIME=500ms
-          no-cache: ${{ inputs.force_rebuild == true }}
-          cache-from: type=gha,scope=jbs-navidrome-v3
-          cache-to: type=gha,mode=max,scope=jbs-navidrome-v3,ignore-error=true
-          provenance: mode=max
-          sbom: true
-
-      - name: Build summary
-        run: |
-          {
-            echo "### JBS Navidrome GHCR"
-            echo "| Key | Value |"
-            echo "|---|---|"
-            echo "| Image | \`${IMAGE_NAME}\` |"
-            echo "| Digest | \`${{ steps.build.outputs.digest }}\` |"
-            echo "| Source | \`${{ github.sha }}\` |"
-            echo "| Network | \`HTTP/1.1 + HTTP/2 + HTTP/3 (quic-go)\` |"
-            echo "| Compression | \`Zstd API + Brotli UI/lyrics + gzip fallback\` |"
-            echo "| Build | \`GOAMD64=v3 + Go PGO + LLVM full LTO + jemalloc\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
+            GIT_TAG=jbs-${{ github.ref_name }}
+            GO_PGO_ENABLED=${{ github.event_name != 'workflow_dispatch' || inputs.pgo }}

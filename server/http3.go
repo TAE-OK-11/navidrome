@@ -23,6 +23,39 @@ const (
 	serverHTTP3AltSvcMaxAge        = 30 * 24 * time.Hour
 )
 
+var safeSubsonic0RTTEndpoints = map[string]struct{}{
+	"getopensubsonicextensions": {},
+	"ping":                      {},
+	"getlicense":                {},
+	"getmusicfolders":           {},
+	"getgenres":                 {},
+	"getscanstatus":             {},
+	"getindexes":                {},
+	"getartists":                {},
+	"getmusicdirectory":         {},
+	"getartist":                 {},
+	"getalbum":                  {},
+	"getsong":                   {},
+	"getalbumlist":              {},
+	"getalbumlist2":             {},
+	"getstarred":                {},
+	"getstarred2":               {},
+	"getnowplaying":             {},
+	"getrandomsongs":            {},
+	"getsongsbygenre":           {},
+	"getplaylists":              {},
+	"getplaylist":               {},
+	"getbookmarks":              {},
+	"getplayqueue":              {},
+	"getplayqueuebyindex":       {},
+	"search2":                   {},
+	"search3":                   {},
+	"getuser":                   {},
+	"getusers":                  {},
+	"getinternetradiostations":  {},
+	"getshares":                 {},
+}
+
 type http3Runtime struct {
 	server       *http3.Server
 	packetConn   net.PacketConn
@@ -80,6 +113,8 @@ func guardHTTP3EarlyData(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if isPotentialHTTP3Replay(req) && !isSafeHTTP3EarlyRequest(req) {
 			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Retry-After", "0")
+			w.Header().Set("Content-Length", "0")
 			w.WriteHeader(http.StatusTooEarly)
 			return
 		}
@@ -96,18 +131,19 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 		return false
 	}
 
-	requestPath := req.URL.Path
+	requestPath := http3PathWithoutBasePath(req.URL.Path)
 	if requestPath == "/ping" {
 		return true
 	}
 
-	// Native API uses HTTP method semantics, so GET / HEAD are read-only.
+	// Native API follows HTTP method semantics, but OAuth / scrobbler auth
+	// callbacks mounted below /api can mutate stored credentials even on GET.
+	// Keep those callbacks out of replayable early data.
 	if strings.HasPrefix(requestPath, "/api/") {
-		return true
+		return !hasPathPrefix(requestPath, "/api/lastfm") &&
+			!hasPathPrefix(requestPath, "/api/listenbrainz")
 	}
 
-	// Subsonic historically allows state-changing operations over GET, so only
-	// explicitly read-only endpoint families are eligible for replayable 0-RTT.
 	if !strings.HasPrefix(requestPath, "/rest/") {
 		return false
 	}
@@ -117,11 +153,32 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 		endpoint = endpoint[:slash]
 	}
 	endpoint = strings.TrimSuffix(endpoint, ".view")
-	endpoint = strings.TrimSuffix(endpoint, ".json")
-	endpoint = strings.TrimSuffix(endpoint, ".xml")
 	endpoint = strings.ToLower(endpoint)
 
-	return endpoint == "ping" || strings.HasPrefix(endpoint, "get") || strings.HasPrefix(endpoint, "search")
+	// Subsonic permits state-changing operations over GET. Use a positive
+	// metadata allowlist instead of broad get*/search* matching. Expensive
+	// artwork, lyrics, Sonic and transcoding endpoints intentionally wait for
+	// the handshake as well, limiting replay-amplification of CPU/upstream work.
+	_, ok := safeSubsonic0RTTEndpoints[endpoint]
+	return ok
+}
+
+func http3PathWithoutBasePath(requestPath string) string {
+	basePath := strings.TrimSuffix(conf.Server.BasePath, "/")
+	if basePath == "" || basePath == "/" {
+		return requestPath
+	}
+	if requestPath == basePath {
+		return "/"
+	}
+	if strings.HasPrefix(requestPath, basePath+"/") {
+		return strings.TrimPrefix(requestPath, basePath)
+	}
+	return requestPath
+}
+
+func hasPathPrefix(requestPath, prefix string) bool {
+	return requestPath == prefix || strings.HasPrefix(requestPath, prefix+"/")
 }
 
 func (r *http3Runtime) serve() error {

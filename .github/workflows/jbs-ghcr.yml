@@ -101,6 +101,21 @@ jobs:
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/full-system-stability-rust' }}
             type=sha,format=short,prefix=sha-
 
+      - name: Resolve exact source commit
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" && -n "$PR_HEAD_SHA" ]]; then
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$EVENT_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build optimized JBS image
         uses: docker/build-push-action@v7
         with:
@@ -117,6 +132,6 @@ jobs:
           cache-from: type=gha,scope=jbs-navidrome-amd64
           cache-to: type=gha,scope=jbs-navidrome-amd64,mode=max
           build-args: |
-            NAVIDROME_REF=${{ github.sha }}
-            NAVIDROME_CACHEBUST=${{ github.sha }}
+            NAVIDROME_REF=${{ steps.source.outputs.sha }}
+            NAVIDROME_CACHEBUST=${{ steps.source.outputs.sha }}
             GO_PGO_ENABLED=${{ github.event_name != 'workflow_dispatch' || inputs.pgo }}

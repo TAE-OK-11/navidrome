@@ -12,16 +12,18 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/log"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
 
 const (
-	serverQUICHandshakeIdleTimeout = 5 * time.Second
-	serverQUICKeepAlivePeriod      = 45 * time.Second
+	serverQUICHandshakeIdleTimeout = 10 * time.Second
+	serverQUICKeepAlivePeriod      = 20 * time.Second
 	serverQUICMaxIncomingStreams   = 256
 	serverHTTP3IdleTimeout         = 5 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
+	serverQUICSocketBufferSize     = 7 * 1024 * 1024
 )
 
 var safeSubsonic0RTTEndpoints = map[string]struct{}{
@@ -77,6 +79,7 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP/3 UDP listener: %w", err)
 	}
+	tuneQUICSocketBuffers(ctx, packetConn)
 
 	_, port, err := net.SplitHostPort(packetConn.LocalAddr().String())
 	if err != nil {
@@ -104,6 +107,8 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 			MaxIncomingStreams:      serverQUICMaxIncomingStreams,
 			Allow0RTT:               conf.HTTP3Allow0RTT(),
 			DisablePathMTUDiscovery: false,
+			EnableDatagrams:          false,
+			Versions:                 []quic.Version{quic.Version1},
 		},
 	}
 
@@ -112,6 +117,20 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 		packetConn:   packetConn,
 		altSvcHeader: fmt.Sprintf(`h3=":%s"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
 	}, nil
+}
+
+func tuneQUICSocketBuffers(ctx context.Context, packetConn net.PacketConn) {
+	udpConn, ok := packetConn.(*net.UDPConn)
+	if !ok {
+		log.Warn(ctx, "HTTP/3 packet connection is not a native UDP socket; QUIC kernel optimizations may be unavailable")
+		return
+	}
+	if err := udpConn.SetReadBuffer(serverQUICSocketBufferSize); err != nil {
+		log.Warn(ctx, "Could not raise HTTP/3 UDP receive buffer", "size", serverQUICSocketBufferSize, err)
+	}
+	if err := udpConn.SetWriteBuffer(serverQUICSocketBufferSize); err != nil {
+		log.Warn(ctx, "Could not raise HTTP/3 UDP send buffer", "size", serverQUICSocketBufferSize, err)
+	}
 }
 
 func guardHTTP3EarlyData(next http.Handler) http.Handler {

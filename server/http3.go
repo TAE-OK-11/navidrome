@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,14 +56,14 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	server := &http3.Server{
 		Addr:           packetConn.LocalAddr().String(),
 		TLSConfig:      tlsConfig,
-		Handler:        handler,
+		Handler:        guardHTTP3EarlyData(handler),
 		MaxHeaderBytes: serverMaxHeaderBytes,
 		IdleTimeout:    serverHTTP3IdleTimeout,
 		QUICConfig: &quic.Config{
 			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
 			MaxIdleTimeout:          serverHTTP3IdleTimeout,
 			KeepAlivePeriod:         serverQUICKeepAlivePeriod,
-			Allow0RTT:               false,
+			Allow0RTT:               true,
 			DisablePathMTUDiscovery: false,
 		},
 	}
@@ -72,6 +73,54 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 		packetConn:   packetConn,
 		altSvcHeader: fmt.Sprintf(`h3=":%s"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
 	}, nil
+}
+
+func guardHTTP3EarlyData(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if isPotentialHTTP3Replay(req) && !isSafeHTTP3EarlyRequest(req) {
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusTooEarly)
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
+func isPotentialHTTP3Replay(req *http.Request) bool {
+	return req.TLS != nil && !req.TLS.HandshakeComplete
+}
+
+func isSafeHTTP3EarlyRequest(req *http.Request) bool {
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		return false
+	}
+
+	requestPath := req.URL.Path
+	if requestPath == "/ping" {
+		return true
+	}
+
+	// Native API uses HTTP method semantics, so GET / HEAD are read-only.
+	if strings.HasPrefix(requestPath, "/api/") {
+		return true
+	}
+
+	// Subsonic historically allows state-changing operations over GET, so only
+	// explicitly read-only endpoint families are eligible for replayable 0-RTT.
+	if !strings.HasPrefix(requestPath, "/rest/") {
+		return false
+	}
+
+	endpoint := strings.TrimPrefix(requestPath, "/rest/")
+	if slash := strings.IndexByte(endpoint, '/'); slash >= 0 {
+		endpoint = endpoint[:slash]
+	}
+	endpoint = strings.TrimSuffix(endpoint, ".view")
+	endpoint = strings.TrimSuffix(endpoint, ".json")
+	endpoint = strings.TrimSuffix(endpoint, ".xml")
+	endpoint = strings.ToLower(endpoint)
+
+	return endpoint == "ping" || strings.HasPrefix(endpoint, "get") || strings.HasPrefix(endpoint, "search")
 }
 
 func (r *http3Runtime) serve() error {

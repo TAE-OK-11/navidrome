@@ -387,7 +387,7 @@ func (w *compressResponseWriter) start(body []byte) error {
 	if err != nil {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
-		return nil
+		return nil //nolint:nilerr // Compression is optional; degrade to the raw response.
 	}
 	w.encoding = profile.encoding
 	setCompressionHeaders(w.Header(), w.encoding)

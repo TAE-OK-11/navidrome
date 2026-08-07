@@ -35,7 +35,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/kardianos/service v1.3.0
-	github.com/klauspost/compress v1.19.0
+	github.com/klauspost/compress v1.19.1
 	github.com/kr/pretty v0.3.1
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/mattn/go-sqlite3 v1.14.48

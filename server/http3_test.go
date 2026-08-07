@@ -18,7 +18,7 @@ import (
 )
 
 var _ = Describe("HTTP/3 support", func() {
-	const testDataDir = "testdata"
+	const testDataDir = "server/testdata"
 
 	It("serves repeated requests over a reusable QUIC connection", func() {
 		certFile := filepath.Join(testDataDir, "test_cert.pem")

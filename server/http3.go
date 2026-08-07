@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,30 @@ var safeSubsonic0RTTEndpoints = map[string]struct{}{
 	"getusers":                  {},
 	"getinternetradiostations":  {},
 	"getshares":                 {},
+	// These are high-frequency, idempotent reads used while rendering a
+	// freshly opened screen. Letting them complete in 0-RTT avoids a 425 +
+	// retry round-trip on every resumed QUIC connection. Streaming remains
+	// intentionally excluded because replaying it can duplicate large bodies.
+	"getcoverart":      {},
+	"getlyrics":        {},
+	"getlyricsbysongid": {},
+}
+
+var safeHTTP3StaticExtensions = map[string]struct{}{
+	".avif":  {},
+	".css":   {},
+	".gif":   {},
+	".html":  {},
+	".ico":   {},
+	".jpeg":  {},
+	".jpg":   {},
+	".js":    {},
+	".json":  {},
+	".png":   {},
+	".svg":   {},
+	".webp":  {},
+	".woff":  {},
+	".woff2": {},
 }
 
 type http3Runtime struct {
@@ -109,7 +134,7 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	return &http3Runtime{
 		server:       server,
 		packetConn:   packetConn,
-		altSvcHeader: fmt.Sprintf(`h3=":%s"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
+		altSvcHeader: fmt.Sprintf(`h3=\":%s\"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
 	}, nil
 }
 
@@ -141,7 +166,7 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 	}
 
 	requestPath := http3PathWithoutBasePath(req.URL.Path)
-	if requestPath == "/ping" {
+	if requestPath == "/" || requestPath == "/ping" || isSafeHTTP3StaticPath(requestPath) {
 		return true
 	}
 
@@ -164,11 +189,19 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 	endpoint = strings.TrimSuffix(endpoint, ".view")
 	endpoint = strings.ToLower(endpoint)
 
-	// Subsonic permits state-changing operations over GET. Use a positive
-	// metadata allowlist instead of broad get*/search* matching. Expensive
-	// artwork, lyrics, Sonic and transcoding endpoints intentionally wait for
-	// the handshake as well, limiting replay-amplification of CPU/upstream work.
+	// Subsonic permits state-changing operations over GET. Keep a positive
+	// allowlist instead of broad get*/search* matching. Small, idempotent UI
+	// reads may use 0-RTT, while audio streaming, transcoding and other large or
+	// state-changing operations wait for the handshake to avoid replay cost.
 	_, ok := safeSubsonic0RTTEndpoints[endpoint]
+	return ok
+}
+
+func isSafeHTTP3StaticPath(requestPath string) bool {
+	if requestPath == "" || strings.HasSuffix(requestPath, "/") {
+		return false
+	}
+	_, ok := safeHTTP3StaticExtensions[strings.ToLower(filepath.Ext(requestPath))]
 	return ok
 }
 

@@ -37,6 +37,23 @@ func TestHTTP3EarlyDataAllowsBodylessMetadataRead(t *testing.T) {
 	}
 }
 
+func TestHTTP3EarlyDataAllowsCoverArtRead(t *testing.T) {
+	for _, path := range []string{
+		"https://example.test/rest/getCoverArt?id=al-1&size=600",
+		"https://example.test/rest/getCoverArt.view?id=al-1&size=600",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.TLS = &tls.ConnectionState{HandshakeComplete: false}
+		rec := httptest.NewRecorder()
+		guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("path=%s status=%d, want 204", path, rec.Code)
+		}
+	}
+}
+
 func TestHTTP3TrustedProxyStreamLimitIsRaisedConservatively(t *testing.T) {
 	if serverQUICMaxIncomingStreams <= 100 {
 		t.Fatalf("MaxIncomingStreams=%d, want above quic-go default 100", serverQUICMaxIncomingStreams)

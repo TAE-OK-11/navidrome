@@ -20,7 +20,7 @@ const (
 	serverQUICHandshakeIdleTimeout = 5 * time.Second
 	serverQUICKeepAlivePeriod      = 30 * time.Second
 	serverHTTP3IdleTimeout         = 5 * time.Minute
-	serverHTTP3AltSvcMaxAge        = 30 * 24 * time.Hour
+	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
 )
 
 var safeSubsonic0RTTEndpoints = map[string]struct{}{
@@ -82,10 +82,12 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 		return nil, fmt.Errorf("determining HTTP/3 listener port: %w", err)
 	}
 
-	tlsConfig := &tls.Config{
+	// ConfigureTLSConfig installs the HTTP/3 ALPN handling required by quic-go.
+	// Keep TLS 1.3 as the floor; session tickets remain enabled for 0-RTT.
+	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS13,
-	}
+	})
 
 	server := &http3.Server{
 		Addr:           packetConn.LocalAddr().String(),

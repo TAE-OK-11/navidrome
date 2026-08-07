@@ -4,7 +4,17 @@ on:
   push:
     branches:
       - master
-      - perf/jbs-ghcr-quic-network
+      - perf/full-system-stability-rust
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "ui/**"
+      - "Dockerfile.jbs"
+      - ".github/workflows/jbs-ghcr.yml"
+  pull_request:
+    branches:
+      - master
     paths:
       - "**/*.go"
       - "go.mod"
@@ -39,9 +49,9 @@ env:
 
 jobs:
   verify-network:
-    name: Verify network, 0-RTT and compression
+    name: Verify server, QUIC and compression
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
@@ -56,10 +66,10 @@ jobs:
       - name: Test HTTP server, guarded QUIC 0-RTT and compression
         run: |
           set -euo pipefail
-          go test ./server -count=1
+          go test ./server ./server/subsonic -count=1
 
   build:
-    name: Build and push optimized image
+    name: Build optimized image
     needs: verify-network
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -74,6 +84,7 @@ jobs:
           driver: docker-container
 
       - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -87,15 +98,16 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/jbs-ghcr-quic-network' }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/full-system-stability-rust' }}
             type=sha,format=short,prefix=sha-
 
-      - name: Build and push
+      - name: Build optimized JBS image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.jbs
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
+          load: false
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

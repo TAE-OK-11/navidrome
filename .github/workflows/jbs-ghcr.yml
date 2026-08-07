@@ -101,6 +101,8 @@ jobs:
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/full-system-stability-rust' }}
             type=sha,format=short,prefix=sha-
 
+      # Pull-request workflows run against a synthetic merge commit. Dockerfile.jbs
+      # performs its own source clone, so pin that clone to the real PR head instead.
       - name: Resolve exact source commit
         id: source
         shell: bash

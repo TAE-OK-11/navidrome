@@ -101,7 +101,7 @@ func (lfi localFileInfo) BirthTime() time.Time {
 	if ts := times.Get(lfi.FileInfo); ts.HasBirthTime() {
 		return ts.BirthTime()
 	}
-	return time.Now()
+	return lfi.ModTime()
 }
 
 func init() {

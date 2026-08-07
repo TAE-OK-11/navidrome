@@ -59,9 +59,18 @@ func ValidateConfig(manifest *Manifest, configJSON string) error {
 		}
 	}
 
-	// Compile the schema
+	// ConfigDefinitionSchema is a named map type generated from the plugin manifest
+	// schema. jsonschema/v6 validates the schema document itself against the 2020-12
+	// metaschema and only accepts JSON-native values there. Normalize through JSON so
+	// named maps/slices (including nested generated types) become map[string]any / []any
+	// before handing the resource to the compiler.
+	schemaResource, err := normalizeConfigSchema(manifest.Config.Schema)
+	if err != nil {
+		return err
+	}
+
 	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("schema.json", manifest.Config.Schema); err != nil {
+	if err := compiler.AddResource("schema.json", schemaResource); err != nil {
 		return fmt.Errorf("adding schema resource: %w", err)
 	}
 
@@ -76,6 +85,18 @@ func ValidateConfig(manifest *Manifest, configJSON string) error {
 	}
 
 	return nil
+}
+
+func normalizeConfigSchema(schema any) (any, error) {
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config schema: %w", err)
+	}
+	var normalized any
+	if err := json.Unmarshal(raw, &normalized); err != nil {
+		return nil, fmt.Errorf("normalizing config schema: %w", err)
+	}
+	return normalized, nil
 }
 
 // convertValidationError converts jsonschema validation errors to our format.

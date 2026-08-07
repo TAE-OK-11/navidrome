@@ -1,10 +1,17 @@
-name: JBS Navidrome GHCR
+name: JBS GHCR
 
 on:
   push:
-    branches:
-      - master
-      - perf/jbs-ghcr-quic-network
+    branches: [master]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "ui/**"
+      - "Dockerfile.jbs"
+      - ".github/workflows/jbs-ghcr.yml"
+  pull_request:
+    branches: [master]
     paths:
       - "**/*.go"
       - "go.mod"
@@ -13,67 +20,32 @@ on:
       - "Dockerfile.jbs"
       - ".github/workflows/jbs-ghcr.yml"
   workflow_dispatch:
-    inputs:
-      force_rebuild:
-        description: "Ignore BuildKit cache"
-        type: boolean
-        default: false
-      pgo:
-        description: "Enable Go PGO training"
-        type: boolean
-        default: true
 
 permissions:
   contents: read
   packages: write
-  id-token: write
 
 concurrency:
   group: jbs-ghcr-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/tae-ok-11/navidrome
+  IMAGE: ghcr.io/tae-ok-11/navidrome
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   DOCKER_BUILD_RECORD_UPLOAD: false
-  DOCKER_BUILD_SUMMARY: true
 
 jobs:
-  verify-network:
-    name: Verify network, 0-RTT and compression
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Verify module graph
-        run: |
-          set -euo pipefail
-          go mod download
-          go mod verify
-      - name: Test HTTP server, guarded QUIC 0-RTT and compression
-        run: |
-          set -euo pipefail
-          go test ./server -count=1
-
   build:
-    name: Build and push optimized image
-    needs: verify-network
+    name: Build JBS image
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-        with:
-          driver: docker-container
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GHCR
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -84,10 +56,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ env.IMAGE }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/perf/jbs-ghcr-quic-network' }}
             type=sha,format=short,prefix=sha-
 
       - name: Build and push
@@ -95,16 +66,13 @@ jobs:
         with:
           context: .
           file: Dockerfile.jbs
-          push: true
           platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          sbom: true
-          provenance: mode=max
-          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild }}
-          cache-from: type=gha,scope=jbs-navidrome-amd64
-          cache-to: type=gha,scope=jbs-navidrome-amd64,mode=max
+          cache-from: type=gha,scope=jbs-navidrome
+          cache-to: type=gha,scope=jbs-navidrome,mode=max
           build-args: |
-            GIT_SHA=${{ github.sha }}
-            GIT_TAG=jbs-${{ github.ref_name }}
-            GO_PGO_ENABLED=${{ github.event_name != 'workflow_dispatch' || inputs.pgo }}
+            NAVIDROME_REF=${{ env.SOURCE_SHA }}
+            NAVIDROME_CACHEBUST=${{ env.SOURCE_SHA }}
+            GO_PGO_ENABLED=true

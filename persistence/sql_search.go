@@ -3,6 +3,7 @@ package persistence
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -80,7 +81,7 @@ func (r sqlRepository) doSearch(sq SelectBuilder, q string, results any, cfg sea
 	// Min-length guard: single-character queries are too broad for search3.
 	// This check lives here (not in the strategies) so that fullTextFilter
 	// (REST filter path) can still use single-character queries.
-	if len(q) < 2 {
+	if utf8.RuneCountInString(q) < 2 && !containsCJK(q) {
 		return nil
 	}
 

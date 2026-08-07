@@ -60,12 +60,12 @@ func CallScan(ctx context.Context, ds model.DataStore, pls playlists.Playlists, 
 	if err != nil {
 		return nil, err
 	}
-	defer release()
 
 	ctx = auth.WithAdminUser(ctx, ds)
 	progress := make(chan *ProgressInfo, 100)
 	go func() {
 		defer close(progress)
+		defer release()
 		scanner := &scannerImpl{ds: ds, cw: artwork.NoopCacheWarmer(), pls: pls}
 		scanner.scanFolders(ctx, fullScan, targets, progress)
 	}()
@@ -369,19 +369,21 @@ func (s *controller) trackProgress(ctx context.Context, progress <-chan *Progres
 			s.folderCount.Add(1)
 		}
 
-		scanType, elapsed, lastErr := s.getScanInfo(ctx)
-		status := &events.ScanStatus{
-			Scanning:    true,
-			Count:       int64(s.count.Load()),
-			FolderCount: int64(s.folderCount.Load()),
-			Error:       lastErr,
-			ScanType:    scanType,
-			ElapsedTime: elapsed,
+		sendStatus := func() {
+			scanType, elapsed, lastErr := s.getScanInfo(ctx)
+			s.sendMessage(ctx, &events.ScanStatus{
+				Scanning:    true,
+				Count:       int64(s.count.Load()),
+				FolderCount: int64(s.folderCount.Load()),
+				Error:       lastErr,
+				ScanType:    scanType,
+				ElapsedTime: elapsed,
+			})
 		}
 		if s.limiter != nil && !p.ForceUpdate {
-			s.limiter.Do(func() { s.sendMessage(ctx, status) })
+			s.limiter.Do(sendStatus)
 		} else {
-			s.sendMessage(ctx, status)
+			sendStatus()
 		}
 	}
 	return warnings, errors.Join(errs...)

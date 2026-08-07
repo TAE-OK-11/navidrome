@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/consts"
@@ -360,12 +361,28 @@ func sanitizeAll(filePath string, tags model.Tags) model.Tags {
 
 const defaultMaxTagLength = 1024
 
+func truncateUTF8Bytes(value string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(value[end]) {
+		end--
+	}
+	return value[:end]
+}
+
 func sanitize(filePath string, tagName model.TagName, tag model.TagConf, value string) string {
-	// First truncate the value to the maximum length
+	// Normalize malformed input before enforcing the byte limit, and only cut at
+	// UTF-8 rune boundaries so CJK/emoji metadata cannot become invalid text.
+	value = strings.ToValidUTF8(value, "�")
 	maxLength := cmp.Or(tag.MaxLength, defaultMaxTagLength)
 	if len(value) > maxLength {
 		log.Trace("Truncated tag value", "tag", tagName, "value", value, "length", len(value), "maxLength", maxLength)
-		value = value[:maxLength]
+		value = truncateUTF8Bytes(value, maxLength)
 	}
 
 	switch tag.Type {

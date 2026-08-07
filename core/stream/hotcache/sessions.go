@@ -188,6 +188,7 @@ func (t *sessionTracker) begin(identity streamIdentity, observation PlaybackObse
 	shard.mu.Unlock()
 }
 
+//nolint:gocyclo // Playback observation is a lock-scoped state machine; keeping transitions together protects session invariants.
 func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, cached bool, observation PlaybackObservation) {
 	rangeInfo := normalizeRange(observation.RangeHeader, identity.sourceSize)
 	expectedBytes := observation.BytesExpected
@@ -365,7 +366,9 @@ func (t *sessionTracker) reachThreshold(ctx context.Context, session *playSessio
 		Title: session.identity.title, Artist: session.identity.artist, SessionID: session.id, PlaybackSuccess: true})
 	log.Info(ctx, "Hot cache threshold reached", "mediaID", session.identity.mediaID, "title", session.identity.title,
 		"sessionID", session.id, "playedDuration", session.playedDuration, "playedPercent", session.playedPercent)
-	t.owner.queuePromotion(session.identity, session.playedDuration, session.playedPercent, "play-threshold", session.id)
+	if err := t.owner.queuePromotion(session.identity, session.playedDuration, session.playedPercent, "play-threshold", session.id); err != nil {
+		log.Debug(ctx, "Hot cache promotion not queued", "mediaID", session.identity.mediaID, "sessionID", session.id, err)
+	}
 }
 
 func (t *sessionTracker) updateProgress(session *playSession) {

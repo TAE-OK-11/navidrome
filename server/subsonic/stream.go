@@ -3,7 +3,7 @@ package subsonic
 import (
 	"context"
 	"errors"
-	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,10 +95,14 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	}
 
 	setHeaders := func(name string) {
-		name = strings.ReplaceAll(name, ",", "_")
-		disposition := fmt.Sprintf("attachment; filename=\"%s.zip\"", name)
-		w.Header().Set("Content-Disposition", disposition)
+		w.Header().Set("Content-Disposition", attachmentDisposition(name+".zip"))
 		w.Header().Set("Content-Type", "application/zip")
+	}
+
+	writeArchive := func(fn func(http.ResponseWriter) error) error {
+		tracked := &archiveResponseWriter{ResponseWriter: w}
+		err := fn(tracked)
+		return handleArchiveErr(ctx, id, tracked.wrote, err)
 	}
 
 	switch v := entity.(type) {
@@ -116,35 +120,73 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 			}
 		}()
 
-		disposition := fmt.Sprintf("attachment; filename=\"%s\"", stream.Name())
-		w.Header().Set("Content-Disposition", disposition)
+		w.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
 
 		_, err = stream.Serve(ctx, w, r)
 		return nil, err
 	case *model.Album:
 		setHeaders(v.Name)
-		return nil, handleArchiveErr(ctx, id, api.archiver.ZipAlbum(ctx, id, format, maxBitRate, w))
+		return nil, writeArchive(func(out http.ResponseWriter) error {
+			return api.archiver.ZipAlbum(ctx, id, format, maxBitRate, out)
+		})
 	case *model.Artist:
 		setHeaders(v.Name)
-		return nil, handleArchiveErr(ctx, id, api.archiver.ZipArtist(ctx, id, format, maxBitRate, w))
+		return nil, writeArchive(func(out http.ResponseWriter) error {
+			return api.archiver.ZipArtist(ctx, id, format, maxBitRate, out)
+		})
 	case *model.Playlist:
 		setHeaders(v.Name)
-		return nil, handleArchiveErr(ctx, id, api.archiver.ZipPlaylist(ctx, id, format, maxBitRate, w))
+		return nil, writeArchive(func(out http.ResponseWriter) error {
+			return api.archiver.ZipPlaylist(ctx, id, format, maxBitRate, out)
+		})
 	default:
 		return nil, model.ErrNotFound
 	}
 }
 
-// handleArchiveErr swallows ErrTooManyTranscodes from archive downloads so the
-// outer error handler does not try to write a 429 onto a response whose status
-// and Content-Disposition have already been flushed. The archive ends up with
-// the tracks that were written before the rejection (the rejected track and
-// any following ones are omitted); the server-side log is the unambiguous
-// signal operators can act on.
-func handleArchiveErr(ctx context.Context, id string, err error) error {
-	if errors.Is(err, stream.ErrTooManyTranscodes) {
-		log.Warn(ctx, "Archive download finalized early: transcode cap reached", "id", id, err)
+func attachmentDisposition(name string) string {
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '\r', '\n', 0:
+			return '_'
+		default:
+			return r
+		}
+	}, name)
+	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name}); disposition != "" {
+		return disposition
+	}
+	return `attachment; filename="download"`
+}
+
+type archiveResponseWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (w *archiveResponseWriter) Write(p []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(p)
+	if n > 0 {
+		w.wrote = true
+	}
+	return n, err
+}
+
+// handleArchiveErr only forwards an archive error while the outer HTTP error
+// handler can still write a coherent status/body. Once archive bytes have been
+// sent, appending a JSON/XML error would corrupt the ZIP even further, so log the
+// failure and leave the already-started response alone.
+func handleArchiveErr(ctx context.Context, id string, wrote bool, err error) error {
+	if err == nil {
 		return nil
 	}
-	return err
+	if !wrote {
+		return err
+	}
+	if errors.Is(err, stream.ErrTooManyTranscodes) {
+		log.Warn(ctx, "Archive download finalized early: transcode cap reached", "id", id, err)
+	} else {
+		log.Error(ctx, "Archive download failed after response started", "id", id, err)
+	}
+	return nil
 }

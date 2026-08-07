@@ -1,7 +1,6 @@
 package server
 
 import (
-	"compress/gzip"
 	"io"
 	"net/http"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/andybalholm/brotli"
+	gzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -24,7 +24,7 @@ const (
 	apiCompressionDecisionBufferSize = 4 << 10
 	brotliLargeLevel                 = 5
 	brotliHugeLevel                  = 6
-	zstdGeneralLevel                 = 3
+	zstdGeneralLevel                 = 1
 	gzipFallbackLevel                = 4
 )
 
@@ -89,10 +89,15 @@ func compressMiddleware() func(http.Handler) http.Handler {
 }
 
 func shouldBypassCompressionRequest(r *http.Request) bool {
-	if r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) {
+	if r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) || isSensitiveAuthResponsePath(r.URL.Path) {
 		return true
 	}
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Connection")), "upgrade")
+}
+
+func isSensitiveAuthResponsePath(requestPath string) bool {
+	requestPath = strings.ToLower(strings.TrimSuffix(requestPath, "/"))
+	return requestPath == "/auth" || strings.HasSuffix(requestPath, "/auth") || strings.Contains(requestPath, "/auth/")
 }
 
 type acceptedCompressions struct {
@@ -297,9 +302,6 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 		return w.writeStarted(p)
 	}
 
-	// When handlers already know the response size, decide immediately instead
-	// of buffering up to the normal compression threshold. This cuts API TTFB
-	// without sacrificing size-based codec selection for unknown bodies.
 	if w.buffer == nil && w.Header().Get("Content-Type") != "" && w.Header().Get("Content-Length") != "" {
 		if err := w.start(nil); err != nil {
 			return 0, err
@@ -328,9 +330,6 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// ReadFrom preserves the underlying ResponseWriter fast path for known binary
-// responses. This matters for handlers backed by files: hiding ReaderFrom from
-// net/http disables its sendfile optimization even when compression is skipped.
 func (w *compressResponseWriter) ReadFrom(source io.Reader) (int64, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
@@ -524,8 +523,6 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	level := zstdGeneralLevel
 	preferred := compressionZstd
 
-	// Dynamic metadata APIs optimize for latency and CPU efficiency with Zstd.
-	// Dense lyric text and static browser assets favor Brotli's higher ratio.
 	switch {
 	case isLyricsResponsePath(path):
 		minSize = lyricsCompressedMinSize
@@ -552,10 +549,11 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	selected := selectAcceptedCompression(accepted, preferred)
 	switch selected {
 	case compressionBrotli:
-		if level == 0 {
-			level = brotliLargeLevel
+		brotliLevel := brotliLargeLevel
+		if preferred == compressionBrotli && level >= brotliHugeLevel {
+			brotliLevel = brotliHugeLevel
 		}
-		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
+		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: brotliLevel}
 	case compressionZstd:
 		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
 	case compressionGzip:
@@ -573,8 +571,6 @@ func selectAcceptedCompression(accepted acceptedCompressions, preferred compress
 		bestQuality = quality
 	}
 
-	// Higher client q-values win. On equal quality, retain the server profile's
-	// codec preference, which keeps dynamic APIs on Zstd and dense text on Brotli.
 	for _, encoding := range []compressionEncoding{compressionZstd, compressionBrotli, compressionGzip} {
 		quality := accepted.quality(encoding)
 		if quality > bestQuality {
@@ -681,9 +677,6 @@ func isAlreadyCompressedBinaryMediaType(mediaType string) bool {
 func setCompressionHeaders(h http.Header, encoding compressionEncoding) {
 	h.Set("Content-Encoding", string(encoding))
 	h.Del("Content-Length")
-
-	// Validators that were computed for the uncompressed bytes are no longer
-	// strong validators for the transformed representation.
 	h.Del("Content-MD5")
 	h.Del("Content-Digest")
 	h.Del("Digest")
@@ -700,7 +693,6 @@ func weakenETagAfterCompression(h http.Header) {
 		h.Set("ETag", "W/"+etag)
 		return
 	}
-	// Do not forward a malformed representation-specific validator.
 	h.Del("ETag")
 }
 

@@ -8,14 +8,18 @@ on:
       - .github/workflows/codec-benchmark-probe.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   benchmark:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: perf/jbs-ghcr-quic-network
+          fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -41,7 +45,10 @@ jobs:
             out := make([]byte, 0, size)
             for len(out) < size {
               remaining := size - len(out)
-              if remaining < len(unit) { out = append(out, unit[:remaining]...); break }
+              if remaining < len(unit) {
+                out = append(out, unit[:remaining]...)
+                break
+              }
               out = append(out, unit...)
             }
             return out
@@ -81,4 +88,20 @@ jobs:
           }
           EOF
       - name: Benchmark latency and allocations
-        run: go test ./server -run '^$' -bench '^BenchmarkCodecProbe$' -benchmem -benchtime=750ms -count=3
+        run: |
+          set -euo pipefail
+          go test ./server -run '^$' -bench '^BenchmarkCodecProbe$' -benchmem -benchtime=750ms -count=3 | tee /tmp/codec-benchmark.txt
+      - name: Commit benchmark result
+        run: |
+          set -euo pipefail
+          mkdir -p .github/benchmark-results
+          {
+            printf 'Commit: %s\n' "$GITHUB_SHA"
+            printf 'Runner: ubuntu-latest\n\n'
+            cat /tmp/codec-benchmark.txt
+          } > .github/benchmark-results/api-compression.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/benchmark-results/api-compression.txt
+          git commit -m "test: record API compression codec benchmark"
+          git push origin HEAD:perf/jbs-ghcr-quic-network

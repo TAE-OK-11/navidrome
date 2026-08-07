@@ -31,7 +31,7 @@ func TestDynamicAPIUsesZstdWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestLyricsAPIUsesZstdForLowLatencyDynamicCompression(t *testing.T) {
+func TestLyricsAPIUsesBrotliForDenseText(t *testing.T) {
 	body := strings.Repeat("[00:01.00] lyric line\n", 32)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -43,8 +43,8 @@ func TestLyricsAPIUsesZstdForLowLatencyDynamicCompression(t *testing.T) {
 	rec := httptest.NewRecorder()
 	compressMiddleware()(handler).ServeHTTP(rec, req)
 
-	if got := rec.Header().Get("Content-Encoding"); got != "zstd" {
-		t.Fatalf("Content-Encoding = %q, want zstd", got)
+	if got := rec.Header().Get("Content-Encoding"); got != "br" {
+		t.Fatalf("Content-Encoding = %q, want br", got)
 	}
 }
 

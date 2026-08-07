@@ -94,7 +94,12 @@ func Init(ctx context.Context) func() {
 	// the same setting that we establish here, so temporarily keep the pool to one
 	// persistent idle connection. Without this, goose may acquire a different pooled
 	// connection and run a table-recreating migration with foreign_keys still enabled.
-	normalMaxConns := maxOpenConns()
+	// Preserve the caller's configured pool size rather than assuming the production
+	// default: tests and embedders deliberately restrict this pool in some environments.
+	previousMaxConns := db.Stats().MaxOpenConnections
+	if previousMaxConns <= 0 {
+		previousMaxConns = maxOpenConns()
+	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
@@ -109,8 +114,8 @@ func Init(ctx context.Context) func() {
 		}
 		// Set MaxOpen first: SetMaxIdleConns is otherwise capped by the temporary
 		// one-connection maximum and would remain at one after initialization.
-		db.SetMaxOpenConns(normalMaxConns)
-		db.SetMaxIdleConns(normalMaxConns)
+		db.SetMaxOpenConns(previousMaxConns)
+		db.SetMaxIdleConns(previousMaxConns)
 	}()
 	if err != nil {
 		log.Error(ctx, "Error disabling foreign_keys", err)

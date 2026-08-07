@@ -338,15 +338,15 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
-		It("keeps zstd for small responses even when brotli has a higher q value", func() {
+		It("honors a higher brotli q value over the server zstd preference", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "br;q=1, zstd;q=0.1, gzip;q=0.5")
 			rec := httptest.NewRecorder()
 
 			compressMiddleware()(handler).ServeHTTP(rec, req)
 
-			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
-			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
+			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
 		It("uses brotli for LRC lyric responses starting at 256 bytes", func() {
@@ -435,15 +435,15 @@ var _ = Describe("middlewares", func() {
 			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
-		It("uses brotli, not zstd, from an Accept-Encoding wildcard", func() {
+		It("uses the server zstd preference when wildcard qualities are equal", func() {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "gzip;q=1, *;q=1")
 			rec := httptest.NewRecorder()
 
 			compressMiddleware()(handler).ServeHTTP(rec, req)
 
-			Expect(rec.Header().Get("Content-Encoding")).To(Equal("br"))
-			Expect(decodeBrotli(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
 		It("does not re-enable brotli from a wildcard when brotli q is zero", func() {
@@ -453,8 +453,8 @@ var _ = Describe("middlewares", func() {
 
 			compressMiddleware()(handler).ServeHTTP(rec, req)
 
-			Expect(rec.Header().Get("Content-Encoding")).To(Equal("gzip"))
-			Expect(decodeGzip(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
+			Expect(rec.Header().Get("Content-Encoding")).To(Equal("zstd"))
+			Expect(decodeZstd(rec.Body.Bytes())).To(Equal(strings.Repeat(responseBody, 32)))
 		})
 
 		It("does not compress small responses", func() {

@@ -1,0 +1,137 @@
+name: JBS Navidrome GHCR
+
+on:
+  push:
+    branches:
+      - master
+      - perf/jbs-ghcr-quic-network
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "ui/**"
+      - "Dockerfile.jbs"
+      - ".github/workflows/jbs-ghcr.yml"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Ignore BuildKit cache"
+        type: boolean
+        default: false
+      pgo:
+        description: "Enable Go PGO training"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: jbs-ghcr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/tae-ok-11/navidrome
+  DOCKER_BUILD_RECORD_UPLOAD: false
+  DOCKER_BUILD_SUMMARY: true
+
+jobs:
+  verify-network:
+    name: Verify network and compression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify module graph
+        run: |
+          set -euo pipefail
+          go mod download
+          go mod verify
+      - name: Test HTTP server, QUIC and compression
+        run: |
+          set -euo pipefail
+          go test ./server -count=1
+
+  build:
+    name: Build and push optimized image
+    needs: verify-network
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker-container
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=jbs-latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=JBS Navidrome
+            org.opencontainers.image.description=JBS Networks optimized Navidrome with HTTP/3, Zstd API compression, PGO and LLVM LTO
+            org.opencontainers.image.vendor=JBS Networks
+            org.opencontainers.image.source=https://github.com/TAE-OK-11/navidrome
+            jbs.network.http3=quic-go
+            jbs.network.api-compression=zstd
+            jbs.optimization=go-pgo,llvm-full-lto,goamd64-v3,jemalloc
+
+      - name: Build and push to GHCR
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.jbs
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_TAG=${{ github.ref_name }}
+            NAVIDROME_BUILD_CORES=4
+            GOAMD64_VERSION=v3
+            GO_PGO_ENABLED=${{ inputs.pgo != false }}
+            GO_PGO_BENCHTIME=500ms
+          no-cache: ${{ inputs.force_rebuild == true }}
+          cache-from: type=gha,scope=jbs-navidrome-v3
+          cache-to: type=gha,mode=max,scope=jbs-navidrome-v3,ignore-error=true
+          provenance: mode=max
+          sbom: true
+
+      - name: Build summary
+        run: |
+          {
+            echo "### JBS Navidrome GHCR"
+            echo "| Key | Value |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE_NAME}\` |"
+            echo "| Digest | \`${{ steps.build.outputs.digest }}\` |"
+            echo "| Source | \`${{ github.sha }}\` |"
+            echo "| Network | \`HTTP/1.1 + HTTP/2 + HTTP/3 (quic-go)\` |"
+            echo "| Compression | \`Zstd API + Brotli UI/lyrics + gzip fallback\` |"
+            echo "| Build | \`GOAMD64=v3 + Go PGO + LLVM full LTO + jemalloc\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -337,6 +337,7 @@ func (r *resolver) waitRetry(task *promotionTask, delay time.Duration) bool {
 	}
 }
 
+//nolint:gocyclo // Promotion is a single transactional state machine; splitting it obscures cleanup/rollback invariants.
 func (r *resolver) promote(ctx context.Context, task *promotionTask) error {
 	source := task.identity
 	if source.sourceSize <= 0 || source.sourceSize > r.maxSize {

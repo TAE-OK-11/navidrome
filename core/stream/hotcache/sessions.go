@@ -188,6 +188,7 @@ func (t *sessionTracker) begin(identity streamIdentity, observation PlaybackObse
 	shard.mu.Unlock()
 }
 
+//nolint:gocyclo // Playback observation is a lock-scoped state machine; keeping transitions together protects session invariants.
 func (t *sessionTracker) observe(ctx context.Context, identity streamIdentity, cached bool, observation PlaybackObservation) {
 	rangeInfo := normalizeRange(observation.RangeHeader, identity.sourceSize)
 	expectedBytes := observation.BytesExpected

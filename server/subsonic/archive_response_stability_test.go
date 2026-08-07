@@ -11,7 +11,7 @@ import (
 
 func TestHandleArchiveErrBeforeWritePropagates(t *testing.T) {
 	want := errors.New("boom")
-	if got := handleArchiveErr(context.Background(), "x", false, want); got != want {
+	if got := handleArchiveErr(context.Background(), "x", false, want); !errors.Is(got, want) {
 		t.Fatalf("error before body write was not preserved: got %v, want %v", got, want)
 	}
 }

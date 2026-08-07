@@ -275,7 +275,7 @@ var _ = Describe("Configuration", func() {
 			Skip("POSIX file modes are not enforced on Windows")
 		}
 		logFile := filepath.Join(GinkgoT().TempDir(), "navidrome.log")
-		Expect(os.WriteFile(logFile, []byte("existing"), 0644)).To(Succeed())
+		Expect(os.WriteFile(logFile, []byte("existing"), 0600)).To(Succeed())
 		Expect(os.Chmod(logFile, 0644)).To(Succeed())
 		viper.Set("logfile", logFile)
 

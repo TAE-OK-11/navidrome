@@ -146,7 +146,7 @@ func NewResolver() Resolver {
 		return New(Options{})
 	}
 	maxSize, err := humanize.ParseBytes(conf.Server.HotCache.MaxSize)
-	if err != nil || maxSize > uint64(^uint64(0)>>1) {
+	if err != nil || maxSize > ^uint64(0)>>1 {
 		log.Warn("Original hot cache disabled: invalid maximum size", "maxSize", conf.Server.HotCache.MaxSize, err)
 		return New(Options{})
 	}

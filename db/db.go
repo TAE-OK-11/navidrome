@@ -66,6 +66,7 @@ func maxOpenConns() int {
 
 func configureSQLiteConn(conn *sqlite3.SQLiteConn) error {
 	_, err := conn.Exec(`
+		PRAGMA foreign_keys=ON;
 		PRAGMA temp_store=MEMORY;
 		PRAGMA mmap_size=134217728;
 		PRAGMA cache_spill=OFF;
@@ -103,7 +104,10 @@ func Init(ctx context.Context) func() {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
-	// Disable foreign_keys to allow re-creating tables in migrations.
+	// Disable foreign_keys to allow re-creating tables in migrations. The sole
+	// connection is normally configured with foreign_keys=ON by ConnectHook; after
+	// migrations we re-enable it explicitly, and every future pooled connection gets
+	// the same ON setting when it is created.
 	_, err := db.ExecContext(ctx, "PRAGMA foreign_keys=off")
 	defer func() {
 		// Startup cancellation must never leave the sole pooled connection with

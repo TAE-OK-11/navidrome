@@ -21,7 +21,7 @@ const (
 	largeCompressedResponseSize      = 16 << 10
 	hugeCompressedResponseSize       = 256 << 10
 	compressionDecisionBufferTarget  = largeCompressedResponseSize
-	apiCompressionDecisionBufferSize = 4 << 10
+	apiCompressionDecisionBufferSize = generalAPICompressedMinSize
 	brotliLargeLevel                 = 5
 	brotliHugeLevel                  = 6
 	zstdGeneralLevel                 = 1

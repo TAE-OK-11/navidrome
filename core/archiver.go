@@ -61,22 +61,12 @@ func (a *archiver) zipAlbums(ctx context.Context, id string, format string, bitr
 			"format", format, "bitrate", bitrate, "isMultiDisc", isMultiDisc, "numTracks", len(album))
 		for _, mf := range album {
 			file := a.albumFilename(mf, format, isMultiDisc)
-			if addErr := a.addFileToZip(ctx, z, mf, format, bitrate, file); errors.Is(addErr, stream.ErrTooManyTranscodes) {
-				// Stop iterating: continuing would just rack up more
-				// rejections from the limiter. Close finalises whatever
-				// tracks were already written; the rejected one is not
-				// present in the archive (addFileToZip aborts before
-				// writing its entry header).
-				_ = z.Close()
-				return addErr
+			if addErr := a.addFileToZip(ctx, z, mf, format, bitrate, file); addErr != nil {
+				return closeZipAfterError(ctx, z, id, addErr)
 			}
 		}
 	}
-	err = z.Close()
-	if err != nil {
-		log.Error(ctx, "Error closing zip file", "id", id, err)
-	}
-	return err
+	return closeZip(ctx, z, id)
 }
 
 func createZipWriter(out io.Writer, format string, bitrate int) *zip.Writer {
@@ -87,6 +77,19 @@ func createZipWriter(out io.Writer, format string, bitrate int) *zip.Writer {
 	}
 	_ = z.SetComment(comment)
 	return z
+}
+
+func closeZip(ctx context.Context, z *zip.Writer, id string) error {
+	err := z.Close()
+	if err != nil {
+		log.Error(ctx, "Error closing zip file", "id", id, err)
+	}
+	return err
+}
+
+func closeZipAfterError(ctx context.Context, z *zip.Writer, id string, cause error) error {
+	closeErr := closeZip(ctx, z, id)
+	return errors.Join(cause, closeErr)
 }
 
 func (a *archiver) albumFilename(mf model.MediaFile, format string, isMultiDisc bool) string {
@@ -129,11 +132,8 @@ func (a *archiver) zipMediaFiles(ctx context.Context, id, name string, format st
 	zippedMfs := make(model.MediaFiles, len(mfs))
 	for idx, mf := range mfs {
 		file := a.playlistFilename(mf, format, idx)
-		if addErr := a.addFileToZip(ctx, z, mf, format, bitrate, file); errors.Is(addErr, stream.ErrTooManyTranscodes) {
-			// Abort the whole archive: continuing would silently emit
-			// empty zip entries since the headers are already written.
-			_ = z.Close()
-			return addErr
+		if addErr := a.addFileToZip(ctx, z, mf, format, bitrate, file); addErr != nil {
+			return closeZipAfterError(ctx, z, id, addErr)
 		}
 		mf.Path = file
 		zippedMfs[idx] = mf
@@ -149,21 +149,17 @@ func (a *archiver) zipMediaFiles(ctx context.Context, id, name string, format st
 		})
 		if err != nil {
 			log.Error(ctx, "Error creating playlist zip entry", err)
-			return err
+			return closeZipAfterError(ctx, z, id, err)
 		}
 
 		_, err = w.Write([]byte(zippedMfs.ToM3U8(plsName, false)))
 		if err != nil {
 			log.Error(ctx, "Error writing m3u in zip", err)
-			return err
+			return closeZipAfterError(ctx, z, id, err)
 		}
 	}
 
-	err := z.Close()
-	if err != nil {
-		log.Error(ctx, "Error closing zip file", "id", id, err)
-	}
-	return err
+	return closeZip(ctx, z, id)
 }
 
 func (a *archiver) playlistFilename(mf model.MediaFile, format string, idx int) string {

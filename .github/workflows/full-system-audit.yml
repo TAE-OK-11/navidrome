@@ -31,18 +31,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          roots=(core server scanner persistence plugins)
           echo '===== outbound HTTP clients ====='
-          rg -n --glob '*.go' 'http\.(DefaultClient|Get|Post|Head)|(&|new\()?http\.Client\{|http\.Transport\{' core server scanner persistence plugins || true
+          grep -RInE --include='*.go' 'http\.(DefaultClient|Get|Post|Head)|http\.Client\{|http\.Transport\{' "${roots[@]}" | head -n 250 || true
           echo '===== process spawning ====='
-          rg -n --glob '*.go' 'exec\.Command(Context)?\(' core server scanner persistence plugins || true
+          grep -RInE --include='*.go' 'exec\.Command(Context)?\(' "${roots[@]}" | head -n 250 || true
           echo '===== context detachment/background ====='
-          rg -n --glob '*.go' 'context\.(Background|TODO|WithoutCancel)\(' core server scanner persistence plugins || true
+          grep -RInE --include='*.go' 'context\.(Background|TODO|WithoutCancel)\(' "${roots[@]}" | head -n 250 || true
           echo '===== potentially ignored errors ====='
-          rg -n --glob '*.go' '(, _ :=|_, _ =|\b_ = .*\.(Close|Wait|Kill|Shutdown|Stop)\(|CombinedOutput\(\).*$)' core server scanner persistence plugins || true
-          echo '===== unbounded goroutine/ticker candidates ====='
-          rg -n --glob '*.go' '(go func\(|go [A-Za-z0-9_\.]+\(|time\.(NewTicker|Tick|AfterFunc)\()' core server scanner persistence plugins || true
+          grep -RInE --include='*.go' '(, _ :=|_, _ =|_ = .*\.(Close|Wait|Kill|Shutdown|Stop)\(|CombinedOutput\(\))' "${roots[@]}" | head -n 300 || true
+          echo '===== goroutine/ticker candidates ====='
+          grep -RInE --include='*.go' '(go func\(|go [A-Za-z0-9_\.]+\(|time\.(NewTicker|Tick|AfterFunc)\()' "${roots[@]}" | head -n 300 || true
           echo '===== stream/copy hot paths ====='
-          rg -n --glob '*.go' '(io\.Copy(Buffer|N)?\(|io\.ReadAll\(|bytes\.NewBuffer|make\(\[\]byte)' core/stream core/ffmpeg server/subsonic scanner persistence || true
+          grep -RInE --include='*.go' '(io\.Copy(Buffer|N)?\(|io\.ReadAll\(|bytes\.NewBuffer|make\(\[\]byte)' core/stream core/ffmpeg server/subsonic scanner persistence | head -n 300 || true
 
       - name: Vet core runtime packages
         run: |
@@ -50,7 +51,10 @@ jobs:
           go mod download
           go vet -tags=sqlite_fts5 ./core/ffmpeg/... ./core/stream/... ./core/storage/... ./scanner/... ./persistence/... ./server/subsonic/...
 
-      - name: Test runtime packages
+      - name: Test runtime packages serially
         run: |
           set -euo pipefail
-          go test -tags=sqlite_fts5 ./core/ffmpeg/... ./core/stream/... ./core/storage/... ./scanner/... ./persistence/... ./server/subsonic/... -count=1
+          # Several package test suites use the same configured SQLite test database;
+          # keep package processes serial so cross-package test interference is not
+          # mistaken for a product-level locking regression.
+          go test -p=1 -tags=sqlite_fts5 ./core/ffmpeg/... ./core/stream/... ./core/storage/... ./scanner/... ./persistence/... ./server/subsonic/... -count=1

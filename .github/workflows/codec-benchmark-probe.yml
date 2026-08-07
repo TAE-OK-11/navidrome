@@ -31,12 +31,13 @@ jobs:
 
           import (
             "bytes"
-            "compress/gzip"
+            stdgzip "compress/gzip"
             "fmt"
             "io"
             "testing"
 
             "github.com/andybalholm/brotli"
+            kpgzip "github.com/klauspost/compress/gzip"
             "github.com/klauspost/compress/zstd"
           )
 
@@ -77,20 +78,64 @@ jobs:
                 b.ReportAllocs(); b.SetBytes(int64(len(payload)))
                 for b.Loop() { dst.Reset(); w.Reset(&dst); _, _ = w.Write(payload); _ = w.Close() }
               })
-              b.Run(fmt.Sprintf("size_%d/gzip_4", size), func(b *testing.B) {
+              b.Run(fmt.Sprintf("size_%d/std_gzip_4", size), func(b *testing.B) {
                 var dst bytes.Buffer
-                w, err := gzip.NewWriterLevel(&dst, 4)
+                w, err := stdgzip.NewWriterLevel(&dst, 4)
+                if err != nil { b.Fatal(err) }
+                b.ReportAllocs(); b.SetBytes(int64(len(payload)))
+                for b.Loop() { dst.Reset(); w.Reset(&dst); _, _ = w.Write(payload); _ = w.Close() }
+              })
+              b.Run(fmt.Sprintf("size_%d/kp_gzip_4", size), func(b *testing.B) {
+                var dst bytes.Buffer
+                w, err := kpgzip.NewWriterLevel(&dst, 4)
                 if err != nil { b.Fatal(err) }
                 b.ReportAllocs(); b.SetBytes(int64(len(payload)))
                 for b.Loop() { dst.Reset(); w.Reset(&dst); _, _ = w.Write(payload); _ = w.Close() }
               })
             }
           }
+
+          func TestCodecProbeSizes(t *testing.T) {
+            for _, size := range []int{1024, 16 << 10, 256 << 10} {
+              payload := benchmarkPayload(size)
+              results := map[string]int{}
+
+              var dst bytes.Buffer
+              z1, err := zstd.NewWriter(&dst, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)), zstd.WithEncoderConcurrency(1))
+              if err != nil { t.Fatal(err) }
+              _, _ = z1.Write(payload); _ = z1.Close(); results["zstd_1"] = dst.Len()
+
+              dst.Reset()
+              z3, err := zstd.NewWriter(&dst, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(3)), zstd.WithEncoderConcurrency(1))
+              if err != nil { t.Fatal(err) }
+              _, _ = z3.Write(payload); _ = z3.Close(); results["zstd_3"] = dst.Len()
+
+              dst.Reset()
+              br := brotli.NewWriterLevel(&dst, 5)
+              _, _ = br.Write(payload); _ = br.Close(); results["brotli_5"] = dst.Len()
+
+              dst.Reset()
+              sg, err := stdgzip.NewWriterLevel(&dst, 4)
+              if err != nil { t.Fatal(err) }
+              _, _ = sg.Write(payload); _ = sg.Close(); results["std_gzip_4"] = dst.Len()
+
+              dst.Reset()
+              kg, err := kpgzip.NewWriterLevel(&dst, 4)
+              if err != nil { t.Fatal(err) }
+              _, _ = kg.Write(payload); _ = kg.Close(); results["kp_gzip_4"] = dst.Len()
+
+              fmt.Printf("CODEC_SIZE input=%d zstd_1=%d zstd_3=%d brotli_5=%d std_gzip_4=%d kp_gzip_4=%d\n",
+                size, results["zstd_1"], results["zstd_3"], results["brotli_5"], results["std_gzip_4"], results["kp_gzip_4"])
+            }
+          }
           EOF
-      - name: Benchmark latency and allocations
+      - name: Benchmark latency, allocations and sizes
         run: |
           set -euo pipefail
-          go test ./server -run '^$' -bench '^BenchmarkCodecProbe$' -benchmem -benchtime=750ms -count=3 | tee /tmp/codec-benchmark.txt
+          {
+            go test ./server -run '^TestCodecProbeSizes$' -v -count=1
+            go test ./server -run '^$' -bench '^BenchmarkCodecProbe$' -benchmem -benchtime=750ms -count=3
+          } | tee /tmp/codec-benchmark.txt
       - name: Commit benchmark result
         run: |
           set -euo pipefail
@@ -103,5 +148,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/benchmark-results/api-compression.txt
-          git commit -m "test: record API compression codec benchmark"
+          git commit -m "test: update API compression codec benchmark"
           git push origin HEAD:perf/jbs-ghcr-quic-network

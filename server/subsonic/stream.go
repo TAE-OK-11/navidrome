@@ -3,7 +3,7 @@ package subsonic
 import (
 	"context"
 	"errors"
-	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,9 +95,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	}
 
 	setHeaders := func(name string) {
-		name = strings.ReplaceAll(name, ",", "_")
-		disposition := fmt.Sprintf("attachment; filename=\"%s.zip\"", name)
-		w.Header().Set("Content-Disposition", disposition)
+		w.Header().Set("Content-Disposition", attachmentDisposition(name+".zip"))
 		w.Header().Set("Content-Type", "application/zip")
 	}
 
@@ -116,8 +114,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 			}
 		}()
 
-		disposition := fmt.Sprintf("attachment; filename=\"%s\"", stream.Name())
-		w.Header().Set("Content-Disposition", disposition)
+		w.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
 
 		_, err = stream.Serve(ctx, w, r)
 		return nil, err
@@ -133,6 +130,21 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	default:
 		return nil, model.ErrNotFound
 	}
+}
+
+func attachmentDisposition(name string) string {
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '\r', '\n', 0:
+			return '_'
+		default:
+			return r
+		}
+	}, name)
+	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name}); disposition != "" {
+		return disposition
+	}
+	return `attachment; filename="download"`
 }
 
 // handleArchiveErr swallows ErrTooManyTranscodes from archive downloads so the

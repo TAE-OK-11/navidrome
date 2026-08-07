@@ -240,9 +240,10 @@ func (p *phaseFolders) processFolder(entry *folderEntry) (*folderEntry, error) {
 		} else {
 			info, err := entry.fileInfo(afPath, af)
 			if err != nil {
-				log.Warn(p.ctx, "Scanner: Error getting file info", "folder", entry.path, "file", af.Name(), err)
+				log.Warn(p.ctx, "Scanner: Error getting file info; keeping existing DB entry and continuing", "folder", entry.path, "file", af.Name(), err)
 				p.state.sendWarning(fmt.Sprintf("Error getting file info for %s/%s: %v", entry.path, af.Name(), err))
-				return entry, nil
+				delete(dbTracks, fullPath)
+				continue
 			}
 			if info.ModTime().After(dbTrack.UpdatedAt) || dbTrack.Missing {
 				filesToImport[fullPath] = dbTrack
@@ -279,9 +280,9 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 	uniqueTags := make(map[string]model.Tag, len(toImport))
 	var audioProbe ffmpeg.FFmpeg
 	for chunk := range slice.CollectChunks(maps.Keys(toImport), filesBatchSize) {
-		allInfo, err := entry.job.fs.ReadTags(chunk...)
+		allInfo, err := p.readTagsResilient(entry, chunk)
 		if err != nil {
-			log.Warn(p.ctx, "Scanner: Error extracting metadata from files. Skipping", "folder", entry.path, err)
+			log.Warn(p.ctx, "Scanner: Error extracting metadata from files. Skipping batch", "folder", entry.path, err)
 			return err
 		}
 		for filePath, info := range allInfo {
@@ -314,6 +315,33 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 	entry.tracks = tracks
 	entry.tags = mapValues(uniqueTags)
 	return nil
+}
+
+func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (map[string]metadata.Info, error) {
+	allInfo, err := entry.job.fs.ReadTags(paths...)
+	if err == nil || len(paths) <= 1 {
+		return allInfo, err
+	}
+
+	log.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files individually", "folder", entry.path, "files", len(paths), err)
+	result := make(map[string]metadata.Info, len(paths))
+	var failures []error
+	for _, filePath := range paths {
+		info, fileErr := entry.job.fs.ReadTags(filePath)
+		if fileErr != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", filePath, fileErr))
+			log.Warn(p.ctx, "Scanner: Skipping unreadable metadata file", "folder", entry.path, "file", filePath, fileErr)
+			p.state.sendWarning(fmt.Sprintf("Error extracting metadata from %s: %v", filePath, fileErr))
+			continue
+		}
+		for parsedPath, parsedInfo := range info {
+			result[parsedPath] = parsedInfo
+		}
+	}
+	if len(result) == 0 {
+		return nil, errors.Join(failures...)
+	}
+	return result, nil
 }
 
 func (p *phaseFolders) probeMissingAudioProperties(track *model.MediaFile, libPath, filePath string, audioProbe ffmpeg.FFmpeg) {

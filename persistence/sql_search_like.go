@@ -47,6 +47,15 @@ func newLikeSearch(tableName, query string) searchStrategy {
 	return &likeSearch{filter: filter}
 }
 
+func escapeLikePattern(value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(value)
+}
+
+func literalLike(column, pattern string) Sqlizer {
+	return Expr(column+` LIKE ? ESCAPE '\'`, pattern)
+}
+
 // legacySearchExpr generates LIKE-based search filters against the full_text column.
 // This is the original search implementation, used when Search.Backend="legacy".
 func legacySearchExpr(tableName string, s string) Sqlizer {
@@ -62,7 +71,7 @@ func legacySearchExpr(tableName string, s string) Sqlizer {
 	parts := strings.Split(q, " ")
 	filters := And{}
 	for _, part := range parts {
-		filters = append(filters, Like{tableName + ".full_text": "%" + sep + part + "%"})
+		filters = append(filters, literalLike(tableName+".full_text", "%"+sep+escapeLikePattern(part)+"%"))
 	}
 	log.Trace("Search using legacy backend", "query", filters, "table", tableName)
 	return filters
@@ -94,10 +103,16 @@ func likeSearchExpr(tableName string, s string) Sqlizer {
 	}
 	words := strings.Fields(s)
 	wordFilters := And{}
+	seen := make(map[string]struct{}, len(words))
 	for _, word := range words {
+		if _, ok := seen[word]; ok {
+			continue
+		}
+		seen[word] = struct{}{}
+		literal := escapeLikePattern(word)
 		colFilters := Or{}
 		for _, col := range columns {
-			colFilters = append(colFilters, Like{tableName + "." + col: "%" + word + "%"})
+			colFilters = append(colFilters, literalLike(tableName+"."+col, "%"+literal+"%"))
 		}
 		wordFilters = append(wordFilters, colFilters)
 	}

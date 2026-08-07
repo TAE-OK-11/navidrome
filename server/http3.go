@@ -60,8 +60,8 @@ var safeSubsonic0RTTEndpoints = map[string]struct{}{
 	// freshly opened screen. Letting them complete in 0-RTT avoids a 425 +
 	// retry round-trip on every resumed QUIC connection. Streaming remains
 	// intentionally excluded because replaying it can duplicate large bodies.
-	"getcoverart":      {},
-	"getlyrics":        {},
+	"getcoverart":       {},
+	"getlyrics":         {},
 	"getlyricsbysongid": {},
 }
 
@@ -134,7 +134,7 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	return &http3Runtime{
 		server:       server,
 		packetConn:   packetConn,
-		altSvcHeader: fmt.Sprintf(`h3=\":%s\"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
+		altSvcHeader: fmt.Sprintf(`h3=":%s"; ma=%d`, port, int(serverHTTP3AltSvcMaxAge/time.Second)),
 	}, nil
 }
 

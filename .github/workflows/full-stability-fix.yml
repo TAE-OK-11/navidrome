@@ -306,7 +306,6 @@ jobs:
           s = s.replace(marker, helper + marker, 1)
           p.write_text(s)
 
-          # fmt is no longer needed by stream.go if this was its only use; keep it if still referenced.
           s = p.read_text()
           if 'fmt.' not in s:
               s = s.replace('\t"fmt"\n', '', 1)
@@ -325,8 +324,7 @@ jobs:
               raise SystemExit('hot-cache queuePromotion call not found')
           p.write_text(s.replace(old, new, 1))
 
-          # Docker metadata: HTTP/3 uses the same numeric port over UDP. EXPOSE is metadata only,
-          # but make it explicit for operators and compose generators.
+          # Docker metadata: HTTP/3 uses the same numeric port over UDP.
           p = Path('Dockerfile.jbs')
           s = p.read_text()
           if 'EXPOSE 4533/tcp 4533/udp' not in s:
@@ -430,12 +428,12 @@ jobs:
         run: |
           set -euo pipefail
           go mod download
-          go test ./scanner ./core/storage/local ./model/metadata ./persistence ./server/subsonic ./core/stream/hotcache -count=1
+          go test -tags=sqlite_fts5 ./scanner ./core/storage/local ./model/metadata ./persistence ./server/subsonic ./core/stream/hotcache -count=1
 
       - name: Verify race-prone scanner and hot-cache paths
         run: |
           set -euo pipefail
-          go test -race ./scanner ./core/stream/hotcache -count=1
+          go test -race -tags=sqlite_fts5 ./scanner ./core/stream/hotcache -count=1
 
       - name: Commit verified fixes and remove one-shot workflow
         run: |

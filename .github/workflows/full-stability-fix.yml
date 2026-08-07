@@ -1,0 +1,448 @@
+name: Full stability one-shot fix
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: full-stability-fix-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  patch-test-commit:
+    if: github.event.pull_request.head.ref == 'perf/full-system-stability-rust' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply scanner, metadata, search, streaming and hot-cache fixes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'target not found in {path}: {old[:120]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          # 1) Scanner: one filesystem/stat or tag-extractor failure must not discard all
+          # healthy changes in the same folder.
+          phase = None
+          for candidate in Path('scanner').rglob('*.go'):
+              text = candidate.read_text(errors='ignore')
+              if 'const filesBatchSize = 200' in text and 'loadTagsFromFiles' in text:
+                  phase = candidate
+                  break
+          if phase is None:
+              raise SystemExit('scanner phaseFolders implementation not found')
+          s = phase.read_text()
+          old = '''\t\t\tif err != nil {
+          \t\t\t\tlog.Warn(p.ctx, "Scanner: Error getting file info", "folder", entry.path, "file", af.Name(), err)
+          \t\t\t\tp.state.sendWarning(fmt.Sprintf("Error getting file info for %s/%s: %v", entry.path, af.Name(), err))
+          \t\t\t\treturn entry, nil
+          \t\t\t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\t\t\tif err != nil {
+          \t\t\t\tlog.Warn(p.ctx, "Scanner: Error getting file info; keeping existing DB entry and continuing", "folder", entry.path, "file", af.Name(), err)
+          \t\t\t\tp.state.sendWarning(fmt.Sprintf("Error getting file info for %s/%s: %v", entry.path, af.Name(), err))
+          \t\t\t\tdelete(dbTracks, fullPath)
+          \t\t\t\tcontinue
+          \t\t\t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit(f'fileInfo failure block not found in {phase}')
+          s = s.replace(old, new, 1)
+
+          old = '''\t\tallInfo, err := entry.job.fs.ReadTags(chunk...)
+          \t\tif err != nil {
+          \t\t\tlog.Warn(p.ctx, "Scanner: Error extracting metadata from files. Skipping", "folder", entry.path, err)
+          \t\t\treturn err
+          \t\t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\t\tallInfo, err := p.readTagsResilient(entry, chunk)
+          \t\tif err != nil {
+          \t\t\tlog.Warn(p.ctx, "Scanner: Error extracting metadata from files. Skipping batch", "folder", entry.path, err)
+          \t\t\treturn err
+          \t\t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit(f'ReadTags batch block not found in {phase}')
+          s = s.replace(old, new, 1)
+
+          marker = 'func (p *phaseFolders) probeMissingAudioProperties('
+          if marker not in s:
+              raise SystemExit(f'probe helper marker not found in {phase}')
+          helper = '''func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (map[string]metadata.Info, error) {
+          \tallInfo, err := entry.job.fs.ReadTags(paths...)
+          \tif err == nil || len(paths) <= 1 {
+          \t\treturn allInfo, err
+          \t}
+
+          \tlog.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files individually", "folder", entry.path, "files", len(paths), err)
+          \tresult := make(map[string]metadata.Info, len(paths))
+          \tvar failures []error
+          \tfor _, filePath := range paths {
+          \t\tinfo, fileErr := entry.job.fs.ReadTags(filePath)
+          \t\tif fileErr != nil {
+          \t\t\tfailures = append(failures, fmt.Errorf("%s: %w", filePath, fileErr))
+          \t\t\tlog.Warn(p.ctx, "Scanner: Skipping unreadable metadata file", "folder", entry.path, "file", filePath, fileErr)
+          \t\t\tp.state.sendWarning(fmt.Sprintf("Error extracting metadata from %s: %v", filePath, fileErr))
+          \t\t\tcontinue
+          \t\t}
+          \t\tfor parsedPath, parsedInfo := range info {
+          \t\t\tresult[parsedPath] = parsedInfo
+          \t\t}
+          \t}
+          \tif len(result) == 0 {
+          \t\treturn nil, errors.Join(failures...)
+          \t}
+          \treturn result, nil
+          }
+
+          '''
+          helper = '\n'.join(line[10:] if line.startswith('          ') else line for line in helper.splitlines()) + '\n'
+          s = s.replace(marker, helper + marker, 1)
+          phase.write_text(s)
+
+          # 2) Local storage: time.Now() is unstable when a filesystem lacks birthtime.
+          replace_once('core/storage/local/local.go', '\treturn time.Now()\n', '\treturn lfi.ModTime()\n')
+
+          # 3) Metadata: never cut UTF-8 tags in the middle of a rune; normalize malformed input.
+          p = Path('model/metadata/metadata.go')
+          s = p.read_text()
+          if '"unicode/utf8"' not in s:
+              s = s.replace('\t"time"\n', '\t"time"\n\t"unicode/utf8"\n', 1)
+          old = '''\t// First truncate the value to the maximum length
+          \tmaxLength := cmp.Or(tag.MaxLength, defaultMaxTagLength)
+          \tif len(value) > maxLength {
+          \t\tlog.Trace("Truncated tag value", "tag", tagName, "value", value, "length", len(value), "maxLength", maxLength)
+          \t\tvalue = value[:maxLength]
+          \t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\t// Normalize malformed input before enforcing the byte limit, and only cut at
+          \t// UTF-8 rune boundaries so CJK/emoji metadata cannot become invalid text.
+          \tvalue = strings.ToValidUTF8(value, "�")
+          \tmaxLength := cmp.Or(tag.MaxLength, defaultMaxTagLength)
+          \tif len(value) > maxLength {
+          \t\tlog.Trace("Truncated tag value", "tag", tagName, "value", value, "length", len(value), "maxLength", maxLength)
+          \t\tvalue = truncateUTF8Bytes(value, maxLength)
+          \t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('metadata truncate block not found')
+          s = s.replace(old, new, 1)
+          marker = 'func sanitize(filePath string, tagName model.TagName, tag model.TagConf, value string) string {'
+          helper = '''func truncateUTF8Bytes(value string, maxBytes int) string {
+          \tif maxBytes <= 0 {
+          \t\treturn ""
+          \t}
+          \tif len(value) <= maxBytes {
+          \t\treturn value
+          \t}
+          \tend := maxBytes
+          \tfor end > 0 && !utf8.RuneStart(value[end]) {
+          \t\tend--
+          \t}
+          \treturn value[:end]
+          }
+
+          '''
+          helper = '\n'.join(line[10:] if line.startswith('          ') else line for line in helper.splitlines()) + '\n'
+          if marker not in s:
+              raise SystemExit('metadata sanitize marker not found')
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+
+          # 4) Search: apply the one-character guard by Unicode rune, not UTF-8 byte count.
+          p = Path('persistence/sql_search.go')
+          s = p.read_text()
+          if '"unicode/utf8"' not in s:
+              s = s.replace('\t"strings"\n', '\t"strings"\n\t"unicode/utf8"\n', 1)
+          old = '''\tif len(q) < 2 {
+          \t\treturn nil
+          \t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\tif utf8.RuneCountInString(q) < 2 && !containsCJK(q) {
+          \t\treturn nil
+          \t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('search min-length guard not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # 5) LIKE fallbacks: treat user %, _ and backslash literally and avoid redundant predicates.
+          p = Path('persistence/sql_search_like.go')
+          s = p.read_text()
+          s = s.replace(
+              'filters = append(filters, Like{tableName + ".full_text": "%" + sep + part + "%"})',
+              'filters = append(filters, literalLike(tableName+".full_text", "%"+sep+escapeLikePattern(part)+"%"))',
+              1,
+          )
+          old = '''\twords := strings.Fields(s)
+          \twordFilters := And{}
+          \tfor _, word := range words {
+          \t\tcolFilters := Or{}
+          \t\tfor _, col := range columns {
+          \t\t\tcolFilters = append(colFilters, Like{tableName + "." + col: "%" + word + "%"})
+          \t\t}
+          \t\twordFilters = append(wordFilters, colFilters)
+          \t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\twords := strings.Fields(s)
+          \twordFilters := And{}
+          \tseen := make(map[string]struct{}, len(words))
+          \tfor _, word := range words {
+          \t\tif _, ok := seen[word]; ok {
+          \t\t\tcontinue
+          \t\t}
+          \t\tseen[word] = struct{}{}
+          \t\tliteral := escapeLikePattern(word)
+          \t\tcolFilters := Or{}
+          \t\tfor _, col := range columns {
+          \t\t\tcolFilters = append(colFilters, literalLike(tableName+"."+col, "%"+literal+"%"))
+          \t\t}
+          \t\twordFilters = append(wordFilters, colFilters)
+          \t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('LIKE word loop not found')
+          s = s.replace(old, new, 1)
+          marker = '// legacySearchExpr generates LIKE-based search filters against the full_text column.'
+          helper = '''func escapeLikePattern(value string) string {
+          \treplacer := strings.NewReplacer(`\\`, `\\\\`, `%`, `\\%`, `_`, `\\_`)
+          \treturn replacer.Replace(value)
+          }
+
+          func literalLike(column, pattern string) Sqlizer {
+          \treturn Expr(column+` LIKE ? ESCAPE '\\'`, pattern)
+          }
+
+          '''
+          helper = '\n'.join(line[10:] if line.startswith('          ') else line for line in helper.splitlines()) + '\n'
+          if marker not in s:
+              raise SystemExit('LIKE helper insertion marker not found')
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+
+          # 6) Streaming/downloads: format Content-Disposition safely for Unicode/quotes/CRLF.
+          p = Path('server/subsonic/stream.go')
+          s = p.read_text()
+          if '"mime"' not in s:
+              s = s.replace('\t"fmt"\n', '\t"fmt"\n\t"mime"\n', 1)
+          old = '''\tsetHeaders := func(name string) {
+          \t\tname = strings.ReplaceAll(name, ",", "_")
+          \t\tdisposition := fmt.Sprintf("attachment; filename=\\\"%s.zip\\\"", name)
+          \t\tw.Header().Set("Content-Disposition", disposition)
+          \t\tw.Header().Set("Content-Type", "application/zip")
+          \t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\tsetHeaders := func(name string) {
+          \t\tw.Header().Set("Content-Disposition", attachmentDisposition(name+".zip"))
+          \t\tw.Header().Set("Content-Type", "application/zip")
+          \t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('archive Content-Disposition block not found')
+          s = s.replace(old, new, 1)
+          old = '''\t\tdisposition := fmt.Sprintf("attachment; filename=\\\"%s\\\"", stream.Name())
+          \t\tw.Header().Set("Content-Disposition", disposition)
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\t\tw.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('media Content-Disposition block not found')
+          s = s.replace(old, new, 1)
+          marker = '// handleArchiveErr swallows ErrTooManyTranscodes'
+          helper = '''func attachmentDisposition(name string) string {
+          \tname = strings.Map(func(r rune) rune {
+          \t\tswitch r {
+          \t\tcase '\\r', '\\n', 0:
+          \t\t\treturn '_'
+          \t\tdefault:
+          \t\t\treturn r
+          \t\t}
+          \t}, name)
+          \tif disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name}); disposition != "" {
+          \t\treturn disposition
+          \t}
+          \treturn `attachment; filename="download"`
+          }
+
+          '''
+          helper = '\n'.join(line[10:] if line.startswith('          ') else line for line in helper.splitlines()) + '\n'
+          if marker not in s:
+              raise SystemExit('stream helper insertion marker not found')
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+
+          # fmt is no longer needed by stream.go if this was its only use; keep it if still referenced.
+          s = p.read_text()
+          if 'fmt.' not in s:
+              s = s.replace('\t"fmt"\n', '', 1)
+              p.write_text(s)
+
+          # 7) Hot cache: do not silently discard promotion queue errors.
+          p = Path('core/stream/hotcache/sessions.go')
+          s = p.read_text()
+          old = '\tt.owner.queuePromotion(session.identity, session.playedDuration, session.playedPercent, "play-threshold", session.id)\n'
+          new = '''\tif err := t.owner.queuePromotion(session.identity, session.playedDuration, session.playedPercent, "play-threshold", session.id); err != nil {
+          \t\tlog.Debug(ctx, "Hot cache promotion not queued", "mediaID", session.identity.mediaID, "sessionID", session.id, err)
+          \t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('hot-cache queuePromotion call not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # Docker metadata: HTTP/3 uses the same numeric port over UDP. EXPOSE is metadata only,
+          # but make it explicit for operators and compose generators.
+          p = Path('Dockerfile.jbs')
+          s = p.read_text()
+          if 'EXPOSE 4533/tcp 4533/udp' not in s:
+              if 'EXPOSE 4533\n' not in s:
+                  raise SystemExit('Docker EXPOSE target not found')
+              s = s.replace('EXPOSE 4533\n', 'EXPOSE 4533/tcp 4533/udp\n', 1)
+          p.write_text(s)
+          PY
+
+          gofmt -w scanner core/storage/local model/metadata persistence server/subsonic core/stream/hotcache
+
+      - name: Add focused regression tests
+        run: |
+          cat > model/metadata/utf8_stability_test.go <<'EOF'
+          package metadata
+
+          import (
+            "testing"
+            "unicode/utf8"
+          )
+
+          func TestTruncateUTF8BytesPreservesRuneBoundaries(t *testing.T) {
+            got := truncateUTF8Bytes("가나다🙂", 7)
+            if !utf8.ValidString(got) {
+              t.Fatalf("truncated metadata is invalid UTF-8: %q", got)
+            }
+            if got != "가나" {
+              t.Fatalf("unexpected truncation: got %q, want %q", got, "가나")
+            }
+            if len(got) > 7 {
+              t.Fatalf("truncated metadata exceeds byte limit: %d", len(got))
+            }
+          }
+          EOF
+
+          cat > persistence/sql_search_like_stability_test.go <<'EOF'
+          package persistence
+
+          import (
+            "strings"
+            "testing"
+          )
+
+          func TestEscapeLikePatternTreatsWildcardsLiterally(t *testing.T) {
+            got := escapeLikePattern(`100%_mix\name`)
+            if got != `100\%\_mix\\name` {
+              t.Fatalf("unexpected LIKE escaping: %q", got)
+            }
+          }
+
+          func TestLikeSearchUsesEscapeClause(t *testing.T) {
+            expr := likeSearchExpr("artist", "100%")
+            sql, args, err := expr.ToSql()
+            if err != nil {
+              t.Fatal(err)
+            }
+            if !strings.Contains(sql, `ESCAPE '\'`) {
+              t.Fatalf("LIKE query is missing ESCAPE clause: %s", sql)
+            }
+            if len(args) == 0 || args[0] != `%100\%%` {
+              t.Fatalf("unexpected LIKE argument: %#v", args)
+            }
+          }
+          EOF
+
+          cat > server/subsonic/content_disposition_stability_test.go <<'EOF'
+          package subsonic
+
+          import (
+            "mime"
+            "strings"
+            "testing"
+          )
+
+          func TestAttachmentDispositionSupportsUnicodeAndQuotes(t *testing.T) {
+            original := "한글 \"mix\".flac"
+            value := attachmentDisposition(original)
+            if strings.ContainsAny(value, "\r\n") {
+              t.Fatalf("header contains a line break: %q", value)
+            }
+            mediaType, params, err := mime.ParseMediaType(value)
+            if err != nil {
+              t.Fatalf("invalid Content-Disposition: %v (%q)", err, value)
+            }
+            if mediaType != "attachment" || params["filename"] != original {
+              t.Fatalf("unexpected parsed disposition: %q %#v", mediaType, params)
+            }
+          }
+
+          func TestAttachmentDispositionStripsHeaderControlCharacters(t *testing.T) {
+            value := attachmentDisposition("track\r\nX-Evil: yes.flac")
+            if strings.ContainsAny(value, "\r\n") {
+              t.Fatalf("header injection characters survived: %q", value)
+            }
+          }
+          EOF
+
+          gofmt -w model/metadata/utf8_stability_test.go persistence/sql_search_like_stability_test.go server/subsonic/content_disposition_stability_test.go
+
+      - name: Verify focused packages
+        run: |
+          set -euo pipefail
+          go mod download
+          go test ./scanner ./core/storage/local ./model/metadata ./persistence ./server/subsonic ./core/stream/hotcache -count=1
+
+      - name: Verify race-prone scanner and hot-cache paths
+        run: |
+          set -euo pipefail
+          go test -race ./scanner ./core/stream/hotcache -count=1
+
+      - name: Commit verified fixes and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/full-stability-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: harden scanner search metadata and streaming paths'
+          git push origin HEAD:perf/full-system-stability-rust

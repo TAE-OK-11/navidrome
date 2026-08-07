@@ -25,17 +25,54 @@ func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 		}
 
 		accepted := acceptedCompressionEncodings(r.Header.Get("Accept-Encoding"))
-		if accepted.brotli && servePrecompressedAsset(w, r, fileSystem, ".br", string(compressionBrotli)) {
-			return
-		}
-		if accepted.zstd && servePrecompressedAsset(w, r, fileSystem, ".zst", string(compressionZstd)) {
-			return
-		}
-		if accepted.gzip && servePrecompressedAsset(w, r, fileSystem, ".gz", string(compressionGzip)) {
-			return
+		for _, encoding := range orderedPrecompressedEncodings(accepted) {
+			suffix := precompressedSuffix(encoding)
+			if suffix != "" && servePrecompressedAsset(w, r, fileSystem, suffix, string(encoding)) {
+				return
+			}
 		}
 		fallback.ServeHTTP(w, r)
 	})
+}
+
+func orderedPrecompressedEncodings(accepted acceptedCompressions) []compressionEncoding {
+	order := make([]compressionEncoding, 0, 3)
+	for len(order) < 3 && accepted.hasAny() {
+		encoding := selectAcceptedCompression(accepted, compressionBrotli)
+		if encoding == "" {
+			break
+		}
+		order = append(order, encoding)
+		disableAcceptedCompression(&accepted, encoding)
+	}
+	return order
+}
+
+func disableAcceptedCompression(accepted *acceptedCompressions, encoding compressionEncoding) {
+	switch encoding {
+	case compressionBrotli:
+		accepted.brotli = false
+		accepted.brotliQuality = 0
+	case compressionZstd:
+		accepted.zstd = false
+		accepted.zstdQuality = 0
+	case compressionGzip:
+		accepted.gzip = false
+		accepted.gzipQuality = 0
+	}
+}
+
+func precompressedSuffix(encoding compressionEncoding) string {
+	switch encoding {
+	case compressionBrotli:
+		return ".br"
+	case compressionZstd:
+		return ".zst"
+	case compressionGzip:
+		return ".gz"
+	default:
+		return ""
+	}
 }
 
 func servePrecompressedAsset(w http.ResponseWriter, r *http.Request, fileSystem fs.FS, suffix, encoding string) bool {

@@ -19,6 +19,7 @@ import (
 const (
 	serverQUICHandshakeIdleTimeout = 5 * time.Second
 	serverQUICKeepAlivePeriod      = 30 * time.Second
+	serverQUICMaxIncomingStreams   = 256
 	serverHTTP3IdleTimeout         = 5 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
 )
@@ -99,6 +100,7 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
 			MaxIdleTimeout:          serverHTTP3IdleTimeout,
 			KeepAlivePeriod:         serverQUICKeepAlivePeriod,
+			MaxIncomingStreams:      serverQUICMaxIncomingStreams,
 			Allow0RTT:               conf.HTTP3Allow0RTT(),
 			DisablePathMTUDiscovery: false,
 		},
@@ -130,6 +132,11 @@ func isPotentialHTTP3Replay(req *http.Request) bool {
 
 func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		return false
+	}
+	// Early-data reads never need a request body in Navidrome. Reject bodies,
+	// including unknown-length bodies, to keep replayable payloads minimal.
+	if req.ContentLength != 0 {
 		return false
 	}
 

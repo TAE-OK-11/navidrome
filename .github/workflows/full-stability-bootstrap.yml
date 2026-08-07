@@ -71,7 +71,6 @@ jobs:
               test -s /src/go.sum
 
           '''
-          # Strip indentation introduced by the Python heredoc formatting above.
           source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines()) + '\n'
           s = s[:start] + source + s[end:]
 

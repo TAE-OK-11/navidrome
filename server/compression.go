@@ -456,20 +456,19 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	level := zstdGeneralLevel
 	preferred := compressionZstd
 
-	// Dynamic APIs optimize for latency and CPU efficiency: Zstd gives a strong
-	// compression ratio while encoding substantially faster than Brotli. Static
-	// browser assets keep Brotli because they are precompressed once at build time.
+	// Dynamic metadata APIs optimize for latency and CPU efficiency with Zstd.
+	// Dense lyric text and static browser assets favor Brotli's higher ratio.
 	switch {
+	case isLyricsResponsePath(path):
+		minSize = lyricsCompressedMinSize
+		level = brotliLargeLevel
+		preferred = compressionBrotli
 	case isWebUIResponsePath(path, contentType):
 		minSize = webUICompressedMinSize
 		level = brotliLargeLevel
 		preferred = compressionBrotli
 	case isAPIResponsePath(path):
-		if isLyricsResponsePath(path) {
-			minSize = lyricsCompressedMinSize
-		} else {
-			minSize = generalAPICompressedMinSize
-		}
+		minSize = generalAPICompressedMinSize
 		level = zstdGeneralLevel
 		preferred = compressionZstd
 	case responseSizeAtLeast(h, bodySize, hugeCompressedResponseSize):

@@ -38,10 +38,12 @@ type Server struct {
 
 const (
 	serverStartupGracePeriod = 10 * time.Millisecond
-	serverIdleTimeout        = 2 * time.Minute
+	serverIdleTimeout        = 5 * time.Minute
 	serverMaxHeaderBytes     = 32 << 10
 
-	serverTCPKeepAliveIdle     = 60 * time.Second
+	// Keep reverse-proxy/origin connections reusable for longer while detecting
+	// dead WAN peers sooner than the previous one-minute keepalive probe.
+	serverTCPKeepAliveIdle     = 30 * time.Second
 	serverTCPKeepAliveInterval = 10 * time.Second
 	serverTCPKeepAliveCount    = 3
 )

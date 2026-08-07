@@ -198,7 +198,7 @@ func TestCompressionDoesNotTreatEarlyHintsAsFinalStatus(t *testing.T) {
 	underlying := &informationalPolicyWriter{header: make(http.Header)}
 	w := &compressResponseWriter{
 		ResponseWriter: underlying,
-		accepted:       acceptedCompressions{zstd: 1},
+		accepted:       acceptedCompressions{zstd: true},
 		path:           "/api/test",
 	}
 

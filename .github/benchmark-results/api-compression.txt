@@ -1,45 +1,61 @@
-Commit: 1c47815888b01decc8da63c6a1b64c3d2c44fc15
+Commit: 6487f2be4d28e10206599fbaa4ba8cd321c7d3f8
 Runner: ubuntu-latest
 
+=== RUN   TestCodecProbeSizes
+CODEC_SIZE input=1024 zstd_1=109 zstd_3=109 brotli_5=94 std_gzip_4=125 kp_gzip_4=122
+CODEC_SIZE input=16384 zstd_1=108 zstd_3=108 brotli_5=96 std_gzip_4=210 kp_gzip_4=183
+CODEC_SIZE input=262144 zstd_1=151 zstd_3=125 brotli_5=96 std_gzip_4=1421 kp_gzip_4=1226
+--- PASS: TestCodecProbeSizes (0.01s)
+PASS
+ok  	github.com/navidrome/navidrome/server	0.022s
 goos: linux
 goarch: amd64
 pkg: github.com/navidrome/navidrome/server
 cpu: AMD EPYC 7763 64-Core Processor                
-BenchmarkCodecProbe/size_1024/zstd_1-4         	  111517	      8096 ns/op	 126.47 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/zstd_1-4         	  114262	      7888 ns/op	 129.81 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/zstd_1-4         	  112689	      7855 ns/op	 130.36 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/zstd_3-4         	  104060	      8664 ns/op	 118.20 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/zstd_3-4         	   99892	      8770 ns/op	 116.76 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/zstd_3-4         	   99464	      8939 ns/op	 114.56 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/brotli_5-4       	   30318	     30122 ns/op	  34.00 MB/s	      36 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/brotli_5-4       	   30381	     29565 ns/op	  34.64 MB/s	      36 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/brotli_5-4       	   30410	     29579 ns/op	  34.62 MB/s	      36 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/gzip_4-4         	   43178	     20344 ns/op	  50.34 MB/s	      19 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/gzip_4-4         	   45565	     19781 ns/op	  51.77 MB/s	      17 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_1024/gzip_4-4         	   44460	     20223 ns/op	  50.64 MB/s	      18 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_1-4        	   74234	     12116 ns/op	1352.24 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_1-4        	   75957	     11811 ns/op	1387.22 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_1-4        	   73728	     12066 ns/op	1357.82 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_3-4        	   70515	     12671 ns/op	1293.01 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_3-4        	   70689	     12835 ns/op	1276.55 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/zstd_3-4        	   68108	     12821 ns/op	1277.87 MB/s	       0 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/brotli_5-4      	   23808	     37696 ns/op	 434.63 MB/s	      57 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/brotli_5-4      	   24016	     37424 ns/op	 437.79 MB/s	      56 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/brotli_5-4      	   24022	     37568 ns/op	 436.11 MB/s	      56 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/gzip_4-4        	   15271	     58832 ns/op	 278.49 MB/s	      53 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/gzip_4-4        	   15360	     58668 ns/op	 279.26 MB/s	      53 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_16384/gzip_4-4        	   15298	     58990 ns/op	 277.74 MB/s	      53 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_1-4       	   14509	     62267 ns/op	4210.00 MB/s	     600 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_1-4       	   14478	     63320 ns/op	4139.97 MB/s	     601 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_1-4       	   14408	     62245 ns/op	4211.49 MB/s	     604 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_3-4       	   14250	     62869 ns/op	4169.65 MB/s	    1199 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_3-4       	   14326	     63068 ns/op	4156.54 MB/s	    1193 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/zstd_3-4       	   14296	     63125 ns/op	4152.76 MB/s	    1195 B/op	       2 allocs/op
-BenchmarkCodecProbe/size_262144/brotli_5-4     	    2443	    344547 ns/op	 760.84 MB/s	    4459 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/brotli_5-4     	    2538	    342619 ns/op	 765.12 MB/s	    4292 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/brotli_5-4     	    2416	    344408 ns/op	 761.14 MB/s	    4508 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/gzip_4-4       	    1134	    764226 ns/op	 343.02 MB/s	     720 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/gzip_4-4       	    1177	    780065 ns/op	 336.05 MB/s	     694 B/op	       0 allocs/op
-BenchmarkCodecProbe/size_262144/gzip_4-4       	    1176	    764485 ns/op	 342.90 MB/s	     695 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_1-4         	  109060	      8421 ns/op	 121.60 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_1-4         	  107571	      8274 ns/op	 123.76 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_1-4         	  116365	      8156 ns/op	 125.55 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_3-4         	  102970	      8668 ns/op	 118.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_3-4         	  101673	      8994 ns/op	 113.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/zstd_3-4         	  105315	      8942 ns/op	 114.51 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/brotli_5-4       	   30145	     29788 ns/op	  34.38 MB/s	      37 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/brotli_5-4       	   30108	     29865 ns/op	  34.29 MB/s	      36 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/brotli_5-4       	   30481	     29553 ns/op	  34.65 MB/s	      36 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/std_gzip_4-4     	   45606	     19790 ns/op	  51.74 MB/s	      18 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/std_gzip_4-4     	   46286	     19425 ns/op	  52.72 MB/s	      17 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/std_gzip_4-4     	   45366	     19708 ns/op	  51.96 MB/s	      17 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/kp_gzip_4-4      	  167472	      5434 ns/op	 188.46 MB/s	       5 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/kp_gzip_4-4      	  168266	      5379 ns/op	 190.37 MB/s	       5 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_1024/kp_gzip_4-4      	  167264	      5474 ns/op	 187.06 MB/s	       5 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_1-4        	   75757	     11963 ns/op	1369.54 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_1-4        	   72027	     12213 ns/op	1341.54 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_1-4        	   70759	     12700 ns/op	1290.11 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_3-4        	   71899	     12653 ns/op	1294.91 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_3-4        	   69590	     12831 ns/op	1276.96 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/zstd_3-4        	   74906	     12750 ns/op	1285.01 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/brotli_5-4      	   23992	     37512 ns/op	 436.77 MB/s	      57 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/brotli_5-4      	   23979	     38155 ns/op	 429.41 MB/s	      56 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/brotli_5-4      	   23906	     37614 ns/op	 435.59 MB/s	      56 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/std_gzip_4-4    	   15255	     58901 ns/op	 278.16 MB/s	      53 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/std_gzip_4-4    	   15285	     58871 ns/op	 278.30 MB/s	      53 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/std_gzip_4-4    	   15351	     58642 ns/op	 279.39 MB/s	      53 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/kp_gzip_4-4     	  101145	      8873 ns/op	1846.51 MB/s	       9 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/kp_gzip_4-4     	  101823	      8861 ns/op	1848.91 MB/s	       9 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_16384/kp_gzip_4-4     	  101283	      8880 ns/op	1845.13 MB/s	       9 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_1-4       	   14359	     62724 ns/op	4179.30 MB/s	     606 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_1-4       	   14404	     62412 ns/op	4200.23 MB/s	     604 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_1-4       	   14480	     62113 ns/op	4220.41 MB/s	     601 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_3-4       	   14208	     62958 ns/op	4163.76 MB/s	    1202 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_3-4       	   14448	     62249 ns/op	4211.23 MB/s	    1183 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/zstd_3-4       	   14282	     62848 ns/op	4171.10 MB/s	    1196 B/op	       2 allocs/op
+BenchmarkCodecProbe/size_262144/brotli_5-4     	    2574	    341025 ns/op	 768.69 MB/s	    4232 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/brotli_5-4     	    2511	    341265 ns/op	 768.15 MB/s	    4338 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/brotli_5-4     	    2547	    341702 ns/op	 767.17 MB/s	    4277 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/std_gzip_4-4   	    1184	    757526 ns/op	 346.05 MB/s	     690 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/std_gzip_4-4   	    1184	    757743 ns/op	 345.95 MB/s	     690 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/std_gzip_4-4   	    1189	    756974 ns/op	 346.31 MB/s	     687 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/kp_gzip_4-4    	   10000	     85316 ns/op	3072.62 MB/s	      94 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/kp_gzip_4-4    	   10000	     85494 ns/op	3066.21 MB/s	      94 B/op	       0 allocs/op
+BenchmarkCodecProbe/size_262144/kp_gzip_4-4    	   10000	     85641 ns/op	3060.95 MB/s	      94 B/op	       0 allocs/op
 PASS
-ok  	github.com/navidrome/navidrome/server	32.210s
+ok  	github.com/navidrome/navidrome/server	40.506s

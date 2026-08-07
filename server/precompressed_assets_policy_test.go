@@ -98,4 +98,32 @@ func TestPrecompressedFileServerDoesNotServeEncodingWithQZero(t *testing.T) {
 	if got := rec.Body.String(); got != "plain" {
 		t.Fatalf("body = %q, want plain", got)
 	}
+	if got := rec.Header().Get("Vary"); got != "Accept-Encoding" {
+		t.Fatalf("Vary = %q, want Accept-Encoding on identity fallback", got)
+	}
+}
+
+func TestPrecompressedFileServerIdentityFallbackVariesByAcceptEncoding(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/app.js", []byte("plain-only"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
+	req.Header.Set("Accept-Encoding", "br, zstd, gzip")
+	rec := httptest.NewRecorder()
+	PrecompressedFileServer(os.DirFS(dir)).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Fatalf("Content-Encoding = %q, want identity", got)
+	}
+	if got := rec.Header().Get("Vary"); got != "Accept-Encoding" {
+		t.Fatalf("Vary = %q, want Accept-Encoding", got)
+	}
+	if got := rec.Body.String(); got != "plain-only" {
+		t.Fatalf("body = %q, want plain-only", got)
+	}
 }

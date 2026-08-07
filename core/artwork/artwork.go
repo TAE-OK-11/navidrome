@@ -23,8 +23,8 @@ import (
 var ErrUnavailable = errors.New("artwork unavailable")
 
 const (
-	artworkReaderCacheSize = 256
-	artworkReaderCacheTTL  = time.Second
+	artworkReaderCacheSize = 2048
+	artworkReaderCacheTTL  = 30 * time.Second
 )
 
 type Artwork interface {

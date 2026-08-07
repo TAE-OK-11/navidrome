@@ -205,7 +205,7 @@ func isAPIResponsePath(path string) bool {
 }
 
 func compressionDecisionTarget(path string) int {
-	if isAPIResponsePath(path) && !isLyricsResponsePath(path) {
+	if isAPIResponsePath(path) {
 		return apiCompressionDecisionBufferSize
 	}
 	return compressionDecisionBufferTarget
@@ -456,17 +456,20 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 	level := zstdGeneralLevel
 	preferred := compressionZstd
 
+	// Dynamic APIs optimize for latency and CPU efficiency: Zstd gives a strong
+	// compression ratio while encoding substantially faster than Brotli. Static
+	// browser assets keep Brotli because they are precompressed once at build time.
 	switch {
-	case isLyricsResponsePath(path):
-		minSize = lyricsCompressedMinSize
-		level = brotliLargeLevel
-		preferred = compressionBrotli
 	case isWebUIResponsePath(path, contentType):
 		minSize = webUICompressedMinSize
 		level = brotliLargeLevel
 		preferred = compressionBrotli
 	case isAPIResponsePath(path):
-		minSize = generalAPICompressedMinSize
+		if isLyricsResponsePath(path) {
+			minSize = lyricsCompressedMinSize
+		} else {
+			minSize = generalAPICompressedMinSize
+		}
 		level = zstdGeneralLevel
 		preferred = compressionZstd
 	case responseSizeAtLeast(h, bodySize, hugeCompressedResponseSize):

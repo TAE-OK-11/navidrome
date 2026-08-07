@@ -117,6 +117,6 @@ jobs:
           cache-from: type=gha,scope=jbs-navidrome-amd64
           cache-to: type=gha,scope=jbs-navidrome-amd64,mode=max
           build-args: |
-            GIT_SHA=${{ github.sha }}
-            GIT_TAG=jbs-${{ github.ref_name }}
+            NAVIDROME_REF=${{ github.sha }}
+            NAVIDROME_CACHEBUST=${{ github.sha }}
             GO_PGO_ENABLED=${{ github.event_name != 'workflow_dispatch' || inputs.pgo }}

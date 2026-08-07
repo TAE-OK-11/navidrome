@@ -31,6 +31,11 @@ func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 				return
 			}
 		}
+
+		// Identity is also one negotiated representation. Mark it as varying by
+		// Accept-Encoding so shared caches don't reuse an identity response for a
+		// later request that could have consumed a precompressed representation.
+		addVaryAcceptEncoding(w.Header())
 		fallback.ServeHTTP(w, r)
 	})
 }

@@ -1,0 +1,84 @@
+name: API compression codec probe
+
+on:
+  push:
+    branches:
+      - perf/jbs-ghcr-quic-network
+    paths:
+      - .github/workflows/codec-benchmark-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Generate temporary codec benchmark
+        run: |
+          cat > server/codec_probe_test.go <<'EOF'
+          package server
+
+          import (
+            "bytes"
+            "compress/gzip"
+            "fmt"
+            "io"
+            "testing"
+
+            "github.com/andybalholm/brotli"
+            "github.com/klauspost/compress/zstd"
+          )
+
+          func benchmarkPayload(size int) []byte {
+            unit := []byte(`{"id":"track-123","title":"Taylor Swift","artist":"Taylor Swift","album":"Midnights","year":2022,"favorite":true}`)
+            out := make([]byte, 0, size)
+            for len(out) < size {
+              remaining := size - len(out)
+              if remaining < len(unit) { out = append(out, unit[:remaining]...); break }
+              out = append(out, unit...)
+            }
+            return out
+          }
+
+          func BenchmarkCodecProbe(b *testing.B) {
+            for _, size := range []int{1024, 16 << 10, 256 << 10} {
+              payload := benchmarkPayload(size)
+              b.Run(fmt.Sprintf("size_%d/zstd_1", size), func(b *testing.B) {
+                enc, err := zstd.NewWriter(io.Discard, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(1)), zstd.WithEncoderConcurrency(1))
+                if err != nil { b.Fatal(err) }
+                defer enc.Close()
+                b.ReportAllocs(); b.SetBytes(int64(len(payload)))
+                for b.Loop() { enc.Reset(io.Discard); _, _ = enc.Write(payload); _ = enc.Close() }
+              })
+              b.Run(fmt.Sprintf("size_%d/zstd_3", size), func(b *testing.B) {
+                enc, err := zstd.NewWriter(io.Discard, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(3)), zstd.WithEncoderConcurrency(1))
+                if err != nil { b.Fatal(err) }
+                defer enc.Close()
+                b.ReportAllocs(); b.SetBytes(int64(len(payload)))
+                for b.Loop() { enc.Reset(io.Discard); _, _ = enc.Write(payload); _ = enc.Close() }
+              })
+              b.Run(fmt.Sprintf("size_%d/brotli_5", size), func(b *testing.B) {
+                var dst bytes.Buffer
+                w := brotli.NewWriterLevel(&dst, 5)
+                b.ReportAllocs(); b.SetBytes(int64(len(payload)))
+                for b.Loop() { dst.Reset(); w.Reset(&dst); _, _ = w.Write(payload); _ = w.Close() }
+              })
+              b.Run(fmt.Sprintf("size_%d/gzip_4", size), func(b *testing.B) {
+                var dst bytes.Buffer
+                w, err := gzip.NewWriterLevel(&dst, 4)
+                if err != nil { b.Fatal(err) }
+                b.ReportAllocs(); b.SetBytes(int64(len(payload)))
+                for b.Loop() { dst.Reset(); w.Reset(&dst); _, _ = w.Write(payload); _ = w.Close() }
+              })
+            }
+          }
+          EOF
+      - name: Benchmark latency and allocations
+        run: go test ./server -run '^$' -bench '^BenchmarkCodecProbe$' -benchmem -benchtime=750ms -count=3

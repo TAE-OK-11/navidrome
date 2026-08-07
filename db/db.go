@@ -90,13 +90,27 @@ func Init(ctx context.Context) func() {
 		log.Fatal(ctx, "Database initialization failed: nil DB")
 	}
 
-	// Disable foreign_keys to allow re-creating tables in migrations
+	// SQLite PRAGMAs such as foreign_keys are connection-scoped. Migrations must see
+	// the same setting that we establish here, so temporarily keep the pool to one
+	// persistent idle connection. Without this, goose may acquire a different pooled
+	// connection and run a table-recreating migration with foreign_keys still enabled.
+	normalMaxConns := maxOpenConns()
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	// Disable foreign_keys to allow re-creating tables in migrations.
 	_, err := db.ExecContext(ctx, "PRAGMA foreign_keys=off")
 	defer func() {
-		_, err := db.ExecContext(ctx, "PRAGMA foreign_keys=on")
-		if err != nil {
-			log.Error(ctx, "Error re-enabling foreign_keys", err)
+		// Startup cancellation must never leave the sole pooled connection with
+		// foreign-key enforcement disabled.
+		cleanupCtx := context.WithoutCancel(ctx)
+		if _, enableErr := db.ExecContext(cleanupCtx, "PRAGMA foreign_keys=on"); enableErr != nil {
+			log.Error(cleanupCtx, "Error re-enabling foreign_keys", enableErr)
 		}
+		// Set MaxOpen first: SetMaxIdleConns is otherwise capped by the temporary
+		// one-connection maximum and would remain at one after initialization.
+		db.SetMaxOpenConns(normalMaxConns)
+		db.SetMaxIdleConns(normalMaxConns)
 	}()
 	if err != nil {
 		log.Error(ctx, "Error disabling foreign_keys", err)
@@ -156,12 +170,18 @@ func hasPendingMigrations(ctx context.Context, db *sql.DB, folder string) bool {
 }
 
 func isSchemaEmpty(ctx context.Context, db *sql.DB) bool {
-	rows, err := db.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='goose_db_version';") // nolint:rowserrcheck
+	rows, err := db.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='goose_db_version';")
 	if err != nil {
 		log.Fatal(ctx, "Database could not be opened!", err)
 	}
 	defer rows.Close()
-	return !rows.Next()
+	if rows.Next() {
+		return false
+	}
+	if err = rows.Err(); err != nil {
+		log.Fatal(ctx, "Error checking database schema", err)
+	}
+	return true
 }
 
 type logAdapter struct {

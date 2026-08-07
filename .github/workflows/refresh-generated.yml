@@ -1,0 +1,62 @@
+name: Refresh generated plugin manifest
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-generated-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: github.event.pull_request.head.ref == 'perf/full-system-stability-rust' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate sources
+        run: |
+          set -euo pipefail
+          go mod download
+          go generate ./...
+
+      - name: Verify only the plugin manifest was stale
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain | awk '{print $2}' | sort -u)"
+          printf '%s\n' "$changed"
+          if [[ "$changed" != "plugins/manifest_gen.go" ]]; then
+            echo "Unexpected generated files changed" >&2
+            exit 1
+          fi
+
+      - name: Verify generated manifest and plugin code
+        run: |
+          set -euo pipefail
+          go test -tags=sqlite_fts5 ./plugins/... -count=1
+          go vet -tags=sqlite_fts5 ./plugins/...
+
+      - name: Commit generated file and remove workflow
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/refresh-generated.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add plugins/manifest_gen.go .github/workflows/refresh-generated.yml
+          git commit -m 'chore: refresh generated plugin manifest'
+          git push origin HEAD:perf/full-system-stability-rust

@@ -1,0 +1,219 @@
+name: Full stability bootstrap
+
+on:
+  push:
+    branches:
+      - perf/full-system-stability-rust
+
+permissions:
+  contents: write
+
+concurrency:
+  group: full-stability-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: perf/full-system-stability-rust
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Patch Docker source/build integration and scanner locking
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Dockerfile: build exactly the checked-out source instead of cloning master.
+          p = Path('Dockerfile.jbs')
+          s = p.read_text()
+          s = s.replace(
+              'ARG NAVIDROME_REPOSITORY=https://github.com/TAE-OK-11/navidrome.git\nARG NAVIDROME_REF=master\nARG NAVIDROME_CACHEBUST=da1ed9503b9ce8f121f648ec05f0ce78ac02ec09\n',
+              'ARG GIT_SHA=dev\nARG GIT_TAG=jbs\n',
+              1,
+          )
+
+          source_marker = '# =========================================================\n# Source\n# =========================================================\n'
+          shared_marker = '# =========================================================\n# Shared native toolchain\n# =========================================================\n'
+          start = s.index(source_marker)
+          end = s.index(shared_marker, start)
+          source = '''# =========================================================
+          # Source
+          # =========================================================
+
+          FROM ${DEBIAN_IMAGE} AS source
+
+          ARG GIT_SHA=dev
+          ARG GIT_TAG=jbs
+          ARG SOURCE_DATE_EPOCH=0
+
+          WORKDIR /src
+
+          # Build the exact GitHub Actions checkout / local build context. This is critical for
+          # PR and branch builds: cloning master here would silently discard the code being tested.
+          COPY --link . ./
+
+          RUN printf '%s\\n' "${GIT_SHA}" > /src/.git_sha && \\
+              printf '%s\\n' "${GIT_TAG}" > /src/.git_tag && \\
+              printf '%s\\n' "${SOURCE_DATE_EPOCH}" > /src/.git_epoch && \\
+              test -s /src/go.mod && \\
+              test -s /src/go.sum
+
+          '''
+          # Strip indentation introduced by the Python heredoc formatting above.
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines()) + '\n'
+          s = s[:start] + source + s[end:]
+
+          old = 'ARG TAGLIB_VERSION\nARG TAGLIB_SHA256\nARG NAVIDROME_REF\nARG NAVIDROME_BUILD_CORES\n'
+          new = 'ARG TAGLIB_VERSION\nARG TAGLIB_SHA256\nARG GIT_SHA=dev\nARG GIT_TAG=jbs\nARG NAVIDROME_BUILD_CORES\n'
+          if old not in s:
+              raise SystemExit('gobuilder ARG block not found')
+          s = s.replace(old, new, 1)
+
+          old = '    GIT_SHA="$(cat /src/.git_sha 2>/dev/null || echo dev)" && \\\n    SOURCE_DATE_EPOCH="$(cat /src/.git_epoch 2>/dev/null || echo 0)" && \\\n'
+          new = '    GIT_SHA="$(cat /src/.git_sha 2>/dev/null || echo "${GIT_SHA:-dev}")" && \\\n    GIT_TAG="$(cat /src/.git_tag 2>/dev/null || echo "${GIT_TAG:-jbs}")" && \\\n    SOURCE_DATE_EPOCH="$(cat /src/.git_epoch 2>/dev/null || echo 0)" && \\\n'
+          if old not in s:
+              raise SystemExit('gobuilder metadata block not found')
+          s = s.replace(old, new, 1)
+
+          old = '-X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} -X github.com/navidrome/navidrome/consts.gitTag=${NAVIDROME_REF}-${GIT_SHA}'
+          new = '-X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}'
+          if old not in s:
+              raise SystemExit('gobuilder ldflags metadata not found')
+          s = s.replace(old, new, 1)
+
+          # The source stage no longer installs CA certificates. Install them in the runtime,
+          # where Navidrome and external HTTPS clients actually need them.
+          s = s.replace('COPY --link --from=source /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt\n\n', '', 1)
+          old = '    apt-get install -y --no-install-recommends \\\n      libwebp7 \\\n      libwebpdemux2 && \\\n'
+          new = '    apt-get install -y --no-install-recommends \\\n      ca-certificates \\\n      libwebp7 \\\n      libwebpdemux2 && \\\n'
+          if old not in s:
+              raise SystemExit('runtime apt block not found')
+          s = s.replace(old, new, 1)
+
+          old = '    ND_ADDRESS=0.0.0.0 \\\n    ND_PORT=4533 \\\n'
+          new = '    ND_ADDRESS=0.0.0.0 \\\n    ND_PORT=4533 \\\n    ND_ENABLEHTTP3=false \\\n    ND_HTTP3ALLOW0RTT=true \\\n'
+          if old not in s:
+              raise SystemExit('runtime HTTP env block not found')
+          s = s.replace(old, new, 1)
+          s = s.replace('EXPOSE 4533\n', 'EXPOSE 4533/tcp 4533/udp\n', 1)
+          p.write_text(s)
+
+          # Scanner: keep the global scan/maintenance lock for the lifetime of the async CLI scan.
+          p = Path('scanner/controller.go')
+          s = p.read_text()
+          old = '''\trelease, err := lockScan(ctx)
+          \tif err != nil {
+          \t\treturn nil, err
+          \t}
+          \tdefer release()
+
+          \tctx = auth.WithAdminUser(ctx, ds)
+          \tprogress := make(chan *ProgressInfo, 100)
+          \tgo func() {
+          \t\tdefer close(progress)
+          \t\tscanner := &scannerImpl{ds: ds, cw: artwork.NoopCacheWarmer(), pls: pls}
+          \t\tscanner.scanFolders(ctx, fullScan, targets, progress)
+          \t}()
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\trelease, err := lockScan(ctx)
+          \tif err != nil {
+          \t\treturn nil, err
+          \t}
+
+          \tctx = auth.WithAdminUser(ctx, ds)
+          \tprogress := make(chan *ProgressInfo, 100)
+          \tgo func() {
+          \t\tdefer close(progress)
+          \t\tdefer release()
+          \t\tscanner := &scannerImpl{ds: ds, cw: artwork.NoopCacheWarmer(), pls: pls}
+          \t\tscanner.scanFolders(ctx, fullScan, targets, progress)
+          \t}()
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('CallScan lock block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''\t\tscanType, elapsed, lastErr := s.getScanInfo(ctx)
+          \t\tstatus := &events.ScanStatus{
+          \t\t\tScanning:    true,
+          \t\t\tCount:       int64(s.count.Load()),
+          \t\t\tFolderCount: int64(s.folderCount.Load()),
+          \t\t\tError:       lastErr,
+          \t\t\tScanType:    scanType,
+          \t\t\tElapsedTime: elapsed,
+          \t\t}
+          \t\tif s.limiter != nil && !p.ForceUpdate {
+          \t\t\ts.limiter.Do(func() { s.sendMessage(ctx, status) })
+          \t\t} else {
+          \t\t\ts.sendMessage(ctx, status)
+          \t\t}
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''\t\tsendStatus := func() {
+          \t\t\tscanType, elapsed, lastErr := s.getScanInfo(ctx)
+          \t\t\ts.sendMessage(ctx, &events.ScanStatus{
+          \t\t\t\tScanning:    true,
+          \t\t\t\tCount:       int64(s.count.Load()),
+          \t\t\t\tFolderCount: int64(s.folderCount.Load()),
+          \t\t\t\tError:       lastErr,
+          \t\t\t\tScanType:    scanType,
+          \t\t\t\tElapsedTime: elapsed,
+          \t\t\t})
+          \t\t}
+          \t\tif s.limiter != nil && !p.ForceUpdate {
+          \t\t\ts.limiter.Do(sendStatus)
+          \t\t} else {
+          \t\t\tsendStatus()
+          \t\t}
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
+          if old not in s:
+              raise SystemExit('scanner progress status block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+          gofmt -w scanner/controller.go
+
+      - name: Verify focused Go packages
+        run: |
+          set -euo pipefail
+          go mod download
+          go test ./scanner ./server ./server/subsonic ./core/stream/hotcache ./persistence -count=1
+
+      - name: Verify Dockerfile invariants
+        run: |
+          set -euo pipefail
+          grep -q '^COPY --link \. \./$' Dockerfile.jbs
+          ! grep -q 'git remote add origin' Dockerfile.jbs
+          grep -q 'EXPOSE 4533/tcp 4533/udp' Dockerfile.jbs
+          grep -q 'ND_ENABLEHTTP3=false' Dockerfile.jbs
+          grep -q 'ND_HTTP3ALLOW0RTT=true' Dockerfile.jbs
+          grep -q 'consts.gitTag=${GIT_TAG}' Dockerfile.jbs
+
+      - name: Commit verified bootstrap changes and remove this workflow
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/full-stability-bootstrap.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Dockerfile.jbs scanner/controller.go .github/workflows/full-stability-bootstrap.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'fix: align JBS image source and scanner lifecycle'
+          git push origin HEAD:perf/full-system-stability-rust

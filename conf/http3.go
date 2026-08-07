@@ -3,7 +3,7 @@ package conf
 import "github.com/spf13/viper"
 
 const (
-	http3ConfigKey         = "enablehttp3"
+	http3ConfigKey          = "enablehttp3"
 	http3Allow0RTTConfigKey = "http3allow0rtt"
 )
 

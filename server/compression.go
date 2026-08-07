@@ -42,6 +42,11 @@ var (
 			return make([]byte, 0, compressionDecisionBufferTarget)
 		},
 	}
+	apiCompressionBufferPool = sync.Pool{
+		New: func() any {
+			return make([]byte, 0, apiCompressionDecisionBufferSize)
+		},
+	}
 	brotliLargeWriterPool sync.Pool
 	brotliHugeWriterPool  sync.Pool
 	brotliWrapperPool     sync.Pool
@@ -75,7 +80,9 @@ func compressMiddleware() func(http.Handler) http.Handler {
 				accepted:       accepted,
 				path:           r.URL.Path,
 			}
-			defer cw.Close()
+			defer func() {
+				_ = cw.Close()
+			}()
 			next.ServeHTTP(cw, r)
 		})
 	}
@@ -89,9 +96,9 @@ func shouldBypassCompressionRequest(r *http.Request) bool {
 }
 
 type acceptedCompressions struct {
-	brotli bool
-	zstd   bool
-	gzip   bool
+	brotli float64
+	zstd   float64
+	gzip   float64
 }
 
 type compressionProfile struct {
@@ -101,7 +108,20 @@ type compressionProfile struct {
 }
 
 func (a acceptedCompressions) hasAny() bool {
-	return a.brotli || a.zstd || a.gzip
+	return a.brotli > 0 || a.zstd > 0 || a.gzip > 0
+}
+
+func (a acceptedCompressions) quality(encoding compressionEncoding) float64 {
+	switch encoding {
+	case compressionBrotli:
+		return a.brotli
+	case compressionZstd:
+		return a.zstd
+	case compressionGzip:
+		return a.gzip
+	default:
+		return 0
+	}
 }
 
 func acceptedCompressionEncodings(acceptEncoding string) acceptedCompressions {
@@ -117,11 +137,11 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 		part = strings.TrimSpace(part)
 		switch {
 		case strings.EqualFold(part, string(compressionBrotli)):
-			accepted.brotli = true
+			accepted.brotli = 1
 		case strings.EqualFold(part, string(compressionZstd)):
-			accepted.zstd = true
+			accepted.zstd = 1
 		case strings.EqualFold(part, string(compressionGzip)):
-			accepted.gzip = true
+			accepted.gzip = 1
 		}
 	}
 	return accepted
@@ -129,7 +149,7 @@ func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompression
 
 func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompressions {
 	var accepted acceptedCompressions
-	var brotliSet, gzipSet bool
+	var brotliSet, zstdSet, gzipSet bool
 	var wildcardQuality float64
 	var wildcardSet bool
 
@@ -139,12 +159,13 @@ func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompression
 		quality := encodingQuality(params)
 		switch token {
 		case string(compressionBrotli):
-			accepted.brotli = quality > 0
+			accepted.brotli = quality
 			brotliSet = true
 		case string(compressionZstd):
-			accepted.zstd = quality > 0
+			accepted.zstd = quality
+			zstdSet = true
 		case string(compressionGzip):
-			accepted.gzip = quality > 0
+			accepted.gzip = quality
 			gzipSet = true
 		case "*":
 			wildcardQuality = quality
@@ -152,12 +173,15 @@ func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompression
 		}
 	}
 
-	if wildcardSet && wildcardQuality > 0 {
+	if wildcardSet {
 		if !brotliSet {
-			accepted.brotli = true
+			accepted.brotli = wildcardQuality
+		}
+		if !zstdSet {
+			accepted.zstd = wildcardQuality
 		}
 		if !gzipSet {
-			accepted.gzip = true
+			accepted.gzip = wildcardQuality
 		}
 	}
 
@@ -173,8 +197,8 @@ func encodingQuality(params string) float64 {
 		if !ok || !strings.EqualFold(key, "q") {
 			continue
 		}
-		q, err := strconv.ParseFloat(value, 64)
-		if err != nil {
+		q, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || q < 0 || q > 1 {
 			return 0
 		}
 		return q
@@ -213,21 +237,32 @@ func compressionDecisionTarget(path string) int {
 
 type compressResponseWriter struct {
 	http.ResponseWriter
-	accepted acceptedCompressions
-	encoding compressionEncoding
-	path     string
-	status   int
-	writer   io.WriteCloser
-	buffer   []byte
-	raw      bool
-	closed   bool
+	accepted   acceptedCompressions
+	encoding   compressionEncoding
+	path       string
+	status     int
+	writer     io.WriteCloser
+	buffer     []byte
+	bufferPool *sync.Pool
+	raw        bool
+	closed     bool
 }
 
 func (w *compressResponseWriter) WriteHeader(status int) {
+	// Informational responses can precede the final response. Do not let a 103
+	// Early Hints response lock the wrapper into a non-final status.
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
 	if w.status != 0 {
 		return
 	}
 	w.status = status
+	if status == http.StatusSwitchingProtocols {
+		w.raw = true
+		w.ResponseWriter.WriteHeader(status)
+	}
 }
 
 func (w *compressResponseWriter) Write(p []byte) (int, error) {
@@ -240,7 +275,7 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 
 	// When handlers already know the response size, decide immediately instead
 	// of buffering up to the normal compression threshold. This cuts API TTFB
-	// without sacrificing the size-based codec selection for unknown bodies.
+	// without sacrificing size-based codec selection for unknown bodies.
 	if w.buffer == nil && w.Header().Get("Content-Type") != "" && w.Header().Get("Content-Length") != "" {
 		if err := w.start(nil); err != nil {
 			return 0, err
@@ -257,7 +292,7 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 	}
 
 	if w.buffer == nil {
-		w.buffer = getCompressionBuffer()
+		w.buffer, w.bufferPool = getCompressionBuffer(decisionTarget)
 	}
 	w.buffer = append(w.buffer, p...)
 	if len(w.buffer) < decisionTarget {
@@ -299,8 +334,6 @@ func (w *compressResponseWriter) ReadFrom(source io.Reader) (int64, error) {
 		return copyResponseBody(w.ResponseWriter, source)
 	}
 
-	// Keep the normal response-size decision logic when the handler has not
-	// supplied enough metadata to decide without reading the body.
 	return io.Copy(struct{ io.Writer }{w}, source)
 }
 
@@ -406,18 +439,29 @@ func (w *compressResponseWriter) writeStarted(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
-func getCompressionBuffer() []byte {
-	return compressionBufferPool.Get().([]byte)[:0]
+func getCompressionBuffer(decisionTarget int) ([]byte, *sync.Pool) {
+	pool := &compressionBufferPool
+	if decisionTarget <= apiCompressionDecisionBufferSize {
+		pool = &apiCompressionBufferPool
+	}
+	return pool.Get().([]byte)[:0], pool
 }
 
 func (w *compressResponseWriter) releaseBuffer() {
 	if w.buffer == nil {
 		return
 	}
-	if cap(w.buffer) <= compressionDecisionBufferTarget*2 {
-		compressionBufferPool.Put(w.buffer[:0])
+	if w.bufferPool != nil {
+		maxCapacity := compressionDecisionBufferTarget * 2
+		if w.bufferPool == &apiCompressionBufferPool {
+			maxCapacity = apiCompressionDecisionBufferSize * 2
+		}
+		if cap(w.buffer) <= maxCapacity {
+			w.bufferPool.Put(w.buffer[:0])
+		}
 	}
 	w.buffer = nil
+	w.bufferPool = nil
 }
 
 func isCompressibleResponse(status int, h http.Header, contentType string) bool {
@@ -481,25 +525,40 @@ func selectCompressionProfile(accepted acceptedCompressions, path string, h http
 		preferred = compressionBrotli
 	}
 
-	if preferred == compressionBrotli && accepted.brotli {
-		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
-	}
-	if preferred == compressionZstd && accepted.zstd {
-		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
-	}
-	if accepted.zstd {
-		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
-	}
-	if accepted.brotli {
+	selected := selectAcceptedCompression(accepted, preferred)
+	switch selected {
+	case compressionBrotli:
 		if level == 0 {
 			level = brotliLargeLevel
 		}
 		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
-	}
-	if accepted.gzip {
+	case compressionZstd:
+		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
+	case compressionGzip:
 		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
+	default:
+		return compressionProfile{}
 	}
-	return compressionProfile{}
+}
+
+func selectAcceptedCompression(accepted acceptedCompressions, preferred compressionEncoding) compressionEncoding {
+	best := compressionEncoding("")
+	bestQuality := float64(0)
+	if quality := accepted.quality(preferred); quality > 0 {
+		best = preferred
+		bestQuality = quality
+	}
+
+	// Higher client q-values win. On equal quality, retain the server profile's
+	// codec preference, which keeps dynamic APIs on Zstd and dense text on Brotli.
+	for _, encoding := range []compressionEncoding{compressionZstd, compressionBrotli, compressionGzip} {
+		quality := accepted.quality(encoding)
+		if quality > bestQuality {
+			best = encoding
+			bestQuality = quality
+		}
+	}
+	return best
 }
 
 func responseSizeAtLeast(h http.Header, bodySize, threshold int) bool {
@@ -598,7 +657,27 @@ func isAlreadyCompressedBinaryMediaType(mediaType string) bool {
 func setCompressionHeaders(h http.Header, encoding compressionEncoding) {
 	h.Set("Content-Encoding", string(encoding))
 	h.Del("Content-Length")
+
+	// Validators that were computed for the uncompressed bytes are no longer
+	// strong validators for the transformed representation.
+	h.Del("Content-MD5")
+	h.Del("Content-Digest")
+	h.Del("Digest")
+	weakenETagAfterCompression(h)
 	addVaryAcceptEncoding(h)
+}
+
+func weakenETagAfterCompression(h http.Header) {
+	etag := strings.TrimSpace(h.Get("ETag"))
+	if etag == "" || strings.HasPrefix(etag, "W/\"") {
+		return
+	}
+	if strings.HasPrefix(etag, "\"") && strings.HasSuffix(etag, "\"") {
+		h.Set("ETag", "W/"+etag)
+		return
+	}
+	// Do not forward a malformed representation-specific validator.
+	h.Del("ETag")
 }
 
 func addVaryAcceptEncoding(h http.Header) {

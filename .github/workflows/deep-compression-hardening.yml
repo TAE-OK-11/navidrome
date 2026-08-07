@@ -1,0 +1,339 @@
+name: Deep compression hardening
+
+on:
+  push:
+    branches:
+      - perf/jbs-ghcr-quic-network
+    paths:
+      - .github/workflows/deep-compression-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: perf/jbs-ghcr-quic-network
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Harden compression negotiation and response semantics
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server/compression.go')
+          s = p.read_text()
+
+          old = '''type acceptedCompressions struct {
+          \tbrotli bool
+          \tzstd   bool
+          \tgzip   bool
+          }'''
+          new = '''type acceptedCompressions struct {
+          \tbrotli float64
+          \tzstd   float64
+          \tgzip   float64
+          }'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''func (a acceptedCompressions) hasAny() bool {
+          \treturn a.brotli || a.zstd || a.gzip
+          }'''
+          new = '''func (a acceptedCompressions) hasAny() bool {
+          \treturn a.brotli > 0 || a.zstd > 0 || a.gzip > 0
+          }
+
+          func (a acceptedCompressions) quality(encoding compressionEncoding) float64 {
+          \tswitch encoding {
+          \tcase compressionBrotli:
+          \t\treturn a.brotli
+          \tcase compressionZstd:
+          \t\treturn a.zstd
+          \tcase compressionGzip:
+          \t\treturn a.gzip
+          \tdefault:
+          \t\treturn 0
+          \t}
+          }'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          start = s.index('func acceptedCompressionEncodingsFast(')
+          end = s.index('\nfunc isMediaResponsePath', start)
+          replacement = r'''func acceptedCompressionEncodingsFast(acceptEncoding string) acceptedCompressions {
+          	var accepted acceptedCompressions
+          	for part := range strings.SplitSeq(acceptEncoding, ",") {
+          		part = strings.TrimSpace(part)
+          		switch {
+          		case strings.EqualFold(part, string(compressionBrotli)):
+          			accepted.brotli = 1
+          		case strings.EqualFold(part, string(compressionZstd)):
+          			accepted.zstd = 1
+          		case strings.EqualFold(part, string(compressionGzip)):
+          			accepted.gzip = 1
+          		}
+          	}
+          	return accepted
+          }
+
+          func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompressions {
+          	var accepted acceptedCompressions
+          	var brotliSet, zstdSet, gzipSet bool
+          	var wildcardQuality float64
+          	var wildcardSet bool
+
+          	for part := range strings.SplitSeq(acceptEncoding, ",") {
+          		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+          		token = strings.TrimSpace(strings.ToLower(token))
+          		quality := encodingQuality(params)
+          		switch token {
+          		case string(compressionBrotli):
+          			accepted.brotli = quality
+          			brotliSet = true
+          		case string(compressionZstd):
+          			accepted.zstd = quality
+          			zstdSet = true
+          		case string(compressionGzip):
+          			accepted.gzip = quality
+          			gzipSet = true
+          		case "*":
+          			wildcardQuality = quality
+          			wildcardSet = true
+          		}
+          	}
+
+          	if wildcardSet {
+          		if !brotliSet {
+          			accepted.brotli = wildcardQuality
+          		}
+          		if !zstdSet {
+          			accepted.zstd = wildcardQuality
+          		}
+          		if !gzipSet {
+          			accepted.gzip = wildcardQuality
+          		}
+          	}
+
+          	return accepted
+          }
+
+          func encodingQuality(params string) float64 {
+          	if params == "" {
+          		return 1
+          	}
+          	for param := range strings.SplitSeq(params, ";") {
+          		key, value, ok := strings.Cut(strings.TrimSpace(param), "=")
+          		if !ok || !strings.EqualFold(key, "q") {
+          			continue
+          		}
+          		q, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+          		if err != nil || q < 0 || q > 1 {
+          			return 0
+          		}
+          		return q
+          	}
+          	return 1
+          }
+          '''
+          s = s[:start] + replacement + s[end:]
+
+          old = '''func (w *compressResponseWriter) WriteHeader(status int) {
+          \tif w.status != 0 {
+          \t\treturn
+          \t}
+          \tw.status = status
+          }'''
+          new = '''func (w *compressResponseWriter) WriteHeader(status int) {
+          \t// net/http permits multiple informational responses before the final
+          \t// status. Passing 1xx through avoids accidentally treating 103 Early
+          \t// Hints as the final response and suppressing the real 2xx status.
+          \tif status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+          \t\tw.ResponseWriter.WriteHeader(status)
+          \t\treturn
+          \t}
+          \tif w.status != 0 {
+          \t\treturn
+          \t}
+          \tw.status = status
+          \tif status == http.StatusSwitchingProtocols {
+          \t\tw.raw = true
+          \t\tw.ResponseWriter.WriteHeader(status)
+          \t}
+          }'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old_start = s.index('\tif preferred == compressionBrotli && accepted.brotli {', s.index('func selectCompressionProfile'))
+          old_end = s.index('\n}\n\nfunc responseSizeAtLeast', old_start) + 2
+          replacement = r'''	selected := selectAcceptedCompression(accepted, preferred)
+          	switch selected {
+          	case compressionBrotli:
+          		if level == 0 {
+          			level = brotliLargeLevel
+          		}
+          		return compressionProfile{encoding: compressionBrotli, minSize: minSize, level: level}
+          	case compressionZstd:
+          		return compressionProfile{encoding: compressionZstd, minSize: minSize, level: zstdGeneralLevel}
+          	case compressionGzip:
+          		return compressionProfile{encoding: compressionGzip, minSize: minSize, level: gzipFallbackLevel}
+          	default:
+          		return compressionProfile{}
+          	}
+          }
+
+          func selectAcceptedCompression(accepted acceptedCompressions, preferred compressionEncoding) compressionEncoding {
+          	best := compressionEncoding("")
+          	bestQuality := float64(0)
+          	if quality := accepted.quality(preferred); quality > 0 {
+          		best = preferred
+          		bestQuality = quality
+          	}
+
+          	// When client q-values are equal, keep the server's profile preference.
+          	// Otherwise the client's explicit quality preference wins.
+          	for _, encoding := range []compressionEncoding{compressionZstd, compressionBrotli, compressionGzip} {
+          		quality := accepted.quality(encoding)
+          		if quality > bestQuality {
+          			best = encoding
+          			bestQuality = quality
+          		}
+          	}
+          	return best
+          }'''
+          s = s[:old_start] + replacement + s[old_end:]
+
+          old = '''func setCompressionHeaders(h http.Header, encoding compressionEncoding) {
+          \th.Set("Content-Encoding", string(encoding))
+          \th.Del("Content-Length")
+          \taddVaryAcceptEncoding(h)
+          }'''
+          new = '''func setCompressionHeaders(h http.Header, encoding compressionEncoding) {
+          \th.Set("Content-Encoding", string(encoding))
+          \th.Del("Content-Length")
+          \t// These validators describe the uncompressed representation bytes and
+          \t// become invalid after applying a content coding.
+          \th.Del("Content-MD5")
+          \th.Del("Content-Digest")
+          \th.Del("Digest")
+          \tweakenETagAfterCompression(h)
+          \taddVaryAcceptEncoding(h)
+          }
+
+          func weakenETagAfterCompression(h http.Header) {
+          \tetag := strings.TrimSpace(h.Get("ETag"))
+          \tif etag == "" || strings.HasPrefix(etag, "W/\"") {
+          \t\treturn
+          \t}
+          \tif strings.HasPrefix(etag, "\"") && strings.HasSuffix(etag, "\"") {
+          \t\th.Set("ETag", "W/"+etag)
+          \t\treturn
+          \t}
+          \t// Do not forward a malformed representation-specific validator.
+          \th.Del("ETag")
+          }'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+          t = Path('server/compression_policy_test.go')
+          ts = t.read_text()
+          addition = r'''
+
+          func TestCompressionHonorsAcceptEncodingQualityAndWildcard(t *testing.T) {
+          	body := strings.Repeat(`{"ok":true,"name":"metadata"}`, 64)
+          	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          		w.Header().Set("Content-Type", "application/json")
+          		_, _ = io.WriteString(w, body)
+          	})
+
+          	tests := []struct {
+          		name   string
+          		header string
+          		want   string
+          	}{
+          		{name: "client prefers gzip", header: "zstd;q=0.2, gzip;q=1, br;q=0.5", want: "gzip"},
+          		{name: "server zstd wins equal quality", header: "br;q=1, zstd;q=1, gzip;q=1", want: "zstd"},
+          		{name: "wildcard includes zstd", header: "br;q=0, *;q=0.8", want: "zstd"},
+          		{name: "explicit zstd zero overrides wildcard", header: "zstd;q=0, br;q=0, *;q=0.7", want: "gzip"},
+          	}
+          	for _, tc := range tests {
+          		t.Run(tc.name, func(t *testing.T) {
+          			req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+          			req.Header.Set("Accept-Encoding", tc.header)
+          			rec := httptest.NewRecorder()
+          			compressMiddleware()(handler).ServeHTTP(rec, req)
+          			if got := rec.Header().Get("Content-Encoding"); got != tc.want {
+          				t.Fatalf("Content-Encoding = %q, want %q", got, tc.want)
+          			}
+          		})
+          	}
+          }
+
+          func TestCompressionWeakensRepresentationValidators(t *testing.T) {
+          	body := strings.Repeat(`{"id":"track"}`, 64)
+          	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          		w.Header().Set("Content-Type", "application/json")
+          		w.Header().Set("ETag", `"strong-tag"`)
+          		w.Header().Set("Content-MD5", "old-md5")
+          		w.Header().Set("Content-Digest", "sha-256=:old:")
+          		w.Header().Set("Digest", "sha-256=old")
+          		_, _ = io.WriteString(w, body)
+          	})
+          	req := httptest.NewRequest(http.MethodGet, "/api/song", nil)
+          	req.Header.Set("Accept-Encoding", "zstd")
+          	rec := httptest.NewRecorder()
+          	compressMiddleware()(handler).ServeHTTP(rec, req)
+
+          	if got := rec.Header().Get("ETag"); got != `W/"strong-tag"` {
+          		t.Fatalf("ETag = %q, want weak validator", got)
+          	}
+          	for _, header := range []string{"Content-MD5", "Content-Digest", "Digest"} {
+          		if got := rec.Header().Get(header); got != "" {
+          			t.Fatalf("%s = %q, want empty after compression", header, got)
+          		}
+          	}
+          }
+
+          func TestCompressionPassesInformationalResponsesThrough(t *testing.T) {
+          	body := strings.Repeat(`{"ok":true}`, 64)
+          	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          		w.Header().Set("Link", "</app.js>; rel=preload")
+          		w.WriteHeader(http.StatusEarlyHints)
+          		w.Header().Set("Content-Type", "application/json")
+          		w.WriteHeader(http.StatusOK)
+          		_, _ = io.WriteString(w, body)
+          	})
+          	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+          	req.Header.Set("Accept-Encoding", "zstd")
+          	rec := httptest.NewRecorder()
+          	compressMiddleware()(handler).ServeHTTP(rec, req)
+          	if rec.Code != http.StatusEarlyHints && rec.Code != http.StatusOK {
+          		t.Fatalf("unexpected recorded status: %d", rec.Code)
+          	}
+          	if got := rec.Header().Get("Content-Encoding"); got != "zstd" {
+          		t.Fatalf("Content-Encoding = %q, want zstd for final response", got)
+          	}
+          }
+          '''
+          assert 'TestCompressionHonorsAcceptEncodingQualityAndWildcard' not in ts
+          t.write_text(ts + addition)
+          PY
+          gofmt -w server/compression.go server/compression_policy_test.go
+          go test ./server -count=1
+      - name: Commit hardening
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/compression.go server/compression_policy_test.go
+          git commit -m "perf(compression): harden negotiation and validators"
+          git push origin HEAD:perf/jbs-ghcr-quic-network

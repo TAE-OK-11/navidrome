@@ -51,7 +51,7 @@ func BenchmarkCompressionLargeSingleWrite(b *testing.B) {
 			underlying.header.Set("Content-Type", "application/octet-stream")
 			w := &compressResponseWriter{
 				ResponseWriter: underlying,
-				accepted:       acceptedCompressions{zstd: true},
+				accepted:       acceptedCompressions{zstd: 1},
 				path:           "/rest/example",
 			}
 			if _, err := w.Write(body); err != nil {
@@ -71,7 +71,7 @@ func BenchmarkCompressionLargeSingleWrite(b *testing.B) {
 			underlying.header.Set("Content-Type", "application/json")
 			w := &compressResponseWriter{
 				ResponseWriter: underlying,
-				accepted:       acceptedCompressions{zstd: true},
+				accepted:       acceptedCompressions{zstd: 1},
 				path:           "/rest/example",
 			}
 			if _, err := w.Write(body); err != nil {

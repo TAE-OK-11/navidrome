@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/navidrome/navidrome/conf"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
@@ -63,7 +64,7 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
 			MaxIdleTimeout:          serverHTTP3IdleTimeout,
 			KeepAlivePeriod:         serverQUICKeepAlivePeriod,
-			Allow0RTT:               true,
+			Allow0RTT:               conf.HTTP3Allow0RTT(),
 			DisablePathMTUDiscovery: false,
 		},
 	}

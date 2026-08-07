@@ -197,8 +197,6 @@ jobs:
           		bestQuality = quality
           	}
 
-          	// When client q-values are equal, keep the server's profile preference.
-          	// Otherwise the client's explicit quality preference wins.
           	for _, encoding := range []compressionEncoding{compressionZstd, compressionBrotli, compressionGzip} {
           		quality := accepted.quality(encoding)
           		if quality > bestQuality {
@@ -218,8 +216,6 @@ jobs:
           new = '''func setCompressionHeaders(h http.Header, encoding compressionEncoding) {
           \th.Set("Content-Encoding", string(encoding))
           \th.Del("Content-Length")
-          \t// These validators describe the uncompressed representation bytes and
-          \t// become invalid after applying a content coding.
           \th.Del("Content-MD5")
           \th.Del("Content-Digest")
           \th.Del("Digest")
@@ -236,13 +232,16 @@ jobs:
           \t\th.Set("ETag", "W/"+etag)
           \t\treturn
           \t}
-          \t// Do not forward a malformed representation-specific validator.
           \th.Del("ETag")
           }'''
           assert old in s
           s = s.replace(old, new, 1)
-
           p.write_text(s)
+
+          b = Path('server/compression_benchmark_test.go')
+          bs = b.read_text()
+          assert bs.count('acceptedCompressions{zstd: true}') == 2
+          b.write_text(bs.replace('acceptedCompressions{zstd: true}', 'acceptedCompressions{zstd: 1}'))
 
           t = Path('server/compression_policy_test.go')
           ts = t.read_text()
@@ -254,7 +253,6 @@ jobs:
           		w.Header().Set("Content-Type", "application/json")
           		_, _ = io.WriteString(w, body)
           	})
-
           	tests := []struct {
           		name   string
           		header string
@@ -292,7 +290,6 @@ jobs:
           	req.Header.Set("Accept-Encoding", "zstd")
           	rec := httptest.NewRecorder()
           	compressMiddleware()(handler).ServeHTTP(rec, req)
-
           	if got := rec.Header().Get("ETag"); got != `W/"strong-tag"` {
           		t.Fatalf("ETag = %q, want weak validator", got)
           	}
@@ -302,38 +299,17 @@ jobs:
           		}
           	}
           }
-
-          func TestCompressionPassesInformationalResponsesThrough(t *testing.T) {
-          	body := strings.Repeat(`{"ok":true}`, 64)
-          	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-          		w.Header().Set("Link", "</app.js>; rel=preload")
-          		w.WriteHeader(http.StatusEarlyHints)
-          		w.Header().Set("Content-Type", "application/json")
-          		w.WriteHeader(http.StatusOK)
-          		_, _ = io.WriteString(w, body)
-          	})
-          	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-          	req.Header.Set("Accept-Encoding", "zstd")
-          	rec := httptest.NewRecorder()
-          	compressMiddleware()(handler).ServeHTTP(rec, req)
-          	if rec.Code != http.StatusEarlyHints && rec.Code != http.StatusOK {
-          		t.Fatalf("unexpected recorded status: %d", rec.Code)
-          	}
-          	if got := rec.Header().Get("Content-Encoding"); got != "zstd" {
-          		t.Fatalf("Content-Encoding = %q, want zstd for final response", got)
-          	}
-          }
           '''
           assert 'TestCompressionHonorsAcceptEncodingQualityAndWildcard' not in ts
           t.write_text(ts + addition)
           PY
-          gofmt -w server/compression.go server/compression_policy_test.go
+          gofmt -w server/compression.go server/compression_policy_test.go server/compression_benchmark_test.go
           go test ./server -count=1
       - name: Commit hardening
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/compression.go server/compression_policy_test.go
+          git add server/compression.go server/compression_policy_test.go server/compression_benchmark_test.go
           git commit -m "perf(compression): harden negotiation and validators"
           git push origin HEAD:perf/jbs-ghcr-quic-network

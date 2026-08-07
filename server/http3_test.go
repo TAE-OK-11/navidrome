@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/navidrome/navidrome/conf"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/quic-go/quic-go/http3"
@@ -33,7 +34,7 @@ var _ = Describe("HTTP/3 support", func() {
 			keyFile,
 		)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(runtime.server.QUICConfig.Allow0RTT).To(BeTrue())
+		Expect(runtime.server.QUICConfig.Allow0RTT).To(Equal(conf.HTTP3Allow0RTT()))
 		Expect(runtime.server.QUICConfig.DisablePathMTUDiscovery).To(BeFalse())
 		Expect(runtime.server.IdleTimeout).To(Equal(serverHTTP3IdleTimeout))
 
@@ -96,54 +97,79 @@ var _ = Describe("HTTP/3 support", func() {
 			req.TLS = &tls.ConnectionState{HandshakeComplete: false}
 			return req
 		}
-
-		It("allows read-only native API requests before handshake completion", func() {
-			recorder := httptest.NewRecorder()
-			handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		newGuard := func() http.Handler {
+			return guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
-			handler.ServeHTTP(recorder, newEarlyRequest(http.MethodGet, "https://example.test/api/album"))
+		}
+
+		It("allows ordinary read-only native API GETs", func() {
+			recorder := httptest.NewRecorder()
+			newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, "https://example.test/api/album"))
 			Expect(recorder.Code).To(Equal(http.StatusNoContent))
 		})
 
-		It("allows explicitly read-only Subsonic endpoint families", func() {
+		It("rejects replay-sensitive native auth callbacks", func() {
+			for _, target := range []string{
+				"https://example.test/api/lastfm/callback?token=x",
+				"https://example.test/api/listenbrainz/callback?code=x",
+			} {
+				recorder := httptest.NewRecorder()
+				newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, target))
+				Expect(recorder.Code).To(Equal(http.StatusTooEarly), target)
+			}
+		})
+
+		It("allows only low-cost metadata Subsonic endpoints", func() {
 			for _, target := range []string{
 				"https://example.test/rest/getAlbum.view?id=1",
+				"https://example.test/rest/getPlaylists.view",
 				"https://example.test/rest/search3.view?query=test",
 				"https://example.test/rest/ping.view",
 			} {
 				recorder := httptest.NewRecorder()
-				handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusNoContent)
-				}))
-				handler.ServeHTTP(recorder, newEarlyRequest(http.MethodGet, target))
+				newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, target))
 				Expect(recorder.Code).To(Equal(http.StatusNoContent), target)
 			}
 		})
 
-		It("rejects replayable state-changing Subsonic GET endpoints", func() {
+		It("rejects mutating and replay-amplifiable Subsonic GET endpoints", func() {
 			for _, target := range []string{
 				"https://example.test/rest/scrobble.view?id=1",
 				"https://example.test/rest/star.view?id=1",
-				"https://example.test/rest/unstar.view?id=1",
+				"https://example.test/rest/startScan.view",
+				"https://example.test/rest/getCoverArt.view?id=1",
+				"https://example.test/rest/getLyricsBySongId.view?id=1",
+				"https://example.test/rest/getTranscodeStream.view?id=1",
+				"https://example.test/rest/getArtistInfo2.view?id=1",
 			} {
 				recorder := httptest.NewRecorder()
-				handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusNoContent)
-				}))
-				handler.ServeHTTP(recorder, newEarlyRequest(http.MethodGet, target))
+				newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, target))
 				Expect(recorder.Code).To(Equal(http.StatusTooEarly), target)
 				Expect(recorder.Header().Get("Cache-Control")).To(Equal("no-store"))
+				Expect(recorder.Header().Get("Retry-After")).To(Equal("0"))
+				Expect(recorder.Header().Get("Content-Length")).To(Equal("0"))
 			}
+		})
+
+		It("honors configured BasePath when classifying early requests", func() {
+			originalBasePath := conf.Server.BasePath
+			conf.Server.BasePath = "/music"
+			DeferCleanup(func() { conf.Server.BasePath = originalBasePath })
+
+			recorder := httptest.NewRecorder()
+			newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, "https://example.test/music/rest/getAlbum.view?id=1"))
+			Expect(recorder.Code).To(Equal(http.StatusNoContent))
+
+			recorder = httptest.NewRecorder()
+			newGuard().ServeHTTP(recorder, newEarlyRequest(http.MethodGet, "https://example.test/music/rest/scrobble.view?id=1"))
+			Expect(recorder.Code).To(Equal(http.StatusTooEarly))
 		})
 
 		It("rejects non-idempotent methods during early data", func() {
 			for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 				recorder := httptest.NewRecorder()
-				handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusNoContent)
-				}))
-				handler.ServeHTTP(recorder, newEarlyRequest(method, "https://example.test/api/playlists/1"))
+				newGuard().ServeHTTP(recorder, newEarlyRequest(method, "https://example.test/api/playlists/1"))
 				Expect(recorder.Code).To(Equal(http.StatusTooEarly), method)
 			}
 		})
@@ -152,10 +178,7 @@ var _ = Describe("HTTP/3 support", func() {
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "https://example.test/auth/login", nil)
 			req.TLS = &tls.ConnectionState{HandshakeComplete: true}
-			handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusNoContent)
-			}))
-			handler.ServeHTTP(recorder, req)
+			newGuard().ServeHTTP(recorder, req)
 			Expect(recorder.Code).To(Equal(http.StatusNoContent))
 		})
 	})

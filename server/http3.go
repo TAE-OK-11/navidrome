@@ -18,7 +18,7 @@ import (
 
 const (
 	serverQUICHandshakeIdleTimeout = 5 * time.Second
-	serverQUICKeepAlivePeriod      = 30 * time.Second
+	serverQUICKeepAlivePeriod      = 45 * time.Second
 	serverQUICMaxIncomingStreams   = 256
 	serverHTTP3IdleTimeout         = 5 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
@@ -55,6 +55,7 @@ var safeSubsonic0RTTEndpoints = map[string]struct{}{
 	"getusers":                  {},
 	"getinternetradiostations":  {},
 	"getshares":                 {},
+	"getcoverart":               {},
 }
 
 type http3Runtime struct {
@@ -165,9 +166,10 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 	endpoint = strings.ToLower(endpoint)
 
 	// Subsonic permits state-changing operations over GET. Use a positive
-	// metadata allowlist instead of broad get*/search* matching. Expensive
-	// artwork, lyrics, Sonic and transcoding endpoints intentionally wait for
-	// the handshake as well, limiting replay-amplification of CPU/upstream work.
+	// metadata allowlist instead of broad get*/search* matching. Cover artwork
+	// is also safe to replay: it is read-only, already concurrency-throttled,
+	// and aggressively client-cacheable. Keeping it in 0-RTT avoids a needless
+	// 425/retry round trip during album-grid and now-playing image bursts.
 	_, ok := safeSubsonic0RTTEndpoints[endpoint]
 	return ok
 }

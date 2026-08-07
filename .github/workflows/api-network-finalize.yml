@@ -1,0 +1,130 @@
+name: Finalize measured API and compression optimizations
+
+on:
+  push:
+    branches:
+      - perf/jbs-ghcr-quic-network
+    paths:
+      - .github/workflows/api-network-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: perf/jbs-ghcr-quic-network
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Apply measured compression and API hardening
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('server/compression.go')
+          s = p.read_text()
+          assert '"compress/gzip"' in s
+          s = s.replace('\t"compress/gzip"\n', '', 1)
+          assert '\t"github.com/andybalholm/brotli"\n\t"github.com/klauspost/compress/zstd"' in s
+          s = s.replace(
+              '\t"github.com/andybalholm/brotli"\n\t"github.com/klauspost/compress/zstd"',
+              '\t"github.com/andybalholm/brotli"\n\tgzip "github.com/klauspost/compress/gzip"\n\t"github.com/klauspost/compress/zstd"',
+              1,
+          )
+          assert '\tzstdGeneralLevel                 = 3' in s
+          s = s.replace('\tzstdGeneralLevel                 = 3', '\tzstdGeneralLevel                 = 1', 1)
+
+          old = '''func shouldBypassCompressionRequest(r *http.Request) bool {
+          \tif r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) {
+          \t\treturn true
+          \t}
+          \treturn strings.EqualFold(strings.TrimSpace(r.Header.Get("Connection")), "upgrade")
+          }'''
+          new = '''func shouldBypassCompressionRequest(r *http.Request) bool {
+          \tif r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) || isSensitiveAuthResponsePath(r.URL.Path) {
+          \t\treturn true
+          \t}
+          \treturn strings.EqualFold(strings.TrimSpace(r.Header.Get("Connection")), "upgrade")
+          }
+
+          func isSensitiveAuthResponsePath(requestPath string) bool {
+          \trequestPath = strings.ToLower(strings.TrimSuffix(requestPath, "/"))
+          \treturn requestPath == "/auth" || strings.HasSuffix(requestPath, "/auth") || strings.Contains(requestPath, "/auth/")
+          }'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('server/subsonic/api.go')
+          s = p.read_text()
+          old = '''\tif status != 0 {
+          \t\tw.WriteHeader(status)
+          \t}'''
+          new = '''\t// The payload has already been fully marshalled, so publish its exact size.
+          \t// The compression middleware can then choose a codec immediately without
+          \t// copying small API responses into its decision buffer first.
+          \tw.Header().Set("Content-Length", strconv.Itoa(len(response)))
+          \tif status != 0 {
+          \t\tw.WriteHeader(status)
+          \t}'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('server/compression_policy_test.go')
+          s = p.read_text()
+          assert 'TestSensitiveAuthResponsesAreNeverCompressed' not in s
+          s += r'''
+
+          func TestSensitiveAuthResponsesAreNeverCompressed(t *testing.T) {
+          	body := strings.Repeat(`{"token":"secret","username":"user"}`, 64)
+          	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+          		w.Header().Set("Content-Type", "application/json")
+          		_, _ = io.WriteString(w, body)
+          	})
+          	for _, target := range []string{
+          		"/auth/login",
+          		"/auth/createAdmin",
+          		"/music/auth/login",
+          	} {
+          		req := httptest.NewRequest(http.MethodPost, target, nil)
+          		req.Header.Set("Accept-Encoding", "zstd, br, gzip")
+          		rec := httptest.NewRecorder()
+          		compressMiddleware()(handler).ServeHTTP(rec, req)
+          		if got := rec.Header().Get("Content-Encoding"); got != "" {
+          			t.Fatalf("%s Content-Encoding = %q, want identity", target, got)
+          		}
+          	}
+          }
+          '''
+          p.write_text(s)
+          PY
+          gofmt -w server/compression.go server/compression_policy_test.go server/subsonic/api.go
+      - name: Update compression dependency
+        run: |
+          set -euo pipefail
+          go get github.com/klauspost/compress@v1.19.1
+          go mod tidy
+          go mod verify
+      - name: Test affected packages
+        run: |
+          set -euo pipefail
+          go test ./server ./server/subsonic -count=1
+          go test ./server -run '^$' -bench '^BenchmarkCompressionLargeSingleWrite$' -benchtime=250ms -count=1
+      - name: Commit validated changes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/compression.go server/compression_policy_test.go server/subsonic/api.go go.mod go.sum
+          git commit -m "perf(api): apply measured compression and TTFB optimizations"
+          git push origin HEAD:perf/jbs-ghcr-quic-network

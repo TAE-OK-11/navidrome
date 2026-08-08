@@ -36,7 +36,7 @@ type players struct {
 	cache   playerLookupCache
 }
 
-const playerLookupCacheTTL = time.Second
+const playerLookupCacheTTL = 10 * time.Second
 
 type playerLookupCache struct {
 	byID            sync.Map

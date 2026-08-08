@@ -1,39 +1,10 @@
 package server
 
-import (
-	"crypto/tls"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestHTTP3EarlyDataRejectsRequestBodies(t *testing.T) {
-	handler := guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	for _, contentLength := range []int64{1, -1} {
-		req := httptest.NewRequest(http.MethodGet, "https://example.test/rest/getAlbum.view?id=1", strings.NewReader("x"))
-		req.TLS = &tls.ConnectionState{HandshakeComplete: false}
-		req.ContentLength = contentLength
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusTooEarly {
-			t.Fatalf("ContentLength=%d status=%d, want 425", contentLength, rec.Code)
-		}
-	}
-}
-
-func TestHTTP3EarlyDataAllowsBodylessMetadataRead(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "https://example.test/rest/getAlbum.view?id=1", nil)
-	req.TLS = &tls.ConnectionState{HandshakeComplete: false}
-	rec := httptest.NewRecorder()
-	guardHTTP3EarlyData(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status=%d, want 204", rec.Code)
+func TestHTTP3ZeroRTTDisabledToAvoidAppVisible425(t *testing.T) {
+	if serverQUICAllow0RTT {
+		t.Fatal("HTTP/3 0-RTT must stay disabled so early requests are handled by the QUIC/TLS handshake instead of surfacing HTTP 425")
 	}
 }
 

@@ -1044,6 +1044,52 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     test -x /out/jbs-helper
 
 # =========================================================
+# Tokio-quiche HTTP/3 companion
+# =========================================================
+
+FROM ${RUST_IMAGE} AS h3-builder
+
+ARG NAVIDROME_BUILD_CORES
+ARG RUST_TARGET_CPU
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      clang \
+      cmake \
+      git \
+      make \
+      ninja-build \
+      perl \
+      pkg-config
+
+WORKDIR /build
+
+COPY --link --from=source /src/rust/h3-gateway/Cargo.toml /src/rust/h3-gateway/Cargo.lock ./
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    mkdir src && \
+    printf 'fn main() {}\n' > src/main.rs && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release && \
+    rm -rf src target/release/deps/navidrome_h3-* target/release/navidrome-h3
+
+COPY --link --from=source /src/rust/h3-gateway/src ./src
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo test --locked --release && \
+    cargo build --locked --release && \
+    install -D -m 755 target/release/navidrome-h3 /out/navidrome-h3 && \
+    test -x /out/navidrome-h3
+
+# =========================================================
 # UI build
 # =========================================================
 
@@ -1172,6 +1218,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 
 COPY --link --from=source /src ./
 COPY --link --from=jsbuilder /src/ui/build ./ui/build/
+COPY --link --from=h3-builder /out/navidrome-h3 /tmp/navidrome-h3
 
 RUN test -s ./ui/build/index.html && \
     test -n "$(find ./ui/build -type f -name '*.br' -print -quit)" && \
@@ -1182,6 +1229,12 @@ RUN test -s ./ui/build/index.html && \
       "$(find ./ui/build -type f -name '*.br' | wc -l)" \
       "$(find ./ui/build -type f -name '*.zst' | wc -l)" \
       "$(find ./ui/build -type f -name '*.gz' | wc -l)"
+
+RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go test -p "${NAVIDROME_BUILD_CORES}" ./conf ./server && \
+    NAVIDROME_H3_INTEGRATION_BINARY=/tmp/navidrome-h3 \
+      go test -p 1 ./server -run '^TestRustHTTP3EndToEnd$' -count=1
 
 ENV GOAMD64=${GOAMD64_VERSION} \
     CGO_ENABLED=1 \
@@ -1356,6 +1409,7 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
     touch /.nddockerenv
 
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
+COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
 RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
@@ -1364,6 +1418,7 @@ RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
     ln -s /usr/local/bin/jbs-helper /usr/local/bin/jbs-ffmpeg-preflight
 
 RUN test -x /app/navidrome && \
+    test -x /app/navidrome-h3 && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
     test -x /usr/local/bin/ffprobe && \
@@ -1974,6 +2029,8 @@ ENV TZ=Asia/Seoul \
     ND_DEVSCANNERTHREADS=auto \
     ND_ADDRESS=0.0.0.0 \
     ND_PORT=4533 \
+    ND_HTTP3PROVIDER=tokio-quiche \
+    ND_HTTP3GATEWAYPATH=/app/navidrome-h3 \
     ND_FFMPEGPATH=/usr/local/bin/ffmpeg \
     ND_MUSICFOLDER=/music \
     ND_DATAFOLDER=/data \

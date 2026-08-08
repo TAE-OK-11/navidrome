@@ -75,7 +75,7 @@ func HTTP3ConnectionBurst() int {
 	return viper.GetInt(http3ConnectionBurstKey)
 }
 
-func init() {
+func setHTTP3Defaults() {
 	viper.SetDefault(http3ConfigKey, false)
 	// 0-RTT request data is intentionally disabled. Keep the legacy key at
 	// false during the migration so existing configurations remain parseable.
@@ -88,4 +88,8 @@ func init() {
 	viper.SetDefault(http3MaxPerIPKey, 128)
 	viper.SetDefault(http3RatePerSecondKey, 50.0)
 	viper.SetDefault(http3ConnectionBurstKey, 100)
+}
+
+func init() {
+	setHTTP3Defaults()
 }

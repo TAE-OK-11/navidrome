@@ -1087,7 +1087,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo test --locked --release && \
     cargo build --locked --release && \
     install -D -m 755 target/release/navidrome-h3 /out/navidrome-h3 && \
-    file /out/navidrome-h3
+    test -x /out/navidrome-h3
 
 # =========================================================
 # UI build

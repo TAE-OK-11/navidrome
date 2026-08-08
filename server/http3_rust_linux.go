@@ -32,7 +32,7 @@ import (
 
 const (
 	rustHTTP3ControlFD          = 3
-	rustHTTP3TokenHeader        = "X-Navidrome-H3-Token"
+	rustHTTP3TokenHeader        = "X-Navidrome-H3-Token" //nolint:gosec // header name only; token value is generated at runtime
 	rustHTTP3AuthorityHeader    = "X-Navidrome-H3-Authority"
 	rustHTTP3RemoteAddrHeader   = "X-Navidrome-H3-Remote-Addr"
 	rustHTTP3StartupTimeout     = 15 * time.Second
@@ -254,7 +254,7 @@ func (r *rustHTTP3Runtime) startChild() error {
 			_ = cmd.Wait()
 		}
 	}()
-	if err := json.NewEncoder(parent).Encode(r.config); err != nil {
+	if err := json.NewEncoder(parent).Encode(r.config); err != nil { //nolint:gosec // sent only over the inherited private socketpair
 		return fmt.Errorf("sending HTTP/3 companion configuration: %w", err)
 	}
 	if err := parent.SetReadDeadline(time.Now().Add(rustHTTP3StartupTimeout)); err != nil {
@@ -267,7 +267,10 @@ func (r *rustHTTP3Runtime) startChild() error {
 			waitErr := cmd.Wait()
 			failed = false
 			_ = parent.Close()
-			return fmt.Errorf("waiting for HTTP/3 companion readiness: %w (process: %v)", err, waitErr)
+			if waitErr != nil {
+				return fmt.Errorf("waiting for HTTP/3 companion readiness: %w", errors.Join(err, waitErr))
+			}
+			return fmt.Errorf("waiting for HTTP/3 companion readiness: %w", err)
 		}
 		return fmt.Errorf("waiting for HTTP/3 companion readiness: %w", err)
 	}
@@ -309,7 +312,7 @@ func (r *rustHTTP3Runtime) serve() error {
 		r.cmd = nil
 		r.mu.Unlock()
 		if r.stopping.Load() || r.ctx.Err() != nil {
-			return nil
+			return nil //nolint:nilerr // child exit is expected during an explicit or contextual shutdown
 		}
 
 		log.Error(r.ctx, "Tokio-quiche HTTP/3 companion stopped; H1/H2 remain available", err)

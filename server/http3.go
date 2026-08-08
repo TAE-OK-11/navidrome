@@ -21,7 +21,7 @@ const (
 	serverQUICHandshakeIdleTimeout = 10 * time.Second
 	serverQUICKeepAlivePeriod      = 20 * time.Second
 	serverQUICMaxIncomingStreams   = 256
-	serverHTTP3IdleTimeout         = 5 * time.Minute
+	serverHTTP3IdleTimeout         = 15 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
 	serverQUICSocketBufferSize     = 7 * 1024 * 1024
 )
@@ -58,6 +58,13 @@ var safeSubsonic0RTTEndpoints = map[string]struct{}{
 	"getinternetradiostations":  {},
 	"getshares":                 {},
 	"getcoverart":               {},
+}
+
+type http3HandshakeGateKey struct{}
+
+type http3HandshakeGate struct {
+	complete  <-chan struct{}
+	completed func() bool
 }
 
 type http3Runtime struct {
@@ -100,6 +107,14 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 		Handler:        guardHTTP3EarlyData(handler),
 		MaxHeaderBytes: serverMaxHeaderBytes,
 		IdleTimeout:    serverHTTP3IdleTimeout,
+		ConnContext: func(ctx context.Context, conn *quic.Conn) context.Context {
+			return context.WithValue(ctx, http3HandshakeGateKey{}, http3HandshakeGate{
+				complete: conn.HandshakeComplete(),
+				completed: func() bool {
+					return conn.ConnectionState().TLS.HandshakeComplete
+				},
+			})
+		},
 		QUICConfig: &quic.Config{
 			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
 			MaxIdleTimeout:          serverHTTP3IdleTimeout,
@@ -108,7 +123,6 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 			Allow0RTT:               conf.HTTP3Allow0RTT(),
 			DisablePathMTUDiscovery: false,
 			EnableDatagrams:          false,
-			Versions:                 []quic.Version{quic.Version1},
 		},
 	}
 
@@ -135,15 +149,50 @@ func tuneQUICSocketBuffers(ctx context.Context, packetConn net.PacketConn) {
 
 func guardHTTP3EarlyData(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if isPotentialHTTP3Replay(req) && !isSafeHTTP3EarlyRequest(req) {
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("Retry-After", "0")
-			w.Header().Set("Content-Length", "0")
-			w.WriteHeader(http.StatusTooEarly)
+		if !isPotentialHTTP3Replay(req) || isSafeHTTP3EarlyRequest(req) {
+			next.ServeHTTP(w, req)
 			return
 		}
-		next.ServeHTTP(w, req)
+
+		// Do not force the client into a 425 -> retry round trip for replay-sensitive
+		// early data. The HTTP/3 connection context gives us the underlying QUIC
+		// handshake signal, so hold this request for the remainder of the handshake
+		// and execute it exactly once after the peer is authenticated. In the common
+		// resumed-connection case this is only a fraction of one RTT.
+		if waitForHTTP3Handshake(req) {
+			next.ServeHTTP(w, req)
+			return
+		}
+
+		// This fallback is only expected when the handler is used without the
+		// http3.Server connection context, or when the handshake failed.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Retry-After", "0")
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(http.StatusTooEarly)
 	})
+}
+
+func waitForHTTP3Handshake(req *http.Request) bool {
+	gate, ok := req.Context().Value(http3HandshakeGateKey{}).(http3HandshakeGate)
+	if !ok || gate.complete == nil || gate.completed == nil {
+		return false
+	}
+
+	started := time.Now()
+	select {
+	case <-gate.complete:
+		if !gate.completed() {
+			return false
+		}
+		if log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Debug(req.Context(), "Deferred HTTP/3 early-data request until handshake completed",
+				"path", req.URL.Path, "wait", time.Since(started))
+		}
+		return true
+	case <-req.Context().Done():
+		return false
+	}
 }
 
 func isPotentialHTTP3Replay(req *http.Request) bool {
@@ -187,8 +236,7 @@ func isSafeHTTP3EarlyRequest(req *http.Request) bool {
 	// Subsonic permits state-changing operations over GET. Use a positive
 	// metadata allowlist instead of broad get*/search* matching. Cover artwork
 	// is also safe to replay: it is read-only, already concurrency-throttled,
-	// and aggressively client-cacheable. Keeping it in 0-RTT avoids a needless
-	// 425/retry round trip during album-grid and now-playing image bursts.
+	// and aggressively client-cacheable.
 	_, ok := safeSubsonic0RTTEndpoints[endpoint]
 	return ok
 }

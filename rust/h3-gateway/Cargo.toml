@@ -1,0 +1,34 @@
+[package]
+name = "navidrome-h3"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "GPL-3.0-only"
+description = "Tokio + tokio-quiche HTTP/3 transport companion for Navidrome"
+
+[[bin]]
+name = "navidrome-h3"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+bytes = "1.12.1"
+env_logger = "0.11.11"
+futures = "0.3.33"
+http = "1.5.0"
+http-body-util = "0.1.4"
+hyper = { version = "1.11.0", features = ["client", "http2"] }
+hyper-util = { version = "0.1.20", features = ["client-legacy", "http2", "tokio"] }
+log = { version = "0.4.33", features = ["release_max_level_info"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+socket2 = "0.6.5"
+tokio = { version = "1.53.1", features = ["net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-quiche = { version = "=0.19.1", default-features = false }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = "symbols"

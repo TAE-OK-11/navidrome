@@ -114,14 +114,18 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 
 	server := newHTTPServer(s.router)
 
-	var h3 *http3Runtime
+	var h3 http3Service
 	if http3Enabled {
-		h3, err = newHTTP3Runtime(ctx, listenAddr, s.router, tlsCert, tlsKey)
+		h3, err = newConfiguredHTTP3Runtime(ctx, listenAddr, s.router, tlsCert, tlsKey)
 		if err != nil {
-			_ = listener.Close()
-			return err
+			// HTTP/3 is an optional alternative service. A provider failure must
+			// not take the established H1/H2 application server down.
+			log.Warn(ctx, "HTTP/3 provider unavailable; continuing with HTTP/1.1 and HTTP/2", "provider", conf.HTTP3Provider(), err)
+			h3 = nil
+			server.Handler = clearHTTP3Advertisement(s.router)
+		} else {
+			server.Handler = h3.advertise(s.router)
 		}
-		server.Handler = h3.advertise(s.router)
 	}
 
 	errC := make(chan error, 2)
@@ -129,7 +133,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		go func() {
 			err := h3.serve()
 			if !isExpectedHTTP3ServerClose(err) {
-				errC <- fmt.Errorf("serving HTTP/3: %w", err)
+				log.Error(ctx, "HTTP/3 provider stopped; HTTP/1.1 and HTTP/2 remain available", err)
 			}
 		}()
 	}

@@ -12,7 +12,7 @@ import (
 
 const (
 	authUserCacheLimit  = 256
-	authUserCacheTTL    = time.Second
+	authUserCacheTTL    = 10 * time.Second
 	authUserLoadTimeout = 3 * time.Second
 )
 
@@ -21,9 +21,11 @@ type authUserCacheEntry struct {
 	expires time.Time
 }
 
-// authUserCache removes the repeated SQLite lookup and password decryption
-// caused by bursty Range requests. Credentials are still validated for every
-// request; only the immutable user row is reused for at most one second.
+// authUserCache removes repeated SQLite lookups and password decryption caused
+// by bursty HTTP/2 and HTTP/3 requests. Credentials are still validated for
+// every request; only the already-loaded user row is reused briefly. Ten
+// seconds is long enough to cover album-grid / metadata bursts without making
+// account or permission changes stale for an extended period.
 type authUserCache struct {
 	mu      sync.RWMutex
 	entries map[string]authUserCacheEntry

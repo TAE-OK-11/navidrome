@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -24,48 +22,8 @@ const (
 	serverHTTP3IdleTimeout         = 15 * time.Minute
 	serverHTTP3AltSvcMaxAge        = 24 * time.Hour
 	serverQUICSocketBufferSize     = 7 * 1024 * 1024
+	serverQUICAllow0RTT            = false
 )
-
-var safeSubsonic0RTTEndpoints = map[string]struct{}{
-	"getopensubsonicextensions": {},
-	"ping":                      {},
-	"getlicense":                {},
-	"getmusicfolders":           {},
-	"getgenres":                 {},
-	"getscanstatus":             {},
-	"getindexes":                {},
-	"getartists":                {},
-	"getmusicdirectory":         {},
-	"getartist":                 {},
-	"getalbum":                  {},
-	"getsong":                   {},
-	"getalbumlist":              {},
-	"getalbumlist2":             {},
-	"getstarred":                {},
-	"getstarred2":               {},
-	"getnowplaying":             {},
-	"getrandomsongs":            {},
-	"getsongsbygenre":           {},
-	"getplaylists":              {},
-	"getplaylist":               {},
-	"getbookmarks":              {},
-	"getplayqueue":              {},
-	"getplayqueuebyindex":       {},
-	"search2":                   {},
-	"search3":                   {},
-	"getuser":                   {},
-	"getusers":                  {},
-	"getinternetradiostations":  {},
-	"getshares":                 {},
-	"getcoverart":               {},
-}
-
-type http3HandshakeGateKey struct{}
-
-type http3HandshakeGate struct {
-	complete  <-chan struct{}
-	completed func() bool
-}
 
 type http3Runtime struct {
 	server       *http3.Server
@@ -95,7 +53,8 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	}
 
 	// ConfigureTLSConfig installs the HTTP/3 ALPN handling required by quic-go.
-	// Keep TLS 1.3 as the floor; session tickets remain enabled for 0-RTT.
+	// Keep TLS 1.3 as the floor; session tickets remain enabled for fast resumed
+	// handshakes even though HTTP request data itself is not accepted in 0-RTT.
 	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS13,
@@ -104,23 +63,21 @@ func newHTTP3Runtime(ctx context.Context, addr string, handler http.Handler, cer
 	server := &http3.Server{
 		Addr:           packetConn.LocalAddr().String(),
 		TLSConfig:      tlsConfig,
-		Handler:        guardHTTP3EarlyData(handler),
+		Handler:        handler,
 		MaxHeaderBytes: serverMaxHeaderBytes,
 		IdleTimeout:    serverHTTP3IdleTimeout,
-		ConnContext: func(ctx context.Context, conn *quic.Conn) context.Context {
-			return context.WithValue(ctx, http3HandshakeGateKey{}, http3HandshakeGate{
-				complete: conn.HandshakeComplete(),
-				completed: func() bool {
-					return conn.ConnectionState().TLS.HandshakeComplete
-				},
-			})
-		},
 		QUICConfig: &quic.Config{
 			HandshakeIdleTimeout:    serverQUICHandshakeIdleTimeout,
 			MaxIdleTimeout:          serverHTTP3IdleTimeout,
 			KeepAlivePeriod:         serverQUICKeepAlivePeriod,
 			MaxIncomingStreams:      serverQUICMaxIncomingStreams,
-			Allow0RTT:               conf.HTTP3Allow0RTT(),
+			// Do not accept HTTP requests in QUIC early data. A previous route-level
+			// replay guard returned HTTP 425 for requests that arrived before the TLS
+			// handshake completed, leaking transport details into apps and forcing an
+			// extra HTTP retry. Rejecting 0-RTT at the QUIC/TLS layer keeps the retry
+			// transparent to conforming client stacks while established HTTP/3
+			// connections keep their normal performance characteristics.
+			Allow0RTT:               serverQUICAllow0RTT,
 			DisablePathMTUDiscovery: false,
 			EnableDatagrams:          false,
 		},
@@ -145,118 +102,6 @@ func tuneQUICSocketBuffers(ctx context.Context, packetConn net.PacketConn) {
 	if err := udpConn.SetWriteBuffer(serverQUICSocketBufferSize); err != nil {
 		log.Warn(ctx, "Could not raise HTTP/3 UDP send buffer", "size", serverQUICSocketBufferSize, err)
 	}
-}
-
-func guardHTTP3EarlyData(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if !isPotentialHTTP3Replay(req) || isSafeHTTP3EarlyRequest(req) {
-			next.ServeHTTP(w, req)
-			return
-		}
-
-		// Do not force the client into a 425 -> retry round trip for replay-sensitive
-		// early data. The HTTP/3 connection context gives us the underlying QUIC
-		// handshake signal, so hold this request for the remainder of the handshake
-		// and execute it exactly once after the peer is authenticated. In the common
-		// resumed-connection case this is only a fraction of one RTT.
-		if waitForHTTP3Handshake(req) {
-			next.ServeHTTP(w, req)
-			return
-		}
-
-		// This fallback is only expected when the handler is used without the
-		// http3.Server connection context, or when the handshake failed.
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Retry-After", "0")
-		w.Header().Set("Content-Length", "0")
-		w.WriteHeader(http.StatusTooEarly)
-	})
-}
-
-func waitForHTTP3Handshake(req *http.Request) bool {
-	gate, ok := req.Context().Value(http3HandshakeGateKey{}).(http3HandshakeGate)
-	if !ok || gate.complete == nil || gate.completed == nil {
-		return false
-	}
-
-	started := time.Now()
-	select {
-	case <-gate.complete:
-		if !gate.completed() {
-			return false
-		}
-		if log.IsGreaterOrEqualTo(log.LevelDebug) {
-			log.Debug(req.Context(), "Deferred HTTP/3 early-data request until handshake completed",
-				"path", req.URL.Path, "wait", time.Since(started))
-		}
-		return true
-	case <-req.Context().Done():
-		return false
-	}
-}
-
-func isPotentialHTTP3Replay(req *http.Request) bool {
-	return req.TLS != nil && !req.TLS.HandshakeComplete
-}
-
-func isSafeHTTP3EarlyRequest(req *http.Request) bool {
-	if req.Method != http.MethodGet && req.Method != http.MethodHead {
-		return false
-	}
-	// Early-data reads never need a request body in Navidrome. Reject bodies,
-	// including unknown-length bodies, to keep replayable payloads minimal.
-	if req.ContentLength != 0 {
-		return false
-	}
-
-	requestPath := http3PathWithoutBasePath(req.URL.Path)
-	if requestPath == "/ping" {
-		return true
-	}
-
-	// Native API follows HTTP method semantics, but OAuth / scrobbler auth
-	// callbacks mounted below /api can mutate stored credentials even on GET.
-	// Keep those callbacks out of replayable early data.
-	if strings.HasPrefix(requestPath, "/api/") {
-		return !hasPathPrefix(requestPath, "/api/lastfm") &&
-			!hasPathPrefix(requestPath, "/api/listenbrainz")
-	}
-
-	if !strings.HasPrefix(requestPath, "/rest/") {
-		return false
-	}
-
-	endpoint := strings.TrimPrefix(requestPath, "/rest/")
-	if slash := strings.IndexByte(endpoint, '/'); slash >= 0 {
-		endpoint = endpoint[:slash]
-	}
-	endpoint = strings.TrimSuffix(endpoint, ".view")
-	endpoint = strings.ToLower(endpoint)
-
-	// Subsonic permits state-changing operations over GET. Use a positive
-	// metadata allowlist instead of broad get*/search* matching. Cover artwork
-	// is also safe to replay: it is read-only, already concurrency-throttled,
-	// and aggressively client-cacheable.
-	_, ok := safeSubsonic0RTTEndpoints[endpoint]
-	return ok
-}
-
-func http3PathWithoutBasePath(requestPath string) string {
-	basePath := strings.TrimSuffix(conf.Server.BasePath, "/")
-	if basePath == "" || basePath == "/" {
-		return requestPath
-	}
-	if requestPath == basePath {
-		return "/"
-	}
-	if strings.HasPrefix(requestPath, basePath+"/") {
-		return strings.TrimPrefix(requestPath, basePath)
-	}
-	return requestPath
-}
-
-func hasPathPrefix(requestPath, prefix string) bool {
-	return requestPath == prefix || strings.HasPrefix(requestPath, prefix+"/")
 }
 
 func (r *http3Runtime) serve() error {

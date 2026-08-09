@@ -45,11 +45,19 @@ func (id ArtworkID) String() string {
 	if id.ID == "" {
 		return ""
 	}
-	s := fmt.Sprintf("%s-%s", id.Kind.prefix, id.ID)
-	if lu := id.LastUpdate.Unix(); lu > 0 {
-		return fmt.Sprintf("%s_%x", s, lu)
+	lu := id.LastUpdate.Unix()
+	if lu < 0 {
+		lu = 0
 	}
-	return s + "_0"
+
+	var result strings.Builder
+	result.Grow(len(id.Kind.prefix) + len(id.ID) + 19)
+	result.WriteString(id.Kind.prefix)
+	result.WriteByte('-')
+	result.WriteString(id.ID)
+	result.WriteByte('_')
+	result.WriteString(strconv.FormatInt(lu, 16))
+	return result.String()
 }
 
 func NewArtworkID(kind Kind, id string, lastUpdate *time.Time) ArtworkID {

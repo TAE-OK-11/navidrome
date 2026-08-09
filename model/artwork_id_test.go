@@ -10,6 +10,15 @@ import (
 
 var _ = Describe("ArtworkID", func() {
 	Describe("NewArtworkID()", func() {
+		DescribeTable("preserves the artwork cache key format",
+			func(id model.ArtworkID, expected string) {
+				Expect(id.String()).To(Equal(expected))
+			},
+			Entry("empty id", model.NewArtworkID(model.KindAlbumArtwork, "", nil), ""),
+			Entry("without update", model.NewArtworkID(model.KindAlbumArtwork, "1234", nil), "al-1234_0"),
+			Entry("with update", model.NewArtworkID(model.KindAlbumArtwork, "1234", new(time.Unix(0x65f2a100, 0))), "al-1234_65f2a100"),
+			Entry("before epoch", model.NewArtworkID(model.KindAlbumArtwork, "1234", new(time.Unix(-1, 0))), "al-1234_0"),
+		)
 		It("creates a valid parseable ArtworkID", func() {
 			id := model.NewArtworkID(model.KindAlbumArtwork, "1234", new(time.Now()))
 			parsedId, err := model.ParseArtworkID(id.String())

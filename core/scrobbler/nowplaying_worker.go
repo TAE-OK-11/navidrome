@@ -32,17 +32,26 @@ func (p *playTracker) sendNowPlayingSignal() {
 
 func (p *playTracker) nowPlayingWorker() {
 	defer close(p.workerDone)
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
 	for {
 		select {
 		case <-p.shutdown:
 			return
-		case <-time.After(time.Second):
+		case <-timer.C:
 		case <-p.npSignal:
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
 		}
 
 		p.npMu.Lock()
 		if len(p.npQueue) == 0 {
 			p.npMu.Unlock()
+			timer.Reset(time.Second)
 			continue
 		}
 
@@ -55,6 +64,7 @@ func (p *playTracker) nowPlayingWorker() {
 		for _, entry := range entries {
 			p.dispatchNowPlaying(entry.ctx, entry.userId, entry.track, entry.position)
 		}
+		timer.Reset(time.Second)
 	}
 }
 

@@ -146,7 +146,7 @@ var mediaFileFilter = sync.OnceValue(func() map[string]filterFunc {
 		"has_rating": annotationBoolFilter("rating"),
 		"genre_id":   tagIDFilter,
 		"missing":    booleanFilter,
-		"artists_id": artistFilter,
+		"artists_id": mediaFileArtistFilter,
 		"library_id": libraryIdFilter,
 		"path":       startsWithFilter("media_file.path"),
 	}
@@ -158,6 +158,10 @@ var mediaFileFilter = sync.OnceValue(func() map[string]filterFunc {
 	}
 	return filters
 })
+
+func mediaFileArtistFilter(_ string, value any) Sqlizer {
+	return ParticipantIDFilter("media_file", value, model.RoleAlbumArtist, model.RoleArtist)
+}
 
 func mediaFileRecentlyAddedSort() string {
 	if conf.Server.RecentlyAddedByModTime {

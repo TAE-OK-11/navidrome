@@ -47,17 +47,26 @@ func AlbumsByArtist() Options {
 }
 
 func AlbumsByArtistID(artistId string) Options {
-	filters := []Sqlizer{
-		persistence.Exists("json_tree(participants, '$.albumartist')", Eq{"value": artistId}),
-	}
+	roles := []model.Role{model.RoleAlbumArtist}
 	if conf.Server.Subsonic.ArtistParticipations {
-		filters = append(filters,
-			persistence.Exists("json_tree(participants, '$.artist')", Eq{"value": artistId}),
-		)
+		roles = append(roles, model.RoleArtist)
 	}
 	return addDefaultFilters(Options{
 		Sort:    "max_year",
-		Filters: Or(filters),
+		Filters: persistence.ParticipantIDFilter("album", artistId, roles...),
+	})
+}
+
+// AlbumsByContributingArtistID matches albums where the artist performs on a track but is not the
+// album artist. The disjoint complement of AlbumsByArtistID, so an artist's own discography never
+// leaks into it.
+func AlbumsByContributingArtistID(artistId string) Options {
+	return addDefaultFilters(Options{
+		Sort: "max_year",
+		Filters: And{
+			persistence.ParticipantIDFilter("album", artistId, model.RoleArtist),
+			persistence.NotParticipantIDFilter("album", artistId, model.RoleAlbumArtist),
+		},
 	})
 }
 
@@ -87,6 +96,15 @@ func SongsByAlbum(albumId string) Options {
 	return addDefaultFilters(Options{
 		Filters: Eq{"album_id": albumId},
 		Sort:    "album",
+	})
+}
+
+// SongsByArtistID matches media files where the artist participates as album or track artist, in
+// album order.
+func SongsByArtistID(artistId string) Options {
+	return addDefaultFilters(Options{
+		Sort:    "album",
+		Filters: persistence.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
 	})
 }
 

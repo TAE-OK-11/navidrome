@@ -112,7 +112,7 @@ func SongsByGenreAndYearRange(genre string, fromYear, toYear int) Options {
 	options := Options{}
 	ff := And{}
 	if genre != "" {
-		ff = append(ff, filterByGenre(genre))
+		ff = append(ff, persistence.SongGenres.ByName(genre))
 	}
 	if fromYear != 0 {
 		ff = append(ff, GtOrEq{"year": fromYear})
@@ -156,18 +156,12 @@ func ApplyArtistLibraryFilter(opts Options, musicFolderIds []int) Options {
 	return opts
 }
 
-func ByGenre(genre string) Options {
-	return addDefaultFilters(Options{
-		Sort:    "name",
-		Filters: filterByGenre(genre),
-	})
+func AlbumsByGenre(genre string) Options {
+	return addDefaultFilters(Options{Sort: "name", Filters: persistence.AlbumGenres.ByName(genre)})
 }
 
-func filterByGenre(genre string) Sqlizer {
-	return persistence.Exists(`json_tree(tags, "$.genre")`, And{
-		Like{"value": genre},
-		NotEq{"atom": nil},
-	})
+func SongsByGenre(genre string) Options {
+	return addDefaultFilters(Options{Sort: "name", Filters: persistence.SongGenres.ByName(genre)})
 }
 
 func ByRating() Options {

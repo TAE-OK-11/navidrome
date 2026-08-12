@@ -131,6 +131,19 @@ func (r *shareRepository) loadMedia(share *model.Share) error {
 	return nil
 }
 
+// ownerContext returns a context scoped to the share owner, so repository
+// queries apply the owner's library access when a public share is rendered.
+func (r *shareRepository) ownerContext(share *model.Share) (context.Context, error) {
+	owner, err := NewUserRepository(r.ctx, r.db).Get(share.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("loading share owner %q: %w", share.UserID, err)
+	}
+	if owner == nil {
+		return nil, fmt.Errorf("share owner %q not found", share.UserID)
+	}
+	return request.WithUser(r.ctx, *owner), nil
+}
+
 func sortByIdPosition(mfs model.MediaFiles, ids []string) model.MediaFiles {
 	m := map[string]int{}
 	for i, mf := range mfs {

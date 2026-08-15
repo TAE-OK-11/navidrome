@@ -66,9 +66,6 @@ var _ = Describe("Provider - SimilarSongs", func() {
 					Participants: model.Participants{model.RoleArtist: model.ParticipantList{dmParticipant}},
 				}
 
-				// GetEntityByID tries Artist, Album, Playlist, then MediaFile
-				artistRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
-				albumRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
 				mediaFileRepo.On("Get", "track-1").Return(&track, nil).Once()
 
 				agentsCombined.On("GetSimilarSongsByTrack", mock.Anything, "track-1", "Just Can't Get Enough", "Depeche Mode", "track-mbid", 5).
@@ -126,21 +123,11 @@ var _ = Describe("Provider - SimilarSongs", func() {
 				artist := model.Artist{ID: "artist-1", Name: "Artist"}
 				song := model.MediaFile{ID: "song-1", Title: "Song One", ArtistID: "artist-1", MbzRecordingID: "mbid-1"}
 
-				// GetEntityByID for the initial call tries Artist, Album, Playlist, then MediaFile
-				artistRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
-				albumRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
 				mediaFileRepo.On("Get", "track-1").Return(&track, nil).Once()
 
 				agentsCombined.On("GetSimilarSongsByTrack", mock.Anything, "track-1", "Track", "Artist", "", mock.Anything).
 					Return([]agents.Song{}, nil).Once()
 
-				// Fallback calls getArtist(id) which calls GetEntityByID again - this time it finds the mediafile
-				// and recursively calls getArtist(v.ArtistID)
-				artistRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
-				albumRepo.On("Get", "track-1").Return(nil, model.ErrNotFound).Once()
-				mediaFileRepo.On("Get", "track-1").Return(&track, nil).Once()
-
-				// Then it recurses with the artist-1 ID
 				artistRepo.On("Get", "artist-1").Return(&artist, nil).Maybe()
 				artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
 					return opt.Max == 1 && opt.Filters != nil
@@ -171,8 +158,7 @@ var _ = Describe("Provider - SimilarSongs", func() {
 				album := model.Album{ID: "album-1", Name: "Speak & Spell", AlbumArtist: "Depeche Mode", MbzAlbumID: "album-mbid"}
 				matchedSong := model.MediaFile{ID: "matched-1", Title: "New Life", Artist: "Depeche Mode", MbzRecordingID: "song-mbid"}
 
-				// GetEntityByID tries Artist, Album, Playlist, then MediaFile
-				artistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
+				mediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 				albumRepo.On("Get", "album-1").Return(&album, nil).Once()
 
 				agentsCombined.On("GetSimilarSongsByAlbum", mock.Anything, "album-1", "Speak & Spell", "Depeche Mode", "album-mbid", 5).
@@ -208,19 +194,12 @@ var _ = Describe("Provider - SimilarSongs", func() {
 				artist := model.Artist{ID: "artist-1", Name: "Artist"}
 				song := model.MediaFile{ID: "song-1", Title: "Song One", ArtistID: "artist-1", MbzRecordingID: "mbid-1"}
 
-				// GetEntityByID for the initial call tries Artist, Album, Playlist, then MediaFile
-				artistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
+				mediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 				albumRepo.On("Get", "album-1").Return(&album, nil).Once()
 
 				agentsCombined.On("GetSimilarSongsByAlbum", mock.Anything, "album-1", "Album", "Artist", "", mock.Anything).
 					Return(nil, agents.ErrNotFound).Once()
 
-				// Fallback calls getArtist(id) which calls GetEntityByID again - this time it finds the album
-				// and recursively calls getArtist(v.AlbumArtistID)
-				artistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
-				albumRepo.On("Get", "album-1").Return(&album, nil).Once()
-
-				// Then it recurses with the artist-1 ID
 				artistRepo.On("Get", "artist-1").Return(&artist, nil).Maybe()
 				artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
 					return opt.Max == 1 && opt.Filters != nil
@@ -251,6 +230,8 @@ var _ = Describe("Provider - SimilarSongs", func() {
 				artist := model.Artist{ID: "artist-1", Name: "Depeche Mode", MbzArtistID: "artist-mbid"}
 				matchedSong := model.MediaFile{ID: "matched-1", Title: "Enjoy the Silence", Artist: "Depeche Mode", MbzRecordingID: "song-mbid"}
 
+				mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Once()
+				albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Once()
 				artistRepo.On("Get", "artist-1").Return(&artist, nil).Once()
 				agentsCombined.On("GetSimilarSongsByArtist", mock.Anything, "artist-1", "Depeche Mode", "artist-mbid", 5).
 					Return([]agents.Song{
@@ -289,6 +270,10 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		song2 := model.MediaFile{ID: "song-2", Title: "Song Two", ArtistID: "artist-1", MbzRecordingID: "mbid-2"}
 		song3 := model.MediaFile{ID: "song-3", Title: "Song Three", ArtistID: "artist-3", MbzRecordingID: "mbid-3"}
 
+		mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
 		artistRepo.On("Get", "artist-1").Return(&artist1, nil).Maybe()
 		artistRepo.On("Get", "artist-3").Return(&similarArtist, nil).Maybe()
 
@@ -360,6 +345,8 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		artist1 := model.Artist{ID: "artist-1", Name: "Artist One"}
 		song1 := model.MediaFile{ID: "song-1", Title: "Song One", ArtistID: "artist-1", MbzRecordingID: "mbid-1"}
 
+		mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
 		artistRepo.On("Get", "artist-1").Return(&artist1, nil).Maybe()
 		artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
 			return opt.Max == 1 && opt.Filters != nil
@@ -393,6 +380,8 @@ var _ = Describe("Provider - SimilarSongs", func() {
 	It("returns empty list when GetArtistTopSongs returns error", func() {
 		artist1 := model.Artist{ID: "artist-1", Name: "Artist One"}
 
+		mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
 		artistRepo.On("Get", "artist-1").Return(&artist1, nil).Maybe()
 		artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
 			return opt.Max == 1 && opt.Filters != nil
@@ -423,6 +412,8 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		song1 := model.MediaFile{ID: "song-1", Title: "Song One", ArtistID: "artist-1", MbzRecordingID: "mbid-1"}
 		song2 := model.MediaFile{ID: "song-2", Title: "Song Two", ArtistID: "artist-1", MbzRecordingID: "mbid-2"}
 
+		mediaFileRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
+		albumRepo.On("Get", "artist-1").Return(nil, model.ErrNotFound).Maybe()
 		artistRepo.On("Get", "artist-1").Return(&artist1, nil).Maybe()
 		artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
 			return opt.Max == 1 && opt.Filters != nil

@@ -173,26 +173,38 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 }
 
 type Stream struct {
-	ctx      context.Context
-	mf       *model.MediaFile
-	bitRate  int
-	format   string
-	playback bool
+	ctx         context.Context
+	mf          *model.MediaFile
+	bitRate     int
+	format      string
+	name        string
+	contentType string
+	playback    bool
 	io.ReadCloser
 	io.Seeker
 }
 
 var streamCopyBufferPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, 128*1024)
+		buf := make([]byte, 32*1024)
 		return &buf
 	},
 }
 
-func (s *Stream) Seekable() bool      { return s.Seeker != nil }
-func (s *Stream) Duration() float32   { return s.mf.Duration }
-func (s *Stream) ContentType() string { return mime.TypeByExtension("." + s.format) }
-func (s *Stream) Name() string        { return s.mf.Title + "." + s.format }
+func (s *Stream) Seekable() bool { return s.Seeker != nil }
+func (s *Stream) Duration() float32 { return s.mf.Duration }
+func (s *Stream) ContentType() string {
+	if s.contentType == "" {
+		s.contentType = mime.TypeByExtension("." + s.format)
+	}
+	return s.contentType
+}
+func (s *Stream) Name() string {
+	if s.name == "" {
+		s.name = s.mf.Title + "." + s.format
+	}
+	return s.name
+}
 func (s *Stream) ModTime() time.Time  { return s.mf.UpdatedAt }
 func (s *Stream) EstimatedContentLength() int {
 	return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
@@ -237,6 +249,9 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		started := time.Now()
 		if observed != nil {
 			defer s.finishPlaybackObservation(ctx, r, observed, observation, started)
+		}
+		if ctype := s.ContentType(); ctype != "" {
+			writer.Header().Set("Content-Type", ctype)
 		}
 		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
 		return -1, nil

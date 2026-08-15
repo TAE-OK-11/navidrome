@@ -170,10 +170,8 @@ var _ = Describe("Provider - ArtistImage", func() {
 	})
 
 	It("derives artist ID from MediaFile ID", func() {
-		// Arrange: Add mocks for the initial GetEntityByID lookups
+		// getArtist: artist miss, then media file, then the real artist id
 		mockArtistRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
-		mockAlbumRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
-		// Default mocks for MediaFileRepo.Get("mf-1") and ArtistRepo.Get("artist-1") handle the rest
 		expectedURL, _ := url.Parse("http://example.com/large.jpg")
 
 		// Act
@@ -182,17 +180,15 @@ var _ = Describe("Provider - ArtistImage", func() {
 		// Assert
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-1") // GetEntityByID sequence
-		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "mf-1")  // GetEntityByID sequence
+		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1") // Should be called after getting MF
+		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
 		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
 	})
 
 	It("derives artist ID from Album ID", func() {
-		// Arrange: Add mock for the initial GetEntityByID lookup
 		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
-		// Default mocks for AlbumRepo.Get("album-1") and ArtistRepo.Get("artist-1") handle the rest
+		mockMediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 		expectedURL, _ := url.Parse("http://example.com/large.jpg")
 
 		// Act
@@ -201,21 +197,19 @@ var _ = Describe("Provider - ArtistImage", func() {
 		// Assert
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1") // GetEntityByID sequence
+		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
+		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1") // Should be called after getting Album
+		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
 		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
 	})
 
 	It("returns ErrNotFound if derived artist is not found", func() {
 		// Arrange
-		// Add mocks for the initial GetEntityByID lookups
 		mockArtistRepo.On("Get", "mf-bad-artist").Return(nil, model.ErrNotFound).Once()
-		mockAlbumRepo.On("Get", "mf-bad-artist").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "mf-bad-artist").Return(&model.MediaFile{ID: "mf-bad-artist", ArtistID: "not-found"}, nil).Once()
-		// Add expectation for the recursive GetEntityByID call for the MediaFileRepo
 		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
-		// The default mocks for ArtistRepo/AlbumRepo handle the final "not-found" lookups
+		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 
 		// Act
 		imgURL, err := provider.ArtistImage(ctx, "mf-bad-artist")
@@ -223,8 +217,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 		// Assert
 		Expect(err).To(MatchError(model.ErrNotFound))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-bad-artist") // GetEntityByID sequence
-		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "mf-bad-artist")  // GetEntityByID sequence
+		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-bad-artist")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "mf-bad-artist")
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockImageAgent.AssertNotCalled(GinkgoT(), "GetArtistImages", mock.Anything, mock.Anything, mock.Anything, mock.Anything)

@@ -1,6 +1,7 @@
 package subsonic
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"sync"
 
 	"github.com/deluan/rest"
 	"github.com/go-chi/chi/v5"
@@ -33,6 +35,36 @@ import (
 const Version = "1.16.1"
 
 var validJSIdentifier = regexp.MustCompile(`^[a-zA-Z_$][a-zA-Z0-9_$.]*$`)
+
+var responseBufferPool = sync.Pool{
+	New: func() any {
+		return bytes.NewBuffer(make([]byte, 0, 4096))
+	},
+}
+
+func borrowResponseBuffer() *bytes.Buffer {
+	buf := responseBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
+
+func recycleResponseBuffer(buf *bytes.Buffer) {
+	if buf.Cap() > 256<<10 {
+		return
+	}
+	responseBufferPool.Put(buf)
+}
+
+func encodeJSON(buf *bytes.Buffer, value any) error {
+	if err := json.NewEncoder(buf).Encode(value); err != nil {
+		return err
+	}
+	// Encoder always appends a newline; keep the historical Marshal payload.
+	if n := buf.Len(); n > 0 && buf.Bytes()[n-1] == '\n' {
+		buf.Truncate(n - 1)
+	}
+	return nil
+}
 
 type handler = func(*http.Request) (*responses.Subsonic, error)
 type handlerRaw = func(http.ResponseWriter, *http.Request) (*responses.Subsonic, error)
@@ -181,7 +213,6 @@ func (api *Router) routes() http.Handler {
 			h(r.With(adminOnly), "getUsers", api.GetUsers)
 		})
 		r.Group(func(r chi.Router) {
-			r.Use(getPlayer(api.players))
 			hr(r, "getAvatar", api.GetAvatar)
 			h(r, "getLyrics", api.GetLyrics)
 			h(r, "getLyricsBySongId", api.GetLyricsBySongId)
@@ -352,13 +383,13 @@ func sendResponse(w http.ResponseWriter, r *http.Request, payload *responses.Sub
 func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *responses.Subsonic, status int) {
 	p := req.Params(r)
 	f := p.StringOr("f", "")
-	var response []byte
+	buf := borrowResponseBuffer()
+	defer recycleResponseBuffer(buf)
 	var err error
 	switch f {
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
-		wrapper := &responses.JsonWrapper{Subsonic: *payload}
-		response, err = json.Marshal(wrapper)
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
 	case "jsonp":
 		callback := p.StringOr("callback", "")
 		if !validJSIdentifier.MatchString(callback) {
@@ -367,16 +398,19 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 			errResp := newResponse()
 			errResp.Status = responses.StatusFailed
 			errResp.Error = &responses.Error{Code: responses.ErrorGeneric, Message: "invalid callback parameter"}
-			response, _ = json.Marshal(responses.JsonWrapper{Subsonic: *errResp})
+			_ = encodeJSON(buf, responses.JsonWrapper{Subsonic: *errResp})
 			break
 		}
 		w.Header().Set("Content-Type", "application/javascript")
-		wrapper := &responses.JsonWrapper{Subsonic: *payload}
-		response, err = json.Marshal(wrapper)
-		response = fmt.Appendf(nil, "%s(%s)", callback, response)
+		body, marshalErr := json.Marshal(responses.JsonWrapper{Subsonic: *payload})
+		if marshalErr != nil {
+			err = marshalErr
+			break
+		}
+		_, err = fmt.Fprintf(buf, "%s(%s)", callback, body)
 	default:
 		w.Header().Set("Content-Type", "application/xml")
-		response, err = xml.Marshal(payload)
+		err = xml.NewEncoder(buf).Encode(payload)
 	}
 	// This should never happen, but if it does, we need to know
 	if err != nil {
@@ -388,6 +422,7 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 		w.WriteHeader(status)
 	}
 
+	response := buf.Bytes()
 	if payload.Status == responses.StatusOK {
 		if log.IsGreaterOrEqualTo(log.LevelTrace) {
 			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK", "body", string(response))

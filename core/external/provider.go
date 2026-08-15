@@ -101,23 +101,19 @@ func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider
 }
 
 func (e *provider) getAlbum(ctx context.Context, id string) (auxAlbum, error) {
-	var entity any
-	entity, err := model.GetEntityByID(ctx, e.ds, id)
+	if album, err := e.ds.Album(ctx).Get(id); err == nil {
+		return auxAlbum{Album: *album}, nil
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return auxAlbum{}, err
+	}
+	mf, err := e.ds.MediaFile(ctx).Get(id)
 	if err != nil {
 		return auxAlbum{}, err
 	}
-
-	var album auxAlbum
-	switch v := entity.(type) {
-	case *model.Album:
-		album.Album = *v
-	case *model.MediaFile:
-		return e.getAlbum(ctx, v.AlbumID)
-	default:
+	if mf.AlbumID == "" || mf.AlbumID == id {
 		return auxAlbum{}, model.ErrNotFound
 	}
-
-	return album, nil
+	return e.getAlbum(ctx, mf.AlbumID)
 }
 
 func (e *provider) UpdateAlbumInfo(ctx context.Context, id string) (*model.Album, error) {
@@ -195,24 +191,27 @@ func (e *provider) populateAlbumInfo(ctx context.Context, album auxAlbum) (auxAl
 }
 
 func (e *provider) getArtist(ctx context.Context, id string) (auxArtist, error) {
-	var entity any
-	entity, err := model.GetEntityByID(ctx, e.ds, id)
+	if artist, err := e.ds.Artist(ctx).Get(id); err == nil {
+		return auxArtist{Artist: *artist}, nil
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return auxArtist{}, err
+	}
+	if mf, err := e.ds.MediaFile(ctx).Get(id); err == nil {
+		if mf.ArtistID == "" || mf.ArtistID == id {
+			return auxArtist{}, model.ErrNotFound
+		}
+		return e.getArtist(ctx, mf.ArtistID)
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return auxArtist{}, err
+	}
+	album, err := e.ds.Album(ctx).Get(id)
 	if err != nil {
 		return auxArtist{}, err
 	}
-
-	var artist auxArtist
-	switch v := entity.(type) {
-	case *model.Artist:
-		artist.Artist = *v
-	case *model.MediaFile:
-		return e.getArtist(ctx, v.ArtistID)
-	case *model.Album:
-		return e.getArtist(ctx, v.AlbumArtistID)
-	default:
+	if album.AlbumArtistID == "" || album.AlbumArtistID == id {
 		return auxArtist{}, model.ErrNotFound
 	}
-	return artist, nil
+	return e.getArtist(ctx, album.AlbumArtistID)
 }
 
 func (e *provider) UpdateArtistInfo(ctx context.Context, id string, similarCount int, includeNotPresent bool) (*model.Artist, error) {
@@ -312,6 +311,9 @@ func (e *provider) SimilarSongs(ctx context.Context, id string, count int) (mode
 				return e.ag.GetSimilarSongsByTrack(ctx, v.ID, v.Title, v.Artist, v.MbzRecordingID, count)
 			},
 			func() (model.MediaFiles, error) {
+				if v.ArtistID != "" {
+					return e.similarSongsFallback(ctx, v.ArtistID, count)
+				}
 				return e.similarSongsFallback(ctx, id, count)
 			})
 	case *model.Album:
@@ -330,7 +332,7 @@ func (e *provider) SimilarSongs(ctx context.Context, id string, count int) (mode
 				return e.ag.GetSimilarSongsByArtist(ctx, v.ID, v.Name, v.MbzArtistID, count)
 			},
 			func() (model.MediaFiles, error) {
-				if res, ferr := e.similarSongsFallback(ctx, id, count); ferr == nil && len(res) > 0 {
+				if res, ferr := e.similarSongsFallback(ctx, v.ID, count); ferr == nil && len(res) > 0 {
 					return res, nil
 				}
 				return e.seedMix(ctx, count, func() (model.MediaFiles, error) {

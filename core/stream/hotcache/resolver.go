@@ -24,7 +24,7 @@ import (
 const (
 	metadataVersion = 1
 	defaultMaxSize  = "3GiB"
-	copyBufferSize  = 256 * 1024
+	copyBufferSize  = 64 * 1024
 )
 
 type metadata struct {

@@ -46,13 +46,8 @@ var _ = Describe("Provider - AlbumImage", func() {
 		agentsCombined := &mockAgents{albumInfoAgent: mockAlbumAgent}
 		provider = NewProvider(ds, agentsCombined, matcher.New(ds))
 
-		// Default mocks
-		// Mocks for GetEntityByID sequence (initial failed lookups)
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
-		mockArtistRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
-		mockAlbumRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
-
-		// Default mock for non-existent entities - Use Maybe() for flexibility
+		mockAlbumRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Maybe()
+		mockMediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Maybe()
 		mockArtistRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
@@ -60,7 +55,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 	It("returns the largest image URL when successful", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 		// Explicitly mock agent call for this test
 		mockAlbumAgent.On("GetAlbumImages", ctx, "Album One", "", "").
@@ -75,15 +69,12 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1") // From GetEntityByID
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
-		mockArtistRepo.AssertNotCalled(GinkgoT(), "Get", "artist-1")                       // Artist lookup no longer happens in getAlbum
+		mockArtistRepo.AssertNotCalled(GinkgoT(), "Get", "artist-1")
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", ctx, "Album One", "", "") // Expect empty artist name
 	})
 
 	It("returns ErrNotFound if the album is not found in the DB", func() {
-		// Arrange: Explicitly expect the full GetEntityByID sequence for "not-found"
-		mockArtistRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
 
@@ -91,7 +82,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).To(MatchError("data not found"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockAlbumAgent.AssertNotCalled(GinkgoT(), "GetAlbumImages", mock.Anything, mock.Anything, mock.Anything)
@@ -99,7 +89,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 	It("returns the agent error if the agent fails", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 
 		agentErr := errors.New("agent failure")
@@ -110,7 +99,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).To(MatchError("agent failure"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockArtistRepo.AssertNotCalled(GinkgoT(), "Get", "artist-1")
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", ctx, "Album One", "", "") // Expect empty artist
@@ -118,7 +106,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 	It("returns ErrNotFound if the agent returns ErrNotFound", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 
 		// Explicitly mock agent call for this test
@@ -128,14 +115,12 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).To(MatchError("data not found"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", ctx, "Album One", "", "") // Expect empty artist
 	})
 
 	It("returns ErrNotFound if the agent returns no images", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 
 		// Explicitly mock agent call for this test
@@ -146,7 +131,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).To(MatchError("data not found"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", ctx, "Album One", "", "") // Expect empty artist
 	})
@@ -154,8 +138,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 	It("returns context error if context is canceled", func() {
 		// Arrange
 		cctx, cancelCtx := context.WithCancel(ctx)
-		// Mock the necessary DB calls *before* canceling the context
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 		// Expect the agent call even if context is cancelled, returning the context error
 		mockAlbumAgent.On("GetAlbumImages", cctx, "Album One", "", "").Return(nil, context.Canceled).Once()
@@ -166,18 +148,14 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).To(MatchError("context canceled"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		// Agent should now be called, verify this expectation
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", cctx, "Album One", "", "")
 	})
 
 	It("derives album ID from MediaFile ID", func() {
-		// Arrange: Mock full GetEntityByID for "mf-1" and recursive "album-1"
-		mockArtistRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "mf-1").Return(&model.MediaFile{ID: "mf-1", Title: "Track One", ArtistID: "artist-1", AlbumID: "album-1"}, nil).Once()
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 
 		// Explicitly mock agent call for this test
@@ -193,10 +171,8 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockArtistRepo.AssertNotCalled(GinkgoT(), "Get", "artist-1")
 		mockAlbumAgent.AssertCalled(GinkgoT(), "GetAlbumImages", ctx, "Album One", "", "")
@@ -204,7 +180,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 	It("handles different image orders from agent", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 		// Explicitly mock agent call for this test
 		mockAlbumAgent.On("GetAlbumImages", ctx, "Album One", "", "").
@@ -224,7 +199,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 	It("handles agent returning only one image", func() {
 		// Arrange
-		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once() // Expect GetEntityByID sequence
 		mockAlbumRepo.On("Get", "album-1").Return(&model.Album{ID: "album-1", Name: "Album One", AlbumArtistID: "artist-1"}, nil).Once()
 		// Explicitly mock agent call for this test
 		mockAlbumAgent.On("GetAlbumImages", ctx, "Album One", "", "").
@@ -241,24 +215,17 @@ var _ = Describe("Provider - AlbumImage", func() {
 	})
 
 	It("returns ErrNotFound if deriving album ID fails", func() {
-		// Arrange: Mock full GetEntityByID for "mf-no-album" and recursive "not-found"
-		mockArtistRepo.On("Get", "mf-no-album").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "mf-no-album").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "mf-no-album").Return(&model.MediaFile{ID: "mf-no-album", Title: "Track No Album", ArtistID: "artist-1", AlbumID: "not-found"}, nil).Once()
-		mockArtistRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
 		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
-		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Once()
 
 		imgURL, err := provider.AlbumImage(ctx, "mf-no-album")
 
 		Expect(err).To(MatchError("data not found"))
 		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-no-album")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "mf-no-album")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "mf-no-album")
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "not-found")
-		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockAlbumAgent.AssertNotCalled(GinkgoT(), "GetAlbumImages", mock.Anything, mock.Anything, mock.Anything)
 	})
 
@@ -276,7 +243,6 @@ var _ = Describe("Provider - AlbumImage", func() {
 			albumWithEnDash = &model.Album{ID: "album-endash", Name: originalAlbumName, AlbumArtistID: "artist-1"}
 			mockArtistRepo.Mock = mock.Mock{} // Reset default expectations
 			mockAlbumRepo.Mock = mock.Mock{}  // Reset default expectations
-			mockArtistRepo.On("Get", "album-endash").Return(nil, model.ErrNotFound).Once()
 			mockAlbumRepo.On("Get", "album-endash").Return(albumWithEnDash, nil).Once()
 
 			expectedURL, _ = url.Parse("http://example.com/album.jpg")

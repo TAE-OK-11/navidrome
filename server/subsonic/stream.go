@@ -68,14 +68,8 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 		return nil, newError(responses.ErrorAuthorizationFail, "downloads are disabled")
 	}
 
-	entity, err := model.GetEntityByID(ctx, api.ds, id)
-	if err != nil {
-		return nil, err
-	}
-
 	maxBitRate := p.IntOr("bitrate", 0)
 	format, _ := p.String("format")
-
 	if format == "" {
 		if conf.Server.AutoTranscodeDownload {
 			// if we are not provided a format, see if we have requested transcoding for this client
@@ -94,6 +88,19 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 		}
 	}
 
+	// Single-track downloads are the common case. Resolve the media file
+	// through the streaming cache first so we skip the multi-table entity walk.
+	if mf, err := api.mediaFileForStreaming(ctx, id); err == nil {
+		return api.serveMediaDownload(ctx, w, r, mf, id, format, maxBitRate)
+	} else if err != nil && !errors.Is(err, model.ErrNotFound) {
+		return nil, err
+	}
+
+	entity, err := model.GetEntityByID(ctx, api.ds, id)
+	if err != nil {
+		return nil, err
+	}
+
 	setHeaders := func(name string) {
 		w.Header().Set("Content-Disposition", attachmentDisposition(name+".zip"))
 		w.Header().Set("Content-Type", "application/zip")
@@ -107,23 +114,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 
 	switch v := entity.(type) {
 	case *model.MediaFile:
-		streamReq := api.transcodeDecision.ResolveRequest(ctx, v, format, maxBitRate, 0)
-		stream, err := api.streamer.NewStream(ctx, v, streamReq)
-		if err != nil {
-			return nil, err
-		}
-
-		// Make sure the stream will be closed at the end, to avoid leakage
-		defer func() {
-			if err := stream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
-				log.Error("Error closing stream", "id", id, "file", stream.Name(), err)
-			}
-		}()
-
-		w.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
-
-		_, err = stream.Serve(ctx, w, r)
-		return nil, err
+		return api.serveMediaDownload(ctx, w, r, v, id, format, maxBitRate)
 	case *model.Album:
 		setHeaders(v.Name)
 		return nil, writeArchive(func(out http.ResponseWriter) error {
@@ -142,6 +133,22 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	default:
 		return nil, model.ErrNotFound
 	}
+}
+
+func (api *Router) serveMediaDownload(ctx context.Context, w http.ResponseWriter, r *http.Request, mf *model.MediaFile, id, format string, maxBitRate int) (*responses.Subsonic, error) {
+	streamReq := api.transcodeDecision.ResolveRequest(ctx, mf, format, maxBitRate, 0)
+	stream, err := api.streamer.NewStream(ctx, mf, streamReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := stream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Error("Error closing stream", "id", id, "file", stream.Name(), err)
+		}
+	}()
+	w.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
+	_, err = stream.Serve(ctx, w, r)
+	return nil, err
 }
 
 func attachmentDisposition(name string) string {

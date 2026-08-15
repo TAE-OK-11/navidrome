@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	// Stream metadata is deliberately short-lived: it covers bursty Range
-	// requests without hiding scanner updates for more than one second.
-	streamMediaCacheLimit         = 256
-	streamMediaCacheTTL           = time.Second
+	// Covers bursty Range/seek requests for the current track without
+	// pinning scanner updates for long. The library scanner on this
+	// deployment is typically idle, so a few seconds of reuse is safe.
+	streamMediaCacheLimit         = 512
+	streamMediaCacheTTL           = 8 * time.Second
 	streamMediaCacheLookupTimeout = 5 * time.Second
 )
 

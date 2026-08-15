@@ -43,7 +43,7 @@ const CONTROL_STREAM_LIMIT: u64 = 8;
 const SEND_CAPACITY_FACTOR: f64 = 2.0;
 const MAX_AMPLIFICATION_FACTOR: usize = 3;
 const SOCKET_BUFFER_SIZE: usize = 7 * 1024 * 1024;
-const MAX_ADMISSION_PEERS: usize = 32_768;
+const MAX_ADMISSION_PEERS: usize = 2_048;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 
 type BoxError = Box<dyn StdError + Send + Sync>;
@@ -84,10 +84,16 @@ fn main() -> Result<()> {
     let config: Config =
         serde_json::from_str(&config_line).context("failed to decode supervisor configuration")?;
 
-    let worker_threads = std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(2)
-        .clamp(1, 8);
+    let worker_threads = std::env::var("NAVIDROME_H3_THREADS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(usize::from)
+                .unwrap_or(1)
+                .clamp(1, 2)
+        })
+        .clamp(1, 4);
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_threads)
         .thread_name("navidrome-h3")

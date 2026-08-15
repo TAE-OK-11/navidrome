@@ -258,8 +258,10 @@ func (r sqlRepository) userSeesAllLibraries(visible []int) bool {
 	if len(visible) == 0 {
 		return false
 	}
-	if total, ok := cachedLibraryCount(); ok {
-		return int64(len(visible)) == total
+	// Trust the count cache only to prove a strict subset. Equality can be
+	// stale after a library insert and would skip the filter, leaking rows.
+	if total, ok := cachedLibraryCount(); ok && int64(len(visible)) < total {
+		return false
 	}
 	total, err := NewLibraryRepository(r.ctx, r.db).CountAll()
 	if err != nil || total == 0 {

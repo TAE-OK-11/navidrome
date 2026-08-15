@@ -306,6 +306,9 @@ var _ = Describe("sqlRepository", func() {
 			r.db = GetDBXBuilder()
 			_, err := r.db.NewQuery("INSERT OR IGNORE INTO library (id, name, path) VALUES (999002, 'Lib 999002', '/lib999002')").Execute()
 			Expect(err).ToNot(HaveOccurred())
+			libLock.Lock()
+			libCountValid = false
+			libLock.Unlock()
 
 			var ids []int
 			err = r.queryAllSlice(squirrel.Select("id").From("library").OrderBy("id"), &ids)
@@ -319,6 +322,9 @@ var _ = Describe("sqlRepository", func() {
 		AfterEach(func() {
 			_, err := r.db.NewQuery("DELETE FROM library WHERE id = 999002").Execute()
 			Expect(err).ToNot(HaveOccurred())
+			libLock.Lock()
+			libCountValid = false
+			libLock.Unlock()
 			r.db = savedDB
 		})
 

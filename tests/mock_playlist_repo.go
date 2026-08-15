@@ -7,6 +7,7 @@ import (
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/id"
+	"github.com/navidrome/navidrome/utils/slice"
 )
 
 func CreateMockPlaylistRepo() *MockPlaylistRepo {
@@ -18,27 +19,61 @@ func CreateMockPlaylistRepo() *MockPlaylistRepo {
 
 type MockPlaylistRepo struct {
 	model.PlaylistRepository
-	Data       map[string]*model.Playlist // keyed by ID
-	PathMap    map[string]*model.Playlist // keyed by path
-	All        model.Playlists
-	Last       *model.Playlist
-	Deleted    []string
-	Starred    map[string]bool // itemID -> starred
-	Ratings    map[string]int  // itemID -> rating
-	Err        bool
-	TracksRepo model.PlaylistTrackRepository
+	Data            map[string]*model.Playlist // keyed by ID
+	PathMap         map[string]*model.Playlist // keyed by path
+	All             model.Playlists
+	Options         model.QueryOptions
+	Last            *model.Playlist
+	Deleted         []string
+	Starred         map[string]bool // itemID -> starred
+	Ratings         map[string]int  // itemID -> rating
+	Err             bool
+	TracksRepo      model.PlaylistTrackRepository
+	TracksRefreshed bool
 }
 
 func (m *MockPlaylistRepo) SetError(err bool) {
 	m.Err = err
 }
 
-func (m *MockPlaylistRepo) SetData(pls model.Playlists) {
-	m.Data = make(map[string]*model.Playlist, len(pls))
-	m.All = pls
+func (m *MockPlaylistRepo) SetData(playlists model.Playlists) {
+	m.Data = make(map[string]*model.Playlist, len(playlists))
+	m.All = playlists
 	for i, p := range m.All {
 		m.Data[p.ID] = &m.All[i]
 	}
+}
+
+func (m *MockPlaylistRepo) GetAll(options ...model.QueryOptions) (model.Playlists, error) {
+	if len(options) > 0 {
+		m.Options = options[0]
+	}
+	if m.Err {
+		return nil, errors.New("error")
+	}
+	return m.All, nil
+}
+
+func (m *MockPlaylistRepo) GetAllIDs(options ...model.QueryOptions) ([]string, error) {
+	all, err := m.GetAll(options...)
+	if err != nil {
+		return nil, err
+	}
+	return slice.Map(all, func(p model.Playlist) string { return p.ID }), nil
+}
+
+func (m *MockPlaylistRepo) GetCursor(options ...model.QueryOptions) (model.PlaylistCursor, error) {
+	res, err := m.GetAll(options...)
+	if err != nil {
+		return nil, err
+	}
+	return func(yield func(model.Playlist, error) bool) {
+		for _, p := range res {
+			if !yield(p, nil) {
+				return
+			}
+		}
+	}, nil
 }
 
 func (m *MockPlaylistRepo) Get(id string) (*model.Playlist, error) {
@@ -55,13 +90,6 @@ func (m *MockPlaylistRepo) Get(id string) (*model.Playlist, error) {
 
 func (m *MockPlaylistRepo) GetWithTracks(id string, _, _ bool) (*model.Playlist, error) {
 	return m.Get(id)
-}
-
-func (m *MockPlaylistRepo) GetAll(_ ...model.QueryOptions) (model.Playlists, error) {
-	if m.Err {
-		return nil, errors.New("error")
-	}
-	return m.All, nil
 }
 
 func (m *MockPlaylistRepo) Put(pls *model.Playlist, _ ...string) error {
@@ -136,7 +164,8 @@ func (m *MockPlaylistRepo) ReassignAnnotation(string, string) error {
 	return nil
 }
 
-func (m *MockPlaylistRepo) Tracks(_ string, _ bool) model.PlaylistTrackRepository {
+func (m *MockPlaylistRepo) Tracks(_ string, refreshSmartPlaylist bool) model.PlaylistTrackRepository {
+	m.TracksRefreshed = refreshSmartPlaylist
 	return m.TracksRepo
 }
 

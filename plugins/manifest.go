@@ -20,7 +20,7 @@ func (p *Permissions) DeclaredNames() []string {
 	var names []string
 	v := reflect.ValueOf(*p)
 	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		f := v.Field(i)
 		if f.Kind() != reflect.Pointer || f.IsNil() {
 			continue

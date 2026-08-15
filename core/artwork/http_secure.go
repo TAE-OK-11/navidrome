@@ -12,7 +12,9 @@ import (
 	"time"
 )
 
-const maxExternalArtworkResponseSize int64 = 10 * 1024 * 1024
+func maxExternalArtworkResponseSize() int64 {
+	return maxImageReadBytes()
+}
 
 var errExternalArtworkTooLarge = errors.New("external artwork response exceeds size limit")
 
@@ -132,8 +134,8 @@ func (r *boundedArtworkReadCloser) Read(p []byte) (int, error) {
 func (r *boundedArtworkReadCloser) Close() error { return r.reader.Close() }
 
 func boundedArtworkResponse(resp *http.Response) (io.ReadCloser, error) {
-	if resp.ContentLength > maxExternalArtworkResponseSize {
+	if resp.ContentLength > maxExternalArtworkResponseSize() {
 		return nil, fmt.Errorf("%w: content length %s", errExternalArtworkTooLarge, strconv.FormatInt(resp.ContentLength, 10))
 	}
-	return &boundedArtworkReadCloser{reader: resp.Body, remaining: maxExternalArtworkResponseSize}, nil
+	return &boundedArtworkReadCloser{reader: resp.Body, remaining: maxExternalArtworkResponseSize()}, nil
 }

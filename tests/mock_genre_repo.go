@@ -15,6 +15,18 @@ func (r *MockedGenreRepo) init() {
 	}
 }
 
+func (r *MockedGenreRepo) Get(id string) (*model.Genre, error) {
+	if r.Error != nil {
+		return nil, r.Error
+	}
+	r.init()
+	g, ok := r.Data[id]
+	if !ok {
+		return nil, model.ErrNotFound
+	}
+	return &g, nil
+}
+
 func (r *MockedGenreRepo) GetAll(...model.QueryOptions) (model.Genres, error) {
 	if r.Error != nil {
 		return nil, r.Error

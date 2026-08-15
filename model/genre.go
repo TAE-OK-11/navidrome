@@ -10,5 +10,6 @@ type Genre struct {
 type Genres []Genre
 
 type GenreRepository interface {
+	Get(id string) (*Genre, error)
 	GetAll(...QueryOptions) (Genres, error)
 }

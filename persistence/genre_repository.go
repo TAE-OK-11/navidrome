@@ -23,6 +23,16 @@ func (r *genreRepository) selectGenre(opt ...model.QueryOptions) SelectBuilder {
 	return r.newSelect(opt...).Columns("tag.tag_value as name")
 }
 
+func (r *genreRepository) Get(id string) (*model.Genre, error) {
+	sel := r.selectGenre().Where(Eq{"tag.id": id})
+	var res model.Genre
+	err := r.queryOne(sel, &res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 func (r *genreRepository) GetAll(opt ...model.QueryOptions) (model.Genres, error) {
 	sq := r.selectGenre(opt...)
 	res := model.Genres{}

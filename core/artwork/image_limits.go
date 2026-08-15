@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"image"
 	"io"
+
+	"github.com/dustin/go-humanize"
+	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/consts"
 )
 
 const (
@@ -39,4 +43,23 @@ func DecodeImage(reader io.Reader) (image.Image, string, error) {
 		return nil, "", err
 	}
 	return image.Decode(io.MultiReader(bytes.NewReader(prefix.Bytes()), reader))
+}
+
+func maxImageReadBytes() int64 {
+	raw := consts.DefaultMaxImageSize
+	if conf.Server != nil && conf.Server.MaxImageSize != "" {
+		raw = conf.Server.MaxImageSize
+	}
+	size, err := humanize.ParseBytes(raw)
+	if err != nil || size == 0 || size > uint64(^uint64(0)>>1) {
+		return 20 << 20
+	}
+	return int64(size)
+}
+
+func capImageReader(r io.ReadCloser) io.ReadCloser {
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.LimitReader(r, maxImageReadBytes()), Closer: r}
 }

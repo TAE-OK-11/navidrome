@@ -34,7 +34,7 @@ func selectImageReader(ctx context.Context, artID model.ArtworkID, extractFuncs 
 		if r != nil {
 			msg := fmt.Sprintf("Found %s artwork", artID.Kind)
 			log.Debug(ctx, msg, "artID", artID, "path", path, "source", f, "elapsed", time.Since(start))
-			return r, path, nil
+			return capImageReader(r), path, nil
 		}
 		log.Trace(ctx, "Failed trying to extract artwork", "artID", artID, "source", f, "elapsed", time.Since(start), err)
 	}

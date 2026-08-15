@@ -76,14 +76,10 @@ func (r *shareRepository) loadMedia(share *model.Share) error {
 	if len(ids) == 0 || ids[0] == "" {
 		return nil
 	}
-	owner, err := NewUserRepository(r.ctx, r.db).Get(share.UserID)
+	ownerCtx, err := r.ownerContext(share)
 	if err != nil {
-		return fmt.Errorf("loading share owner %q: %w", share.UserID, err)
+		return err
 	}
-	if owner == nil {
-		return fmt.Errorf("share owner %q not found", share.UserID)
-	}
-	ownerCtx := request.WithUser(r.ctx, *owner)
 	noMissing := func(cond Sqlizer) Sqlizer {
 		return And{cond, Eq{"missing": false}}
 	}

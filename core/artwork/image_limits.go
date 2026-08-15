@@ -51,7 +51,7 @@ func maxImageReadBytes() int64 {
 		raw = conf.Server.MaxImageSize
 	}
 	size, err := humanize.ParseBytes(raw)
-	if err != nil || size == 0 || size > uint64(^uint64(0)>>1) {
+	if err != nil || size == 0 || size > ^uint64(0)>>1 {
 		return 20 << 20
 	}
 	return int64(size)

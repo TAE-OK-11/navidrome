@@ -92,7 +92,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	// through the streaming cache first so we skip the multi-table entity walk.
 	if mf, err := api.mediaFileForStreaming(ctx, id); err == nil {
 		return api.serveMediaDownload(ctx, w, r, mf, id, format, maxBitRate)
-	} else if err != nil && !errors.Is(err, model.ErrNotFound) {
+	} else if !errors.Is(err, model.ErrNotFound) {
 		return nil, err
 	}
 

@@ -24,7 +24,8 @@ import (
 const (
 	metadataVersion = 1
 	defaultMaxSize  = "3GiB"
-	copyBufferSize  = 64 * 1024
+	copyBufferSize        = 64 * 1024
+	sourceRecheckInterval = 2 * time.Second
 )
 
 type metadata struct {
@@ -56,6 +57,7 @@ type entry struct {
 	lastPersisted    time.Time
 	lastSessionHit   time.Time
 	lastRequestHit   time.Time
+	lastSourceCheck  time.Time
 	latestTTFB       time.Duration
 	latestRangeCount uint64
 	requestHits      uint64
@@ -432,7 +434,15 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 	}
 	// Pin once, then keep path and cache-file I/O outside the global lock.
 	cached.active++
+	skipSourceStat := !cached.lastSourceCheck.IsZero() &&
+		!cached.lastRequestHit.IsZero() &&
+		now.Sub(cached.lastRequestHit) < sourceRecheckInterval &&
+		now.Sub(cached.lastSourceCheck) < sourceRecheckInterval
 	r.mu.Unlock()
+
+	if skipSourceStat {
+		return r.openCachedFile(ctx, cached, key, now, openedAt, mf, sourcePath)
+	}
 
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil || !sourceInfo.Mode().IsRegular() {
@@ -469,11 +479,50 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 	if current == cached && !cached.stale && dataValid {
 		cached.lastUsed = now
 		cached.lastRequestHit = now
+		cached.lastSourceCheck = now
 		cached.requestHits++
 		queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
 		if queueTouch {
 			cached.touchPending = true
 		}
+		r.mu.Unlock()
+		if queueTouch {
+			r.scheduleTouch(key)
+		}
+		r.hits.Add(1)
+		return &observedFile{File: file, owner: r, key: key, entry: cached, identity: identity,
+			cached: true, openedAt: openedAt}, nil
+	}
+	if current == cached && !dataValid {
+		r.markStaleLocked(cached)
+	}
+	r.mu.Unlock()
+	if file != nil {
+		_ = file.Close()
+	}
+	r.release(key, cached)
+	return r.openSource(ctx, mf, sourcePath, key, openedAt, "cache-open-or-metadata-validation-failed", false)
+}
+
+func (r *resolver) openCachedFile(ctx context.Context, cached *entry, key string, now, openedAt time.Time, mf *model.MediaFile, sourcePath string) (File, error) {
+	file, openErr := os.Open(cached.dataPath)
+	var dataInfo os.FileInfo
+	if openErr == nil {
+		dataInfo, openErr = file.Stat()
+	}
+	dataValid := openErr == nil && dataInfo.Mode().IsRegular() &&
+		dataInfo.Size() == cached.meta.DataSize && dataInfo.ModTime().UnixNano() == cached.meta.DataModTime
+	r.mu.Lock()
+	current := r.entries[key]
+	if current == cached && !cached.stale && dataValid {
+		cached.lastUsed = now
+		cached.lastRequestHit = now
+		cached.requestHits++
+		queueTouch := !cached.touchPending && now.Sub(cached.lastPersisted) >= r.touchInterval
+		if queueTouch {
+			cached.touchPending = true
+		}
+		identity := newStreamIdentity(ctx, mf, sourcePath, cached.meta.SourceSize, cached.meta.SourceModTime)
 		r.mu.Unlock()
 		if queueTouch {
 			r.scheduleTouch(key)

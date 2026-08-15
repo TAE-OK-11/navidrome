@@ -258,6 +258,9 @@ func (r sqlRepository) userSeesAllLibraries(visible []int) bool {
 	if len(visible) == 0 {
 		return false
 	}
+	if total, ok := cachedLibraryCount(); ok {
+		return int64(len(visible)) == total
+	}
 	total, err := NewLibraryRepository(r.ctx, r.db).CountAll()
 	if err != nil || total == 0 {
 		return false

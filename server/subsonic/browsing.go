@@ -18,7 +18,7 @@ import (
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
-const genreResponseCacheTTL = time.Second
+const genreResponseCacheTTL = 45 * time.Second
 
 type genreResponseCache struct {
 	mu      sync.Mutex

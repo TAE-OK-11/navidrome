@@ -21,8 +21,11 @@ type libraryRepository struct {
 }
 
 var (
-	libCache = map[int]string{}
-	libLock  sync.RWMutex
+	libCache      = map[int]string{}
+	libLock       sync.RWMutex
+	libCount      int
+	libCountValid bool
+	libCountAt    time.Time
 )
 
 func NewLibraryRepository(ctx context.Context, db dbx.Builder) model.LibraryRepository {
@@ -129,6 +132,7 @@ ON CONFLICT (user_id, library_id) DO NOTHING;`,
 	libLock.Lock()
 	defer libLock.Unlock()
 	libCache[l.ID] = l.Path
+	libCountValid = false
 	return nil
 }
 
@@ -264,6 +268,7 @@ func (r *libraryRepository) Delete(id int) error {
 	libLock.Lock()
 	defer libLock.Unlock()
 	delete(libCache, id)
+	libCountValid = false
 
 	// Clean up orphaned plugin references for the deleted library
 	if err := cleanupPluginLibraryReferences(r.db, id); err != nil {
@@ -281,7 +286,28 @@ func (r *libraryRepository) GetAll(ops ...model.QueryOptions) (model.Libraries, 
 
 func (r *libraryRepository) CountAll(ops ...model.QueryOptions) (int64, error) {
 	sq := r.newSelect(ops...)
-	return r.count(sq)
+	total, err := r.count(sq)
+	if err == nil && len(ops) == 0 {
+		rememberLibraryCount(total)
+	}
+	return total, err
+}
+
+func rememberLibraryCount(total int64) {
+	libLock.Lock()
+	libCount = int(total)
+	libCountValid = true
+	libCountAt = time.Now()
+	libLock.Unlock()
+}
+
+func cachedLibraryCount() (int64, bool) {
+	libLock.RLock()
+	defer libLock.RUnlock()
+	if !libCountValid || time.Since(libCountAt) > 3*time.Second {
+		return 0, false
+	}
+	return int64(libCount), true
 }
 
 // User-library association methods

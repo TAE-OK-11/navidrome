@@ -68,7 +68,7 @@ func configureSQLiteConn(conn *sqlite3.SQLiteConn) error {
 	_, err := conn.Exec(`
 		PRAGMA foreign_keys=ON;
 		PRAGMA temp_store=MEMORY;
-		PRAGMA mmap_size=134217728;
+		PRAGMA mmap_size=33554432;
 		PRAGMA cache_spill=OFF;
 	`, nil)
 	return err

@@ -178,12 +178,11 @@ func (fc *fileCache) Get(ctx context.Context, arg Item) (*CachedStream, error) {
 			return nil, err
 		}
 		go func() {
-			if err := copyAndClose(w, reader); err != nil {
+			if err := fc.copyAndClose(ctx, key, w, reader); err != nil {
 				log.Debug(ctx, "Error storing file in cache", "cache", fc.name, "key", key, err)
 				_ = fc.invalidate(ctx, key)
 			} else {
 				log.Trace(ctx, "File successfully stored in cache", "cache", fc.name, "key", key)
-				fc.markComplete(ctx, key)
 			}
 		}()
 	}
@@ -305,7 +304,8 @@ func (c joinedCloser) Close() error {
 	return errors.Join(c.first.Close(), c.second.Close())
 }
 
-func copyAndClose(w io.WriteCloser, r io.Reader) error {
+// copyAndClose marks the entry complete before closing w, so EOF implies the entry is settled on disk.
+func (fc *fileCache) copyAndClose(ctx context.Context, key string, w io.WriteCloser, r io.Reader) error {
 	_, err := io.Copy(w, r)
 	if err != nil {
 		err = fmt.Errorf("copying data to cache: %w", err)
@@ -315,7 +315,9 @@ func copyAndClose(w io.WriteCloser, r io.Reader) error {
 			err = multierror.Append(err, fmt.Errorf("closing source stream: %w", cErr))
 		}
 	}
-
+	if err == nil {
+		fc.markComplete(ctx, key)
+	}
 	if cErr := w.Close(); cErr != nil {
 		err = multierror.Append(err, fmt.Errorf("closing cache writer: %w", cErr))
 	}

@@ -267,6 +267,13 @@ func TestResolverInvalidatesChangedAndDeletedSources(t *testing.T) {
 	require.Equal(t, changed, readAndClose(t, verified))
 
 	require.NoError(t, os.Remove(source))
+	// Expire the Range-burst source-stat skip so Open re-stats the deleted file.
+	r.mu.Lock()
+	if cached := r.entries[keyFor(mf.ID, mf.AbsolutePath())]; cached != nil {
+		cached.lastSourceCheck = time.Time{}
+		cached.lastRequestHit = time.Time{}
+	}
+	r.mu.Unlock()
 	_, err = r.Open(context.Background(), mf)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.Equal(t, 0, r.Stats().Entries)

@@ -213,8 +213,10 @@ func writeDeleteManyResponse(w http.ResponseWriter, r *http.Request, ids []strin
 		if err != nil {
 			log.Error(r.Context(), "Error marshaling response", "ids", ids, err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	}
+	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(resp) //nolint:gosec
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -243,6 +245,7 @@ func (api *Router) addConfigRoute(r chi.Router) {
 
 func (api *Router) addKeepAliveRoute(r chi.Router) {
 	r.Get("/keepalive/*", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"response":"ok", "id":"keepalive"}`))
 	})
 }
@@ -250,6 +253,7 @@ func (api *Router) addKeepAliveRoute(r chi.Router) {
 func (api *Router) addInsightsRoute(r chi.Router) {
 	r.Get("/insights/*", func(w http.ResponseWriter, r *http.Request) {
 		last, success := api.insights.LastRun(r.Context())
+		w.Header().Set("Content-Type", "application/json")
 		if conf.Server.EnableInsightsCollector {
 			_, _ = w.Write([]byte(`{"id":"insights_status", "lastRun":"` + last.Format("2006-01-02 15:04:05") + `", "success":` + strconv.FormatBool(success) + `}`)) //nolint:gosec
 		} else {

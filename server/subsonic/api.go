@@ -443,6 +443,9 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 		}
 	}
 
+	if w.Header().Get("Content-Length") == "" {
+		w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	}
 	if _, err := w.Write(response); err != nil { //nolint:gosec
 		if log.IsGreaterOrEqualTo(log.LevelTrace) {
 			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, "payload", string(response), err)

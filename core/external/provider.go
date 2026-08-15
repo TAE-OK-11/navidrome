@@ -322,6 +322,11 @@ func (e *provider) SimilarSongs(ctx context.Context, id string, count int) (mode
 				return e.ag.GetSimilarSongsByAlbum(ctx, v.ID, v.Name, v.AlbumArtist, v.MbzAlbumID, count)
 			},
 			func() (model.MediaFiles, error) {
+				if v.AlbumArtistID != "" {
+					if res, ferr := e.similarSongsFallback(ctx, v.AlbumArtistID, count); ferr == nil && len(res) > 0 {
+						return res, nil
+					}
+				}
 				return e.seedMix(ctx, count, func() (model.MediaFiles, error) {
 					return e.sampleAlbumTracks(ctx, v.ID, maxSeeds)
 				})

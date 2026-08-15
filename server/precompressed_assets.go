@@ -13,7 +13,7 @@ import (
 func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 	fallback := http.FileServer(http.FS(fileSystem))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.Header.Get("Range") != "" {
+		if (r.Method != http.MethodGet && r.Method != http.MethodHead) || r.Header.Get("Range") != "" {
 			fallback.ServeHTTP(w, r)
 			return
 		}
@@ -35,6 +35,7 @@ func PrecompressedFileServer(fileSystem fs.FS) http.Handler {
 		// Identity is also one negotiated representation. Mark it as varying by
 		// Accept-Encoding so shared caches don't reuse an identity response for a
 		// later request that could have consumed a precompressed representation.
+		setHashedAssetCacheControl(w.Header(), strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/"))
 		addVaryAcceptEncoding(w.Header())
 		fallback.ServeHTTP(w, r)
 	})
@@ -119,7 +120,39 @@ func servePrecompressedAsset(w http.ResponseWriter, r *http.Request, fileSystem 
 	}
 	w.Header().Set("Content-Encoding", encoding)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	setHashedAssetCacheControl(w.Header(), assetPath)
 	addVaryAcceptEncoding(w.Header())
 	http.ServeContent(w, r, path.Base(assetPath), info.ModTime(), seeker)
+	return true
+}
+
+func setHashedAssetCacheControl(h http.Header, assetPath string) {
+	if h.Get("Cache-Control") != "" || !hashedStaticAsset(assetPath) {
+		return
+	}
+	h.Set("Cache-Control", "public, max-age=31536000, immutable")
+}
+
+func hashedStaticAsset(assetPath string) bool {
+	base := path.Base(assetPath)
+	ext := path.Ext(base)
+	if ext == "" {
+		return false
+	}
+	name := strings.TrimSuffix(base, ext)
+	dash := strings.LastIndex(name, "-")
+	if dash < 0 || dash == len(name)-1 {
+		return false
+	}
+	hash := name[dash+1:]
+	if len(hash) < 8 {
+		return false
+	}
+	for _, c := range hash {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' {
+			continue
+		}
+		return false
+	}
 	return true
 }

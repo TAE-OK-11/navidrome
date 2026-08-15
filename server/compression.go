@@ -105,9 +105,11 @@ type acceptedCompressions struct {
 	zstd   bool
 	gzip   bool
 
-	brotliQuality float64
-	zstdQuality   float64
-	gzipQuality   float64
+	brotliQuality   float64
+	zstdQuality     float64
+	gzipQuality     float64
+	identitySet     bool
+	identityQuality float64
 }
 
 type compressionProfile struct {
@@ -118,6 +120,10 @@ type compressionProfile struct {
 
 func (a acceptedCompressions) hasAny() bool {
 	return a.brotli || a.zstd || a.gzip
+}
+
+func (a acceptedCompressions) forbidsIdentity() bool {
+	return a.identitySet && a.identityQuality <= 0
 }
 
 func (a acceptedCompressions) quality(encoding compressionEncoding) float64 {
@@ -193,6 +199,9 @@ func acceptedCompressionEncodingsSlow(acceptEncoding string) acceptedCompression
 			accepted.gzip = quality > 0
 			accepted.gzipQuality = quality
 			gzipSet = true
+		case "identity":
+			accepted.identitySet = true
+			accepted.identityQuality = quality
 		case "*":
 			wildcardQuality = quality
 			wildcardSet = true
@@ -433,7 +442,7 @@ func (w *compressResponseWriter) start(body []byte) error {
 
 	bodySize := responseBodySize(w.Header(), len(body))
 	profile := selectCompressionProfile(w.accepted, w.path, w.Header(), contentType, bodySize)
-	if profile.encoding == "" || bodySize < profile.minSize {
+	if profile.encoding == "" || (bodySize < profile.minSize && !w.accepted.forbidsIdentity()) {
 		w.raw = true
 		w.ResponseWriter.WriteHeader(status)
 		return nil
@@ -598,6 +607,7 @@ func isWebUIResponsePath(path, contentType string) bool {
 	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
 	return mediaType == "text/html" ||
 		mediaType == "text/css" ||
+		mediaType == "text/javascript" ||
 		mediaType == "application/javascript" ||
 		mediaType == "application/x-javascript" ||
 		mediaType == "application/manifest+json"

@@ -85,14 +85,21 @@ func (r *shareRepository) loadMedia(share *model.Share) error {
 	}
 	switch share.ResourceType {
 	case "artist":
-		// Match by album-artist participation, not the first-only album_artist_id column.
+		// Prefer the participation join, then the denormalized album-artist id
+		// so shares still resolve albums that were saved without album_artists rows.
 		albumRepo := NewAlbumRepository(ownerCtx, r.db)
-		share.Albums, err = albumRepo.GetAll(model.QueryOptions{Filters: noMissing(ParticipantIDFilter("album", ids, model.RoleAlbumArtist)), Sort: "artist"})
+		share.Albums, err = albumRepo.GetAll(model.QueryOptions{Filters: noMissing(Or{
+			ParticipantIDFilter("album", ids, model.RoleAlbumArtist),
+			Eq{"album.album_artist_id": ids},
+		}), Sort: "artist"})
 		if err != nil {
 			return err
 		}
 		mfRepo := NewMediaFileRepository(ownerCtx, r.db)
-		share.Tracks, err = mfRepo.GetAll(model.QueryOptions{Filters: noMissing(ParticipantIDFilter("media_file", ids, model.RoleAlbumArtist)), Sort: "artist"})
+		share.Tracks, err = mfRepo.GetAll(model.QueryOptions{Filters: noMissing(Or{
+			ParticipantIDFilter("media_file", ids, model.RoleAlbumArtist),
+			Eq{"media_file.album_artist_id": ids},
+		}), Sort: "artist"})
 		return err
 	case "album":
 		albumRepo := NewAlbumRepository(ownerCtx, r.db)

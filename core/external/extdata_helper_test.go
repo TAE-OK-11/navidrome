@@ -97,6 +97,12 @@ func (m *mockMediaFileRepo) GetAllByTags(_ model.TagName, _ []string, options ..
 	return m.GetAll(options...)
 }
 
+// GetRandom is used by SimilarSongs local fallbacks. Tests that do not stub it
+// get an empty library rather than a nil-pointer panic on the embedded interface.
+func (m *mockMediaFileRepo) GetRandom(options ...model.QueryOptions) (model.MediaFiles, error) {
+	return nil, nil
+}
+
 // GetAll implements model.MediaFileRepository.
 func (m *mockMediaFileRepo) GetAll(options ...model.QueryOptions) (model.MediaFiles, error) {
 	argsSlice := make([]any, len(options))

@@ -31,6 +31,40 @@ func TestDynamicAPIUsesZstdWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestModuleJavaScriptUsesBrotliLikeWebUI(t *testing.T) {
+	body := strings.Repeat("export const x = 1;\n", 80)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		_, _ = io.WriteString(w, body)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	req.Header.Set("Accept-Encoding", "br, zstd, gzip")
+	rec := httptest.NewRecorder()
+	compressMiddleware()(handler).ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Content-Encoding"); got != "br" {
+		t.Fatalf("Content-Encoding = %q, want br", got)
+	}
+}
+
+func TestIdentityQZeroCompressesSmallJSON(t *testing.T) {
+	body := `{"ok":true}`
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
+	req.Header.Set("Accept-Encoding", "zstd, identity;q=0")
+	rec := httptest.NewRecorder()
+	compressMiddleware()(handler).ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Content-Encoding"); got != "zstd" {
+		t.Fatalf("Content-Encoding = %q, want zstd when identity is forbidden", got)
+	}
+}
+
 func TestLyricsAPIUsesBrotliForDenseText(t *testing.T) {
 	body := strings.Repeat("[00:01.00] lyric line\n", 32)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

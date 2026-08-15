@@ -103,6 +103,34 @@ func TestPrecompressedFileServerDoesNotServeEncodingWithQZero(t *testing.T) {
 	}
 }
 
+func TestPrecompressedFileServerServesHeadAndHashedCacheControl(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/app-a1b2c3d4e5.js", []byte("plain-js"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/app-a1b2c3d4e5.js.br", []byte("brotli-js"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodHead, "/app-a1b2c3d4e5.js", nil)
+	req.Header.Set("Accept-Encoding", "br, gzip")
+	rec := httptest.NewRecorder()
+	PrecompressedFileServer(os.DirFS(dir)).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "br" {
+		t.Fatalf("Content-Encoding = %q, want br", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("Cache-Control = %q, want immutable hashed asset cache", got)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("HEAD body should be empty, got %d bytes", rec.Body.Len())
+	}
+}
+
 func TestPrecompressedFileServerIdentityFallbackVariesByAcceptEncoding(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(dir+"/app.js", []byte("plain-only"), 0o600); err != nil {

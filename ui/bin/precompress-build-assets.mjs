@@ -14,6 +14,8 @@ const compressibleExtensions = new Set([
   '.css',
   '.html',
   '.js',
+  '.cjs',
+  '.mjs',
   '.json',
   '.map',
   '.svg',

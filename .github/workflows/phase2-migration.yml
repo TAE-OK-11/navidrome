@@ -22,7 +22,7 @@ jobs:
           go-version-file: go.mod
       - name: Configure Rust
         run: |
-          rustup toolchain install 1.97.0 --profile minimal
+          rustup toolchain install 1.97.0 --profile minimal --component rustfmt
           rustup override set 1.97.0
       - name: Apply metadata migration
         run: |

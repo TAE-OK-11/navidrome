@@ -1,0 +1,60 @@
+name: Phase 2 migration bootstrap
+
+on:
+  push:
+    branches:
+      - modernize/phase2-lofty-react19-rust
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: ${{ !contains(github.event.head_commit.message, '[phase2-generated]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: modernize/phase2-lofty-react19-rust
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Configure Rust
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup override set 1.97.0
+      - name: Apply metadata migration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('cmd/root.go')
+          text = root.read_text()
+          text = text.replace('_ "github.com/navidrome/navidrome/adapters/gotaglib"', '_ "github.com/navidrome/navidrome/adapters/lofty"')
+          root.write_text(text)
+
+          consts = Path('consts/consts.go')
+          text = consts.read_text().replace('DefaultScannerExtractor = "taglib"', 'DefaultScannerExtractor = "lofty"')
+          consts.write_text(text)
+          PY
+
+          gofmt -w adapters/lofty cmd/root.go consts/consts.go
+          go mod tidy
+          cargo fmt --manifest-path rust/metadata/Cargo.toml
+          cargo generate-lockfile --manifest-path rust/metadata/Cargo.toml
+      - name: Verify migrated metadata stack
+        run: |
+          go test ./adapters/lofty ./core/storage/local ./cmd
+          cargo test --locked --manifest-path rust/metadata/Cargo.toml
+      - name: Commit generated migration state
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add adapters/lofty cmd/root.go consts/consts.go go.mod go.sum rust/metadata
+          git commit -m "refactor: switch scanner metadata to Lofty [phase2-generated]"
+          git push origin HEAD:modernize/phase2-lofty-react19-rust

@@ -1,50 +1,42 @@
-import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const root = process.cwd()
-const packageJsonPath = join(root, 'package.json')
-const sourcePath = join(root, 'node_modules/workbox-sw/build/workbox-sw.js')
-const sourceMapPath = `${sourcePath}.map`
-const targetPath = join(root, 'public/workbox/workbox-sw.js')
-const targetMapPath = `${targetPath}.map`
+const stagingDir = join(root, 'build/3rdparty')
+const targetDir = join(root, 'public/3rdparty/workbox')
+const workboxFiles = [
+  'workbox-sw.js',
+  'workbox-core.prod.js',
+  'workbox-strategies.prod.js',
+  'workbox-routing.prod.js',
+  'workbox-navigation-preload.prod.js',
+  'workbox-precaching.prod.js',
+] as const
 
-type PackageJson = {
-  dependencies?: Record<string, string>
+await rm(targetDir, { recursive: true, force: true })
+
+execFileSync('bunx', ['workbox', 'copyLibraries', 'build/3rdparty/'], {
+  cwd: root,
+  stdio: 'inherit',
+})
+
+const entries = await readdir(stagingDir, { withFileTypes: true })
+const generatedDirs = entries.filter(
+  (entry) => entry.isDirectory() && entry.name.startsWith('workbox-'),
+)
+
+if (generatedDirs.length !== 1) {
+  throw new Error(
+    `Expected exactly one generated Workbox directory, found ${generatedDirs.length}`,
+  )
 }
 
-async function md5(path: string): Promise<string | null> {
-  try {
-    const data = await readFile(path)
-    return createHash('md5').update(data).digest('hex')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw error
-  }
-}
-
-const packageJson = JSON.parse(
-  await readFile(packageJsonPath, 'utf8'),
-) as PackageJson
-const workboxVersion = packageJson.dependencies?.['workbox-cli'] ?? 'unknown'
-
-const [sourceHash, targetHash] = await Promise.all([
-  md5(sourcePath),
-  md5(targetPath),
-])
-
-if (!sourceHash) {
-  throw new Error(`Workbox source not found: ${sourcePath}`)
-}
-
-if (sourceHash === targetHash) {
-  console.log(`workbox-sw.js is already up-to-date (${workboxVersion})`)
-  process.exit(0)
-}
-
-await mkdir(dirname(targetPath), { recursive: true })
-await Promise.all([
-  copyFile(sourcePath, targetPath),
-  copyFile(sourceMapPath, targetMapPath),
-])
-console.log(`Updated workbox-sw.js to ${workboxVersion}`)
+const sourceDir = join(stagingDir, generatedDirs[0].name)
+await mkdir(targetDir, { recursive: true })
+await Promise.all(
+  workboxFiles.map((file) =>
+    copyFile(join(sourceDir, file), join(targetDir, file)),
+  ),
+)
+await rm(sourceDir, { recursive: true, force: true })

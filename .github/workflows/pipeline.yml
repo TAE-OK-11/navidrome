@@ -44,7 +44,7 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.12.0
           args: --timeout 5m
       - name: Verify generated files
         run: |
@@ -55,24 +55,24 @@ jobs:
     name: UI tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      NODE_OPTIONS: --max_old_space_size=4096
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
+          bun-version-file: .bun-version
+      - name: Verify Bun 1.4 runtime
+        run: |
+          case "$(bun --version)" in 1.4.*) ;; *) echo "Bun 1.4 required" >&2; exit 1 ;; esac
+          bun -e 'const m = new Map([[2**32, "a"], [2**33, "b"]]); if (m.size !== 2) throw new Error("Bun 1.4 Map/Set large-integer regression detected")'
       - name: Install
         working-directory: ui
-        run: npm ci
+        run: bun install --frozen-lockfile
       - name: Check
         working-directory: ui
-        run: npm run check-formatting && npm run lint && npm test
+        run: bun run check-formatting && bun run lint && bun run test
       - name: Build
         working-directory: ui
-        run: npm run build
+        run: bun run build
 
   i18n:
     name: i18n validation

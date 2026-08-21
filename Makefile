@@ -1,5 +1,5 @@
 GO_VERSION=$(shell grep "^go " go.mod | cut -f 2 -d ' ')
-NODE_VERSION=$(shell cat .nvmrc)
+BUN_CHANNEL=$(shell cat .bun-version)
 
 comma:=,
 GO_BUILD_TAGS=netgo,sqlite_fts5$(if $(EXTRA_BUILD_TAGS),$(comma)$(EXTRA_BUILD_TAGS))
@@ -25,12 +25,12 @@ GOLANGCI_LINT_VERSION ?= v2.12.0
 UI_SRC_FILES := $(shell find ui -type f -not -path "ui/build/*" -not -path "ui/node_modules/*")
 
 setup: check_env download-deps install-golangci-lint setup-git ##@1_Run_First Install dependencies and prepare development environment
-	@echo Downloading Node dependencies...
-	@(cd ./ui && npm ci)
+	@echo Downloading Bun dependencies...
+	@(cd ./ui && bun install --frozen-lockfile)
 .PHONY: setup
 
 dev: check_env   ##@Development Start Navidrome in development mode, with hot-reload for both frontend and backend
-	npx foreman -j Procfile.dev -p 4533 start
+	bunx foreman -j Procfile.dev -p 4533 start
 .PHONY: dev
 
 server: check_go_env buildjs ##@Development Start the backend in development mode
@@ -66,7 +66,7 @@ test-race: ##@Development Run Go tests with race detector
 .PHONY: test-race
 
 test-js: ##@Development Run JS tests
-	@(cd ./ui && npm run test)
+	@(cd ./ui && bun run test)
 .PHONY: test-js
 
 test-i18n: ##@Development Validate all translations files
@@ -97,12 +97,12 @@ lint: install-golangci-lint ##@Development Lint Go code
 .PHONY: lint
 
 lintall: lint ##@Development Lint Go and JS code
-	@(cd ./ui && npm run check-formatting) || (echo "\n\nPlease run 'npm run prettier' to fix formatting issues." && exit 1)
-	@(cd ./ui && npm run lint)
+	@(cd ./ui && bun run check-formatting) || (echo "\n\nPlease run 'bun run prettier' to fix formatting issues." && exit 1)
+	@(cd ./ui && bun run lint)
 .PHONY: lintall
 
 format: ##@Development Format code
-	@(cd ./ui && npm run prettier)
+	@(cd ./ui && bun run prettier)
 	@go tool goimports -w `find . -name '*.go' | grep -v _gen.go$$ | grep -v .pb.go$$`
 	@go mod tidy
 .PHONY: format
@@ -154,7 +154,7 @@ debug-build: check_go_env buildjs ##@Build Build the project (with remote debug 
 	go build -gcflags="all=-N -l" -ldflags="-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" -tags=$(GO_BUILD_TAGS)
 .PHONY: debug-build
 
-buildjs: check_node_env ui/build/index.html ##@Build Build only frontend
+buildjs: check_bun_env ui/build/index.html ##@Build Build only frontend
 .PHONY: buildjs
 
 docker-buildjs: ##@Build Build only frontend using Docker
@@ -162,7 +162,7 @@ docker-buildjs: ##@Build Build only frontend using Docker
 .PHONY: docker-buildjs
 
 ui/build/index.html: $(UI_SRC_FILES)
-	@(cd ./ui && npm run build)
+	@(cd ./ui && bun run build)
 
 docker-platforms: ##@Cross_Compilation List supported platforms
 	@echo "Supported platforms:"
@@ -286,7 +286,7 @@ download-deps:
 	@go mod tidy # To revert any changes made by the `go mod download` command
 .PHONY: download-deps
 
-check_env: check_go_env check_node_env
+check_env: check_go_env check_bun_env
 .PHONY: check_env
 
 check_go_env:
@@ -298,14 +298,16 @@ check_go_env:
 		(echo "\nERROR: Please upgrade your GO version\nThis project requires at least the version $(GO_VERSION)"; exit 1)
 .PHONY: check_go_env
 
-check_node_env:
-	@(hash node) || (echo "\nERROR: Node environment not setup properly!\n"; exit 1)
-	@current_node_version=`node --version` && \
-		echo "$(NODE_VERSION) $$current_node_version" | \
-		tr ' ' '\n' | sort -V | tail -1 | \
-		grep -q "^$${current_node_version}$$" || \
-		(echo "\nERROR: Please check your Node version. Should be at least $(NODE_VERSION)\n"; exit 1)
-.PHONY: check_node_env
+check_bun_env:
+	@(hash bun) || (echo "
+ERROR: Bun environment not setup properly!
+"; exit 1)
+	@current_bun_version=`bun --version` && \
+		case "$$current_bun_version" in 1.4.*) ;; *) \
+			echo "
+ERROR: Bun 1.4 is required (channel: $(BUN_CHANNEL)); got $$current_bun_version
+"; exit 1 ;; esac
+.PHONY: check_bun_env
 
 pre-push: lintall testall
 .PHONY: pre-push

@@ -8,13 +8,99 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  bun-bootstrap:
+    name: Bootstrap Bun 1.4 migration
+    if: github.event_name == 'pull_request' && github.head_ref == 'chore/bun-1.4-selective-upstream'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: chore/bun-1.4-selective-upstream
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: canary
+
+      - name: Resolve exact Bun and image pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUN_VERSION="$(bun --version)"
+          case "${BUN_VERSION}" in
+            1.4.*) ;;
+            *) echo "Expected Bun 1.4 canary, got ${BUN_VERSION}" >&2; exit 1 ;;
+          esac
+          BUN_ALPINE_DIGEST="$(docker buildx imagetools inspect oven/bun:canary-alpine | awk '/^Digest:/ {print $2; exit}')"
+          BUN_DEBIAN_DIGEST="$(docker buildx imagetools inspect oven/bun:canary-debian | awk '/^Digest:/ {print $2; exit}')"
+          test -n "${BUN_ALPINE_DIGEST}"
+          test -n "${BUN_DEBIAN_DIGEST}"
+          echo "BUN_VERSION=${BUN_VERSION}" >> "$GITHUB_ENV"
+          echo "BUN_ALPINE_DIGEST=${BUN_ALPINE_DIGEST}" >> "$GITHUB_ENV"
+          echo "BUN_DEBIAN_DIGEST=${BUN_DEBIAN_DIGEST}" >> "$GITHUB_ENV"
+
+      - name: Generate Bun lockfile
+        working-directory: ui
+        run: bun install --lockfile-only
+
+      - name: Rewrite the toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          git show origin/master:.github/workflows/pipeline.yml > .github/workflows/pipeline.yml
+          python3 scripts/bun14_migrate.py
+          rm -f .nvmrc ui/package-lock.json
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          version = os.environ['BUN_VERSION']
+          p = Path('.devcontainer/Dockerfile')
+          p.write_text(p.read_text().replace('ARG BUN_VERSION="canary"', f'ARG BUN_VERSION="bun-v{version}"'))
+          p = Path('.devcontainer/devcontainer.json')
+          p.write_text(p.read_text().replace('"BUN_VERSION": "canary"', f'"BUN_VERSION": "bun-v{version}"'))
+          PY
+
+      - name: Verify dependency graph and UI
+        working-directory: ui
+        run: |
+          bun install --frozen-lockfile
+          bun run check-formatting
+          bun run lint
+          bun run test
+          bun run type-check
+          bun run build
+
+      - name: Verify standard Docker UI stage
+        run: docker build --target ui-bundle -t navidrome-ui-bun14 .
+
+      - name: Go regression tests
+        run: go test -tags netgo,sqlite_fts5 ./...
+
+      - name: Commit verified migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git status --short
+          git commit -m "chore(ui): replace Node.js/npm toolchain with Bun ${BUN_VERSION}"
+          git push origin HEAD:chore/bun-1.4-selective-upstream
+
   go:
     name: Go tests
     runs-on: ubuntu-latest

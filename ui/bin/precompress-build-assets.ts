@@ -121,6 +121,7 @@ await Promise.all(
   }),
 )
 
+// eslint-disable-next-line no-console
 console.log(
   `[precompress] jobs=${compressionJobs} brotli=${totals[0]} zstd=${totals[1]} gzip=${totals[2]}`,
 )

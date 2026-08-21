@@ -94,7 +94,8 @@ docker = replace_required(
 docker = docker.replace("# Install node dependencies", "# Install Bun dependencies")
 docker = replace_required(docker, "COPY ui/package.json ui/package-lock.json ./", "COPY ui/package.json ui/bun.lock ./", "Dockerfile lockfile")
 docker = replace_required(docker, "RUN npm ci", "RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile", "Dockerfile install")
-docker = replace_required(docker, "RUN npm run build -- --outDir=/build", "RUN bun run build -- --outDir=/build", "Dockerfile build")
+docker = replace_required(docker, "RUN npm run build -- --outDir=/build", "RUN bun run build", "Dockerfile build")
+docker = replace_required(docker, "COPY --from=ui /build /build", "COPY --from=ui /app/build /build", "Dockerfile bundle path")
 write("Dockerfile", docker)
 
 # JBS production image: preserve the custom native/PGO stack and only swap the UI toolchain.

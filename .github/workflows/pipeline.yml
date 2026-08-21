@@ -37,11 +37,12 @@ jobs:
             exit 0
           fi
           cd ui
-          bunx @mui/codemod@latest v5.0.0/preset-safe src
+          bun install --frozen-lockfile
+          bunx @mui/codemod@latest v5.0.0/preset-safe src --extensions js,ts,jsx,tsx
           bun remove @material-ui/core @material-ui/icons @material-ui/lab @material-ui/styles connected-react-router history redux-saga
           bun add \
             react@19.2.8 react-dom@19.2.8 \
-            react-admin@5.15.1 ra-data-json-server@5.15.1 ra-i18n-polyglot@5.15.1 \
+            react-admin@5.15.1 ra-data-json-server@5.15.0 ra-i18n-polyglot@5.15.0 \
             @mui/material@9.3.1 @mui/icons-material@9.3.1 \
             @mui/system@9.3.0 @mui/utils@9.3.0 @mui/styles@6.4.8 \
             @mui/lab@9.0.0-beta.8 \
@@ -49,7 +50,7 @@ jobs:
             react-router-dom@6.28.1 \
             @jsonforms/core@3.8.0 @jsonforms/react@3.8.0 @jsonforms/material-renderers@3.8.0 \
             @mui/x-date-pickers@9.10.1
-          bun add -d @types/react@19 @types/react-dom@19 @testing-library/react@latest ra-test@5.15.1
+          bun add -d @types/react@19 @types/react-dom@19 @testing-library/react@latest ra-test@5.15.0
           bun run prettier
           cd ..
           if git diff --quiet -- ui; then

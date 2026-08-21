@@ -45,7 +45,9 @@ func TestAuthenticatedHTTP3Bridge(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "http://navidrome.local/rest/ping", nil)
-	req.RemoteAddr = "127.0.0.1:12345"
+	// The transport RemoteAddr is not a security boundary anymore: the bridge is
+	// an inherited AF_UNIX socketpair with no externally reachable listener.
+	req.RemoteAddr = "socketpair"
 	req.Header.Set(rustHTTP3TokenHeader, "secret")
 	req.Header.Set(rustHTTP3AuthorityHeader, "music.example")
 	req.Header.Set(rustHTTP3RemoteAddrHeader, "192.0.2.10:54321")
@@ -64,19 +66,20 @@ func TestAuthenticatedHTTP3BridgeRejectsUntrustedRequests(t *testing.T) {
 	}))
 	for _, test := range []struct {
 		name           string
-		remote         string
 		token          string
 		outerRemote    string
 		expectedStatus int
 	}{
-		{name: "wrong token", remote: "127.0.0.1:12345", token: "wrong", expectedStatus: http.StatusForbidden},
-		{name: "non-loopback", remote: "192.0.2.10:12345", token: "secret", expectedStatus: http.StatusForbidden},
-		{name: "invalid original peer", remote: "127.0.0.1:12345", token: "secret", outerRemote: "invalid", expectedStatus: http.StatusBadRequest},
+		{name: "wrong token", token: "wrong", expectedStatus: http.StatusForbidden},
+		{name: "missing token", token: "", expectedStatus: http.StatusForbidden},
+		{name: "invalid original peer", token: "secret", outerRemote: "invalid", expectedStatus: http.StatusBadRequest},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "http://navidrome.local/", nil)
-			req.RemoteAddr = test.remote
-			req.Header.Set(rustHTTP3TokenHeader, test.token)
+			req.RemoteAddr = "socketpair"
+			if test.token != "" {
+				req.Header.Set(rustHTTP3TokenHeader, test.token)
+			}
 			if test.outerRemote != "" {
 				req.Header.Set(rustHTTP3RemoteAddrHeader, test.outerRemote)
 			}

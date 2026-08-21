@@ -15,54 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  phase3-bootstrap:
-    name: Phase 3 UI bootstrap
-    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'modernize/react19-mui9-phase3' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: modernize/react19-mui9-phase3
-          fetch-depth: 1
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-      - name: Bootstrap React 19 and MUI 9
-        run: |
-          if git log -1 --pretty=%B | grep -Fq '[phase3-bootstrap]'; then
-            echo 'Bootstrap already committed'
-            exit 0
-          fi
-          cd ui
-          bun install --frozen-lockfile
-          bunx @mui/codemod@latest v5.0.0/preset-safe src --ignore-pattern '**/*.json'
-          bun remove @material-ui/core @material-ui/icons @material-ui/lab @material-ui/styles connected-react-router history redux-saga ra-test
-          bun add \
-            react@19.2.8 react-dom@19.2.8 \
-            react-admin@5.15.1 ra-data-json-server@5.15.0 ra-i18n-polyglot@5.15.0 \
-            @mui/material@9.3.1 @mui/icons-material@9.3.1 \
-            @mui/system@9.3.0 @mui/utils@9.3.0 @mui/styles@6.4.8 \
-            @mui/lab@9.0.0-beta.8 \
-            @emotion/react@latest @emotion/styled@latest \
-            react-router-dom@6.28.1 \
-            @jsonforms/core@3.8.0 @jsonforms/react@3.8.0 @jsonforms/material-renderers@3.8.0 \
-            @mui/x-date-pickers@9.10.1
-          bun add -d @types/react@19 @types/react-dom@19 @testing-library/react@latest
-          bun run prettier
-          cd ..
-          if git diff --quiet -- ui; then
-            echo 'No bootstrap changes to commit'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ui/package.json ui/bun.lock ui/src
-          git commit -m 'refactor: bootstrap React 19 and MUI 9 [phase3-bootstrap]'
-          git push origin HEAD:modernize/react19-mui9-phase3
-
   go:
     name: Go tests
     runs-on: ubuntu-latest

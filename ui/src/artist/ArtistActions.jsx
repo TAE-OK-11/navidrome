@@ -1,8 +1,8 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
-import { useMediaQuery, CircularProgress } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { useMediaQuery, CircularProgress } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import {
   Button,
   TopToolbar,
@@ -11,10 +11,10 @@ import {
   useNotify,
   useTranslate,
 } from 'react-admin'
-import ShuffleIcon from '@material-ui/icons/Shuffle'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
-import ShareIcon from '@material-ui/icons/Share'
-import CloudDownloadOutlinedIcon from '@material-ui/icons/CloudDownloadOutlined'
+import ShuffleIcon from '@mui/icons-material/Shuffle'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import ShareIcon from '@mui/icons-material/Share'
+import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
 import { IoIosRadio } from 'react-icons/io'
 import { playShuffle, playTopSongs } from './actions.js'
 import { playSimilar } from '../common/playbackActions.js'
@@ -40,7 +40,7 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   button: {
-    [theme.breakpoints.down('xs')]: {
+    [theme.breakpoints.down('sm')]: {
       minWidth: 'auto',
       padding: '8px 12px',
       fontSize: '0.75rem',
@@ -50,7 +50,7 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   radioIcon: {
-    [theme.breakpoints.down('xs')]: {
+    [theme.breakpoints.down('sm')]: {
       fontSize: '1.5rem',
     },
   },
@@ -68,7 +68,7 @@ const ArtistActions = ({ className, record, ...rest }) => {
   const dataProvider = useDataProvider()
   const notify = useNotify()
   const classes = useStyles()
-  const isMobile = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const [loadingAction, setLoadingAction] = React.useState(null)
   const isLoading = !!loadingAction
 

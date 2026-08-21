@@ -5,7 +5,6 @@ import {
   Popover,
   CircularProgress,
   IconButton,
-  makeStyles,
   Tooltip,
   Card,
   CardContent,
@@ -13,7 +12,8 @@ import {
   Divider,
   Box,
   Typography,
-} from '@material-ui/core'
+} from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import { FiActivity } from 'react-icons/fi'
 import { BiError, BiMessageError } from 'react-icons/bi'
 import { VscSync } from 'react-icons/vsc'
@@ -126,7 +126,11 @@ const ActivityPanel = () => {
   return (
     <div className={classes.wrapper}>
       <Tooltip title={tooltipTitle}>
-        <IconButton className={classes.button} onClick={handleMenuOpen}>
+        <IconButton
+          className={classes.button}
+          onClick={handleMenuOpen}
+          size="large"
+        >
           {serverDown ? (
             <BiError data-testid="activity-error-icon" size={'20'} />
           ) : hasWarning ? (
@@ -217,6 +221,7 @@ const ActivityPanel = () => {
               <IconButton
                 onClick={triggerScan(false)}
                 disabled={scanStatus.scanning}
+                size="large"
               >
                 <VscSync />
               </IconButton>
@@ -225,6 +230,7 @@ const ActivityPanel = () => {
               <IconButton
                 onClick={triggerScan(true)}
                 disabled={scanStatus.scanning}
+                size="large"
               >
                 <GiMagnifyingGlass />
               </IconButton>

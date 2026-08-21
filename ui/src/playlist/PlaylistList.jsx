@@ -16,9 +16,9 @@ import {
   BulkDeleteButton,
   usePermissions,
 } from 'react-admin'
-import Switch from '@material-ui/core/Switch'
-import { makeStyles } from '@material-ui/core/styles'
-import { useMediaQuery } from '@material-ui/core'
+import Switch from '@mui/material/Switch'
+import makeStyles from '@mui/styles/makeStyles'
+import { useMediaQuery } from '@mui/material'
 import {
   CoverArtAvatar,
   DurationField,
@@ -29,14 +29,14 @@ import {
   useSelectedFields,
   useResourceRefresh,
 } from '../common'
-import FavoriteIcon from '@material-ui/icons/Favorite'
+import FavoriteIcon from '@mui/icons-material/Favorite'
 import config from '../config'
 import PlaylistListActions from './PlaylistListActions'
 import ChangePublicStatusButton from './ChangePublicStatusButton'
 
 const useStyles = makeStyles((theme) => ({
   button: {
-    color: theme.palette.type === 'dark' ? 'white' : undefined,
+    color: theme.palette.mode === 'dark' ? 'white' : undefined,
   },
 }))
 
@@ -157,7 +157,7 @@ export const PlaylistLove = ({ record, className }) => (
 PlaylistLove.defaultProps = { source: 'starred', sortable: false }
 
 const PlaylistList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   useResourceRefresh('playlist')
 

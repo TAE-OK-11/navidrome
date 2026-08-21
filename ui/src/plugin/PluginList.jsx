@@ -10,14 +10,8 @@ import {
   useRefresh,
   useTranslate,
 } from 'react-admin'
-import { makeStyles } from '@material-ui/core/styles'
-import {
-  useMediaQuery,
-  Tooltip,
-  Chip,
-  Typography,
-  Box,
-} from '@material-ui/core'
+import makeStyles from '@mui/styles/makeStyles'
+import { useMediaQuery, Tooltip, Chip, Typography, Box } from '@mui/material'
 import { MdError, MdRefresh } from 'react-icons/md'
 import { List, DateField, SimpleList, useResourceRefresh } from '../common'
 import { httpClient } from '../dataProvider'
@@ -130,7 +124,7 @@ const PluginEmpty = () => {
 }
 
 const PluginList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const translate = useTranslate()
   useResourceRefresh('plugin')
 

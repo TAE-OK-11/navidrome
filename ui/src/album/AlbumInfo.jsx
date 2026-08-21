@@ -1,9 +1,9 @@
-import Table from '@material-ui/core/Table'
-import TableBody from '@material-ui/core/TableBody'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
 import { humanize, underscore } from 'inflection'
-import TableCell from '@material-ui/core/TableCell'
-import TableContainer from '@material-ui/core/TableContainer'
-import TableRow from '@material-ui/core/TableRow'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableRow from '@mui/material/TableRow'
 import {
   ArrayField,
   BooleanField,
@@ -15,7 +15,7 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 import {
   ArtistLinkField,
   MultiLineTextField,

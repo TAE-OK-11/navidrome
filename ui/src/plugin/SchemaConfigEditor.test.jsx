@@ -1,7 +1,11 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import { ThemeProvider, createTheme } from '@material-ui/core/styles'
+import {
+  ThemeProvider,
+  StyledEngineProvider,
+  createTheme,
+} from '@mui/material/styles'
 import { Provider } from 'react-redux'
 import { createStore } from 'redux'
 import { SchemaConfigEditor } from './SchemaConfigEditor'
@@ -14,7 +18,9 @@ const mockStore = createStore(() => ({}))
 const renderWithProviders = (component) => {
   return render(
     <Provider store={mockStore}>
-      <ThemeProvider theme={theme}>{component}</ThemeProvider>
+      <StyledEngineProvider injectFirst>
+        <ThemeProvider theme={theme}>{component}</ThemeProvider>
+      </StyledEngineProvider>
     </Provider>,
   )
 }

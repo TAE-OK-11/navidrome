@@ -8,9 +8,9 @@ import {
   TextField,
   FunctionField,
 } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
-import { makeStyles } from '@material-ui/core/styles'
+import { useMediaQuery } from '@mui/material'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
+import makeStyles from '@mui/styles/makeStyles'
 import { useDrag } from 'react-dnd'
 import {
   ArtistLinkField,
@@ -95,7 +95,7 @@ const AlbumTableView = ({
 }) => {
   const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
 
   const toggleableFields = useMemo(() => {
     return {

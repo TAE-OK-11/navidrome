@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import Checkbox from '@material-ui/core/Checkbox'
-import CheckBoxIcon from '@material-ui/icons/CheckBox'
-import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank'
+import Checkbox from '@mui/material/Checkbox'
+import CheckBoxIcon from '@mui/icons-material/CheckBox'
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import {
   List,
   ListItem,
@@ -9,10 +9,10 @@ import {
   ListItemText,
   Typography,
   Box,
-} from '@material-ui/core'
+} from '@mui/material'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
-import { makeStyles } from '@material-ui/core'
+import makeStyles from '@mui/styles/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   root: {

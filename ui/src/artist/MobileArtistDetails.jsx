@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { Typography, Collapse } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
-import Card from '@material-ui/core/Card'
-import CardMedia from '@material-ui/core/CardMedia'
+import { Typography, Collapse } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import Card from '@mui/material/Card'
+import CardMedia from '@mui/material/CardMedia'
 import config from '../config'
 import {
   LoveButton,
@@ -157,7 +157,7 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
         </div>
       </div>
       <div className={classes.biography}>
-        <Collapse collapsedHeight={'1.5em'} in={expanded} timeout={'auto'}>
+        <Collapse collapsedSize={'1.5em'} in={expanded} timeout={'auto'}>
           <Typography variant={'body1'} onClick={() => setExpanded(!expanded)}>
             <span>
               <SafeHTML>{biography}</SafeHTML>

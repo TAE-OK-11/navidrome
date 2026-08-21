@@ -7,7 +7,7 @@ import {
   TextInput,
 } from 'react-admin'
 import { sharePlayerUrl } from '../utils'
-import { Link } from '@material-ui/core'
+import { Link } from '@mui/material'
 import { DateField } from '../common'
 import config from '../config'
 

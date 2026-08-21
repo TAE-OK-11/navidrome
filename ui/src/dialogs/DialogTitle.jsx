@@ -1,8 +1,8 @@
-import { withStyles } from '@material-ui/core/styles'
-import MuiDialogTitle from '@material-ui/core/DialogTitle'
-import Typography from '@material-ui/core/Typography'
-import IconButton from '@material-ui/core/IconButton'
-import CloseIcon from '@material-ui/icons/Close'
+import withStyles from '@mui/styles/withStyles'
+import MuiDialogTitle from '@mui/material/DialogTitle'
+import Typography from '@mui/material/Typography'
+import IconButton from '@mui/material/IconButton'
+import CloseIcon from '@mui/icons-material/Close'
 import React from 'react'
 
 const styles = (theme) => ({
@@ -27,6 +27,7 @@ export const DialogTitle = withStyles(styles)((props) => {
         aria-label="close"
         className={classes.closeButton}
         onClick={onClose}
+        size="large"
       >
         <CloseIcon />
       </IconButton>

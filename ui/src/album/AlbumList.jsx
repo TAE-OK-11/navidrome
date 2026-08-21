@@ -16,8 +16,7 @@ import {
   useTranslate,
   useVersion,
 } from 'react-admin'
-import FavoriteIcon from '@material-ui/icons/Favorite'
-import { withWidth } from '@material-ui/core'
+import FavoriteIcon from '@mui/icons-material/Favorite'
 import {
   List,
   Pagination,
@@ -39,7 +38,12 @@ import config from '../config'
 import AlbumInfo from './AlbumInfo'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { humanize } from 'inflection'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
+
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => (props) => (
+  <WrappedComponent {...props} width="xs" />
+)
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
 const ScrollRestorer = ({ children, ...rest }) => {

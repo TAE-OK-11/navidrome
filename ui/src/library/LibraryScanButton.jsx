@@ -8,8 +8,8 @@ import {
   useUnselectAll,
 } from 'react-admin'
 import { useSelector } from 'react-redux'
-import SyncIcon from '@material-ui/icons/Sync'
-import CachedIcon from '@material-ui/icons/Cached'
+import SyncIcon from '@mui/icons-material/Sync'
+import CachedIcon from '@mui/icons-material/Cached'
 import subsonic from '../subsonic'
 
 const LibraryScanButton = ({ fullScan, selectedIds, className }) => {

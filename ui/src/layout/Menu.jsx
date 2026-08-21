@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Divider, makeStyles } from '@material-ui/core'
+import { Divider } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import clsx from 'clsx'
 import {
   useTranslate,
@@ -8,9 +9,9 @@ import {
   getResources,
   usePermissions,
 } from 'react-admin'
-import ViewListIcon from '@material-ui/icons/ViewList'
-import AlbumIcon from '@material-ui/icons/Album'
-import StorageIcon from '@material-ui/icons/Storage'
+import ViewListIcon from '@mui/icons-material/ViewList'
+import AlbumIcon from '@mui/icons-material/Album'
+import StorageIcon from '@mui/icons-material/Storage'
 import SubMenu from './SubMenu'
 import { humanize, pluralize } from 'inflection'
 import albumLists from '../album/albumLists'

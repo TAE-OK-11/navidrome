@@ -228,7 +228,7 @@ const activeLinkStyle = {
 const NautilineTheme = {
   themeName: 'Nautiline',
   palette: {
-    type: 'light',
+    mode: 'light',
     primary: {
       main: colors.accent.main,
       contrastText: '#FFFFFF',

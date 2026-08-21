@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Layout as RALayout, toggleSidebar } from 'react-admin'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 import { HotKeys } from 'react-hotkeys'
 import Menu from './Menu'
 import AppBar from './AppBar'

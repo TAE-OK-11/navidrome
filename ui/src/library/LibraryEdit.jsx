@@ -13,8 +13,8 @@ import {
   useRedirect,
   Toolbar,
 } from 'react-admin'
-import { Typography, Box } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { Typography, Box } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import DeleteLibraryButton from './DeleteLibraryButton'
 import { Title } from '../common'
 import { formatBytes, formatDuration2, formatNumber } from '../utils/index.js'

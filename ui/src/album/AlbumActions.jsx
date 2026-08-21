@@ -8,13 +8,14 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import { useMediaQuery, makeStyles } from '@material-ui/core'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
-import ShuffleIcon from '@material-ui/icons/Shuffle'
-import CloudDownloadOutlinedIcon from '@material-ui/icons/CloudDownloadOutlined'
+import { useMediaQuery } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import ShuffleIcon from '@mui/icons-material/Shuffle'
+import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
 import { RiPlayListAddFill, RiPlayList2Fill } from 'react-icons/ri'
-import PlaylistAddIcon from '@material-ui/icons/PlaylistAdd'
-import ShareIcon from '@material-ui/icons/Share'
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
+import ShareIcon from '@mui/icons-material/Share'
 import {
   playNext,
   addTracks,

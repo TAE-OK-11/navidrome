@@ -5,14 +5,10 @@ import {
   TopToolbar,
   useTranslate,
 } from 'react-admin'
-import {
-  ButtonGroup,
-  useMediaQuery,
-  Typography,
-  makeStyles,
-} from '@material-ui/core'
-import ViewHeadlineIcon from '@material-ui/icons/ViewHeadline'
-import ViewModuleIcon from '@material-ui/icons/ViewModule'
+import { ButtonGroup, useMediaQuery, Typography } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import ViewHeadlineIcon from '@mui/icons-material/ViewHeadline'
+import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useDispatch, useSelector } from 'react-redux'
 import { albumViewGrid, albumViewTable } from '../actions'
 import { ToggleFieldsMenu } from '../common'

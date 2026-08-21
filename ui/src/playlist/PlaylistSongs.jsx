@@ -12,8 +12,8 @@ import {
 } from 'react-admin'
 import clsx from 'clsx'
 import { useDispatch } from 'react-redux'
-import { Card, useMediaQuery } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { Card, useMediaQuery } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import ReactDragListView from 'react-drag-listview'
 import {
   DurationField,
@@ -45,7 +45,7 @@ const useStyles = makeStyles(
       transition: theme.transitions.create('margin-top'),
       position: 'relative',
       flex: '1 1 auto',
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         boxShadow: 'none',
       },
     },

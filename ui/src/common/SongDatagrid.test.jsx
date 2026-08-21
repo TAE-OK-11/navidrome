@@ -1,7 +1,11 @@
 import React from 'react'
 import { render, fireEvent, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createTheme, ThemeProvider } from '@material-ui/core/styles'
+import {
+  createTheme,
+  ThemeProvider,
+  StyledEngineProvider,
+} from '@mui/material/styles'
 import { DiscSubtitleRow } from './SongDatagrid'
 
 vi.mock('../subsonic', () => ({
@@ -25,13 +29,15 @@ const record = {
 
 const renderRow = (onClick) =>
   render(
-    <ThemeProvider theme={createTheme()}>
-      <table>
-        <tbody>
-          <DiscSubtitleRow record={record} onClick={onClick} colSpan={3} />
-        </tbody>
-      </table>
-    </ThemeProvider>,
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={createTheme()}>
+        <table>
+          <tbody>
+            <DiscSubtitleRow record={record} onClick={onClick} colSpan={3} />
+          </tbody>
+        </table>
+      </ThemeProvider>
+    </StyledEngineProvider>,
   )
 
 const openLightbox = () => {

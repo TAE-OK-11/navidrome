@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import Table from '@material-ui/core/Table'
-import TableBody from '@material-ui/core/TableBody'
-import TableCell from '@material-ui/core/TableCell'
-import TableContainer from '@material-ui/core/TableContainer'
-import TableRow from '@material-ui/core/TableRow'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableRow from '@mui/material/TableRow'
 import {
   BooleanField,
   DateField,
@@ -22,10 +22,10 @@ import {
   SizeField,
 } from './index'
 import { MultiLineTextField } from './MultiLineTextField'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 import config from '../config'
 import { AlbumLinkField } from '../song/AlbumLinkField'
-import { Tab, Tabs } from '@material-ui/core'
+import { Tab, Tabs } from '@mui/material'
 
 const useStyles = makeStyles({
   gain: {

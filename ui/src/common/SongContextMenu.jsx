@@ -7,9 +7,9 @@ import {
   useTranslate,
   useDataProvider,
 } from 'react-admin'
-import { IconButton, Menu, MenuItem } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
-import MoreVertIcon from '@material-ui/icons/MoreVert'
+import { IconButton, Menu, MenuItem } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
 import clsx from 'clsx'
 import {

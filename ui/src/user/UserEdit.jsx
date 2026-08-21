@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 import {
   TextInput,
   BooleanInput,
@@ -20,7 +20,7 @@ import {
   usePermissions,
   useRecordContext,
 } from 'react-admin'
-import { Typography } from '@material-ui/core'
+import { Typography } from '@mui/material'
 import { Title } from '../common'
 import DeleteUserButton from './DeleteUserButton'
 import { LibrarySelectionField } from './LibrarySelectionField.jsx'

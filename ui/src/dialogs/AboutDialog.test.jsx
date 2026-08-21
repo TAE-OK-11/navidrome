@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { LinkToVersion } from './AboutDialog'
-import TableBody from '@material-ui/core/TableBody'
-import TableRow from '@material-ui/core/TableRow'
-import Table from '@material-ui/core/Table'
-import TableCell from '@material-ui/core/TableCell'
+import TableBody from '@mui/material/TableBody'
+import TableRow from '@mui/material/TableRow'
+import Table from '@mui/material/Table'
+import TableCell from '@mui/material/TableCell'
 
 const Wrapper = ({ version }) => (
   <Table>

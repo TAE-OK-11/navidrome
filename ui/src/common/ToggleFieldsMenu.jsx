@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import PropTypes from 'prop-types'
-import IconButton from '@material-ui/core/IconButton'
-import Menu from '@material-ui/core/Menu'
-import MenuItem from '@material-ui/core/MenuItem'
-import { makeStyles, Typography } from '@material-ui/core'
-import MoreVertIcon from '@material-ui/icons/MoreVert'
-import Checkbox from '@material-ui/core/Checkbox'
+import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import { Typography } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import Checkbox from '@mui/material/Checkbox'
 import { useDispatch, useSelector } from 'react-redux'
 import { useTranslate } from 'react-admin'
 import { setToggleableFields } from '../actions'
@@ -69,6 +70,7 @@ export const ToggleFieldsMenu = ({
         aria-controls="long-menu"
         aria-haspopup="true"
         onClick={handleOpen}
+        size="large"
       >
         <MoreVertIcon />
       </IconButton>

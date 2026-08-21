@@ -1,4 +1,4 @@
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 
 export const usePluginShowStyles = makeStyles(
   (theme) => ({
@@ -15,7 +15,7 @@ export const usePluginShowStyles = makeStyles(
     },
     manifestBox: {
       backgroundColor:
-        theme.palette.type === 'dark'
+        theme.palette.mode === 'dark'
           ? theme.palette.grey[900]
           : theme.palette.grey[100],
       padding: theme.spacing(2),

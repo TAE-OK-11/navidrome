@@ -14,7 +14,6 @@ import {
   IconButton,
   InputLabel,
   LinearProgress,
-  makeStyles,
   MenuItem,
   Select,
   Tab,
@@ -23,14 +22,15 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@material-ui/core'
-import RefreshIcon from '@material-ui/icons/Refresh'
-import PauseIcon from '@material-ui/icons/Pause'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
-import VerifiedUserIcon from '@material-ui/icons/VerifiedUser'
-import DeleteSweepIcon from '@material-ui/icons/DeleteSweep'
-import BuildIcon from '@material-ui/icons/Build'
-import CloudDownloadIcon from '@material-ui/icons/CloudDownload'
+} from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import PauseIcon from '@mui/icons-material/Pause'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
+import BuildIcon from '@mui/icons-material/Build'
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload'
 import {
   getHotCacheCandidates,
   getHotCacheDashboard,
@@ -388,7 +388,7 @@ const HotCacheAdmin = () => {
           color={status.health === 'healthy' ? 'primary' : 'default'}
         />
         <Tooltip title={t('refresh')}>
-          <IconButton onClick={refresh}>
+          <IconButton onClick={refresh} size="large">
             <RefreshIcon />
           </IconButton>
         </Tooltip>
@@ -557,13 +557,13 @@ const HotCacheAdmin = () => {
               count={entries.total || 0}
               page={Math.floor(entryQuery.offset / entryQuery.limit)}
               rowsPerPage={entryQuery.limit}
-              onChangePage={(_, page) =>
+              onPageChange={(_, page) =>
                 setEntryQuery({
                   ...entryQuery,
                   offset: page * entryQuery.limit,
                 })
               }
-              onChangeRowsPerPage={(event) =>
+              onRowsPerPageChange={(event) =>
                 setEntryQuery({
                   ...entryQuery,
                   limit: Number(event.target.value),

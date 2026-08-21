@@ -1,12 +1,12 @@
 import React from 'react'
 import { useTranslate } from 'react-admin'
-import { IconButton, Tooltip, Link } from '@material-ui/core'
+import { IconButton, Tooltip, Link } from '@mui/material'
 
 import { ImLastfm2 } from 'react-icons/im'
 import MusicBrainz from '../icons/MusicBrainz'
 import { intersperse, isLastFmURL } from '../utils'
 import config from '../config'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 
 const useStyles = makeStyles({
   linkBar: {

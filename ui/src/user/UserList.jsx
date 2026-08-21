@@ -7,7 +7,7 @@ import {
   SimpleList,
   TextField,
 } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
+import { useMediaQuery } from '@mui/material'
 import { List, DateField } from '../common'
 
 const UserFilter = (props) => (
@@ -17,7 +17,7 @@ const UserFilter = (props) => (
 )
 
 const UserList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
 
   return (
     <List

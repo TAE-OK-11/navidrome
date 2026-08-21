@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import TextField from '@material-ui/core/TextField'
-import Checkbox from '@material-ui/core/Checkbox'
-import CheckBoxIcon from '@material-ui/icons/CheckBox'
-import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank'
+import TextField from '@mui/material/TextField'
+import Checkbox from '@mui/material/Checkbox'
+import CheckBoxIcon from '@mui/icons-material/CheckBox'
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import {
   List,
   ListItem,
@@ -12,12 +12,12 @@ import {
   Box,
   InputAdornment,
   IconButton,
-} from '@material-ui/core'
-import AddIcon from '@material-ui/icons/Add'
+} from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
 import { isWritable } from '../common'
-import { makeStyles } from '@material-ui/core'
+import makeStyles from '@mui/styles/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   root: {

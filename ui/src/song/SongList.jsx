@@ -11,8 +11,8 @@ import {
   NullableBooleanInput,
   usePermissions,
 } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
-import FavoriteIcon from '@material-ui/icons/Favorite'
+import { useMediaQuery } from '@mui/material'
+import FavoriteIcon from '@mui/icons-material/Favorite'
 import {
   DateField,
   DurationField,
@@ -30,8 +30,8 @@ import {
   getStoredPerPage,
 } from '../common'
 import { useDispatch } from 'react-redux'
-import { makeStyles } from '@material-ui/core/styles'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
+import makeStyles from '@mui/styles/makeStyles'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { setTrack } from '../actions'
 import { SongListActions } from './SongListActions'
 import { AlbumLinkField } from './AlbumLinkField'
@@ -133,7 +133,7 @@ const SongFilter = (props) => {
 const SongList = (props) => {
   const classes = useStyles()
   const dispatch = useDispatch()
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   useResourceRefresh('song')
 

@@ -3,7 +3,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { createStore, combineReducers } from 'redux'
-import { ThemeProvider, createTheme } from '@material-ui/core/styles'
+import {
+  ThemeProvider,
+  StyledEngineProvider,
+  createTheme,
+} from '@mui/material/styles'
 import { settingsReducer, activityReducer } from '../reducers'
 import { processEvent, EVENT_REFRESH_RESOURCE } from '../actions'
 import PlaylistsSubMenu from './PlaylistsSubMenu'
@@ -71,14 +75,16 @@ const renderMenu = (preloadedSettings = {}, preloadedPlaylistData) => {
   const theme = createTheme()
   render(
     <Provider store={store}>
-      <ThemeProvider theme={theme}>
-        <PlaylistsSubMenu
-          state={{ menuPlaylists: true, menuSharedPlaylists: true }}
-          setState={vi.fn()}
-          sidebarIsOpen={true}
-          dense={false}
-        />
-      </ThemeProvider>
+      <StyledEngineProvider injectFirst>
+        <ThemeProvider theme={theme}>
+          <PlaylistsSubMenu
+            state={{ menuPlaylists: true, menuSharedPlaylists: true }}
+            setState={vi.fn()}
+            sidebarIsOpen={true}
+            dense={false}
+          />
+        </ThemeProvider>
+      </StyledEngineProvider>
     </Provider>,
   )
   return store

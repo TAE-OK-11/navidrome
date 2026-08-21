@@ -1,4 +1,5 @@
-import { Avatar, makeStyles, useMediaQuery } from '@material-ui/core'
+import { Avatar, useMediaQuery } from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
 import React, { cloneElement } from 'react'
 import {
   CreateButton,
@@ -98,7 +99,7 @@ CoverArtField.defaultProps = { label: '' }
 
 const RadioList = ({ permissions, ...props }) => {
   const classes = useStyles()
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const dispatch = useDispatch()
   const isAdmin = permissions === 'admin'
 

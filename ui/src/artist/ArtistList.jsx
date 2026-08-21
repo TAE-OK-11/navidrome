@@ -14,10 +14,10 @@ import {
   NullableBooleanInput,
   usePermissions,
 } from 'react-admin'
-import { useMediaQuery, withWidth } from '@material-ui/core'
-import FavoriteIcon from '@material-ui/icons/Favorite'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
-import { makeStyles } from '@material-ui/core/styles'
+import { useMediaQuery } from '@mui/material'
+import FavoriteIcon from '@mui/icons-material/Favorite'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
+import makeStyles from '@mui/styles/makeStyles'
 import { useDrag } from 'react-dnd'
 import clsx from 'clsx'
 import {
@@ -35,6 +35,11 @@ import ArtistSimpleList from './ArtistSimpleList'
 import { DraggableTypes } from '../consts'
 import en from '../i18n/en.json'
 import { formatBytes } from '../utils/index.js'
+
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => (props) => (
+  <WrappedComponent {...props} width="xs" />
+)
 
 const useStyles = makeStyles({
   contextHeader: {
@@ -131,7 +136,7 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
   const classes = useStyles()
   const handleArtistLink = useGetHandleArtistClick(width)
   const history = useHistory()
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   useResourceRefresh('artist')
 
   const role = filterValues?.role

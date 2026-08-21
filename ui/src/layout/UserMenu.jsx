@@ -18,9 +18,9 @@ import {
   CardContent,
   Divider,
   Typography,
-} from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
-import AccountCircle from '@material-ui/icons/AccountCircle'
+} from '@mui/material'
+import makeStyles from '@mui/styles/makeStyles'
+import AccountCircle from '@mui/icons-material/AccountCircle'
 import config from '../config'
 import authProvider from '../authProvider'
 import { startEventStream } from '../eventStream'
@@ -80,6 +80,7 @@ const UserMenu = (props) => {
           aria-owns={open ? 'menu-appbar' : null}
           aria-haspopup={true}
           onClick={handleMenu}
+          size="large"
         >
           {loaded && identity.avatar ? (
             <Avatar

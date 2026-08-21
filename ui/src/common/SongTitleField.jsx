@@ -1,9 +1,9 @@
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '@mui/styles/makeStyles'
 import React from 'react'
 import PropTypes from 'prop-types'
 import { useSelector } from 'react-redux'
 import { FunctionField } from 'react-admin'
-import { useTheme } from '@material-ui/core/styles'
+import { useTheme } from '@mui/material/styles'
 import PlayingLight from '../icons/playing-light.gif'
 import PlayingDark from '../icons/playing-dark.gif'
 import PausedLight from '../icons/paused-light.png'
@@ -57,9 +57,9 @@ export const SongTitleField = ({ showTrackNumbers, ...props }) => {
   const Icon = () => {
     let icon
     if (paused) {
-      icon = theme.palette.type === 'light' ? PausedLight : PausedDark
+      icon = theme.palette.mode === 'light' ? PausedLight : PausedDark
     } else {
-      icon = theme.palette.type === 'light' ? PlayingLight : PlayingDark
+      icon = theme.palette.mode === 'light' ? PlayingLight : PlayingDark
     }
     return (
       <img

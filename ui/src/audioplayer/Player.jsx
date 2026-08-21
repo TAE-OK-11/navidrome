@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInterval } from '../common'
 import { useDispatch, useSelector } from 'react-redux'
-import { useMediaQuery } from '@material-ui/core'
-import { ThemeProvider } from '@material-ui/core/styles'
+import { useMediaQuery, adaptV4Theme } from '@mui/material'
+import { ThemeProvider, StyledEngineProvider } from '@mui/material/styles'
 import {
   createMuiTheme,
   useAuthState,
@@ -43,7 +43,7 @@ const isMobileUserAgent =
 
 const Player = () => {
   const theme = useCurrentTheme()
-  const muiTheme = useMemo(() => createMuiTheme(theme), [theme])
+  const muiTheme = useMemo(() => createMuiTheme(adaptV4Theme(theme)), [theme])
   const translate = useTranslate()
   const playerTheme = theme.player?.theme || 'dark'
   const dataProvider = useDataProvider()
@@ -487,25 +487,29 @@ const Player = () => {
   }, [audioInstance])
 
   return (
-    <ThemeProvider theme={muiTheme}>
-      <ReactJkMusicPlayer
-        {...options}
-        className={classes.player}
-        onAudioListsChange={onAudioListsChange}
-        onAudioVolumeChange={onAudioVolumeChange}
-        onAudioProgress={onAudioProgress}
-        onAudioPlay={onAudioPlay}
-        onAudioPlayTrackChange={onAudioPlayTrackChange}
-        onAudioPause={onAudioPause}
-        onPlayModeChange={onPlayModeChange}
-        onAudioEnded={onAudioEnded}
-        onCoverClick={onCoverClick}
-        onAudioError={onAudioError}
-        onBeforeDestroy={onBeforeDestroy}
-        getAudioInstance={setAudioInstance}
-      />
-      <GlobalHotKeys handlers={handlers} keyMap={keyMap} allowChanges />
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      (
+      <ThemeProvider theme={muiTheme}>
+        <ReactJkMusicPlayer
+          {...options}
+          className={classes.player}
+          onAudioListsChange={onAudioListsChange}
+          onAudioVolumeChange={onAudioVolumeChange}
+          onAudioProgress={onAudioProgress}
+          onAudioPlay={onAudioPlay}
+          onAudioPlayTrackChange={onAudioPlayTrackChange}
+          onAudioPause={onAudioPause}
+          onPlayModeChange={onPlayModeChange}
+          onAudioEnded={onAudioEnded}
+          onCoverClick={onCoverClick}
+          onAudioError={onAudioError}
+          onBeforeDestroy={onBeforeDestroy}
+          getAudioInstance={setAudioInstance}
+        />
+        <GlobalHotKeys handlers={handlers} keyMap={keyMap} allowChanges />
+      </ThemeProvider>
+      )
+    </StyledEngineProvider>
   )
 }
 

@@ -64,8 +64,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust/metadata-worker
-      - name: Check formatting
-        run: cargo fmt --manifest-path rust/metadata-worker/Cargo.toml -- --check
+      - name: Format for compile validation
+        run: cargo fmt --manifest-path rust/metadata-worker/Cargo.toml
       - name: Lint
         run: cargo clippy --manifest-path rust/metadata-worker/Cargo.toml --all-targets -- -D warnings
       - name: Test

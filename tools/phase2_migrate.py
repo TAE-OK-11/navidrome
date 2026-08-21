@@ -35,8 +35,7 @@ def migrate_go() -> None:
 
 
 def metadata_builder_stage() -> str:
-    return r'''# =========================================================
-# Lofty metadata companion (persistent Go <-> Rust worker)
+    return r'''# Lofty metadata companion (persistent Go <-> Rust worker)
 # =========================================================
 
 FROM ${RUST_IMAGE} AS metadata-builder
@@ -81,6 +80,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
       /out/navidrome-metadata && \
     test -x /out/navidrome-metadata
 
+# =========================================================
 '''
 
 
@@ -106,7 +106,7 @@ def migrate_jbs() -> None:
         text,
         "# Tokio-quiche HTTP/3 companion\n# =========================================================\n\nFROM ${RUST_IMAGE} AS h3-builder",
         metadata_builder_stage()
-        + "# =========================================================\n# Tokio-quiche HTTP/3 companion\n# =========================================================\n\nFROM ${RUST_IMAGE} AS h3-builder",
+        + "# Tokio-quiche HTTP/3 companion\n# =========================================================\n\nFROM ${RUST_IMAGE} AS h3-builder",
         "HTTP/3 builder insertion point",
     )
 
@@ -121,16 +121,9 @@ def migrate_jbs() -> None:
     if count != 1:
         raise SystemExit("failed to remove TagLib C++ build block")
 
-    for package_line in [
-        "      cmake \\\n",
-        "      libutfcpp-dev \\\n",
-        "      ninja-build \\\n",
-        "      pkg-config \\\n",
-        "      wget \\\n",
-        "      zlib1g-dev\n",
-    ]:
-        text = text.replace(package_line, "")
-
+    # Keep the generic native build packages for now because the same image section
+    # also participates in SQLite/CGO builds. Removing a package must not affect the
+    # independent tokio-quiche toolchain. Only remove TagLib-specific link inputs.
     text = text.replace("    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \\\n", "")
     text = text.replace(
         '    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS} -L/usr/local/lib -lstdc++ -lz -lm"',

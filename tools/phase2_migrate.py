@@ -37,9 +37,6 @@ def migrate_go() -> None:
     )
     consts.write_text(text)
 
-    # Embedded artwork stays on the existing FFmpeg implementation. FFmpeg
-    # receives the absolute path while callers keep the library-relative source
-    # identifier used by artwork caching and diagnostics.
     album = Path("core/artwork/reader_album.go")
     text = album.read_text()
     text = require_replace(
@@ -82,9 +79,6 @@ def migrate_go() -> None:
     )
     disc_test.write_text(text)
 
-    # Fail before go mod tidy if any Go source outside the adapter scheduled for
-    # deletion still imports TagLib. This makes residual ownership explicit
-    # instead of allowing tidy to silently restore the module.
     leftovers = []
     for path in Path(".").rglob("*.go"):
         if ".git" in path.parts:

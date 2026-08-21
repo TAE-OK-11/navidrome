@@ -24,47 +24,32 @@ import (
 	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.senan.xyz/taglib"
 )
 
-// realMP3WithEmbeddedArt is the bytes of the canonical test fixture that
-// contains a valid MP3 stream with an embedded picture. Used in the
-// embedded-art e2e scenarios where FakeFS's JSON-encoded tag data isn't
-// readable by taglib. Swap this into fakeFS.MapFS *after* scanning so the
-// scanner still populates EmbedArtPath via the JSON-tagged track, and the
-// artwork reader gets real bytes when it calls libFS.Open.
+// realMP3WithEmbeddedArt is the canonical embedded-art fixture. The scanner
+// first sees FakeFS JSON metadata and then the fixture is swapped in so the
+// artwork path still represents a real media file.
 //
 //go:embed testdata/embedded_art.mp3
 var realMP3WithEmbeddedArt []byte
 
-// embeddedArtBytes is the exact image payload that the artwork reader will
-// extract from realMP3WithEmbeddedArt. Computed once via taglib so tests can
-// assert byte-for-byte equality — if this ever differs it means the reader
-// pulled from a different source.
-var embeddedArtBytes = extractEmbeddedArt(realMP3WithEmbeddedArt)
+// These e2e specs validate artwork source selection, not FFmpeg's decoder.
+// Feed a deterministic payload through the FFmpeg mock and assert that the
+// embedded source wins or loses according to priority.
+var embeddedArtBytes = []byte("embedded-art-fixture")
 
-func extractEmbeddedArt(mp3 []byte) []byte {
-	tf, err := taglib.OpenStream(bytes.NewReader(mp3))
-	if err != nil {
-		panic("embedded-art fixture: taglib.OpenStream failed: " + err.Error())
-	}
-	defer tf.Close()
-	images := tf.Properties().Images
-	if len(images) == 0 {
-		panic("embedded-art fixture has no embedded images")
-	}
-	data, err := tf.Image(0)
-	if err != nil || len(data) == 0 {
-		panic("embedded-art fixture: could not read image 0")
-	}
-	return data
-}
+var artworkFFmpeg *tests.MockFFmpeg
 
-// replaceWithRealMP3 swaps the FakeFS entry at the given library-relative
-// path so libFS.Open returns an MP3 stream taglib can parse.
+// replaceWithRealMP3 swaps the FakeFS entry after scanning and arms the FFmpeg
+// mock for the embedded-art source. setupHarness creates a fresh mock per spec,
+// so this state cannot leak into unrelated artwork tests.
 func replaceWithRealMP3(relPath string) {
 	GinkgoHelper()
 	fakeFS.MapFS[relPath] = &fstest.MapFile{Data: realMP3WithEmbeddedArt}
+	if artworkFFmpeg != nil {
+		artworkFFmpeg.Reader = bytes.NewReader(embeddedArtBytes)
+		artworkFFmpeg.Error = nil
+	}
 }
 
 // placeholderBytes returns the bundled album-placeholder image bytes — the
@@ -92,6 +77,7 @@ func writeUploadedImage(entity, filename string, data []byte) {
 func newNoopFFmpeg() *tests.MockFFmpeg {
 	ff := tests.NewMockFFmpeg("")
 	ff.Error = errors.New("noop")
+	artworkFFmpeg = ff
 	return ff
 }
 

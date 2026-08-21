@@ -1,34 +1,21 @@
-# This file controls the MIME types that are used by the Navidrome.
+# This file controls the MIME types that are used by Navidrome.
 # You can add or modify entries to match your needs.
-# Any "audio/*" MIME type is considered a valid audio file for Navidrome, but will only work properly if
-# supported by `taglib` and/or `ffmpeg`.
+# Any "audio/*" MIME type is considered a valid audio file for Navidrome, but media files will only work properly if
+# supported by the Lofty metadata worker and/or ffmpeg.
 # Any "image/*" MIME type is considered a valid image file to be used as cover art.
 
 types:
-# Audio
-  .mp3: audio/mpeg 
-  .ogg: audio/ogg 
-  .oga: audio/ogg 
-  .opus: audio/ogg 
+# Audio media: intentionally limited to the production formats supported by this fork.
+  .mp3: audio/mpeg
+  .opus: audio/ogg
   .aac: audio/aac
-  .alac: audio/mp4 
-  .m4a: audio/mp4 
-  .m4b: audio/mp4 
-  .flac: audio/flac 
-  .wav: audio/x-wav 
-  .wma: audio/x-ms-wma 
-  .ape: audio/x-monkeys-audio 
-  .mpc: audio/x-musepack 
-  .shn: audio/x-shn 
-  .aif: audio/x-aiff 
-  .aiff: audio/x-aiff 
-  .m3u: audio/x-mpegurl 
-  .pls: audio/x-scpls 
-  .dsf: audio/x-dsf
-  .wv: audio/x-wavpack 
-  .wvp: audio/x-wavpack 
-  .tak: audio/tak 
-  .mka: audio/x-matroska 
+  .alac: audio/mp4
+  .m4a: audio/mp4
+  .flac: audio/flac
+
+# Playlists (not audio codecs)
+  .m3u: audio/x-mpegurl
+  .pls: audio/x-scpls
 
 # Image
   .gif: image/gif
@@ -41,14 +28,8 @@ types:
   .heic: image/heic
   .heif: image/heif
 
-# List of audio formats that are considered lossless
+# Audio formats that are unambiguously lossless by extension.
+# .m4a can contain either AAC or ALAC, so codec metadata decides that case.
 lossless:
   - .flac
   - .alac
-  - .ape
-  - .shn
-  - .dsf
-  - .wv
-  - .wvp
-  - .tak
-  - .wav

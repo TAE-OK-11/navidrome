@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/deluan/rest"
-	_ "github.com/navidrome/navidrome/adapters/gotaglib" // Register taglib extractor
+	_ "github.com/navidrome/navidrome/adapters/lofty" // Register Lofty extractor
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/core"
 	_ "github.com/navidrome/navidrome/core/storage/local" // Register local storage
@@ -21,7 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// These tests require the local storage adapter and the taglib extractor to be registered.
+// These tests require the local storage adapter and the Lofty extractor to be registered.
 var _ = Describe("Library Service", func() {
 	var service core.Library
 	var ds *tests.MockDataStore

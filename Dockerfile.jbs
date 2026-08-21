@@ -12,7 +12,7 @@
 #   - jemalloc 5.3.1
 #   - Opus 1.6.1
 #   - LAME 3.100 (FFmpeg 8.1.x stable compatibility)
-#   - TagLib 2.3
+#   - Lofty 0.25 metadata worker
 #   - rusqlite 0.40.1 Anti-hero
 #
 # Main fixes:
@@ -51,7 +51,6 @@ ARG JEMALLOC_VERSION=5.3.1
 ARG FFMPEG_VERSION=8.1.2
 ARG OPUS_VERSION=1.6.1
 ARG LAME_VERSION=3.100
-ARG TAGLIB_VERSION=2.3
 ARG RUSQLITE_VERSION=0.40.1
 ARG WALKDIR_VERSION=2.5.0
 
@@ -94,7 +93,6 @@ ARG JEMALLOC_SHA256=3826bc80232f22ed5c4662f3034f799ca316e819103bdc7bb99018a42170
 ARG FFMPEG_SHA256=464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c
 ARG OPUS_SHA256=6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1
 ARG LAME_SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
-ARG TAGLIB_SHA256=7349f6fd942418bc7009ebe743eb7c9d055f02921ec56fa436ec25007c47fd38
 
 # =========================================================
 # Source
@@ -382,8 +380,8 @@ RUN set -eu; \
       --enable-avfilter \
       --enable-swresample \
       --enable-protocol=file,pipe \
-      --enable-demuxer=mov,mp3,aac,flac,wav,aiff,ogg,ape,matroska,wv,pcm_s16le \
-      --enable-decoder=alac,aac,mp3,mp3float,flac,opus,vorbis,ape,wavpack,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_f32le \
+      --enable-demuxer=mov,mp3,aac,flac,ogg,pcm_s16le \
+      --enable-decoder=alac,aac,mp3,mp3float,flac,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le \
       --enable-parser=aac,mpegaudio,flac,opus \
       --enable-encoder=libopus,libmp3lame,aac,flac,pcm_s16le \
       --enable-muxer=ogg,opus,mp3,adts,wav,flac \
@@ -440,10 +438,10 @@ RUN set -eu; \
     for name in libopus libmp3lame aac flac pcm_s16le; do \
       require_ffmpeg_entry /tmp/encoders.txt "$name" encoder; \
     done; \
-    for name in alac aac mp3 flac opus vorbis ape wavpack pcm_s16le pcm_s24le pcm_s32le pcm_f32le; do \
+    for name in alac aac mp3 flac opus pcm_s16le pcm_s24le pcm_s32le pcm_f32le; do \
       require_ffmpeg_entry /tmp/decoders.txt "$name" decoder; \
     done; \
-    for name in mov mp3 aac flac wav aiff ogg ape matroska wv s16le; do \
+    for name in mov mp3 aac flac ogg s16le; do \
       require_ffmpeg_entry /tmp/demuxers.txt "$name" demuxer; \
     done; \
     for name in ogg opus mp3 adts wav flac; do \
@@ -935,7 +933,7 @@ fn run_ffmpeg_preflight(args: &[String]) -> i32 {
     require_entries(
         &decoders,
         "decoder",
-        &["alac", "aac", "mp3", "flac", "opus", "vorbis"],
+        &["alac", "aac", "mp3", "flac", "opus"],
         &mut failures,
     );
     require_entries(
@@ -947,7 +945,7 @@ fn run_ffmpeg_preflight(args: &[String]) -> i32 {
     require_entries(
         &demuxers,
         "demuxer",
-        &["mov", "mp3", "aac", "flac", "wav", "aiff", "ogg"],
+        &["mov", "mp3", "aac", "flac", "ogg"],
         &mut failures,
     );
     require_entries(
@@ -1044,6 +1042,52 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     test -x /out/jbs-helper
 
 # =========================================================
+# Lofty metadata companion (persistent Go <-> Rust worker)
+# =========================================================
+
+FROM ${RUST_IMAGE} AS metadata-builder
+
+ARG NAVIDROME_BUILD_CORES
+ARG RUST_TARGET_CPU
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      musl-tools && \
+    rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /build
+
+COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock ./
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    mkdir src && \
+    printf 'fn main() {}\n' > src/main.rs && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C target-feature=+crt-static" \
+    cargo build --locked --release --target x86_64-unknown-linux-musl && \
+    rm -rf src target/x86_64-unknown-linux-musl/release/deps/navidrome_metadata-* \
+      target/x86_64-unknown-linux-musl/release/navidrome-metadata
+
+COPY --link --from=source /src/rust/metadata/src ./src
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C target-feature=+crt-static" \
+    cargo build --locked --release --target x86_64-unknown-linux-musl && \
+    install -D -m 755 target/x86_64-unknown-linux-musl/release/navidrome-metadata \
+      /out/navidrome-metadata && \
+    test -x /out/navidrome-metadata
+
+# =========================================================
 # Tokio-quiche HTTP/3 companion
 # =========================================================
 
@@ -1106,9 +1150,7 @@ COPY --link --from=source /src/ui/package.json /src/ui/bun.lock ./
 COPY --link --from=source /src/ui/bin/ ./bin/
 
 RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
-    test -s ./bin/update-workbox.sh && \
-    sed -i 's/\r$//' ./bin/update-workbox.sh && \
-    chmod 755 ./bin/update-workbox.sh && \
+    test -s ./bin/update-workbox.ts && \
     bun install --frozen-lockfile --prefer-offline
 
 COPY --link --from=source /src/ui ./
@@ -1144,8 +1186,6 @@ RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
 
 FROM ${GOLANG_IMAGE} AS gobuilder
 
-ARG TAGLIB_VERSION
-ARG TAGLIB_SHA256
 ARG NAVIDROME_REF
 ARG NAVIDROME_BUILD_CORES
 ARG CPU_OPTIMIZATION_FLAGS
@@ -1171,37 +1211,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       pkg-config \
       wget \
       zlib1g-dev
-
-WORKDIR /taglib-build
-
-RUN wget --https-only --tries=3 --max-redirect=3 -qO taglib.tar.gz \
-      "https://github.com/taglib/taglib/releases/download/v${TAGLIB_VERSION}/taglib-${TAGLIB_VERSION}.tar.gz" && \
-    echo "${TAGLIB_SHA256}  taglib.tar.gz" | sha256sum -c - && \
-    tar -tzf taglib.tar.gz >/dev/null && \
-    tar -xzf taglib.tar.gz && \
-    cmake \
-      -S "taglib-${TAGLIB_VERSION}" \
-      -B build \
-      -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_TESTING=OFF \
-      -DBUILD_EXAMPLES=OFF \
-      -DBUILD_BINDINGS=ON \
-      -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-      -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-      -DCMAKE_C_COMPILER=clang \
-      -DCMAKE_CXX_COMPILER=clang++ \
-      -DCMAKE_AR=llvm-ar \
-      -DCMAKE_RANLIB=llvm-ranlib \
-      -DCMAKE_C_FLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS}" \
-      -DCMAKE_CXX_FLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS}" \
-      -DCMAKE_EXE_LINKER_FLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS}" \
-      -DCMAKE_INSTALL_PREFIX=/usr/local && \
-    cmake --build build --parallel "${NAVIDROME_BUILD_CORES}" && \
-    cmake --install build && \
-    test -f /usr/local/lib/libtag.a && \
-    test -f /usr/local/lib/libtag_c.a
 
 WORKDIR /src
 
@@ -1236,12 +1245,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
 
 ENV GOAMD64=${GOAMD64_VERSION} \
     CGO_ENABLED=1 \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
     CC=clang \
     CXX=clang++ \
     CGO_CFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS} ${SQLITE_EXTRA_CFLAGS}" \
     CGO_CXXFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS}" \
-    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS} -L/usr/local/lib -lstdc++ -lz -lm"
+    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS}"
 
 # Generate a reproducible Go PGO profile from Navidrome's own representative
 # hot-path benchmarks. Separate profiles keep each workload visible before
@@ -1333,7 +1341,7 @@ LABEL org.opencontainers.image.authors="JBS Networks" \
       org.opencontainers.image.description="AMD EPYC Zen3 optimized Navidrome with static Opus/MP3, native AAC/FLAC, jemalloc light profile and Rust helpers" \
       org.opencontainers.image.source="https://github.com/TAE-OK-11/navidrome" \
       org.opencontainers.image.vendor="JBS Networks" \
-      jbs.optimization="JBS-Navidrome-Ultra-6.1-Slim-v10.4/AMD-EPYC-Zen3/Go1.26.5/Node26.5/Rust1.97/FFmpeg8.1.2/LLVM-FatLTO/Go-PGO/BR11-Zstd19-Gzip9/NoSourceMaps/SQLite-Light/HotCache-3GiB/Resource-Aware"
+      jbs.optimization="JBS-Navidrome-Ultra-6.1-Slim-v10.4/AMD-EPYC-Zen3/Go1.26.5/Bun1.4/Rust1.97/FFmpeg8.1.2/LLVM-FatLTO/Go-PGO/BR11-Zstd19-Gzip9/NoSourceMaps/SQLite-Light/HotCache-3GiB/Resource-Aware"
 
 COPY --link --from=source /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
@@ -1408,6 +1416,7 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
+COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
 RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
@@ -1417,6 +1426,7 @@ RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
 
 RUN test -x /app/navidrome && \
     test -x /app/navidrome-h3 && \
+    test -x /app/navidrome-metadata && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
     test -x /usr/local/bin/ffprobe && \

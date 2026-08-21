@@ -27,7 +27,7 @@ type discArtworkReader struct {
 	imgFiles       []string        // library-relative, forward-slash, no leading slash
 	discFoldersRel map[string]bool // library-relative folder paths
 	isMultiFolder  bool
-	firstTrackRel  string // library-relative; for fromTag / ffmpeg via lib.Abs
+	firstTrackRel  string // library-relative; ffmpeg resolves it via lib.Abs
 	lib            libraryView
 	updatedAt      *time.Time
 }
@@ -140,10 +140,7 @@ func (d *discArtworkReader) fromDiscArtPriority(ctx context.Context, ffmpeg ffmp
 		pattern = strings.TrimSpace(pattern)
 		switch {
 		case pattern == "embedded":
-			ff = append(ff,
-				fromTag(ctx, d.lib.FS, d.firstTrackRel),
-				fromFFmpegTag(ctx, ffmpeg, d.lib.Abs(d.firstTrackRel)),
-			)
+			ff = append(ff, fromFFmpegTagNamed(ctx, ffmpeg, d.lib.Abs(d.firstTrackRel), d.firstTrackRel))
 		case pattern == "external":
 			// Not supported for disc art, silently ignore
 		case pattern == "discsubtitle":

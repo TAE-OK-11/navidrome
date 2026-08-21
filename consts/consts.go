@@ -88,7 +88,7 @@ const (
 	DefaultListenBrainzArtistAlgorithm = "session_based_days_9000_session_300_contribution_5_threshold_15_limit_50_skip_30"
 	DefaultListenBrainzTrackAlgorithm  = "session_based_days_9000_session_300_contribution_5_threshold_15_limit_50_skip_30"
 
-	DefaultScannerExtractor = "taglib"
+	DefaultScannerExtractor = "lofty"
 	DefaultWatcherWait      = 5 * time.Second
 	Zwsp                    = string('\u200b')
 )

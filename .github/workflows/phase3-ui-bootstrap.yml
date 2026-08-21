@@ -56,3 +56,5 @@ jobs:
           git add ui/package.json ui/bun.lock ui/src
           git commit -m 'refactor: bootstrap React 19 and MUI 9 [phase3-bootstrap]'
           git push origin HEAD:modernize/react19-mui9-phase3
+
+# explicit trigger after workflow creation

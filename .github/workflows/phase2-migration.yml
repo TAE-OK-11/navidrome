@@ -26,20 +26,7 @@ jobs:
           rustup override set 1.97.0
       - name: Apply metadata migration
         run: |
-          rm -rf adapters/gotaglib
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path('cmd/root.go')
-          text = root.read_text()
-          text = text.replace('_ "github.com/navidrome/navidrome/adapters/gotaglib"', '_ "github.com/navidrome/navidrome/adapters/lofty"')
-          root.write_text(text)
-
-          consts = Path('consts/consts.go')
-          text = consts.read_text().replace('DefaultScannerExtractor = "taglib"', 'DefaultScannerExtractor = "lofty"')
-          consts.write_text(text)
-          PY
-
+          python3 tools/phase2_migrate.py
           gofmt -w adapters/lofty cmd/root.go consts/consts.go
           go mod tidy
           cargo fmt --manifest-path rust/metadata/Cargo.toml
@@ -48,10 +35,13 @@ jobs:
         run: |
           go test ./adapters/lofty ./core/storage/local ./cmd
           cargo test --locked --manifest-path rust/metadata/Cargo.toml
-          if grep -R -n -E 'go\.senan\.xyz/taglib|github\.com/deluan/go-taglib|tetratelabs/wazero|tetratelabs/wabin' go.mod go.sum adapters cmd consts; then
+          python3 -m py_compile tools/phase2_migrate.py
+          if grep -R -n -E 'go\.senan\.xyz/taglib|github\.com/deluan/go-taglib|tetratelabs/wazero|tetratelabs/wabin|TagLib|TAGLIB_VERSION|TAGLIB_SHA256' go.mod go.sum adapters cmd consts Dockerfile.jbs; then
             echo 'TagLib/WASM dependency remains after migration' >&2
             exit 1
           fi
+          grep -q 'navidrome-metadata' Dockerfile.jbs
+          grep -q 'DefaultScannerExtractor = "lofty"' consts/consts.go
       - name: Commit generated migration state
         run: |
           if git diff --quiet && git diff --cached --quiet; then
@@ -60,6 +50,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A adapters cmd/root.go consts/consts.go go.mod go.sum rust/metadata
+          git add -A adapters cmd/root.go consts/consts.go go.mod go.sum rust/metadata Dockerfile.jbs
           git commit -m "refactor: switch scanner metadata to Lofty [phase2-generated]"
           git push origin HEAD:modernize/phase2-lofty-react19-rust

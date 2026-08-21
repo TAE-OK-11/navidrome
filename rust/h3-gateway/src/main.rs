@@ -4,7 +4,7 @@ use std::error::Error as StdError;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::{FromRawFd, RawFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::UnixStream as StdUnixStream;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -16,9 +16,8 @@ use http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri,
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Empty, StreamBody};
 use hyper::body::Frame;
-use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::rt::TokioExecutor;
+use hyper::client::conn::http2::{self, SendRequest};
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use log::{info, warn};
 use serde::Deserialize;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -46,14 +45,17 @@ const SOCKET_BUFFER_SIZE: usize = 7 * 1024 * 1024;
 const MAX_ADMISSION_PEERS: usize = 2_048;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 
+const CONTROL_FD_ENV: &str = "NAVIDROME_H3_CONTROL_FD";
+const BRIDGE_FD_ENV: &str = "NAVIDROME_H3_BRIDGE_FD";
+
+
 type BoxError = Box<dyn StdError + Send + Sync>;
 type ProxyBody = UnsyncBoxBody<Bytes, BoxError>;
-type ProxyClient = Client<HttpConnector, ProxyBody>;
+type ProxyClient = SendRequest<ProxyBody>;
 
 #[derive(Debug, Deserialize)]
 struct Config {
     udp_address: String,
-    internal_address: String,
     certificate: String,
     private_key: String,
     internal_token: String,
@@ -66,17 +68,37 @@ struct Config {
     max_connections_per_ip: usize,
     connection_rate_per_second: f64,
     connection_burst: u32,
+    congestion_control: String,
+}
+
+fn normalize_congestion_control(value: &str) -> Result<String> {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "bbr2" | "cubic" | "reno" => Ok(value),
+        _ => bail!("unsupported congestion control {value:?}"),
+    }
+}
+
+fn inherited_fd(name: &str) -> Result<RawFd> {
+    std::env::var(name)
+        .with_context(|| format!("{name} is required"))?
+        .parse()
+        .with_context(|| format!("{name} is invalid"))
 }
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    let fd: RawFd = std::env::var("NAVIDROME_H3_CONTROL_FD")
-        .context("NAVIDROME_H3_CONTROL_FD is required")?
-        .parse()
-        .context("NAVIDROME_H3_CONTROL_FD is invalid")?;
-    // SAFETY: this descriptor is passed exclusively to this process by the Go
-    // supervisor and ownership is transferred exactly once here.
-    let control = unsafe { UnixStream::from_raw_fd(fd) };
+    let control_fd = inherited_fd(CONTROL_FD_ENV)?;
+    let bridge_fd = inherited_fd(BRIDGE_FD_ENV)?;
+
+    // SAFETY: both descriptors are passed exclusively to this process by the
+    // Go supervisor and ownership is transferred exactly once here.
+    let control = unsafe { StdUnixStream::from_raw_fd(control_fd) };
+    let bridge = unsafe { StdUnixStream::from_raw_fd(bridge_fd) };
+    bridge
+        .set_nonblocking(true)
+        .context("failed to set inherited bridge nonblocking")?;
+
     let mut config_line = String::new();
     BufReader::new(control.try_clone()?)
         .read_line(&mut config_line)
@@ -100,15 +122,27 @@ fn main() -> Result<()> {
         .enable_all()
         .build()
         .context("failed to build tokio runtime")?
-        .block_on(run(config, control))
+        .block_on(run(config, control, bridge))
 }
 
-async fn run(config: Config, mut control: UnixStream) -> Result<()> {
-    let internal: SocketAddr = config
-        .internal_address
-        .parse()
-        .context("invalid private h2c address")?;
+async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) -> Result<()> {
     let public: SocketAddr = config.udp_address.parse().context("invalid UDP address")?;
+    let congestion_control = normalize_congestion_control(&config.congestion_control)?;
+
+    let bridge = tokio::net::UnixStream::from_std(bridge)
+        .context("failed to adopt inherited HTTP/2 bridge")?;
+    let mut h2 = http2::Builder::new(TokioExecutor::new());
+    h2.adaptive_window(true);
+    h2.max_header_list_size(64 * 1024);
+    let (client, connection) = h2
+        .handshake::<_, ProxyBody>(TokioIo::new(bridge))
+        .await
+        .context("failed to establish inherited HTTP/2 bridge")?;
+    tokio::spawn(async move {
+        if let Err(error) = connection.await {
+            warn!("inherited HTTP/2 bridge stopped: {error}");
+        }
+    });
 
     let socket = tuned_udp_socket(public)?;
     let socket = UdpSocket::from_std(socket).context("failed to create Tokio UDP socket")?;
@@ -139,7 +173,7 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
     quic.grease = true;
     quic.disable_client_ip_validation = false;
     quic.max_amplification_factor = MAX_AMPLIFICATION_FACTOR;
-    quic.cc_algorithm = "cubic".to_owned();
+    quic.cc_algorithm = congestion_control.clone();
     quic.qlog_dir = config
         .qlog_dir
         .as_deref()
@@ -167,14 +201,6 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
         .pop()
         .ok_or_else(|| anyhow!("tokio-quiche returned no listener"))?;
 
-    let mut connector = HttpConnector::new();
-    connector.enforce_http(true);
-    connector.set_connect_timeout(Some(Duration::from_secs(2)));
-    let client: ProxyClient = Client::builder(TokioExecutor::new())
-        .http2_only(true)
-        .http2_adaptive_window(true)
-        .pool_max_idle_per_host(1)
-        .build(connector);
     let token = HeaderValue::from_str(&config.internal_token).context("invalid bridge token")?;
     let public_port = public.port();
     let alt_svc = HeaderValue::from_str(&format!(
@@ -209,8 +235,8 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
     control.write_all(b"READY\n")?;
     control.flush()?;
     info!(
-        "HTTP/3 ready udp={} internal=h2c://{} early_data=false retry=true pmtud=true pacing=true",
-        public, internal
+        "HTTP/3 ready udp={} bridge=inherited-af_unix+h2 cc={} early_data=false retry=true pmtud=true pacing=true",
+        public, congestion_control
     );
 
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -255,7 +281,6 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
                             controller,
                             ConnectionContext {
                                 peer,
-                                internal,
                                 public_port,
                                 token: token.clone(),
                                 client: client.clone(),
@@ -387,7 +412,6 @@ impl Drop for AdmissionPermit {
 #[derive(Clone)]
 struct ConnectionContext {
     peer: SocketAddr,
-    internal: SocketAddr,
     public_port: u16,
     token: HeaderValue,
     client: ProxyClient,
@@ -456,7 +480,12 @@ async fn proxy_request_inner(
         .await?;
         return Ok(());
     }
-    let decoded = match decode_request_headers(&headers, &context) {
+    let decoded = match decode_request_headers(
+        &headers,
+        context.peer,
+        context.public_port,
+        &context.token,
+    ) {
         Ok(decoded) => decoded,
         Err(error) => {
             send_error(&mut send, StatusCode::BAD_REQUEST, "invalid HTTP/3 request").await?;
@@ -481,11 +510,16 @@ async fn proxy_request_inner(
         .body(body)
         .context("failed to build internal request")?;
     *request.headers_mut() = decoded.headers;
-    let response = context
-        .client
-        .request(request)
+
+    let mut client = context.client.clone();
+    client
+        .ready()
         .await
-        .context("private h2c request failed")?;
+        .context("inherited HTTP/2 bridge is not ready")?;
+    let response = client
+        .send_request(request)
+        .await
+        .context("inherited HTTP/2 bridge request failed")?;
     forward_response(response, &mut send, &context.alt_svc).await
 }
 
@@ -503,7 +537,9 @@ struct DecodedRequest {
 
 fn decode_request_headers(
     headers: &[h3::Header],
-    context: &ConnectionContext,
+    peer: SocketAddr,
+    public_port: u16,
+    token: &HeaderValue,
 ) -> Result<DecodedRequest> {
     let mut method = None;
     let mut scheme = None;
@@ -564,22 +600,22 @@ fn decode_request_headers(
     if !path.starts_with('/') {
         bail!(":path must be origin-form")
     }
-    let uri: Uri = format!("http://{}{}", context.internal, path).parse()?;
+    let uri: Uri = path.parse()?;
     output.insert(HOST, authority);
-    output.insert(TOKEN_HEADER, context.token.clone());
+    output.insert(TOKEN_HEADER, token.clone());
     output.insert(AUTHORITY_HEADER, output[HOST].clone());
     output.insert(
         REMOTE_ADDR_HEADER,
-        HeaderValue::from_str(&context.peer.to_string())?,
+        HeaderValue::from_str(&peer.to_string())?,
     );
     output.insert(
         "x-forwarded-for",
-        HeaderValue::from_str(&context.peer.ip().to_string())?,
+        HeaderValue::from_str(&peer.ip().to_string())?,
     );
     output.insert("x-forwarded-proto", HeaderValue::from_static("https"));
     output.insert(
         "x-forwarded-port",
-        HeaderValue::from_str(&context.public_port.to_string())?,
+        HeaderValue::from_str(&public_port.to_string())?,
     );
     Ok(DecodedRequest {
         method,
@@ -696,19 +732,16 @@ async fn send_error(
 mod tests {
     use super::*;
 
-    fn context() -> ConnectionContext {
-        let mut connector = HttpConnector::new();
-        connector.enforce_http(true);
-        ConnectionContext {
-            peer: "192.0.2.10:12345".parse().unwrap(),
-            internal: "127.0.0.1:18080".parse().unwrap(),
-            public_port: 443,
-            token: HeaderValue::from_static("test-token"),
-            client: Client::builder(TokioExecutor::new())
-                .http2_only(true)
-                .build(connector),
-            alt_svc: HeaderValue::from_static("h3=\":443\"; ma=300"),
-        }
+    fn peer() -> SocketAddr {
+        "192.0.2.10:12345".parse().unwrap()
+    }
+
+    #[test]
+    fn congestion_control_is_normalized_and_validated() {
+        assert_eq!(normalize_congestion_control(" BBR2 ").unwrap(), "bbr2");
+        assert_eq!(normalize_congestion_control("CUBIC").unwrap(), "cubic");
+        assert_eq!(normalize_congestion_control("reno").unwrap(), "reno");
+        assert!(normalize_congestion_control("bbr3").is_err());
     }
 
     #[test]
@@ -721,7 +754,8 @@ mod tests {
             h3::Header::new(b"x-forwarded-for", b"attacker"),
             h3::Header::new(b"x-real-ip", b"198.51.100.99"),
         ];
-        let decoded = decode_request_headers(&headers, &context()).unwrap();
+        let token = HeaderValue::from_static("test-token");
+        let decoded = decode_request_headers(&headers, peer(), 443, &token).unwrap();
         assert_eq!(decoded.method, Method::GET);
         assert_eq!(
             decoded.uri.path_and_query().unwrap().as_str(),
@@ -742,7 +776,8 @@ mod tests {
             h3::Header::new(b":path", b"/"),
             h3::Header::new(b"connection", b"close"),
         ];
-        assert!(decode_request_headers(&headers, &context()).is_err());
+        let token = HeaderValue::from_static("test-token");
+        assert!(decode_request_headers(&headers, peer(), 443, &token).is_err());
     }
 
     #[test]

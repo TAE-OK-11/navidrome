@@ -1,9 +1,9 @@
-import { brotliCompress, constants, gzip, zstdCompress } from 'node:zlib'
-import { availableParallelism } from 'node:os'
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
 import { extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { brotliCompress, constants, gzip, zstdCompress } from 'node:zlib'
 
 const compressBrotli = promisify(brotliCompress)
 const compressGzip = promisify(gzip)
@@ -42,7 +42,9 @@ const compressionJobs = Math.max(
   ),
 )
 
-async function collectFiles(dir, files = []) {
+type CompressionCounts = [brotli: number, zstd: number, gzip: number]
+
+async function collectFiles(dir: string, files: string[] = []): Promise<string[]> {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const file = join(dir, entry.name)
     if (entry.isDirectory()) {
@@ -62,7 +64,7 @@ async function collectFiles(dir, files = []) {
   return files
 }
 
-async function compressFile(file) {
+async function compressFile(file: string): Promise<CompressionCounts> {
   const fileStat = await stat(file)
   if (fileStat.size < minStaticPrecompressSize) return [0, 0, 0]
 
@@ -91,11 +93,11 @@ async function compressFile(file) {
     compressGzip(input, { level: 9 }),
   ])
 
-  const outputs = [
+  const outputs: Array<[Buffer, string]> = [
     [brotli, `${file}.br`],
     [zstd, `${file}.zst`],
     [gzipData, `${file}.gz`],
-  ].filter(([data]) => data.length < input.length)
+  ].filter(([data]) => data.length < input.length) as Array<[Buffer, string]>
 
   await Promise.all(outputs.map(([data, output]) => writeFile(output, data)))
   return [
@@ -106,7 +108,7 @@ async function compressFile(file) {
 }
 
 const files = await collectFiles(buildDir)
-const totals = [0, 0, 0]
+const totals: CompressionCounts = [0, 0, 0]
 let nextFile = 0
 
 await Promise.all(
@@ -119,6 +121,7 @@ await Promise.all(
   }),
 )
 
+// eslint-disable-next-line no-console
 console.log(
   `[precompress] jobs=${compressionJobs} brotli=${totals[0]} zstd=${totals[1]} gzip=${totals[2]}`,
 )

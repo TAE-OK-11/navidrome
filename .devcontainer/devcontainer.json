@@ -6,8 +6,7 @@
 			// Update the VARIANT arg to pick a version of Go: 1, 1.15, 1.14
 			"VARIANT": "1.26",
 			// Options
-			"INSTALL_NODE": "true",
-			"NODE_VERSION": "v24"
+			"BUN_VERSION": "canary"
 		}
 	},
 	"workspaceMount": "",

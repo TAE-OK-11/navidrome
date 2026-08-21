@@ -118,9 +118,9 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	if http3Enabled {
 		h3, err = newConfiguredHTTP3Runtime(ctx, listenAddr, s.router, tlsCert, tlsKey)
 		if err != nil {
-			// HTTP/3 is an optional alternative service. A provider failure must
-			// not take the established H1/H2 application server down.
-			log.Warn(ctx, "HTTP/3 provider unavailable; continuing with HTTP/1.1 and HTTP/2", "provider", conf.HTTP3Provider(), err)
+			// HTTP/3 is an optional alternative service. A quiche companion failure
+			// must not take the established H1/H2 application server down.
+			log.Warn(ctx, "tokio-quiche HTTP/3 unavailable; continuing with HTTP/1.1 and HTTP/2", err)
 			h3 = nil
 			server.Handler = clearHTTP3Advertisement(s.router)
 		} else {
@@ -131,9 +131,8 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	errC := make(chan error, 2)
 	if h3 != nil {
 		go func() {
-			err := h3.serve()
-			if !isExpectedHTTP3ServerClose(err) {
-				log.Error(ctx, "HTTP/3 provider stopped; HTTP/1.1 and HTTP/2 remain available", err)
+			if err := h3.serve(); err != nil {
+				log.Error(ctx, "tokio-quiche HTTP/3 stopped; HTTP/1.1 and HTTP/2 remain available", err)
 			}
 		}()
 	}
@@ -160,7 +159,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	case <-time.After(serverStartupGracePeriod):
 		protocols := server.Protocols.String()
 		if h3 != nil {
-			protocols += " HTTP/3"
+			protocols += " HTTP/3(quiche)"
 		}
 		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", protocols)
 	}

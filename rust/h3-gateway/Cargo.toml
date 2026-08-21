@@ -18,7 +18,7 @@ futures = "0.3.34"
 http = "1.5.0"
 http-body-util = "0.1.5"
 hyper = { version = "1.11.0", features = ["client", "http2"] }
-hyper-util = { version = "0.1.20", features = ["client-legacy", "http2", "tokio"] }
+hyper-util = { version = "0.1.20", features = ["tokio"] }
 log = { version = "0.4.33", features = ["release_max_level_info"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

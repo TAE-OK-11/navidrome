@@ -94,7 +94,11 @@ const Admin = (props) => {
     >
       {(permissions) => (
         <>
-          <Resource name="album" {...album} options={{ subMenu: 'albumList' }} />
+          <Resource
+            name="album"
+            {...album}
+            options={{ subMenu: 'albumList' }}
+          />
           <Resource name="artist" {...artist} />
           <Resource name="song" {...song} />
           <Resource
@@ -107,7 +111,11 @@ const Admin = (props) => {
             {...playlist}
             options={{ subMenu: 'playlist' }}
           />
-          <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
+          <Resource
+            name="user"
+            {...user}
+            options={{ subMenu: 'settings' }}
+          />
           <Resource
             name="player"
             {...player}

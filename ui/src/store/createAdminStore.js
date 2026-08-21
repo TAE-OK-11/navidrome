@@ -1,4 +1,8 @@
-import { combineReducers, compose, legacy_createStore as createStore } from 'redux'
+import {
+  combineReducers,
+  compose,
+  legacy_createStore as createStore,
+} from 'redux'
 import throttle from 'lodash.throttle'
 import { loadState, saveState } from './persistState'
 

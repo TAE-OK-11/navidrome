@@ -1,34 +1,9 @@
-import {
-  applyMiddleware,
-  combineReducers,
-  compose,
-  legacy_createStore as createStore,
-} from 'redux'
-import { routerMiddleware, connectRouter } from 'connected-react-router'
-import createSagaMiddleware from 'redux-saga'
-import { all, fork } from 'redux-saga/effects'
-import { adminReducer, adminSaga, USER_LOGOUT } from 'react-admin'
+import { combineReducers, compose, legacy_createStore as createStore } from 'redux'
 import throttle from 'lodash.throttle'
 import { loadState, saveState } from './persistState'
 
-const createAdminStore = ({
-  authProvider,
-  dataProvider,
-  history,
-  customReducers = {},
-}) => {
-  const reducer = combineReducers({
-    admin: adminReducer,
-    router: connectRouter(history),
-    ...customReducers,
-  })
-  const resettableAppReducer = (state, action) =>
-    reducer(action.type !== USER_LOGOUT ? state : undefined, action)
-
-  const saga = function* rootSaga() {
-    yield all([adminSaga(dataProvider, authProvider)].map(fork))
-  }
-  const sagaMiddleware = createSagaMiddleware()
+const createAdminStore = ({ customReducers = {} }) => {
+  const reducer = combineReducers(customReducers)
 
   const composeEnhancers =
     (process.env.NODE_ENV === 'development' &&
@@ -44,13 +19,8 @@ const createAdminStore = ({
   if (persistedState?.player?.savedPlayIndex) {
     persistedState.player.playIndex = persistedState.player.savedPlayIndex
   }
-  const store = createStore(
-    resettableAppReducer,
-    persistedState,
-    composeEnhancers(
-      applyMiddleware(sagaMiddleware, routerMiddleware(history)),
-    ),
-  )
+
+  const store = createStore(reducer, persistedState, composeEnhancers())
 
   store.subscribe(
     throttle(() => {
@@ -70,7 +40,6 @@ const createAdminStore = ({
     1000,
   )
 
-  sagaMiddleware.run(saga)
   return store
 }
 

@@ -1,27 +1,35 @@
 package conf
 
 import (
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
 const (
-	http3ConfigKey          = "enablehttp3"
-	http3Allow0RTTConfigKey = "http3allow0rtt"
-	http3ProviderConfigKey  = "http3provider"
-	http3GatewayPathKey     = "http3gatewaypath"
-	http3AltSvcMaxAgeKey    = "http3altsvcmaxage"
-	http3QlogDirKey         = "http3qlogdir"
-	http3MaxConnectionsKey  = "http3maxconnections"
-	http3MaxPerIPKey        = "http3maxconnectionsperip"
-	http3RatePerSecondKey   = "http3connectionratepersecond"
-	http3ConnectionBurstKey = "http3connectionburst"
+	http3ConfigKey            = "enablehttp3"
+	http3Allow0RTTConfigKey   = "http3allow0rtt"
+	http3ProviderConfigKey    = "http3provider"
+	http3GatewayPathKey       = "http3gatewaypath"
+	http3AltSvcMaxAgeKey      = "http3altsvcmaxage"
+	http3QlogDirKey           = "http3qlogdir"
+	http3MaxConnectionsKey    = "http3maxconnections"
+	http3MaxPerIPKey          = "http3maxconnectionsperip"
+	http3RatePerSecondKey     = "http3connectionratepersecond"
+	http3ConnectionBurstKey   = "http3connectionburst"
+	http3CongestionControlKey = "http3congestioncontrol"
 )
 
 const (
 	HTTP3ProviderQuicGo      = "quic-go"
 	HTTP3ProviderTokioQuiche = "tokio-quiche"
+)
+
+const (
+	HTTP3CongestionControlBBR2  = "bbr2"
+	HTTP3CongestionControlCubic = "cubic"
+	HTTP3CongestionControlReno  = "reno"
 )
 
 // HTTP3Enabled reports whether the optional HTTP/3 listener should be started.
@@ -39,8 +47,8 @@ func HTTP3Allow0RTT() bool {
 	return false
 }
 
-// HTTP3Provider selects the temporary migration provider. quic-go remains
-// available as a rollback target until the tokio-quiche canary gates pass.
+// HTTP3Provider selects the HTTP/3 provider. tokio-quiche is the production
+// default; quic-go is retained only as a rollback target during validation.
 func HTTP3Provider() string {
 	return viper.GetString(http3ProviderConfigKey)
 }
@@ -75,6 +83,23 @@ func HTTP3ConnectionBurst() int {
 	return viper.GetInt(http3ConnectionBurstKey)
 }
 
+// HTTP3CongestionControl returns the congestion controller requested for the
+// tokio-quiche transport. quiche 0.29.x maps both "bbr" and "bbr2" to its
+// gcongestion BBRv2 implementation; Navidrome exposes the unambiguous "bbr2"
+// spelling and keeps Cubic/Reno as explicit rollback choices.
+func HTTP3CongestionControl() string {
+	return strings.ToLower(strings.TrimSpace(viper.GetString(http3CongestionControlKey)))
+}
+
+func ValidHTTP3CongestionControl(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case HTTP3CongestionControlBBR2, HTTP3CongestionControlCubic, HTTP3CongestionControlReno:
+		return true
+	default:
+		return false
+	}
+}
+
 func setHTTP3Defaults() {
 	viper.SetDefault(http3ConfigKey, false)
 	// 0-RTT request data is intentionally disabled. Keep the legacy key at
@@ -88,6 +113,7 @@ func setHTTP3Defaults() {
 	viper.SetDefault(http3MaxPerIPKey, 128)
 	viper.SetDefault(http3RatePerSecondKey, 50.0)
 	viper.SetDefault(http3ConnectionBurstKey, 100)
+	viper.SetDefault(http3CongestionControlKey, HTTP3CongestionControlBBR2)
 }
 
 func init() {

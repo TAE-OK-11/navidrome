@@ -29,7 +29,10 @@ export const CODEC_PROBES: readonly CodecProbe[] = [
 const TRANSCODE_CODECS: readonly AudioCodec[] = ['flac', 'opus', 'mp3']
 const SAFARI_TRANSCODE_CODECS: readonly AudioCodec[] = ['mp3']
 
-function canPlay(audio: HTMLAudioElement, mimeList: readonly string[]): boolean {
+function canPlay(
+  audio: HTMLAudioElement,
+  mimeList: readonly string[],
+): boolean {
   return mimeList.some((mime) => {
     const result = audio.canPlayType(mime)
     return result === 'probably' || result === 'maybe'

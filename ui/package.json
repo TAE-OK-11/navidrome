@@ -13,7 +13,7 @@
     "lint": "eslint . --ext ts,tsx,js,jsx --report-unused-disable-directives --max-warnings 0",
     "prettier": "prettier --write ./src",
     "check-formatting": "prettier -c ./src",
-    "postinstall": "bin/update-workbox.sh"
+    "postinstall": "bun bin/update-workbox.ts"
   },
   "dependencies": {
     "@jsonforms/core": "^2.5.2",

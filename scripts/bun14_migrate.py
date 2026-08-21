@@ -26,7 +26,10 @@ def replace_required(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new)
 
 
-# ui/package.json: Bun becomes both package manager and runtime for build scripts.
+# ui/package.json: Bun becomes the runtime for project scripts. The exact canary
+# revision is validated by CI while .bun-version deliberately tracks canary,
+# because Bun's canary release tag is mutable and does not publish a semver tag
+# for every revision.
 pkg_path = ROOT / "ui/package.json"
 pkg = json.loads(pkg_path.read_text())
 pkg["scripts"]["build"] = replace_required(
@@ -35,15 +38,16 @@ pkg["scripts"]["build"] = replace_required(
     "vite build && bun bin/precompress-build-assets.mjs",
     "ui build runtime",
 )
-pkg["packageManager"] = f"bun@{BUN_VERSION}"
+pkg.pop("packageManager", None)
 pkg_path.write_text(json.dumps(pkg, indent=2, ensure_ascii=False) + "\n")
 
-# Root version pin used by Makefile and GitHub Actions.
-write(".bun-version", BUN_VERSION + "\n")
+# Root version channel used by Makefile and GitHub Actions. CI additionally
+# asserts that the resolved binary is a 1.4.x canary before any build runs.
+write(".bun-version", "canary\n")
 
 # Makefile: remove npm/npx/node environment requirements.
 make = read("Makefile")
-make = replace_required(make, "NODE_VERSION=$(shell cat .nvmrc)", "BUN_VERSION=$(shell cat .bun-version)", "Makefile version pin")
+make = replace_required(make, "NODE_VERSION=$(shell cat .nvmrc)", "BUN_CHANNEL=$(shell cat .bun-version)", "Makefile version pin")
 make = make.replace("check_node_env", "check_bun_env")
 make = make.replace("Downloading Node dependencies", "Downloading Bun dependencies")
 make = make.replace("npm ci", "bun install --frozen-lockfile")
@@ -53,8 +57,8 @@ check_pattern = re.compile(r"check_bun_env:\n.*?\.PHONY: check_bun_env", re.S)
 check_replacement = r'''check_bun_env:
 	@(hash bun) || (echo "\nERROR: Bun environment not setup properly!\n"; exit 1)
 	@current_bun_version=`bun --version` && \
-		[ "$$current_bun_version" = "$(BUN_VERSION)" ] || \
-		(echo "\nERROR: Please check your Bun version. Expected $(BUN_VERSION), got $$current_bun_version\n"; exit 1)
+		case "$$current_bun_version" in 1.4.*) ;; *) \
+			echo "\nERROR: Bun 1.4 is required (channel: $(BUN_CHANNEL)); got $$current_bun_version\n"; exit 1 ;; esac
 .PHONY: check_bun_env'''
 make, count = check_pattern.subn(check_replacement, make, count=1)
 if count != 1:
@@ -123,13 +127,14 @@ jbs = replace_required(jbs, "npm ci --prefer-offline --no-audit --fund=false", "
 jbs = replace_required(jbs, "npm run build", "bun run build", "JBS build")
 write("Dockerfile.jbs", jbs)
 
-# GitHub CI: pin Bun from .bun-version and pin golangci-lint to the Makefile version.
+# GitHub CI: pin Bun to the canary channel, assert 1.4 before use, and pin
+# golangci-lint to the Makefile version so local and CI lint do not drift.
 pipeline = read(".github/workflows/pipeline.yml")
 pipeline = pipeline.replace("    env:\n      NODE_OPTIONS: --max_old_space_size=4096\n", "")
 pipeline = replace_required(
     pipeline,
     "      - uses: actions/setup-node@v6\n        with:\n          node-version: 24\n          cache: npm\n          cache-dependency-path: ui/package-lock.json",
-    "      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version-file: .bun-version",
+    "      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version-file: .bun-version\n      - name: Verify Bun 1.4 runtime\n        run: |\n          case \"$(bun --version)\" in 1.4.*) ;; *) echo \"Bun 1.4 required\" >&2; exit 1 ;; esac\n          bun -e 'const m = new Map([[2**32, \"a\"], [2**33, \"b\"]]); if (m.size !== 2) throw new Error(\"Bun 1.4 Map/Set large-integer regression detected\")'",
     "CI Bun setup",
 )
 pipeline = pipeline.replace("run: npm ci", "run: bun install --frozen-lockfile")
@@ -138,7 +143,7 @@ pipeline = pipeline.replace("run: npm run build", "run: bun run build")
 pipeline = replace_required(pipeline, "          version: latest", "          version: v2.12.0", "golangci-lint pin")
 write(".github/workflows/pipeline.yml", pipeline)
 
-# Devcontainer: remove nvm/Node install and install Bun canary directly.
+# Devcontainer: remove nvm/Node install and install the current Bun canary.
 dev_docker = '''# Development container for Navidrome\n\nARG VARIANT="1"\nFROM mcr.microsoft.com/vscode/devcontainers/go:${VARIANT}\n\nARG BUN_VERSION="canary"\n\nRUN apt-get update && export DEBIAN_FRONTEND=noninteractive \\\n    && apt-get -y install --no-install-recommends ca-certificates curl ffmpeg unzip \\\n    && rm -rf /var/lib/apt/lists/*\n\nRUN su vscode -c 'curl -fsSL https://bun.com/install | bash -s "${BUN_VERSION}"'\nENV PATH="/home/vscode/.bun/bin:${PATH}"\n'''
 write(".devcontainer/Dockerfile", dev_docker)
 
@@ -173,4 +178,4 @@ for path in [
 if not (ROOT / "ui/bun.lock").is_file():
     raise SystemExit("ui/bun.lock was not generated")
 
-print(f"Bun migration prepared for {BUN_VERSION}")
+print(f"Bun migration prepared with {BUN_VERSION}")

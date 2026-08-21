@@ -25,7 +25,5 @@ export const formatNumber = (value: unknown): string =>
 
 export const formatMicros = (value: unknown): string => {
   const micros = numeric(value)
-  return micros >= 1000
-    ? `${(micros / 1000).toFixed(2)} ms`
-    : `${micros} us`
+  return micros >= 1000 ? `${(micros / 1000).toFixed(2)} ms` : `${micros} us`
 }

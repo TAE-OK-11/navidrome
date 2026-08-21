@@ -26,6 +26,7 @@ jobs:
           rustup override set 1.97.0
       - name: Apply metadata migration
         run: |
+          rm -rf adapters/gotaglib
           python3 - <<'PY'
           from pathlib import Path
 
@@ -47,6 +48,10 @@ jobs:
         run: |
           go test ./adapters/lofty ./core/storage/local ./cmd
           cargo test --locked --manifest-path rust/metadata/Cargo.toml
+          if grep -R -n -E 'go\.senan\.xyz/taglib|github\.com/deluan/go-taglib|tetratelabs/wazero|tetratelabs/wabin' go.mod go.sum adapters cmd consts; then
+            echo 'TagLib/WASM dependency remains after migration' >&2
+            exit 1
+          fi
       - name: Commit generated migration state
         run: |
           if git diff --quiet && git diff --cached --quiet; then
@@ -55,6 +60,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add adapters/lofty cmd/root.go consts/consts.go go.mod go.sum rust/metadata
+          git add -A adapters cmd/root.go consts/consts.go go.mod go.sum rust/metadata
           git commit -m "refactor: switch scanner metadata to Lofty [phase2-generated]"
           git push origin HEAD:modernize/phase2-lofty-react19-rust

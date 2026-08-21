@@ -7,7 +7,7 @@
 #   ./scripts/setup-worktree.sh <worktree-path> [--go-only]
 #
 # Options:
-#   --go-only   Skip frontend (npm) setup. Useful for agents working only on Go code.
+#   --go-only   Skip frontend (Bun) setup. Useful for agents working only on Go code.
 #
 set -euo pipefail
 
@@ -33,7 +33,7 @@ go mod download
 # 2. Install frontend dependencies (unless --go-only)
 if [ "$GO_ONLY" != "--go-only" ]; then
     echo "==> Installing frontend dependencies..."
-    (cd ui && npm ci --prefer-offline --no-audit 2>/dev/null || npm ci)
+    (cd ui && bun install --frozen-lockfile --prefer-offline)
 else
     echo "==> Skipping frontend setup (--go-only)"
 fi

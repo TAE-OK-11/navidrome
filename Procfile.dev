@@ -1,2 +1,2 @@
-JS: sh -c "cd ./ui && npm start"
+JS: sh -c "cd ./ui && bun run start"
 GO: go tool reflex -d none -c reflex.conf

@@ -6,7 +6,7 @@
 #
 # Updated 2026-07-13:
 #   - Go 1.26.5
-#   - Node.js 26.5.0
+#   - Bun 1.4.0 (1.4 canary)
 #   - Rust 1.97.0
 #   - FFmpeg 8.1.2
 #   - jemalloc 5.3.1
@@ -39,7 +39,7 @@
 # =========================================================
 
 ARG DEBIAN_IMAGE=debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
-ARG NODE_IMAGE=node:26.5.0-trixie-slim@sha256:ffc78385a788964bb3cbab5e434ff79a10bdc25b8ae6db03fe5fe6cb14053c09
+ARG BUN_IMAGE=oven/bun:canary-debian@sha256:b55f7381d77c895cb324d96966ebcf4fa2520430576b52f32726f2e1b94378c8
 ARG GOLANG_IMAGE=golang:1.26.5-trixie@sha256:116489021a0d8ca3facf79f84ee69052cff88733547150a644d45c5eaa91dc43
 ARG RUST_IMAGE=rust:1.97.0-slim-trixie@sha256:14c4fe50ea427dc42381a1a09a9a839c1d2346a2e508cd491bf02c659dbc0ed7
 
@@ -1093,30 +1093,28 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # UI build
 # =========================================================
 
-FROM ${NODE_IMAGE} AS jsbuilder
+FROM ${BUN_IMAGE} AS jsbuilder
 
 ARG STATIC_COMPRESSION_JOBS
 
 WORKDIR /src/ui
 
-ENV NODE_OPTIONS=--max-old-space-size=2048 \
-    ND_UI_SOURCEMAP=false \
-    STATIC_COMPRESSION_JOBS=${STATIC_COMPRESSION_JOBS} \
-    UV_THREADPOOL_SIZE=${STATIC_COMPRESSION_JOBS}
+ENV ND_UI_SOURCEMAP=false \
+    STATIC_COMPRESSION_JOBS=${STATIC_COMPRESSION_JOBS}
 
-COPY --link --from=source /src/ui/package.json /src/ui/package-lock.json ./
+COPY --link --from=source /src/ui/package.json /src/ui/bun.lock ./
 COPY --link --from=source /src/ui/bin/ ./bin/
 
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     test -s ./bin/update-workbox.sh && \
     sed -i 's/\r$//' ./bin/update-workbox.sh && \
     chmod 755 ./bin/update-workbox.sh && \
-    npm ci --prefer-offline --no-audit --fund=false
+    bun install --frozen-lockfile --prefer-offline
 
 COPY --link --from=source /src/ui ./
 
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm run build && \
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
+    bun run build && \
     test -s ./build/index.html && \
     br_count="$(find ./build -type f -name '*.br' | wc -l)" && \
     zst_count="$(find ./build -type f -name '*.zst' | wc -l)" && \

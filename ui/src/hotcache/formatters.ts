@@ -17,12 +17,15 @@ export const formatDate = (
   value: string | number | Date | null | undefined,
 ): string => (value ? new Date(value).toLocaleString() : '-')
 
-export const formatStorage = (value: unknown): string => formatBytes(numeric(value))
+export const formatStorage = (value: unknown): string =>
+  formatBytes(numeric(value))
 
 export const formatNumber = (value: unknown): string =>
   numeric(value).toLocaleString()
 
 export const formatMicros = (value: unknown): string => {
   const micros = numeric(value)
-  return micros >= 1000 ? `${(micros / 1000).toFixed(2)} ms` : `${micros} us`
+  return micros >= 1000
+    ? `${(micros / 1000).toFixed(2)} ms`
+    : `${micros} us`
 }

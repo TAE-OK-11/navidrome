@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+    branches: [master, perf/rust-h3-modernized]
   workflow_dispatch:
 
 permissions:
@@ -50,6 +50,28 @@ jobs:
         run: |
           go generate ./...
           git diff --exit-code
+
+  metadata:
+    name: Lofty metadata worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/metadata-worker
+      - name: Check formatting
+        run: cargo fmt --manifest-path rust/metadata-worker/Cargo.toml -- --check
+      - name: Lint
+        run: cargo clippy --manifest-path rust/metadata-worker/Cargo.toml --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --manifest-path rust/metadata-worker/Cargo.toml
+      - name: Build release worker
+        run: cargo build --release --manifest-path rust/metadata-worker/Cargo.toml
 
   ui:
     name: UI tests and build

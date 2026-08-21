@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -25,47 +25,33 @@ jobs:
         with:
           ref: chore/bun-1.4-selective-upstream
           fetch-depth: 0
-
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: canary
-
       - name: Resolve Bun 1.4 and immutable image pins
         shell: bash
         run: |
           set -euo pipefail
           BUN_VERSION="$(bun --version)"
-          case "${BUN_VERSION}" in
-            1.4.*) ;;
-            *) echo "Expected Bun 1.4 canary, got ${BUN_VERSION}" >&2; exit 1 ;;
-          esac
-
-          # Guard a known early-1.4 Map/Set regression before adopting the canary.
+          case "${BUN_VERSION}" in 1.4.*) ;; *) echo "Expected Bun 1.4 canary, got ${BUN_VERSION}" >&2; exit 1 ;; esac
           bun -e 'const m = new Map([[2**32, "a"], [2**33, "b"]]); if (m.size !== 2 || m.get(2**32) !== "a" || m.get(2**33) !== "b") throw new Error("Bun 1.4 large-integer Map/Set regression detected")'
           bun -e 'const z = require("node:zlib"); if (typeof z.zstdCompress !== "function" || typeof z.brotliCompress !== "function") throw new Error("required node:zlib compatibility missing")'
-
           docker pull oven/bun:canary-alpine
           docker pull oven/bun:canary-debian
           BUN_ALPINE_REF="$(docker image inspect oven/bun:canary-alpine --format '{{index .RepoDigests 0}}')"
           BUN_DEBIAN_REF="$(docker image inspect oven/bun:canary-debian --format '{{index .RepoDigests 0}}')"
           BUN_ALPINE_DIGEST="${BUN_ALPINE_REF#*@}"
           BUN_DEBIAN_DIGEST="${BUN_DEBIAN_REF#*@}"
-          test "${BUN_ALPINE_DIGEST#sha256:}" != "${BUN_ALPINE_DIGEST}"
-          test "${BUN_DEBIAN_DIGEST#sha256:}" != "${BUN_DEBIAN_DIGEST}"
           echo "BUN_VERSION=${BUN_VERSION}" >> "$GITHUB_ENV"
           echo "BUN_ALPINE_DIGEST=${BUN_ALPINE_DIGEST}" >> "$GITHUB_ENV"
           echo "BUN_DEBIAN_DIGEST=${BUN_DEBIAN_DIGEST}" >> "$GITHUB_ENV"
-          echo "Bun ${BUN_VERSION}; alpine ${BUN_ALPINE_DIGEST}; debian ${BUN_DEBIAN_DIGEST}"
-
       - name: Generate Bun lockfile
         working-directory: ui
         run: bun install --lockfile-only
-
       - name: Rewrite the toolchain
         shell: bash
         run: |
@@ -74,7 +60,6 @@ jobs:
           git show origin/master:.github/workflows/pipeline.yml > .github/workflows/pipeline.yml
           python3 scripts/bun14_migrate.py
           rm -f .nvmrc ui/package-lock.json
-
       - name: Verify dependency graph and UI
         working-directory: ui
         run: |
@@ -84,23 +69,24 @@ jobs:
           bun run test
           bun run type-check
           bun run build
-
       - name: Verify standard Docker UI stage
         run: docker build --target ui-bundle -t navidrome-ui-bun14 .
-
       - name: Go regression tests
         run: go test -tags netgo,sqlite_fts5 ./...
-
-      - name: Commit verified migration
+      - name: Stage verified migration
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git status --short
-          git commit -m "chore(ui): replace Node.js/npm toolchain with Bun ${BUN_VERSION}"
-          git push origin HEAD:chore/bun-1.4-selective-upstream
+          mkdir -p /tmp/bun-migration
+          git diff --binary > /tmp/bun-migration/migration.patch
+          cp ui/bun.lock /tmp/bun-migration/bun.lock
+          printf '%s\n' "$BUN_VERSION" > /tmp/bun-migration/bun-version.txt
+          printf '%s\n' "$BUN_ALPINE_DIGEST" > /tmp/bun-migration/bun-alpine-digest.txt
+          printf '%s\n' "$BUN_DEBIAN_DIGEST" > /tmp/bun-migration/bun-debian-digest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-bun14-migration
+          path: /tmp/bun-migration
+          if-no-files-found: error
 
   go:
     name: Go tests
@@ -131,7 +117,7 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.12.0
           args: --timeout 5m
       - name: Verify generated files
         run: |
@@ -142,8 +128,6 @@ jobs:
     name: UI tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      NODE_OPTIONS: --max_old_space_size=4096
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6

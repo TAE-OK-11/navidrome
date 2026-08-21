@@ -1,17 +1,34 @@
-import React, { useCallback } from 'react'
+import React, { forwardRef, useCallback } from 'react'
 import { useDispatch } from 'react-redux'
-import { Logout as RALogout } from 'react-admin'
+import { useLogout, useTranslate } from 'react-admin'
+import { ListItemIcon, ListItemText, MenuItem } from '@mui/material'
+import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
 import { clearQueue } from '../actions'
 
-const Logout = (props) => {
+const Logout = forwardRef(({ onClick, ...props }, ref) => {
   const dispatch = useDispatch()
-  const handleClick = useCallback(() => dispatch(clearQueue()), [dispatch])
+  const logout = useLogout()
+  const translate = useTranslate()
+
+  const handleClick = useCallback(
+    (event) => {
+      dispatch(clearQueue())
+      onClick?.(event)
+      logout()
+    },
+    [dispatch, logout, onClick],
+  )
 
   return (
-    <span onClick={handleClick}>
-      <RALogout {...props} />
-    </span>
+    <MenuItem ref={ref} onClick={handleClick} {...props}>
+      <ListItemIcon>
+        <PowerSettingsNewIcon fontSize="small" />
+      </ListItemIcon>
+      <ListItemText>{translate('ra.auth.logout')}</ListItemText>
+    </MenuItem>
   )
-}
+})
+
+Logout.displayName = 'Logout'
 
 export default Logout

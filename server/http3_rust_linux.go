@@ -32,6 +32,7 @@ import (
 
 const (
 	rustHTTP3ControlFD          = 3
+	rustHTTP3BridgeFD           = 4
 	rustHTTP3TokenHeader        = "X-Navidrome-H3-Token" //nolint:gosec // header name only; token value is generated at runtime
 	rustHTTP3AuthorityHeader    = "X-Navidrome-H3-Authority"
 	rustHTTP3RemoteAddrHeader   = "X-Navidrome-H3-Remote-Addr"
@@ -43,7 +44,6 @@ const (
 
 type rustHTTP3Config struct {
 	UDPAddress           string  `json:"udp_address"`
-	InternalAddress      string  `json:"internal_address"`
 	Certificate          string  `json:"certificate"`
 	PrivateKey           string  `json:"private_key"`
 	InternalToken        string  `json:"internal_token"`
@@ -66,8 +66,8 @@ type rustHTTP3Runtime struct {
 	binaryPath string
 	altSvc     string
 
-	internalServer   *http.Server
-	internalListener net.Listener
+	internalServer *http.Server
+	bridgeListener *inheritedConnListener
 
 	ready    atomic.Bool
 	stopping atomic.Bool
@@ -96,11 +96,7 @@ func newRustHTTP3Runtime(
 	}
 	token := hex.EncodeToString(tokenBytes)
 
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", "127.0.0.1:0")
-	if err != nil {
-		return nil, fmt.Errorf("creating private HTTP/3 h2c listener: %w", err)
-	}
-
+	listener := newInheritedConnListener()
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(false)
 	protocols.SetHTTP2(true)
@@ -118,12 +114,11 @@ func newRustHTTP3Runtime(
 		ctx:              runtimeCtx,
 		cancel:           cancel,
 		internalServer:   internalServer,
-		internalListener: listener,
+		bridgeListener:   listener,
 		binaryPath:       resolveHTTP3GatewayPath(),
 		altSvc:           altSvcForAddress(addr, conf.HTTP3AltSvcMaxAge()),
 		config: rustHTTP3Config{
 			UDPAddress:           addr,
-			InternalAddress:      listener.Addr().String(),
 			Certificate:          certFile,
 			PrivateKey:           keyFile,
 			InternalToken:        token,
@@ -142,13 +137,14 @@ func newRustHTTP3Runtime(
 
 	go func() {
 		if err := internalServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error(runtimeCtx, "Private HTTP/3 h2c listener stopped", err)
+			log.Error(runtimeCtx, "Private inherited HTTP/3 bridge stopped", err)
 		}
 	}()
 
 	if err := r.startChild(); err != nil {
 		cancel()
 		_ = internalServer.Close()
+		_ = listener.Close()
 		return nil, err
 	}
 	return r, nil
@@ -175,14 +171,10 @@ func altSvcForAddress(addr string, maxAge time.Duration) string {
 
 func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		host, _, err := net.SplitHostPort(req.RemoteAddr)
-		peer := net.ParseIP(host)
+		// The bridge connection is an inherited AF_UNIX socketpair and therefore
+		// has no externally reachable address. Keep the per-process token as
+		// defense in depth and compare it in constant time.
 		provided := req.Header.Get(rustHTTP3TokenHeader)
-		if err != nil || peer == nil || !peer.IsLoopback() {
-			http3BridgeRejected.WithLabelValues("non_loopback").Inc()
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
 		if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
 			http3BridgeRejected.WithLabelValues("invalid_token").Inc()
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
@@ -204,8 +196,8 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 			req.Host = authority
 		}
 		req.Header.Del(rustHTTP3AuthorityHeader)
-		// The outer transport terminated TLS 1.3. Preserve HTTPS semantics for
-		// existing middleware without exposing the private h2c hop.
+		// The outer quiche transport terminated TLS 1.3. Preserve HTTPS semantics
+		// for existing middleware without exposing the private HTTP/2 hop.
 		req.Proto = "HTTP/3.0"
 		req.ProtoMajor = 3
 		req.ProtoMinor = 0
@@ -217,13 +209,13 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 	})
 }
 
-func (r *rustHTTP3Runtime) startChild() error {
+func inheritedSocketpair(parentName, childName string) (net.Conn, *os.File, error) {
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
-		return fmt.Errorf("creating HTTP/3 control socket: %w", err)
+		return nil, nil, err
 	}
-	parentFile := os.NewFile(uintptr(fds[0]), "navidrome-h3-control-parent")
-	child := os.NewFile(uintptr(fds[1]), "navidrome-h3-control-child")
+	parentFile := os.NewFile(uintptr(fds[0]), parentName)
+	child := os.NewFile(uintptr(fds[1]), childName)
 	if parentFile == nil || child == nil {
 		if parentFile != nil {
 			_ = parentFile.Close()
@@ -231,35 +223,65 @@ func (r *rustHTTP3Runtime) startChild() error {
 		if child != nil {
 			_ = child.Close()
 		}
-		return errors.New("creating HTTP/3 control files")
+		return nil, nil, errors.New("creating inherited socketpair files")
 	}
 	parent, err := net.FileConn(parentFile)
 	_ = parentFile.Close()
 	if err != nil {
 		_ = child.Close()
-		return fmt.Errorf("preparing HTTP/3 control connection: %w", err)
+		return nil, nil, err
+	}
+	return parent, child, nil
+}
+
+func (r *rustHTTP3Runtime) startChild() error {
+	parent, child, err := inheritedSocketpair("navidrome-h3-control-parent", "navidrome-h3-control-child")
+	if err != nil {
+		return fmt.Errorf("creating HTTP/3 control socket: %w", err)
+	}
+	bridgeParent, bridgeChild, err := inheritedSocketpair("navidrome-h3-bridge-parent", "navidrome-h3-bridge-child")
+	if err != nil {
+		_ = parent.Close()
+		_ = child.Close()
+		return fmt.Errorf("creating HTTP/3 data bridge socket: %w", err)
 	}
 
 	cmd := exec.CommandContext(r.ctx, r.binaryPath) //nolint:gosec // administrator-configured companion path
-	cmd.ExtraFiles = []*os.File{child}
-	cmd.Env = append(os.Environ(), fmt.Sprintf("NAVIDROME_H3_CONTROL_FD=%d", rustHTTP3ControlFD))
+	cmd.ExtraFiles = []*os.File{child, bridgeChild}
+	cmd.Env = append(
+		os.Environ(),
+		fmt.Sprintf("NAVIDROME_H3_CONTROL_FD=%d", rustHTTP3ControlFD),
+		fmt.Sprintf("NAVIDROME_H3_BRIDGE_FD=%d", rustHTTP3BridgeFD),
+	)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		_ = parent.Close()
 		_ = child.Close()
+		_ = bridgeParent.Close()
+		_ = bridgeChild.Close()
 		return fmt.Errorf("starting tokio-quiche HTTP/3 companion %q: %w", r.binaryPath, err)
 	}
 	_ = child.Close()
+	_ = bridgeChild.Close()
 
 	failed := true
+	bridgeHandedOff := false
 	defer func() {
 		if failed {
 			_ = parent.Close()
+			if !bridgeHandedOff {
+				_ = bridgeParent.Close()
+			}
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
 		}
 	}()
+	if err := r.bridgeListener.add(bridgeParent); err != nil {
+		return fmt.Errorf("registering inherited HTTP/3 bridge: %w", err)
+	}
+	bridgeHandedOff = true
+
 	if err := json.NewEncoder(parent).Encode(r.config); err != nil { //nolint:gosec // sent only over the inherited private socketpair
 		return fmt.Errorf("sending HTTP/3 companion configuration: %w", err)
 	}
@@ -293,7 +315,7 @@ func (r *rustHTTP3Runtime) startChild() error {
 	http3CompanionUp.Set(1)
 	failed = false
 	log.Info(r.ctx, "Tokio-quiche HTTP/3 companion is ready", "udpAddress", r.config.UDPAddress,
-		"internalAddress", r.config.InternalAddress, "binary", r.binaryPath,
+		"bridge", "inherited-af_unix+h2", "binary", r.binaryPath,
 		"congestionControl", r.config.CongestionControl)
 	return nil
 }
@@ -372,6 +394,7 @@ func (r *rustHTTP3Runtime) shutdown(ctx context.Context) error {
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 	}
 	serverErr := r.internalServer.Shutdown(ctx)
+	listenerErr := r.bridgeListener.Close()
 	r.cancel()
-	return serverErr
+	return errors.Join(serverErr, listenerErr)
 }

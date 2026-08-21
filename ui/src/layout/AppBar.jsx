@@ -4,10 +4,9 @@ import {
   MenuItemLink,
   useTranslate,
   usePermissions,
-  getResources,
+  useResourceDefinitions,
 } from 'react-admin'
 import { MdInfo, MdPerson, MdSupervisorAccount } from 'react-icons/md'
-import { useSelector } from 'react-redux'
 import { MenuItem, ListItemIcon, Divider } from '@mui/material'
 import makeStyles from '@mui/styles/makeStyles'
 import ViewListIcon from '@mui/icons-material/ViewList'
@@ -17,6 +16,7 @@ import PersonalMenu from './PersonalMenu'
 import ActivityPanel from './ActivityPanel'
 import NowPlayingPanel from './NowPlayingPanel'
 import UserMenu from './UserMenu'
+import Logout from './Logout'
 import config from '../config'
 
 const useStyles = makeStyles(
@@ -39,14 +39,13 @@ const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
   const translate = useTranslate()
   const [open, setOpen] = React.useState(false)
 
-  const handleOpen = () => {
-    setOpen(true)
-  }
+  const handleOpen = () => setOpen(true)
   const handleClose = () => {
-    onClick && onClick()
+    onClick?.()
     setOpen(false)
   }
   const label = translate('menu.about')
+
   return (
     <>
       <MenuItem ref={ref} onClick={handleOpen} className={classes.root}>
@@ -68,33 +67,15 @@ const settingsResources = (resource) =>
   resource.options &&
   resource.options.subMenu === 'settings'
 
-const CustomUserMenu = ({ onClick, ...rest }) => {
+const CustomUserMenu = (props) => {
   const translate = useTranslate()
-  const resources = useSelector(getResources)
-  const classes = useStyles(rest)
+  const resourceDefinitions = useResourceDefinitions()
+  const resources = Object.values(resourceDefinitions)
+  const classes = useStyles(props)
   const { permissions } = usePermissions()
 
   const resourceDefinition = (resourceName) =>
-    resources.find((r) => r?.name === resourceName)
-
-  const renderUserMenuItemLink = () => {
-    const userResource = resourceDefinition('user')
-    if (!userResource) {
-      return null
-    }
-    if (permissions !== 'admin') {
-      if (!config.enableUserEditing) {
-        return null
-      }
-      userResource.icon = MdPerson
-    } else {
-      userResource.icon = MdSupervisorAccount
-    }
-    return renderSettingsMenuItemLink(
-      userResource,
-      permissions !== 'admin' ? localStorage.getItem('userId') : null,
-    )
-  }
+    resources.find((resource) => resource?.name === resourceName)
 
   const renderSettingsMenuItemLink = (resource, id) => {
     const label = translate(`resources.${resource.name}.name`, {
@@ -113,9 +94,23 @@ const CustomUserMenu = ({ onClick, ...rest }) => {
             <ViewListIcon />
           )
         }
-        onClick={onClick}
         sidebarIsOpen={true}
       />
+    )
+  }
+
+  const renderUserMenuItemLink = () => {
+    const resource = resourceDefinition('user')
+    if (!resource) return null
+    if (permissions !== 'admin' && !config.enableUserEditing) return null
+
+    const userResource = {
+      ...resource,
+      icon: permissions === 'admin' ? MdSupervisorAccount : MdPerson,
+    }
+    return renderSettingsMenuItemLink(
+      userResource,
+      permissions !== 'admin' ? localStorage.getItem('userId') : null,
     )
   }
 
@@ -125,15 +120,16 @@ const CustomUserMenu = ({ onClick, ...rest }) => {
         permissions === 'admin' &&
         config.enableNowPlaying && <NowPlayingPanel />}
       {config.devActivityPanel && permissions === 'admin' && <ActivityPanel />}
-      <UserMenu {...rest}>
-        <PersonalMenu sidebarIsOpen={true} onClick={onClick} />
+      <UserMenu {...props}>
+        <PersonalMenu sidebarIsOpen={true} />
         <Divider />
         {renderUserMenuItemLink()}
         {resources
           .filter(settingsResources)
-          .map((r) => renderSettingsMenuItemLink(r))}
+          .map((resource) => renderSettingsMenuItemLink(resource))}
         <Divider />
         <AboutMenuItem />
+        {(!config.auth || !!config.extAuthLogoutURL) && <Logout />}
       </UserMenu>
       <Dialogs />
     </>

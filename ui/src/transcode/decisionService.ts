@@ -22,7 +22,11 @@ export interface DecisionService {
   ): Promise<void>
   resolveStreamUrl(songId: string): Promise<string>
   invalidateAll(): void
-  buildStreamUrl(songId: string, transcodeParams: string, offset?: number): string
+  buildStreamUrl(
+    songId: string,
+    transcodeParams: string,
+    offset?: number,
+  ): string
   setProfile(profile: BrowserProfile | null): void
   getProfile(): BrowserProfile | null
 }

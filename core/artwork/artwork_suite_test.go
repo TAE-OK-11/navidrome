@@ -49,7 +49,7 @@ func testFileLibPath(absPath string) string {
 
 func init() {
 	// Register the testfile storage scheme (os.DirFS-backed MusicFS). Used by
-	// integration tests that need real files but not the taglib extractor.
+	// integration tests that need real files but not the Lofty extractor.
 	storage.Register(testFileScheme, func(u url.URL) storage.Storage {
 		root := u.Path
 		// Undo the leading slash added by testFileLibPath on Windows so that

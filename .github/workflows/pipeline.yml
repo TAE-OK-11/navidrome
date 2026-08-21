@@ -35,7 +35,7 @@ jobs:
         with:
           bun-version: canary
 
-      - name: Resolve exact Bun and image pins
+      - name: Resolve Bun 1.4 and immutable image pins
         shell: bash
         run: |
           set -euo pipefail
@@ -44,13 +44,23 @@ jobs:
             1.4.*) ;;
             *) echo "Expected Bun 1.4 canary, got ${BUN_VERSION}" >&2; exit 1 ;;
           esac
-          BUN_ALPINE_DIGEST="$(docker buildx imagetools inspect oven/bun:canary-alpine | awk '/^Digest:/ {print $2; exit}')"
-          BUN_DEBIAN_DIGEST="$(docker buildx imagetools inspect oven/bun:canary-debian | awk '/^Digest:/ {print $2; exit}')"
-          test -n "${BUN_ALPINE_DIGEST}"
-          test -n "${BUN_DEBIAN_DIGEST}"
+
+          # Guard a known early-1.4 Map/Set regression before adopting the canary.
+          bun -e 'const m = new Map([[2**32, "a"], [2**33, "b"]]); if (m.size !== 2 || m.get(2**32) !== "a" || m.get(2**33) !== "b") throw new Error("Bun 1.4 large-integer Map/Set regression detected")'
+          bun -e 'const z = require("node:zlib"); if (typeof z.zstdCompress !== "function" || typeof z.brotliCompress !== "function") throw new Error("required node:zlib compatibility missing")'
+
+          docker pull oven/bun:canary-alpine
+          docker pull oven/bun:canary-debian
+          BUN_ALPINE_REF="$(docker image inspect oven/bun:canary-alpine --format '{{index .RepoDigests 0}}')"
+          BUN_DEBIAN_REF="$(docker image inspect oven/bun:canary-debian --format '{{index .RepoDigests 0}}')"
+          BUN_ALPINE_DIGEST="${BUN_ALPINE_REF#*@}"
+          BUN_DEBIAN_DIGEST="${BUN_DEBIAN_REF#*@}"
+          test "${BUN_ALPINE_DIGEST#sha256:}" != "${BUN_ALPINE_DIGEST}"
+          test "${BUN_DEBIAN_DIGEST#sha256:}" != "${BUN_DEBIAN_DIGEST}"
           echo "BUN_VERSION=${BUN_VERSION}" >> "$GITHUB_ENV"
           echo "BUN_ALPINE_DIGEST=${BUN_ALPINE_DIGEST}" >> "$GITHUB_ENV"
           echo "BUN_DEBIAN_DIGEST=${BUN_DEBIAN_DIGEST}" >> "$GITHUB_ENV"
+          echo "Bun ${BUN_VERSION}; alpine ${BUN_ALPINE_DIGEST}; debian ${BUN_DEBIAN_DIGEST}"
 
       - name: Generate Bun lockfile
         working-directory: ui
@@ -64,15 +74,6 @@ jobs:
           git show origin/master:.github/workflows/pipeline.yml > .github/workflows/pipeline.yml
           python3 scripts/bun14_migrate.py
           rm -f .nvmrc ui/package-lock.json
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          version = os.environ['BUN_VERSION']
-          p = Path('.devcontainer/Dockerfile')
-          p.write_text(p.read_text().replace('ARG BUN_VERSION="canary"', f'ARG BUN_VERSION="bun-v{version}"'))
-          p = Path('.devcontainer/devcontainer.json')
-          p.write_text(p.read_text().replace('"BUN_VERSION": "canary"', f'"BUN_VERSION": "bun-v{version}"'))
-          PY
 
       - name: Verify dependency graph and UI
         working-directory: ui

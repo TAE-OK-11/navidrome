@@ -6,8 +6,9 @@ import clsx from 'clsx'
 import {
   useTranslate,
   MenuItemLink,
-  getResources,
   usePermissions,
+  useResourceDefinitions,
+  useSidebarState,
 } from 'react-admin'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import AlbumIcon from '@mui/icons-material/Album'
@@ -54,14 +55,14 @@ const translatedResourceName = (resource, translate) =>
   })
 
 const Menu = ({ dense = false }) => {
-  const open = useSelector((state) => state.admin.ui.sidebarOpen)
+  const [open] = useSidebarState()
   const translate = useTranslate()
-  const queue = useSelector((state) => state.player?.queue)
+  const queue = useSelector((state) => state.player?.queue || [])
   const classes = useStyles({ addPadding: queue.length > 0 })
-  const resources = useSelector(getResources)
+  const resourceDefinitions = useResourceDefinitions()
+  const resources = Object.values(resourceDefinitions)
   const { permissions } = usePermissions()
 
-  // TODO State is not persisted in mobile when you close the sidebar menu. Move to redux?
   const [state, setState] = useState({
     menuAlbumList: true,
     menuPlaylists: true,
@@ -91,7 +92,6 @@ const Menu = ({ dense = false }) => {
     }
 
     const albumListAddress = `/album/${type}`
-
     const name = translate(`resources.album.lists.${type || 'default'}`, {
       _: translatedResourceName(resource, translate),
     })
@@ -105,7 +105,6 @@ const Menu = ({ dense = false }) => {
         leftIcon={al.icon || <ViewListIcon />}
         sidebarIsOpen={open}
         dense={dense}
-        exact
       />
     )
   }

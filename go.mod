@@ -53,6 +53,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/tetratelabs/wazero v1.9.0
 	github.com/unrolled/secure v1.17.0
 	github.com/xrash/smetrics v0.0.0-20250705151800-55b8f293f342
 	go.uber.org/goleak v1.3.0
@@ -65,6 +66,8 @@ require (
 	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

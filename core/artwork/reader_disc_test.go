@@ -457,12 +457,12 @@ var _ = Describe("Disc Artwork Reader", func() {
 
 			It("returns source funcs for embedded pattern", func() {
 				ff := reader.fromDiscArtPriority(context.Background(), nil, "embedded")
-				Expect(ff).To(HaveLen(2)) // fromTag + fromFFmpegTag
+				Expect(ff).To(HaveLen(1)) // one FFmpeg embedded-art attempt
 			})
 
 			It("handles multiple comma-separated patterns", func() {
 				ff := reader.fromDiscArtPriority(context.Background(), nil, "disc*.*, cd*.*, embedded")
-				Expect(ff).To(HaveLen(4)) // disc*.* + cd*.* + fromTag + fromFFmpegTag
+				Expect(ff).To(HaveLen(3)) // disc*.* + cd*.* + one embedded-art attempt
 			})
 
 			It("ignores 'external' pattern silently", func() {

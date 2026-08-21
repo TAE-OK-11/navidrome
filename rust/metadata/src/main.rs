@@ -83,7 +83,10 @@ fn handle_request(request: Request) -> Response {
     if request.files.len() > MAX_BATCH_FILES {
         errors.insert(
             "$request".to_owned(),
-            format!("batch contains {} files; maximum is {MAX_BATCH_FILES}", request.files.len()),
+            format!(
+                "batch contains {} files; maximum is {MAX_BATCH_FILES}",
+                request.files.len()
+            ),
         );
         return Response {
             protocol: PROTOCOL_VERSION,
@@ -116,21 +119,24 @@ fn parse_file(path: &Path) -> Result<Metadata> {
     let mut raw_vorbis = None;
     let (tagged, codec) = match extension(path).as_str() {
         "flac" => {
-            let mut file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let mut file =
+                File::open(path).with_context(|| format!("opening {}", path.display()))?;
             let parsed = FlacFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding FLAC {}", path.display()))?;
             raw_vorbis = parsed.vorbis_comments().cloned();
             (TaggedFile::from(parsed), "flac".to_owned())
         }
         "opus" => {
-            let mut file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let mut file =
+                File::open(path).with_context(|| format!("opening {}", path.display()))?;
             let parsed = OpusFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding Opus {}", path.display()))?;
             raw_vorbis = Some(parsed.vorbis_comments().clone());
             (TaggedFile::from(parsed), "opus".to_owned())
         }
         "m4a" | "mp4" => {
-            let mut file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let mut file =
+                File::open(path).with_context(|| format!("opening {}", path.display()))?;
             let parsed = Mp4File::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding M4A/MP4 {}", path.display()))?;
             let codec = match parsed.properties().codec() {
@@ -144,13 +150,15 @@ fn parse_file(path: &Path) -> Result<Metadata> {
             (TaggedFile::from(parsed), codec)
         }
         "aac" => {
-            let mut file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let mut file =
+                File::open(path).with_context(|| format!("opening {}", path.display()))?;
             let parsed = AacFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding AAC {}", path.display()))?;
             (TaggedFile::from(parsed), "aac".to_owned())
         }
         "mp3" => {
-            let mut file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let mut file =
+                File::open(path).with_context(|| format!("opening {}", path.display()))?;
             let parsed = MpegFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding MP3 {}", path.display()))?;
             (TaggedFile::from(parsed), "mp3".to_owned())
@@ -201,8 +209,8 @@ fn generic_tags(file: &TaggedFile) -> HashMap<String, Vec<String>> {
                 continue;
             }
             let item_key = item.key();
-            let key = normalized_key(&item_key, tag)
-                .unwrap_or_else(|| fallback_key(&item_key, tag));
+            let key =
+                normalized_key(&item_key, tag).unwrap_or_else(|| fallback_key(&item_key, tag));
             if key.is_empty() {
                 continue;
             }

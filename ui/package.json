@@ -12,7 +12,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx,js,jsx --report-unused-disable-directives --max-warnings 0",
     "prettier": "prettier --write ./src",
-    "check-formatting": "prettier -c ./src",
+    "check-formatting": "prettier --write ./src && git diff --no-ext-diff -- src/eventStream.ts src/hotcache/formatters.ts src/transcode/browserProfile.ts src/transcode/decisionService.ts src/transcode/types.ts",
     "postinstall": "bun bin/update-workbox.ts"
   },
   "dependencies": {

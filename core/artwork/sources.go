@@ -81,6 +81,13 @@ func fromExternalFile(ctx context.Context, lib libraryView, files []string, patt
 // (e.g. a future S3 backend, or FakeFS in tests), short-circuit this source
 // func to return (nil, "", nil) so callers fall through cleanly.
 func fromFFmpegTag(ctx context.Context, ffmpeg ffmpeg.FFmpeg, path string) sourceFunc {
+	return fromFFmpegTagNamed(ctx, ffmpeg, path, path)
+}
+
+// fromFFmpegTagNamed lets callers use an absolute path for the ffmpeg process
+// while preserving the library-relative source identifier used by artwork
+// caching, diagnostics and callers.
+func fromFFmpegTagNamed(ctx context.Context, ffmpeg ffmpeg.FFmpeg, path, sourcePath string) sourceFunc {
 	return func() (io.ReadCloser, string, error) {
 		if path == "" {
 			return nil, "", nil
@@ -98,7 +105,7 @@ func fromFFmpegTag(ctx context.Context, ffmpeg ffmpeg.FFmpeg, path string) sourc
 			r.Close()
 			return nil, "", fmt.Errorf("ffmpeg produced no image data for %s: %w", path, err)
 		}
-		return readCloser{Reader: io.MultiReader(bytes.NewReader(buf[:n]), r), Closer: r}, path, nil
+		return readCloser{Reader: io.MultiReader(bytes.NewReader(buf[:n]), r), Closer: r}, sourcePath, nil
 	}
 }
 

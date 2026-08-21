@@ -2,14 +2,12 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-
-	"github.com/navidrome/navidrome/conf"
 )
 
-// http3Service is deliberately request-oriented. Implementations own their
-// UDP/QUIC lifecycle and expose only HTTP handler integration to the Go core.
+// http3Service is deliberately request-oriented. The tokio-quiche companion
+// owns the UDP/QUIC lifecycle and exposes only HTTP handler integration to the
+// Go core.
 type http3Service interface {
 	serve() error
 	advertise(http.Handler) http.Handler
@@ -22,14 +20,7 @@ func newConfiguredHTTP3Runtime(
 	handler http.Handler,
 	certFile, keyFile string,
 ) (http3Service, error) {
-	switch conf.HTTP3Provider() {
-	case conf.HTTP3ProviderQuicGo:
-		return newHTTP3Runtime(ctx, addr, handler, certFile, keyFile)
-	case conf.HTTP3ProviderTokioQuiche:
-		return newRustHTTP3Runtime(ctx, addr, handler, certFile, keyFile)
-	default:
-		return nil, fmt.Errorf("unsupported HTTP/3 provider %q", conf.HTTP3Provider())
-	}
+	return newRustHTTP3Runtime(ctx, addr, handler, certFile, keyFile)
 }
 
 func clearHTTP3Advertisement(next http.Handler) http.Handler {

@@ -1,11 +1,5 @@
 export type AudioCodec =
-  | 'mp3'
-  | 'opus'
-  | 'vorbis'
-  | 'flac'
-  | 'wav'
-  | 'alac'
-  | 'aac'
+  'mp3' | 'opus' | 'vorbis' | 'flac' | 'wav' | 'alac' | 'aac'
 
 export interface DirectPlayProfile {
   containers: string[]

@@ -82,6 +82,19 @@ def migrate_go() -> None:
     )
     disc_test.write_text(text)
 
+    # Fail before go mod tidy if any Go source outside the adapter scheduled for
+    # deletion still imports TagLib. This makes residual ownership explicit
+    # instead of allowing tidy to silently restore the module.
+    leftovers = []
+    for path in Path(".").rglob("*.go"):
+        if ".git" in path.parts:
+            continue
+        text = path.read_text()
+        if "go.senan.xyz/taglib" in text or "github.com/deluan/go-taglib" in text:
+            leftovers.append(str(path))
+    if leftovers:
+        raise SystemExit("residual TagLib Go imports: " + ", ".join(sorted(leftovers)))
+
 
 def metadata_builder_stage() -> str:
     return r'''# Lofty metadata companion (persistent Go <-> Rust worker)

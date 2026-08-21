@@ -13,15 +13,19 @@ def require_replace(text: str, old: str, new: str, label: str) -> str:
 def migrate_go() -> None:
     shutil.rmtree("adapters/gotaglib", ignore_errors=True)
 
-    root = Path("cmd/root.go")
-    text = root.read_text()
-    text = require_replace(
-        text,
-        '_ "github.com/navidrome/navidrome/adapters/gotaglib"',
-        '_ "github.com/navidrome/navidrome/adapters/lofty"',
-        "gotaglib adapter import",
-    )
-    root.write_text(text)
+    old_import = 'github.com/navidrome/navidrome/adapters/gotaglib'
+    new_import = 'github.com/navidrome/navidrome/adapters/lofty'
+    replacements = 0
+    for path in Path(".").rglob("*.go"):
+        if ".git" in path.parts:
+            continue
+        text = path.read_text()
+        count = text.count(old_import)
+        if count:
+            path.write_text(text.replace(old_import, new_import))
+            replacements += count
+    if replacements == 0:
+        raise SystemExit("no gotaglib Go imports found to migrate")
 
     consts = Path("consts/consts.go")
     text = consts.read_text()
@@ -121,9 +125,6 @@ def migrate_jbs() -> None:
     if count != 1:
         raise SystemExit("failed to remove TagLib C++ build block")
 
-    # Keep the generic native build packages for now because the same image section
-    # also participates in SQLite/CGO builds. Removing a package must not affect the
-    # independent tokio-quiche toolchain. Only remove TagLib-specific link inputs.
     text = text.replace("    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \\\n", "")
     text = text.replace(
         '    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS} -L/usr/local/lib -lstdc++ -lz -lm"',

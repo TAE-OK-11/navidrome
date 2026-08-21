@@ -1,16 +1,10 @@
 import ReactGA from 'react-ga'
 import { Provider } from 'react-redux'
-import { createHashHistory } from 'history'
-import {
-  Admin as RAAdmin,
-  Resource,
-  useSetLocale,
-  useRefresh,
-} from 'react-admin'
+import { Admin as RAAdmin, Resource } from 'react-admin'
 import { HotKeys } from 'react-hotkeys'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
-import { Layout, Login, Logout } from './layout'
+import { Layout, Login } from './layout'
 import transcoding from './transcoding'
 import player from './player'
 import user from './user'
@@ -23,7 +17,7 @@ import share from './share'
 import library from './library'
 import plugin from './plugin'
 import { Player } from './audioplayer'
-import customRoutes from './routes'
+import AppRoutes from './routes'
 import {
   libraryReducer,
   themeReducer,
@@ -41,30 +35,24 @@ import {
   transcodingReducer,
 } from './reducers'
 import createAdminStore from './store/createAdminStore'
-import { i18nProvider, retrieveTranslation } from './i18n'
+import { i18nProvider } from './i18n'
 import config, { shareInfo } from './config'
 import { keyMap } from './hotkeys'
 import useChangeThemeColor from './useChangeThemeColor'
+import useCurrentTheme from './themes/useCurrentTheme'
 import SharePlayer from './share/SharePlayer'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import { DndProvider } from 'react-dnd'
 import missing from './missing/index.js'
-import { useEffect } from 'react'
-
-const history = createHashHistory()
 
 if (config.gaTrackingId) {
   ReactGA.initialize(config.gaTrackingId)
-  history.listen((location) => {
-    ReactGA.pageview(location.pathname)
-  })
-  ReactGA.pageview(window.location.pathname)
+  const trackPage = () => ReactGA.pageview(window.location.hash || '/')
+  trackPage()
+  window.addEventListener('hashchange', trackPage)
 }
 
 const adminStore = createAdminStore({
-  authProvider,
-  dataProvider,
-  history,
   customReducers: {
     library: libraryReducer,
     player: playerReducer,
@@ -90,106 +78,88 @@ const App = () => (
 )
 
 const Admin = (props) => {
-  const setLocale = useSetLocale()
-  const refresh = useRefresh()
-  useEffect(() => {
-    if (config.defaultLanguage !== '' && !localStorage.getItem('locale')) {
-      retrieveTranslation(config.defaultLanguage)
-        .then(() => setLocale(config.defaultLanguage))
-        .then(() => {
-          localStorage.setItem('locale', config.defaultLanguage)
-          refresh(true)
-        })
-        .catch((e) => {
-          // eslint-disable-next-line no-console
-          console.error(
-            'Cannot load language "' + config.defaultLanguage + '": ' + e,
-          )
-        })
-    }
-  }, [setLocale, refresh])
+  const theme = useCurrentTheme()
   useChangeThemeColor()
-  /* eslint-disable react/jsx-key */
+
   return (
     <RAAdmin
       disableTelemetry
       dataProvider={dataProvider}
       authProvider={authProvider}
       i18nProvider={i18nProvider}
-      customRoutes={customRoutes}
-      history={history}
       layout={Layout}
       loginPage={Login}
-      logoutButton={Logout}
+      theme={theme}
       {...props}
     >
-      {(permissions) => [
-        <Resource name="album" {...album} options={{ subMenu: 'albumList' }} />,
-        <Resource name="artist" {...artist} />,
-        <Resource name="song" {...song} />,
-        <Resource
-          name="radio"
-          {...(permissions === 'admin' ? radio.admin : radio.all)}
-        />,
-        config.enableSharing && <Resource name="share" {...share} />,
-        <Resource
-          name="playlist"
-          {...playlist}
-          options={{ subMenu: 'playlist' }}
-        />,
-        <Resource name="user" {...user} options={{ subMenu: 'settings' }} />,
-        <Resource
-          name="player"
-          {...player}
-          options={{ subMenu: 'settings' }}
-        />,
-        permissions === 'admin' ? (
+      {(permissions) => (
+        <>
+          <Resource name="album" {...album} options={{ subMenu: 'albumList' }} />
+          <Resource name="artist" {...artist} />
+          <Resource name="song" {...song} />
           <Resource
-            name="transcoding"
-            {...transcoding}
+            name="radio"
+            {...(permissions === 'admin' ? radio.admin : radio.all)}
+          />
+          {config.enableSharing && <Resource name="share" {...share} />}
+          <Resource
+            name="playlist"
+            {...playlist}
+            options={{ subMenu: 'playlist' }}
+          />
+          <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
+          <Resource
+            name="player"
+            {...player}
             options={{ subMenu: 'settings' }}
           />
-        ) : (
-          <Resource name="transcoding" />
-        ),
-        permissions === 'admin' ? (
-          <Resource
-            name="library"
-            {...library}
-            options={{ subMenu: 'settings' }}
-          />
-        ) : null,
-        permissions === 'admin' ? (
-          <Resource
-            name="missing"
-            {...missing}
-            options={{ subMenu: 'settings' }}
-          />
-        ) : null,
-        permissions === 'admin' && config.pluginsEnabled ? (
-          <Resource
-            name="plugin"
-            {...plugin}
-            options={{ subMenu: 'settings' }}
-          />
-        ) : null,
-
-        <Resource name="translation" />,
-        <Resource name="genre" />,
-        <Resource name="tag" />,
-        <Resource name="playlistTrack" />,
-        <Resource name="keepalive" />,
-        <Resource name="insights" />,
-        <Resource name="config" />,
-        <Player />,
-      ]}
+          {permissions === 'admin' ? (
+            <Resource
+              name="transcoding"
+              {...transcoding}
+              options={{ subMenu: 'settings' }}
+            />
+          ) : (
+            <Resource name="transcoding" />
+          )}
+          {permissions === 'admin' && (
+            <Resource
+              name="library"
+              {...library}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          {permissions === 'admin' && (
+            <Resource
+              name="missing"
+              {...missing}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          {permissions === 'admin' && config.pluginsEnabled && (
+            <Resource
+              name="plugin"
+              {...plugin}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          <Resource name="translation" />
+          <Resource name="genre" />
+          <Resource name="tag" />
+          <Resource name="playlistTrack" />
+          <Resource name="keepalive" />
+          <Resource name="insights" />
+          <Resource name="config" />
+          <AppRoutes />
+          <Player />
+        </>
+      )}
     </RAAdmin>
   )
-  /* eslint-enable react/jsx-key */
 }
 
 const AppWithHotkeys = () => {
-  let language = localStorage.getItem('locale') || 'en'
+  const language = localStorage.getItem('locale') || 'en'
   document.documentElement.lang = language
   if (config.enableSharing && shareInfo) {
     return <SharePlayer />

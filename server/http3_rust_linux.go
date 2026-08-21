@@ -56,6 +56,7 @@ type rustHTTP3Config struct {
 	MaxConnectionsPerIP  int     `json:"max_connections_per_ip"`
 	ConnectionRate       float64 `json:"connection_rate_per_second"`
 	ConnectionBurst      int     `json:"connection_burst"`
+	CongestionControl    string  `json:"congestion_control"`
 }
 
 type rustHTTP3Runtime struct {
@@ -88,6 +89,10 @@ func newRustHTTP3Runtime(
 	if conf.HTTP3MaxConnections() < 1 || conf.HTTP3MaxConnectionsPerIP() < 1 ||
 		conf.HTTP3ConnectionRatePerSecond() <= 0 || conf.HTTP3ConnectionBurst() < 0 {
 		return nil, errors.New("HTTP/3 admission limits must be positive (connection burst may be zero)")
+	}
+	congestionControl := conf.HTTP3CongestionControl()
+	if !conf.ValidHTTP3CongestionControl(congestionControl) {
+		return nil, fmt.Errorf("unsupported HTTP/3 congestion control %q", congestionControl)
 	}
 	token := hex.EncodeToString(tokenBytes)
 
@@ -131,6 +136,7 @@ func newRustHTTP3Runtime(
 			MaxConnectionsPerIP:  conf.HTTP3MaxConnectionsPerIP(),
 			ConnectionRate:       conf.HTTP3ConnectionRatePerSecond(),
 			ConnectionBurst:      conf.HTTP3ConnectionBurst(),
+			CongestionControl:    congestionControl,
 		},
 	}
 
@@ -287,7 +293,8 @@ func (r *rustHTTP3Runtime) startChild() error {
 	http3CompanionUp.Set(1)
 	failed = false
 	log.Info(r.ctx, "Tokio-quiche HTTP/3 companion is ready", "udpAddress", r.config.UDPAddress,
-		"internalAddress", r.config.InternalAddress, "binary", r.binaryPath)
+		"internalAddress", r.config.InternalAddress, "binary", r.binaryPath,
+		"congestionControl", r.config.CongestionControl)
 	return nil
 }
 

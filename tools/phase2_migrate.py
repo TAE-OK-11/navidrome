@@ -37,15 +37,15 @@ def migrate_go() -> None:
     )
     consts.write_text(text)
 
-    # Embedded artwork already has the ffmpeg extraction path immediately
-    # after the former TagLib source. Keep that mature path and remove the
-    # duplicate TagLib source so TagLib can leave the Go module completely.
+    # Embedded artwork stays on the existing FFmpeg implementation. FFmpeg
+    # receives the absolute path while callers keep the library-relative source
+    # identifier used by artwork caching and diagnostics.
     album = Path("core/artwork/reader_album.go")
     text = album.read_text()
     text = require_replace(
         text,
         "\t\t\tff = append(ff,\n\t\t\t\tfromTag(ctx, a.lib.FS, embedRel),\n\t\t\t\tfromFFmpegTag(ctx, ffmpeg, a.lib.Abs(embedRel)),\n\t\t\t)\n",
-        "\t\t\tff = append(ff, fromFFmpegTag(ctx, ffmpeg, a.lib.Abs(embedRel)))\n",
+        "\t\t\tff = append(ff, fromFFmpegTagNamed(ctx, ffmpeg, a.lib.Abs(embedRel), embedRel))\n",
         "album embedded TagLib artwork source",
     )
     album.write_text(text)
@@ -61,10 +61,26 @@ def migrate_go() -> None:
     text = require_replace(
         text,
         "\t\t\tff = append(ff,\n\t\t\t\tfromTag(ctx, d.lib.FS, d.firstTrackRel),\n\t\t\t\tfromFFmpegTag(ctx, ffmpeg, d.lib.Abs(d.firstTrackRel)),\n\t\t\t)\n",
-        "\t\t\tff = append(ff, fromFFmpegTag(ctx, ffmpeg, d.lib.Abs(d.firstTrackRel)))\n",
+        "\t\t\tff = append(ff, fromFFmpegTagNamed(ctx, ffmpeg, d.lib.Abs(d.firstTrackRel), d.firstTrackRel))\n",
         "disc embedded TagLib artwork source",
     )
     disc.write_text(text)
+
+    disc_test = Path("core/artwork/reader_disc_test.go")
+    text = disc_test.read_text()
+    text = require_replace(
+        text,
+        'Expect(ff).To(HaveLen(2)) // fromTag + fromFFmpegTag',
+        'Expect(ff).To(HaveLen(1)) // one FFmpeg embedded-art attempt',
+        "disc embedded source-count expectation",
+    )
+    text = require_replace(
+        text,
+        'Expect(ff).To(HaveLen(4)) // disc*.* + cd*.* + fromTag + fromFFmpegTag',
+        'Expect(ff).To(HaveLen(3)) // disc*.* + cd*.* + one embedded-art attempt',
+        "disc mixed-priority source-count expectation",
+    )
+    disc_test.write_text(text)
 
 
 def metadata_builder_stage() -> str:

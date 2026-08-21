@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - chore/bun-1.4-selective-upstream
+  pull_request:
+    branches:
+      - master
 
 permissions:
   contents: write
 
 jobs:
   migrate:
-    if: github.event.head_commit.message == 'chore: bootstrap Bun 1.4 migration'
+    if: github.event_name == 'pull_request' || github.event.head_commit.message == 'chore: bootstrap Bun 1.4 migration'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -93,6 +96,7 @@ jobs:
         run: go test -tags netgo,sqlite_fts5 ./...
 
       - name: Commit migration
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail

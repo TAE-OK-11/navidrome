@@ -27,7 +27,9 @@ const eventHandler =
     }
   }
 
-const throttledEventHandler = (dispatchFn: Dispatch): ((event: Event) => void) =>
+const throttledEventHandler = (
+  dispatchFn: Dispatch,
+): ((event: Event) => void) =>
   throttle(eventHandler(dispatchFn), 100, { trailing: true })
 
 const scheduleReconnect = (dispatchFn: Dispatch): void => {
@@ -55,7 +57,9 @@ const setupHandlers = (stream: EventSource, dispatchFn: Dispatch): void => {
   }
 }
 
-const connect = async (dispatchFn: Dispatch): Promise<EventSource | undefined> => {
+const connect = async (
+  dispatchFn: Dispatch,
+): Promise<EventSource | undefined> => {
   try {
     const stream = await newEventStream()
     eventStream = stream

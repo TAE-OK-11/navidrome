@@ -66,6 +66,15 @@ struct Config {
     max_connections_per_ip: usize,
     connection_rate_per_second: f64,
     connection_burst: u32,
+    congestion_control: String,
+}
+
+fn normalize_congestion_control(value: &str) -> Result<String> {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "bbr2" | "cubic" | "reno" => Ok(value),
+        _ => bail!("unsupported congestion control {value:?}"),
+    }
 }
 
 fn main() -> Result<()> {
@@ -109,6 +118,7 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
         .parse()
         .context("invalid private h2c address")?;
     let public: SocketAddr = config.udp_address.parse().context("invalid UDP address")?;
+    let congestion_control = normalize_congestion_control(&config.congestion_control)?;
 
     let socket = tuned_udp_socket(public)?;
     let socket = UdpSocket::from_std(socket).context("failed to create Tokio UDP socket")?;
@@ -139,7 +149,7 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
     quic.grease = true;
     quic.disable_client_ip_validation = false;
     quic.max_amplification_factor = MAX_AMPLIFICATION_FACTOR;
-    quic.cc_algorithm = "cubic".to_owned();
+    quic.cc_algorithm = congestion_control.clone();
     quic.qlog_dir = config
         .qlog_dir
         .as_deref()
@@ -209,8 +219,8 @@ async fn run(config: Config, mut control: UnixStream) -> Result<()> {
     control.write_all(b"READY\n")?;
     control.flush()?;
     info!(
-        "HTTP/3 ready udp={} internal=h2c://{} early_data=false retry=true pmtud=true pacing=true",
-        public, internal
+        "HTTP/3 ready udp={} internal=h2c://{} cc={} early_data=false retry=true pmtud=true pacing=true",
+        public, internal, congestion_control
     );
 
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -709,6 +719,14 @@ mod tests {
                 .build(connector),
             alt_svc: HeaderValue::from_static("h3=\":443\"; ma=300"),
         }
+    }
+
+    #[test]
+    fn congestion_control_is_normalized_and_validated() {
+        assert_eq!(normalize_congestion_control(" BBR2 ").unwrap(), "bbr2");
+        assert_eq!(normalize_congestion_control("CUBIC").unwrap(), "cubic");
+        assert_eq!(normalize_congestion_control("reno").unwrap(), "reno");
+        assert!(normalize_congestion_control("bbr3").is_err());
     }
 
     #[test]

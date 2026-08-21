@@ -27,17 +27,17 @@ jobs:
       - name: Apply metadata migration
         run: |
           python3 tools/phase2_migrate.py
-          gofmt -w adapters/lofty cmd/root.go consts/consts.go
+          gofmt -w adapters/lofty cmd/root.go consts/consts.go core/artwork/reader_album.go core/artwork/reader_disc.go
           go mod tidy
           cargo fmt --manifest-path rust/metadata/Cargo.toml
           cargo generate-lockfile --manifest-path rust/metadata/Cargo.toml
       - name: Verify migrated metadata stack
         run: |
-          go test ./adapters/lofty ./core/storage/local ./cmd
+          go test ./adapters/lofty ./core/storage/local ./core/artwork ./cmd
           cargo test --locked --manifest-path rust/metadata/Cargo.toml
           python3 -m py_compile tools/phase2_migrate.py
-          if grep -R -n -E 'go\.senan\.xyz/taglib|github\.com/deluan/go-taglib|tetratelabs/wazero|tetratelabs/wabin|TagLib|TAGLIB_VERSION|TAGLIB_SHA256' go.mod go.sum adapters cmd consts Dockerfile.jbs; then
-            echo 'TagLib/WASM dependency remains after migration' >&2
+          if grep -R -n -E 'go\.senan\.xyz/taglib|github\.com/deluan/go-taglib|TagLib|TAGLIB_VERSION|TAGLIB_SHA256|taglib-build|libtag(_c)?\.a' go.mod go.sum adapters cmd consts core tests Dockerfile.jbs; then
+            echo 'TagLib dependency or implementation remains after migration' >&2
             exit 1
           fi
           grep -q 'navidrome-metadata' Dockerfile.jbs
@@ -50,6 +50,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A adapters cmd/root.go consts/consts.go go.mod go.sum rust/metadata Dockerfile.jbs
+          git add -A adapters cmd/root.go consts/consts.go core/artwork go.mod go.sum rust/metadata Dockerfile.jbs
           git commit -m "refactor: switch scanner metadata to Lofty [phase2-generated]"
           git push origin HEAD:modernize/phase2-lofty-react19-rust

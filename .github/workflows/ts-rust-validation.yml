@@ -1,0 +1,40 @@
+name: TS and Rust Runtime Validation
+
+on:
+  push:
+    branches:
+      - refactor/ts-rust-runtime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ts-rust-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    name: Bun TypeScript UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install
+        working-directory: ui
+        run: bun install --frozen-lockfile
+      - name: Typecheck and lint
+        working-directory: ui
+        run: bun run type-check && bun run lint
+      - name: Transcode tests
+        working-directory: ui
+        run: bunx vitest run src/transcode
+      - name: Full UI tests
+        working-directory: ui
+        run: bun run test
+      - name: Production build
+        working-directory: ui
+        run: bun run build

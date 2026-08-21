@@ -47,14 +47,17 @@ const useStyles = makeStyles((theme) => ({
   },
 }))
 
-const UserMenu = (props) => {
+const UserMenu = ({
+  children,
+  label = 'menu.settings',
+  icon = <AccountCircle />,
+  ...props
+}) => {
   const [anchorEl, setAnchorEl] = useState(null)
   const translate = useTranslate()
-  const { loaded, identity } = useGetIdentity()
+  const { data: identity, isPending } = useGetIdentity()
   const classes = useStyles(props)
   const dispatch = useDispatch()
-
-  const { children, label, icon, logout } = props
 
   useEffect(() => {
     if (config.devActivityPanel) {
@@ -65,8 +68,9 @@ const UserMenu = (props) => {
     }
   }, [dispatch])
 
-  if (!logout && !children) return null
+  if (!children) return null
   const open = Boolean(anchorEl)
+  const loaded = !isPending && Boolean(identity)
 
   const handleMenu = (event) => setAnchorEl(event.currentTarget)
   const handleClose = () => setAnchorEl(null)
@@ -77,16 +81,16 @@ const UserMenu = (props) => {
         <IconButton
           className={classes.button}
           aria-label={label && translate(label, { _: label })}
-          aria-owns={open ? 'menu-appbar' : null}
-          aria-haspopup={true}
+          aria-controls={open ? 'menu-appbar' : undefined}
+          aria-haspopup="true"
           onClick={handleMenu}
           size="large"
         >
-          {loaded && identity.avatar ? (
+          {loaded && identity?.avatar ? (
             <Avatar
               className={classes.avatar}
               src={identity.avatar}
-              alt={identity.fullName}
+              alt={identity.fullName || ''}
             />
           ) : (
             icon
@@ -111,7 +115,7 @@ const UserMenu = (props) => {
           {loaded && (
             <Card elevation={0} className={classes.username}>
               <CardContent className={classes.usernameWrap}>
-                <Typography variant={'button'}>{identity.fullName}</Typography>
+                <Typography variant="button">{identity.fullName}</Typography>
               </CardContent>
             </Card>
           )}
@@ -123,7 +127,6 @@ const UserMenu = (props) => {
                 })
               : null,
           )}
-          {(!config.auth || !!config.extAuthLogoutURL) && logout}
         </MenuList>
       </Popover>
     </div>
@@ -132,13 +135,8 @@ const UserMenu = (props) => {
 
 UserMenu.propTypes = {
   children: PropTypes.node,
-  label: PropTypes.string.isRequired,
-  logout: PropTypes.element,
-}
-
-UserMenu.defaultProps = {
-  label: 'menu.settings',
-  icon: <AccountCircle />,
+  label: PropTypes.string,
+  icon: PropTypes.node,
 }
 
 export default UserMenu

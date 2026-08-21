@@ -15,79 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  bun-bootstrap:
-    name: Bootstrap Bun 1.4 migration
-    if: github.event_name == 'pull_request' && github.head_ref == 'chore/bun-1.4-selective-upstream'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: chore/bun-1.4-selective-upstream
-          fetch-depth: 0
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: canary
-      - name: Resolve Bun 1.4 and immutable image pins
-        shell: bash
-        run: |
-          set -euo pipefail
-          BUN_VERSION="$(bun --version)"
-          case "${BUN_VERSION}" in 1.4.*) ;; *) echo "Expected Bun 1.4 canary, got ${BUN_VERSION}" >&2; exit 1 ;; esac
-          bun -e 'const m = new Map([[2**32, "a"], [2**33, "b"]]); if (m.size !== 2 || m.get(2**32) !== "a" || m.get(2**33) !== "b") throw new Error("Bun 1.4 large-integer Map/Set regression detected")'
-          bun -e 'const z = require("node:zlib"); if (typeof z.zstdCompress !== "function" || typeof z.brotliCompress !== "function") throw new Error("required node:zlib compatibility missing")'
-          docker pull oven/bun:canary-alpine
-          docker pull oven/bun:canary-debian
-          BUN_ALPINE_REF="$(docker image inspect oven/bun:canary-alpine --format '{{index .RepoDigests 0}}')"
-          BUN_DEBIAN_REF="$(docker image inspect oven/bun:canary-debian --format '{{index .RepoDigests 0}}')"
-          BUN_ALPINE_DIGEST="${BUN_ALPINE_REF#*@}"
-          BUN_DEBIAN_DIGEST="${BUN_DEBIAN_REF#*@}"
-          echo "BUN_VERSION=${BUN_VERSION}" >> "$GITHUB_ENV"
-          echo "BUN_ALPINE_DIGEST=${BUN_ALPINE_DIGEST}" >> "$GITHUB_ENV"
-          echo "BUN_DEBIAN_DIGEST=${BUN_DEBIAN_DIGEST}" >> "$GITHUB_ENV"
-      - name: Generate Bun lockfile
-        working-directory: ui
-        run: bun install --lockfile-only
-      - name: Rewrite the toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin master
-          git show origin/master:.github/workflows/pipeline.yml > .github/workflows/pipeline.yml
-          python3 scripts/bun14_migrate.py
-          rm -f .nvmrc ui/package-lock.json
-      - name: Verify dependency graph and UI
-        working-directory: ui
-        run: |
-          bun install --frozen-lockfile
-          bun run check-formatting
-          bun run lint
-          bun run test
-          bun run type-check
-          bun run build
-      - name: Verify standard Docker UI stage
-        run: docker build --target ui-bundle -t navidrome-ui-bun14 .
-      - name: Go regression tests
-        run: go test -tags netgo,sqlite_fts5 ./...
-      - name: Stage verified migration
-        shell: bash
-        run: |
-          mkdir -p /tmp/bun-migration
-          git diff --binary > /tmp/bun-migration/migration.patch
-          cp ui/bun.lock /tmp/bun-migration/bun.lock
-          printf '%s\n' "$BUN_VERSION" > /tmp/bun-migration/bun-version.txt
-          printf '%s\n' "$BUN_ALPINE_DIGEST" > /tmp/bun-migration/bun-alpine-digest.txt
-          printf '%s\n' "$BUN_DEBIAN_DIGEST" > /tmp/bun-migration/bun-debian-digest.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: verified-bun14-migration
-          path: /tmp/bun-migration
-          if-no-files-found: error
-
   go:
     name: Go tests
     runs-on: ubuntu-latest
@@ -130,20 +57,22 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
+          bun-version-file: .bun-version
+      - name: Verify Bun 1.4 runtime
+        run: |
+          case "$(bun --version)" in 1.4.*) ;; *) echo "Bun 1.4 required" >&2; exit 1 ;; esac
+          bun -e 'const m = new Map([[2**32, "a"], [2**33, "b"]]); if (m.size !== 2) throw new Error("Bun 1.4 Map/Set large-integer regression detected")'
       - name: Install
         working-directory: ui
-        run: npm ci
+        run: bun install --frozen-lockfile
       - name: Check
         working-directory: ui
-        run: npm run check-formatting && npm run lint && npm test
+        run: bun run check-formatting && bun run lint && bun run test
       - name: Build
         working-directory: ui
-        run: npm run build
+        run: bun run build
 
   i18n:
     name: i18n validation

@@ -19,4 +19,20 @@ func TestHTTP3MigrationDefaults(t *testing.T) {
 	if HTTP3ConnectionRatePerSecond() <= 0 || HTTP3ConnectionBurst() < 0 {
 		t.Fatal("invalid default HTTP/3 connection admission policy")
 	}
+	if HTTP3CongestionControl() != HTTP3CongestionControlBBR2 {
+		t.Fatalf("HTTP3CongestionControl()=%q, want %q", HTTP3CongestionControl(), HTTP3CongestionControlBBR2)
+	}
+}
+
+func TestValidHTTP3CongestionControl(t *testing.T) {
+	for _, value := range []string{"bbr2", " BBR2 ", "cubic", "reno"} {
+		if !ValidHTTP3CongestionControl(value) {
+			t.Fatalf("ValidHTTP3CongestionControl(%q)=false", value)
+		}
+	}
+	for _, value := range []string{"", "bbr3", "bbr2_gcongestion", "anything"} {
+		if ValidHTTP3CongestionControl(value) {
+			t.Fatalf("ValidHTTP3CongestionControl(%q)=true", value)
+		}
+	}
 }

@@ -12,7 +12,7 @@ use lofty::mp4::{Mp4Codec, Mp4File};
 use lofty::mpeg::MpegFile;
 use lofty::ogg::OpusFile;
 use lofty::ogg::tag::VorbisComments;
-use lofty::picture::PictureType;
+use lofty::picture::{Picture, PictureType};
 use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
@@ -226,16 +226,20 @@ fn extract_picture(path: &Path) -> Result<Vec<u8>> {
         .iter()
         .flat_map(|tag| tag.pictures().iter())
         .collect::<Vec<_>>();
-    let picture = pictures
-        .iter()
-        .find(|picture| picture.pic_type() == PictureType::CoverFront)
-        .copied()
-        .or_else(|| pictures.first().copied())
+    let picture = preferred_picture(&pictures)
         .with_context(|| format!("no embedded picture found in {}", path.display()))?;
     if picture.data().is_empty() {
         bail!("embedded picture is empty in {}", path.display());
     }
     Ok(picture.data().to_vec())
+}
+
+fn preferred_picture<'a>(pictures: &[&'a Picture]) -> Option<&'a Picture> {
+    pictures
+        .iter()
+        .copied()
+        .find(|picture| picture.pic_type() == PictureType::CoverFront)
+        .or_else(|| pictures.first().copied())
 }
 
 fn extension(path: &Path) -> String {
@@ -358,11 +362,14 @@ mod tests {
     }
 
     #[test]
-    fn extracts_the_original_embedded_picture() {
-        let path = Path::new("../../core/artwork/e2e/testdata/embedded_art.mp3");
-        let picture = extract_picture(path).expect("embedded picture");
-        assert!(
-            picture.starts_with(&[0x89, b'P', b'N', b'G']) || picture.starts_with(&[0xff, 0xd8])
-        );
+    fn prefers_front_cover_picture_data() {
+        let back = Picture::unchecked(vec![1, 2, 3])
+            .pic_type(PictureType::CoverBack)
+            .build();
+        let front = Picture::unchecked(vec![4, 5, 6])
+            .pic_type(PictureType::CoverFront)
+            .build();
+        let pictures = [&back, &front];
+        assert_eq!(preferred_picture(&pictures).unwrap().data(), &[4, 5, 6]);
     }
 }

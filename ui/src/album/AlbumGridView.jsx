@@ -1,11 +1,5 @@
 import React from 'react'
-import {
-  ImageList,
-  ImageListItem,
-  Typography,
-  ImageListItemBar,
-  useMediaQuery,
-} from '@mui/material'
+import { Typography, ImageListItemBar, useMediaQuery } from '@mui/material'
 import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
 import { useListContext, Loading } from 'react-admin'
@@ -35,7 +29,17 @@ const useStyles = makeStyles(
   (theme) => ({
     root: {
       margin: '20px',
+      minWidth: 0,
+    },
+    grid: {
       display: 'grid',
+      gap: '20px',
+      minWidth: 0,
+      width: '100%',
+    },
+    gridListTile: {
+      minWidth: 0,
+      width: '100%',
     },
     tileBar: {
       transition: 'all 150ms ease-out',
@@ -95,7 +99,10 @@ const useStyles = makeStyles(
       display: 'block',
       textDecoration: 'none',
     },
-    albumContainer: {},
+    albumContainer: {
+      minWidth: 0,
+      width: '100%',
+    },
     albumPlayButton: { color: 'white' },
   }),
   { name: 'NDAlbumGridView' },
@@ -221,22 +228,22 @@ const LoadedAlbumGrid = ({ records, basePath = '/album', width }) => {
   const isArtistView = !!(filterValues && filterValues.artist_id)
   return (
     <div className={classes.root}>
-      <ImageList
-        component={'div'}
-        rowHeight={'auto'}
-        cols={getColsForWidth(width)}
-        gap={20}
+      <div
+        className={classes.grid}
+        style={{
+          gridTemplateColumns: `repeat(${getColsForWidth(width)}, minmax(0, 1fr))`,
+        }}
       >
         {records.map((record) => (
-          <ImageListItem className={classes.gridListTile} key={record.id}>
+          <div className={classes.gridListTile} key={record.id}>
             <AlbumGridTile
               record={record}
               basePath={basePath}
               showArtist={!isArtistView}
             />
-          </ImageListItem>
+          </div>
         ))}
-      </ImageList>
+      </div>
     </div>
   )
 }

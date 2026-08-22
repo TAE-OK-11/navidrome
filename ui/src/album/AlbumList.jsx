@@ -84,7 +84,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.genre')}
         source="genre_id"
         reference="genre"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'name', order: 'ASC' }}
         filterToQuery={(searchText) => ({ name: [searchText] })}
       >
@@ -94,7 +94,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.recordLabel')}
         source="recordlabel"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'recordlabel' }}
         filterToQuery={(searchText) => ({
@@ -107,7 +107,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.grouping')}
         source="grouping"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'grouping' }}
         filterToQuery={(searchText) => ({
@@ -124,7 +124,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.mood')}
         source="mood"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'mood' }}
         filterToQuery={(searchText) => ({
@@ -141,7 +141,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.media')}
         source="media"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'media' }}
         filterToQuery={(searchText) => ({
@@ -154,7 +154,7 @@ const AlbumFilter = (props) => {
         label={translate('resources.album.fields.releaseType')}
         source="releasetype"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'releasetype' }}
         filterToQuery={(searchText) => ({

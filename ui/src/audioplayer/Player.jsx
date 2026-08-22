@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInterval } from '../common'
 import { useDispatch, useSelector } from 'react-redux'
-import { useMediaQuery, adaptV4Theme } from '@mui/material'
+import { useMediaQuery } from '@mui/material'
 import {
   createTheme,
   ThemeProvider,
@@ -33,6 +33,7 @@ import { keyMap } from '../hotkeys'
 import keyHandlers from './keyHandlers'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { detectBrowserProfile, decisionService } from '../transcode'
+import modernizeTheme from '../themes/modernizeTheme'
 
 const isMobileUserAgent =
   typeof navigator !== 'undefined' &&
@@ -42,7 +43,7 @@ const isMobileUserAgent =
 
 const Player = () => {
   const theme = useCurrentTheme()
-  const muiTheme = useMemo(() => createTheme(adaptV4Theme(theme)), [theme])
+  const muiTheme = useMemo(() => createTheme(modernizeTheme(theme)), [theme])
   const translate = useTranslate()
   const playerTheme = theme.player?.theme || 'dark'
   const dataProvider = useDataProvider()

@@ -17,9 +17,11 @@ export const ListenBrainzScrobbleToggle = () => {
       httpClient('/api/listenbrainz/link', { method: 'DELETE' })
         .then(() => {
           setLinked(false)
-          notify('message.listenBrainzUnlinkSuccess', 'success')
+          notify('message.listenBrainzUnlinkSuccess', { type: 'success' })
         })
-        .catch(() => notify('message.listenBrainzUnlinkFailure', 'warning'))
+        .catch(() =>
+          notify('message.listenBrainzUnlinkFailure', { type: 'warning' }),
+        )
     } else {
       dispatch(openListenBrainzTokenDialog())
     }

@@ -62,7 +62,7 @@ export const useRating = (resource, record) => {
       .catch((e) => {
         // eslint-disable-next-line no-console
         console.log('Error setting star rating: ', e)
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
         if (mountedRef.current) {
           setLoading(false)
         }

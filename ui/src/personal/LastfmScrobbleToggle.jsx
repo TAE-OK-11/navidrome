@@ -22,9 +22,9 @@ const Progress = (props) => {
     linkCheckDelay = null
     setCheckingLink(false)
     if (success) {
-      notify('message.lastfmLinkSuccess', 'success')
+      notify('message.lastfmLinkSuccess', { type: 'success' })
     } else {
-      notify('message.lastfmLinkFailure', 'warning')
+      notify('message.lastfmLinkFailure', { type: 'warning' })
     }
     setLinked(success)
   }
@@ -84,7 +84,7 @@ export const LastfmScrobbleToggle = (props) => {
     try {
       tab = openInNewTab('about:blank')
     } catch {
-      notify('message.lastfmLinkFailure', 'warning')
+      notify('message.lastfmLinkFailure', { type: 'warning' })
       return
     }
     openedTab.current = tab
@@ -94,7 +94,7 @@ export const LastfmScrobbleToggle = (props) => {
         const linkToken = response.json.linkToken
         if (!linkToken) {
           tab?.close()
-          notify('message.lastfmLinkFailure', 'warning')
+          notify('message.lastfmLinkFailure', { type: 'warning' })
           setCheckingLink(false)
           return
         }
@@ -106,7 +106,7 @@ export const LastfmScrobbleToggle = (props) => {
       })
       .catch(() => {
         tab?.close()
-        notify('message.lastfmLinkFailure', 'warning')
+        notify('message.lastfmLinkFailure', { type: 'warning' })
         setCheckingLink(false)
       })
   }
@@ -118,9 +118,9 @@ export const LastfmScrobbleToggle = (props) => {
       httpClient('/api/lastfm/link', { method: 'DELETE' })
         .then(() => {
           setLinked(false)
-          notify('message.lastfmUnlinkSuccess', 'success')
+          notify('message.lastfmUnlinkSuccess', { type: 'success' })
         })
-        .catch(() => notify('message.lastfmUnlinkFailure', 'warning'))
+        .catch(() => notify('message.lastfmUnlinkFailure', { type: 'warning' }))
     }
   }
 

@@ -39,7 +39,11 @@ const PermissionChip = ({ label, permission, classes }) => {
         <Typography variant="body2">{permission.reason}</Typography>
       )}
       {hasHosts && (
-        <Box mt={permission.reason ? 0.5 : 0}>
+        <Box
+          sx={{
+            mt: permission.reason ? 0.5 : 0,
+          }}
+        >
           <Typography variant="caption" component="div">
             {translate('resources.plugin.messages.requiredHosts')}:{' '}
             {permission.requiredHosts.map((host, i) => (
@@ -78,9 +82,7 @@ const PermissionChip = ({ label, permission, classes }) => {
           disableFocusListener
           disableHoverListener
           disableTouchListener
-          PopperProps={{
-            disablePortal: true,
-          }}
+          slotProps={{ popper: { disablePortal: true } }}
         >
           {chip}
         </Tooltip>
@@ -92,7 +94,7 @@ const PermissionChip = ({ label, permission, classes }) => {
 // Info row component for responsive grid
 const InfoRow = ({ label, children, classes, isSmall }) => (
   <>
-    <Grid item xs={12} sm={3}>
+    <Grid size={{ xs: 12, sm: 3 }}>
       <Typography
         variant="body2"
         className={classes.infoLabel}
@@ -101,7 +103,7 @@ const InfoRow = ({ label, children, classes, isSmall }) => (
         {label}
       </Typography>
     </Grid>
-    <Grid item xs={12} sm={9}>
+    <Grid size={{ xs: 12, sm: 9 }}>
       <Typography variant="body2" component="div">
         {children}
       </Typography>

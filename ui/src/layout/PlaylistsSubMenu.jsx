@@ -31,12 +31,13 @@ const PlaylistMenuItemLink = ({ pls, sidebarIsOpen }) => {
       dataProvider
         .addToPlaylist(pls.id, item)
         .then((res) => {
-          notify('message.songsAddedToPlaylist', 'info', {
-            smart_count: res.data?.added,
+          notify('message.songsAddedToPlaylist', {
+            type: 'info',
+            messageArgs: { smart_count: res.data?.added },
           })
         })
         .catch(() => {
-          notify('ra.page.error', 'warning')
+          notify('ra.page.error', { type: 'warning' })
         }),
   }))
 

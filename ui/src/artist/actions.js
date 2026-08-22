@@ -14,7 +14,7 @@ export const playTopSongs = async (dispatch, notify, artistName) => {
 
   const songs = data.topSongs?.song || []
   if (!songs.length) {
-    notify('message.noTopSongsFound', 'warning')
+    notify('message.noTopSongsFound', { type: 'warning' })
     return
   }
 

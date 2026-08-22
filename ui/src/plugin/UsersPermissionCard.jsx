@@ -7,7 +7,7 @@ import {
   FormControlLabel,
   Switch,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Checkbox,
@@ -78,14 +78,22 @@ export const UsersPermissionCard = ({
         )}
 
         {isConfigurationRequired && (
-          <Box mb={2}>
+          <Box
+            sx={{
+              mb: 2,
+            }}
+          >
             <Alert severity="warning">
               {translate('resources.plugin.messages.usersRequired')}
             </Alert>
           </Box>
         )}
 
-        <Box mb={2}>
+        <Box
+          sx={{
+            mb: 2,
+          }}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -125,9 +133,8 @@ export const UsersPermissionCard = ({
                 }}
               >
                 {users.map((user) => (
-                  <ListItem
+                  <ListItemButton
                     key={user.id}
-                    button
                     onClick={() => handleToggleUser(user.id)}
                     dense
                   >
@@ -144,7 +151,7 @@ export const UsersPermissionCard = ({
                       primary={user.name || user.userName}
                       secondary={user.name ? user.userName : null}
                     />
-                  </ListItem>
+                  </ListItemButton>
                 ))}
               </List>
             )}

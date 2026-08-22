@@ -69,15 +69,14 @@ const ToggleEnabledSwitch = ({
           record?.enabled
             ? 'resources.plugin.notifications.disabled'
             : 'resources.plugin.notifications.enabled',
-          'info',
+          { type: 'info' },
         )
       },
       onError: (error) => {
         refresh()
-        notify(
-          error?.message || 'resources.plugin.notifications.error',
-          'warning',
-        )
+        notify(error?.message || 'resources.plugin.notifications.error', {
+          type: 'warning',
+        })
       },
     },
   )

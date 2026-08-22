@@ -24,7 +24,10 @@ const PlaylistCreate = (props) => {
   })
 
   const onSuccess = () => {
-    notify('ra.notification.created', 'info', { smart_count: 1 })
+    notify('ra.notification.created', {
+      type: 'info',
+      messageArgs: { smart_count: 1 },
+    })
     redirect('list', basePath)
     refresh()
   }

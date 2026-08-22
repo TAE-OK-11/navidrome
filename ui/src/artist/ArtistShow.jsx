@@ -100,7 +100,7 @@ const ArtistShowLayout = (props) => {
   useScrollRestoration(!!record?.id)
 
   const maxPerPage = 90
-  let perPage = 0
+  let perPage = -1
   let pagination = null
 
   // Use the main credit count instead of total count, as this is a precise measure

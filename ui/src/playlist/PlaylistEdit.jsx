@@ -45,7 +45,7 @@ const PlaylistEditForm = (props) => {
         <ReferenceInput
           source="ownerId"
           reference="user"
-          perPage={0}
+          perPage={-1}
           sort={{ field: 'name', order: 'ASC' }}
         >
           <SelectInput

@@ -27,7 +27,7 @@ export const ShuffleAllButton = ({ filters = {} }) => {
         dispatch(playTracks(data))
       })
       .catch(() => {
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
       })
   }
 

@@ -179,7 +179,9 @@ describe('ArtistActions', () => {
       await waitFor(() =>
         expect(subsonic.getTopSongs).toHaveBeenCalledWith('Artist', 100),
       )
-      expect(mockNotify).toHaveBeenCalledWith('ra.page.error', 'warning')
+      expect(mockNotify).toHaveBeenCalledWith('ra.page.error', {
+        type: 'warning',
+      })
       expect(mockDispatch).not.toHaveBeenCalled()
     })
 
@@ -199,7 +201,9 @@ describe('ArtistActions', () => {
       await waitFor(() =>
         expect(subsonic.getTopSongs).toHaveBeenCalledWith('Artist', 100),
       )
-      expect(mockNotify).toHaveBeenCalledWith('ra.page.error', 'warning')
+      expect(mockNotify).toHaveBeenCalledWith('ra.page.error', {
+        type: 'warning',
+      })
       expect(mockDispatch).not.toHaveBeenCalled()
     })
 
@@ -219,10 +223,9 @@ describe('ArtistActions', () => {
       await waitFor(() =>
         expect(subsonic.getTopSongs).toHaveBeenCalledWith('Artist', 100),
       )
-      expect(mockNotify).toHaveBeenCalledWith(
-        'message.noTopSongsFound',
-        'warning',
-      )
+      expect(mockNotify).toHaveBeenCalledWith('message.noTopSongsFound', {
+        type: 'warning',
+      })
       expect(mockDispatch).not.toHaveBeenCalled()
     })
 
@@ -242,10 +245,9 @@ describe('ArtistActions', () => {
       await waitFor(() =>
         expect(subsonic.getTopSongs).toHaveBeenCalledWith('Artist', 100),
       )
-      expect(mockNotify).toHaveBeenCalledWith(
-        'message.noTopSongsFound',
-        'warning',
-      )
+      expect(mockNotify).toHaveBeenCalledWith('message.noTopSongsFound', {
+        type: 'warning',
+      })
       expect(mockDispatch).not.toHaveBeenCalled()
     })
   })

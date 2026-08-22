@@ -238,11 +238,11 @@ const ConfigTabContent = ({ configData }) => {
     try {
       const tomlContent = configToToml(configData, translate)
       await navigator.clipboard.writeText(tomlContent)
-      notify(translate('about.config.exportSuccess'), 'info')
+      notify(translate('about.config.exportSuccess'), { type: 'info' })
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to copy TOML:', err)
-      notify(translate('about.config.exportFailed'), 'error')
+      notify(translate('about.config.exportFailed'), { type: 'error' })
     }
   }
 

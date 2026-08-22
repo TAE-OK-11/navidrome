@@ -80,7 +80,11 @@ export const ConfigCard = ({
         </Typography>
 
         {formattedErrors.length > 0 && (
-          <Box mb={2}>
+          <Box
+            sx={{
+              mb: 2,
+            }}
+          >
             <Alert severity="error">
               {translate('resources.plugin.messages.configValidationError')}
               <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
@@ -96,7 +100,11 @@ export const ConfigCard = ({
           </Box>
         )}
 
-        <Box mt={formattedErrors.length > 0 ? 0 : 2}>
+        <Box
+          sx={{
+            mt: formattedErrors.length > 0 ? 0 : 2,
+          }}
+        >
           <SchemaConfigEditor
             schema={schema}
             uiSchema={uiSchema}

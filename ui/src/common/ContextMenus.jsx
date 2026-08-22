@@ -171,7 +171,7 @@ const ContextMenu = ({
           options[key].action(data, ids)
         })
         .catch(() => {
-          notify('ra.page.error', 'warning')
+          notify('ra.page.error', { type: 'warning' })
         })
     } else {
       options[key].action(record)

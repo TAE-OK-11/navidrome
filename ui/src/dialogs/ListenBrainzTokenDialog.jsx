@@ -40,15 +40,17 @@ export const ListenBrainzTokenDialog = ({ setLinked }) => {
         body: JSON.stringify({ token: token }),
       })
         .then((response) => {
-          notify('message.listenBrainzLinkSuccess', 'success', {
-            user: response.json.user,
+          notify('message.listenBrainzLinkSuccess', {
+            type: 'success',
+            messageArgs: { user: response.json.user },
           })
           setLinked(true)
           setToken('')
         })
         .catch((error) => {
-          notify('message.listenBrainzLinkFailure', 'warning', {
-            error: error.body?.error || error.message,
+          notify('message.listenBrainzLinkFailure', {
+            type: 'warning',
+            messageArgs: { error: error.body?.error || error.message },
           })
           setLinked(false)
         })

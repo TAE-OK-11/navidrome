@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import ReactGA from 'react-ga'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
-import { adaptV4Theme, createTheme } from '@mui/material/styles'
+import { createTheme } from '@mui/material/styles'
 import { ThemeProvider as LegacyThemeProvider } from '@mui/styles'
 import { HotKeys } from 'react-hotkeys'
 import dataProvider from './dataProvider'
@@ -48,6 +48,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend'
 import { DndProvider } from 'react-dnd'
 import missing from './missing/index.js'
 import ClientError from './layout/ClientError'
+import modernizeTheme from './themes/modernizeTheme'
 
 if (config.gaTrackingId) {
   ReactGA.initialize(config.gaTrackingId)
@@ -84,7 +85,7 @@ const App = () => (
 const Admin = (props) => {
   const themeOptions = useCurrentTheme()
   const theme = useMemo(
-    () => createTheme(adaptV4Theme(themeOptions)),
+    () => createTheme(modernizeTheme(themeOptions)),
     [themeOptions],
   )
   useChangeThemeColor()

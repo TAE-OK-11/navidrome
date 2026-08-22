@@ -36,6 +36,14 @@ export default defineConfig({
         ),
       },
       {
+        // React-admin 5.15 still emits a handful of MUI 5 compatibility props
+        // together with slotProps. Normalize its exact barrel import for MUI 9.
+        find: /^@mui\/material$/,
+        replacement: fileURLToPath(
+          new URL('./src/compat/muiMaterial.jsx', import.meta.url),
+        ),
+      },
+      {
         find: /^@mui\/icons-material$/,
         replacement: fileURLToPath(
           new URL('./src/compat/muiIcons.js', import.meta.url),
@@ -78,6 +86,15 @@ export default defineConfig({
     sourcemap: sourceMapsEnabled,
   },
   test: {
+    // Vitest resolves its own alias table instead of inheriting Vite's table.
+    alias: [
+      {
+        find: /^@mui\/material$/,
+        replacement: fileURLToPath(
+          new URL('./src/compat/muiMaterial.jsx', import.meta.url),
+        ),
+      },
+    ],
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/setupTests.js',
@@ -85,7 +102,12 @@ export default defineConfig({
     reporters: ['verbose'],
     server: {
       deps: {
-        inline: ['navidrome-music-player', 'sortablejs'],
+        inline: [
+          'navidrome-music-player',
+          'sortablejs',
+          'react-admin',
+          'ra-ui-materialui',
+        ],
       },
     },
     // reporters: ['default', 'hanging-process'],

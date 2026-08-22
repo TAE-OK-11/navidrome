@@ -79,7 +79,7 @@ const SongFilter = (props) => {
         label={translate('resources.song.fields.genre')}
         source="genre_id"
         reference="genre"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'name', order: 'ASC' }}
         filterToQuery={(searchText) => ({ name: [searchText] })}
       >
@@ -89,7 +89,7 @@ const SongFilter = (props) => {
         label={translate('resources.song.fields.grouping')}
         source="grouping"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'grouping' }}
         filterToQuery={(searchText) => ({
@@ -106,7 +106,7 @@ const SongFilter = (props) => {
         label={translate('resources.song.fields.mood')}
         source="mood"
         reference="tag"
-        perPage={0}
+        perPage={-1}
         sort={{ field: 'tagValue', order: 'ASC' }}
         filter={{ tag_name: 'mood' }}
         filterToQuery={(searchText) => ({

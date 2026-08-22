@@ -53,7 +53,7 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
 
       dataProvider
         .getList('playlistTrack', {
-          pagination: { page: 1, perPage: 0 },
+          pagination: { page: 1, perPage: -1 },
           sort: { field: 'id', order: 'ASC' },
           filter: { playlist_id: record.id },
         })
@@ -65,7 +65,7 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
           dispatch(action(data))
         })
         .catch(() => {
-          notify('ra.page.error', 'warning')
+          notify('ra.page.error', { type: 'warning' })
         })
     },
     [dataProvider, dispatch, record, data, ids, notify],

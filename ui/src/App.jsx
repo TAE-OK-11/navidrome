@@ -47,6 +47,7 @@ import SharePlayer from './share/SharePlayer'
 import { HTML5Backend } from 'react-dnd-html5-backend'
 import { DndProvider } from 'react-dnd'
 import missing from './missing/index.js'
+import ClientError from './layout/ClientError'
 
 if (config.gaTrackingId) {
   ReactGA.initialize(config.gaTrackingId)
@@ -97,6 +98,7 @@ const Admin = (props) => {
         i18nProvider={i18nProvider}
         layout={Layout}
         loginPage={Login}
+        error={ClientError}
         theme={theme}
         {...props}
       >

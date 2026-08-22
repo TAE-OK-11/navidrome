@@ -7,7 +7,7 @@ const useChangeThemeColor = () => {
     theme.palette?.primary?.light || theme.palette?.primary?.main || '#ffffff'
   useEffect(() => {
     const themeColor = document.querySelector("meta[name='theme-color']")
-    themeColor.setAttribute('content', color)
+    themeColor?.setAttribute('content', color)
   }, [color])
 }
 

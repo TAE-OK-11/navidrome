@@ -12,6 +12,30 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        // The package's CommonJS build asks SortableJS for a named Swap
+        // export that its CommonJS entry does not expose. Use the package's
+        // ESM build together with Sortable's plugin-aware ESM entry.
+        find: /^navidrome-music-player$/,
+        replacement: fileURLToPath(
+          new URL(
+            './node_modules/navidrome-music-player/es/index.js',
+            import.meta.url,
+          ),
+        ),
+      },
+      {
+        // navidrome-music-player imports Sortable's named Swap plugin. The
+        // package's CommonJS entry only exposes the default Sortable class,
+        // which makes the player throw during application startup.
+        find: /^sortablejs$/,
+        replacement: fileURLToPath(
+          new URL(
+            './node_modules/sortablejs/modular/sortable.esm.js',
+            import.meta.url,
+          ),
+        ),
+      },
+      {
         find: /^@mui\/icons-material$/,
         replacement: fileURLToPath(
           new URL('./src/compat/muiIcons.js', import.meta.url),
@@ -59,6 +83,11 @@ export default defineConfig({
     setupFiles: './src/setupTests.js',
     css: true,
     reporters: ['verbose'],
+    server: {
+      deps: {
+        inline: ['navidrome-music-player', 'sortablejs'],
+      },
+    },
     // reporters: ['default', 'hanging-process'],
     coverage: {
       reporter: ['text', 'json', 'html'],

@@ -146,8 +146,7 @@ describe('<UserEdit />', () => {
 
       expect(hooks.notify).toHaveBeenCalledWith(
         'resources.user.notifications.updated',
-        'info',
-        { smart_count: 1 },
+        { type: 'info', messageArgs: { smart_count: 1 } },
       )
       expect(hooks.redirect).toHaveBeenCalledWith('/user')
     })
@@ -162,8 +161,7 @@ describe('<UserEdit />', () => {
       expect(result).toEqual(fieldErrors)
       expect(hooks.notify).not.toHaveBeenCalledWith(
         'resources.user.notifications.updated',
-        'info',
-        { smart_count: 1 },
+        { type: 'info', messageArgs: { smart_count: 1 } },
       )
     })
 
@@ -173,7 +171,9 @@ describe('<UserEdit />', () => {
 
       await hooks.save({ id: 'user1' })
 
-      expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', 'warning')
+      expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', {
+        type: 'warning',
+      })
       expect(hooks.redirect).not.toHaveBeenCalled()
     })
 
@@ -183,7 +183,9 @@ describe('<UserEdit />', () => {
 
       await hooks.save({ id: 'user1' })
 
-      expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', 'warning')
+      expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', {
+        type: 'warning',
+      })
       expect(hooks.redirect).not.toHaveBeenCalled()
     })
   })

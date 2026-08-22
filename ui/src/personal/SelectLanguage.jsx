@@ -1,6 +1,5 @@
 import { SelectInput, useLocale, useSetLocale, useTranslate } from 'react-admin'
 import { useGetLanguageChoices } from '../i18n'
-import { HelpMsg } from './HelpMsg'
 import { docsUrl, openInNewTab } from '../utils'
 
 const helpKey = '_help'
@@ -13,7 +12,7 @@ export const SelectLanguage = (props) => {
 
   choices.push({
     id: helpKey,
-    name: <HelpMsg caption={'Help to translate'} />,
+    name: 'Help to translate',
   })
 
   return (

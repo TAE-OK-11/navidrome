@@ -165,7 +165,7 @@ const Admin = (props) => {
             <Resource name="keepalive" />
             <Resource name="insights" />
             <Resource name="config" />
-            <AppRoutes />
+            {AppRoutes()}
             <Player />
           </>
         )}

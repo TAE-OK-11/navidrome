@@ -112,5 +112,11 @@ describe('App startup', () => {
       { timeout: 10_000 },
     )
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
+
+    window.location.hash = '#/personal'
+    expect(
+      await screen.findAllByText('Default View', {}, { timeout: 10_000 }),
+    ).not.toHaveLength(0)
+    expect(screen.queryByText('Not Found')).not.toBeInTheDocument()
   }, 15_000)
 })

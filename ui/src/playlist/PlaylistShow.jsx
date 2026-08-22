@@ -6,7 +6,7 @@ import {
   useShowController,
   Title as RaTitle,
 } from 'react-admin'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '../themes/makeStyles'
 import PlaylistDetails from './PlaylistDetails'
 import PlaylistSongs from './PlaylistSongs'
 import PlaylistActions from './PlaylistActions'

@@ -1,9 +1,9 @@
 import React, { useCallback } from 'react'
 import PropTypes from 'prop-types'
-import FavoriteIcon from '@material-ui/icons/Favorite'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
-import IconButton from '@material-ui/core/IconButton'
-import { makeStyles } from '@material-ui/core/styles'
+import FavoriteIcon from '@mui/icons-material/Favorite'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
+import IconButton from '@mui/material/IconButton'
+import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import { useToggleLove } from './useToggleLove'
 import { useRecordContext } from 'react-admin'
@@ -27,12 +27,12 @@ const useStyles = makeStyles(
 
 export const LoveButton = ({
   resource,
-  color,
-  visible,
-  size,
-  component: Button,
-  addLabel,
-  disabled,
+  color = 'inherit',
+  visible = true,
+  size = 'small',
+  component: Button = IconButton,
+  addLabel = true,
+  disabled = false,
   className,
   record: recordProp,
   ...rest
@@ -83,13 +83,4 @@ LoveButton.propTypes = {
   size: PropTypes.string,
   component: PropTypes.object,
   disabled: PropTypes.bool,
-}
-
-LoveButton.defaultProps = {
-  addLabel: true,
-  visible: true,
-  size: 'small',
-  color: 'inherit',
-  component: IconButton,
-  disabled: false,
 }

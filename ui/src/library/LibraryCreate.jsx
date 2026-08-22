@@ -6,7 +6,7 @@ import {
   BooleanInput,
   required,
   useTranslate,
-  useMutation,
+  useDataProvider,
   useNotify,
   useRedirect,
 } from 'react-admin'
@@ -14,7 +14,7 @@ import { Title } from '../common'
 
 const LibraryCreate = (props) => {
   const translate = useTranslate()
-  const [mutate] = useMutation()
+  const dataProvider = useDataProvider()
   const notify = useNotify()
   const redirect = useRedirect()
   const resourceName = translate('resources.library.name', { smart_count: 1 })
@@ -25,14 +25,7 @@ const LibraryCreate = (props) => {
   const save = useCallback(
     async (values) => {
       try {
-        await mutate(
-          {
-            type: 'create',
-            resource: 'library',
-            payload: { data: values },
-          },
-          { returnPromise: true },
-        )
+        await dataProvider.create('library', { data: values })
         notify('resources.library.notifications.created', 'info', {
           smart_count: 1,
         })
@@ -67,7 +60,7 @@ const LibraryCreate = (props) => {
         notify(fallbackMessage, 'error')
       }
     },
-    [mutate, notify, redirect],
+    [dataProvider, notify, redirect],
   )
 
   return (

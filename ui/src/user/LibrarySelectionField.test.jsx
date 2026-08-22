@@ -61,7 +61,7 @@ describe('<LibrarySelectionField />', () => {
         onChange: defaultProps.input.onChange,
         value: defaultProps.input.value,
       }),
-      expect.anything(),
+      undefined,
     )
   })
 
@@ -105,7 +105,7 @@ describe('<LibrarySelectionField />', () => {
       expect.objectContaining({
         value: [],
       }),
-      expect.anything(),
+      undefined,
     )
   })
 
@@ -134,7 +134,7 @@ describe('<LibrarySelectionField />', () => {
       expect.objectContaining({
         value: [1, 3], // Should extract IDs from libraries array
       }),
-      expect.anything(),
+      undefined,
     )
   })
 
@@ -162,7 +162,7 @@ describe('<LibrarySelectionField />', () => {
       expect.objectContaining({
         value: [2, 4], // Should prefer libraryIds over libraries
       }),
-      expect.anything(),
+      undefined,
     )
   })
 })

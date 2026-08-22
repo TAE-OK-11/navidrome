@@ -10,8 +10,8 @@ import {
 } from 'react-admin'
 import { List } from '../common'
 import React from 'react'
-import { IconButton, Link, useMediaQuery } from '@material-ui/core'
-import ShareIcon from '@material-ui/icons/Share'
+import { IconButton, Link, useMediaQuery } from '@mui/material'
+import ShareIcon from '@mui/icons-material/Share'
 import { DateField, QualityInfo } from '../common'
 import { sharePlayerUrl } from '../utils'
 import config from '../config'
@@ -24,7 +24,7 @@ export const FormatInfo = ({ record, size }) => {
 }
 
 const ShareList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   const translate = useTranslate()
   const notify = useNotify()
@@ -66,7 +66,7 @@ const ShareList = (props) => {
       {isXsmall ? (
         <SimpleList
           leftIcon={(r) => (
-            <IconButton onClick={handleShare(r)}>
+            <IconButton onClick={handleShare(r)} size="large">
               <ShareIcon />
             </IconButton>
           )}

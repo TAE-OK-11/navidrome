@@ -14,9 +14,9 @@ import {
   DialogTitle,
   TextField,
   CircularProgress,
-} from '@material-ui/core'
+} from '@mui/material'
 import { closeSaveQueueDialog } from '../actions'
-import { useHistory } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 export const SaveQueueDialog = () => {
   const dispatch = useDispatch()
@@ -26,7 +26,7 @@ export const SaveQueueDialog = () => {
   const dataProvider = useDataProvider()
   const notify = useNotify()
   const translate = useTranslate()
-  const history = useHistory()
+  const navigate = useNavigate()
   const [isSaving, setIsSaving] = useState(false)
   const refresh = useRefresh()
 
@@ -63,11 +63,11 @@ export const SaveQueueDialog = () => {
         })
         dispatch(closeSaveQueueDialog())
         refresh()
-        history.push(`/playlist/${res.data.id}/show`)
+        navigate(`/playlist/${res.data.id}/show`)
       })
       .catch(() => notify('ra.page.error', { type: 'warning' }))
       .finally(() => setIsSaving(false))
-  }, [dataProvider, dispatch, notify, queue, name, history, refresh])
+  }, [dataProvider, dispatch, notify, queue, name, navigate, refresh])
 
   const handleKeyPress = useCallback(
     (e) => {

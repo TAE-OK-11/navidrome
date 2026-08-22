@@ -14,10 +14,10 @@ import {
   TableRow,
   Tooltip,
   Typography,
-} from '@material-ui/core'
-import DeleteIcon from '@material-ui/icons/Delete'
-import CancelIcon from '@material-ui/icons/Cancel'
-import CloudDownloadIcon from '@material-ui/icons/CloudDownload'
+} from '@mui/material'
+import DeleteIcon from '@mui/icons-material/Delete'
+import CancelIcon from '@mui/icons-material/Cancel'
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload'
 import {
   formatDate,
   formatDurationNs,
@@ -416,7 +416,7 @@ export const CurrentPromotion = ({ value, labels }) => {
       <Box
         display="flex"
         flexWrap="wrap"
-        gridGap={16}
+        gap={16}
         mt={1}
         color="text.secondary"
       >

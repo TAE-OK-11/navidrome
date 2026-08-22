@@ -8,7 +8,7 @@ import {
   Filter,
   SearchInput,
 } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
+import { useMediaQuery } from '@mui/material'
 import { SimpleList, List } from '../common'
 
 const PlayerFilter = (props) => (
@@ -18,7 +18,7 @@ const PlayerFilter = (props) => (
 )
 
 const PlayerList = ({ permissions, ...props }) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   return (
     <List
       {...props}

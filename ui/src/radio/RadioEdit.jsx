@@ -6,8 +6,8 @@ import {
   TextInput,
   useTranslate,
 } from 'react-admin'
-import { CardMedia } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { CardMedia } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import { urlValidate } from '../utils/validations'
 import { Title, ImageUploadOverlay, useImageLoadingState } from '../common'
 import subsonic from '../subsonic'

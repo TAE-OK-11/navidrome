@@ -1,9 +1,9 @@
 import React, { useCallback } from 'react'
 import PropTypes from 'prop-types'
-import Rating from '@material-ui/lab/Rating'
-import { makeStyles } from '@material-ui/core/styles'
+import Rating from '@mui/material/Rating'
+import makeStyles from '../themes/makeStyles'
 import { isDateSet } from '../utils/validations'
-import StarBorderIcon from '@material-ui/icons/StarBorder'
+import StarBorderIcon from '@mui/icons-material/StarBorder'
 import clsx from 'clsx'
 import { useRating } from './useRating'
 import { useRecordContext } from 'react-admin'
@@ -23,10 +23,10 @@ const useStyles = makeStyles({
 
 export const RatingField = ({
   resource,
-  visible,
+  visible = true,
   className,
-  size,
-  color,
+  size = 'small',
+  color = 'inherit',
   ...rest
 }) => {
   const record = useRecordContext(rest) || {}
@@ -75,10 +75,4 @@ RatingField.propTypes = {
   record: PropTypes.object,
   visible: PropTypes.bool,
   size: PropTypes.string,
-}
-
-RatingField.defaultProps = {
-  visible: true,
-  size: 'small',
-  color: 'inherit',
 }

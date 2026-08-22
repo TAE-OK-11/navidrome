@@ -10,9 +10,9 @@ import {
   Title as RaTitle,
   Loading,
 } from 'react-admin'
-import { Box, useMediaQuery, Button } from '@material-ui/core'
+import { Box, useMediaQuery, Button } from '@mui/material'
 import { MdSave } from 'react-icons/md'
-import Alert from '@material-ui/lab/Alert'
+import Alert from '@mui/material/Alert'
 import { Title, useResourceRefresh } from '../common'
 import { usePluginShowStyles } from './styles.js'
 import { ErrorSection } from './ErrorSection'
@@ -30,7 +30,7 @@ const PluginShowLayout = () => {
   const translate = useTranslate()
   const notify = useNotify()
   const refresh = useRefresh()
-  const isSmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isSmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   useResourceRefresh('plugin')
 
   const [configData, setConfigData] = useState({})

@@ -7,9 +7,9 @@ import {
   useTranslate,
   useResourceContext,
 } from 'react-admin'
-import Switch from '@material-ui/core/Switch'
-import { makeStyles } from '@material-ui/core/styles'
-import { Tooltip, FormControlLabel } from '@material-ui/core'
+import Switch from '@mui/material/Switch'
+import makeStyles from '../themes/makeStyles'
+import { Tooltip, FormControlLabel } from '@mui/material'
 import PropTypes from 'prop-types'
 
 const useStyles = makeStyles((theme) => ({

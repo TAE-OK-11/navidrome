@@ -2,20 +2,20 @@ import React, { useState, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import { Field, Form } from 'react-final-form'
 import { useDispatch } from 'react-redux'
-import Button from '@material-ui/core/Button'
-import Card from '@material-ui/core/Card'
-import CardActions from '@material-ui/core/CardActions'
-import CircularProgress from '@material-ui/core/CircularProgress'
-import Link from '@material-ui/core/Link'
-import TextField from '@material-ui/core/TextField'
-import { ThemeProvider, makeStyles } from '@material-ui/core/styles'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import CardActions from '@mui/material/CardActions'
+import CircularProgress from '@mui/material/CircularProgress'
+import Link from '@mui/material/Link'
+import TextField from '@mui/material/TextField'
 import {
-  createMuiTheme,
-  useLogin,
-  useNotify,
-  useTranslate,
-  useVersion,
-} from 'react-admin'
+  ThemeProvider,
+  StyledEngineProvider,
+  adaptV4Theme,
+  createTheme,
+} from '@mui/material/styles'
+import makeStyles from '../themes/makeStyles'
+import { useLogin, useNotify, useTranslate } from 'react-admin'
 import Logo from '../icons/android-icon-192x192.png'
 
 import Notification from './Notification'
@@ -404,12 +404,12 @@ Login.propTypes = {
 // the right theme
 const LoginWithTheme = (props) => {
   const theme = useCurrentTheme()
-  const version = useVersion()
-
   return (
-    <ThemeProvider theme={createMuiTheme(theme)}>
-      <Login key={version} {...props} />
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={createTheme(adaptV4Theme(theme))}>
+        <Login {...props} />
+      </ThemeProvider>
+    </StyledEngineProvider>
   )
 }
 

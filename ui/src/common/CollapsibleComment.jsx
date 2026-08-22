@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Typography, Collapse } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { Typography, Collapse } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import AnchorMe from './Linkify'
 import clsx from 'clsx'
 
@@ -48,7 +48,7 @@ export const CollapsibleComment = ({ record }) => {
 
   return (
     <Collapse
-      collapsedHeight={'2em'}
+      collapsedSize={'2em'}
       in={expanded}
       timeout={'auto'}
       className={clsx(

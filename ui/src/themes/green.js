@@ -1,4 +1,4 @@
-import green from '@material-ui/core/colors/green'
+import { green } from '@mui/material/colors'
 
 export default {
   themeName: 'Green',

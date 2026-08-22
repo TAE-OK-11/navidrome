@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react'
-import { Link } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { Link } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import PropTypes from 'prop-types'
 
 const useStyles = makeStyles(

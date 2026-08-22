@@ -1,6 +1,6 @@
 import { SimpleForm, Title, useTranslate } from 'react-admin'
-import { Card } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+import { Card } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import { SelectLanguage } from './SelectLanguage'
 import { SelectTheme } from './SelectTheme'
 import { SelectDefaultView } from './SelectDefaultView'

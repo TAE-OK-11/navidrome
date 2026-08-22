@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useMediaQuery, withWidth } from '@material-ui/core'
+import { useMediaQuery } from '@mui/material'
 import {
   useShowController,
   ShowContextProvider,
@@ -20,7 +20,14 @@ import {
   Title,
 } from '../common/index.js'
 import ArtistActions from './ArtistActions'
-import { makeStyles } from '@material-ui/core'
+import makeStyles from '../themes/makeStyles'
+
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 const useStyles = makeStyles(
   (theme) => ({
@@ -34,7 +41,7 @@ const useStyles = makeStyles(
       paddingRight: '1em',
       flexWrap: 'wrap',
       overflowX: 'auto',
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         paddingLeft: '0.5em',
         paddingRight: '0.5em',
         gap: '0.5em',
@@ -43,7 +50,7 @@ const useStyles = makeStyles(
     },
     actionsContainer: {
       paddingLeft: '.75rem',
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         padding: '.5rem',
       },
     },

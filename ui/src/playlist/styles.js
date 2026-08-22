@@ -1,8 +1,8 @@
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '../themes/makeStyles'
 
 export const useStyles = makeStyles((theme) => ({
   container: {
-    [theme.breakpoints.down('xs')]: {
+    [theme.breakpoints.down('sm')]: {
       padding: '0.7em',
       minWidth: '24em',
     },
@@ -13,7 +13,7 @@ export const useStyles = makeStyles((theme) => ({
   },
   albumCover: {
     display: 'inline-block',
-    [theme.breakpoints.down('xs')]: {
+    [theme.breakpoints.down('sm')]: {
       height: '8em',
       width: '8em',
     },
@@ -29,7 +29,7 @@ export const useStyles = makeStyles((theme) => ({
   albumDetails: {
     display: 'inline-block',
     verticalAlign: 'top',
-    [theme.breakpoints.down('xs')]: {
+    [theme.breakpoints.down('sm')]: {
       width: '14em',
     },
     [theme.breakpoints.up('sm')]: {

@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import PropTypes from 'prop-types'
 import { JsonForms } from '@jsonforms/react'
 import { materialRenderers, materialCells } from '@jsonforms/material-renderers'
-import { makeStyles } from '@material-ui/core/styles'
-import { Typography } from '@material-ui/core'
+import makeStyles from '../themes/makeStyles'
+import { Typography } from '@mui/material'
 import { useTranslate } from 'react-admin'
 import Ajv from 'ajv'
 import {
@@ -87,7 +87,7 @@ const useStyles = makeStyles(
       },
       '& .MuiAccordionSummary-root': {
         backgroundColor:
-          theme.palette.type === 'dark'
+          theme.palette.mode === 'dark'
             ? theme.palette.grey[800]
             : theme.palette.grey[100],
         // Hide expand icon - items are always expanded
@@ -106,7 +106,7 @@ const useStyles = makeStyles(
     errorContainer: {
       padding: theme.spacing(2),
       backgroundColor:
-        theme.palette.type === 'dark'
+        theme.palette.mode === 'dark'
           ? 'rgba(244, 67, 54, 0.1)'
           : 'rgba(244, 67, 54, 0.05)',
       borderRadius: theme.shape.borderRadius,

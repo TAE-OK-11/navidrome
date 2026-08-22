@@ -5,7 +5,6 @@ import { useTranslate, Link, useNotify } from 'react-admin'
 import {
   Popover,
   IconButton,
-  makeStyles,
   Tooltip,
   List,
   ListItem,
@@ -17,7 +16,8 @@ import {
   LinearProgress,
   useTheme,
   useMediaQuery,
-} from '@material-ui/core'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import { FaRegCirclePlay, FaPause } from 'react-icons/fa6'
 import subsonic from '../subsonic'
 import { useInterval } from '../common'
@@ -41,9 +41,9 @@ const useStyles = makeStyles((theme) => ({
     padding: 0,
   },
   cardContent: {
-    padding: `${theme.spacing(1)}px !important`,
+    padding: `${theme.spacing(1)} !important`,
     '&:last-child': {
-      paddingBottom: `${theme.spacing(1)}px !important`,
+      paddingBottom: `${theme.spacing(1)} !important`,
     },
   },
   listItem: {
@@ -160,6 +160,7 @@ const NowPlayingButton = React.memo(({ count, onClick }) => {
         onClick={onClick}
         aria-label={translate('nowPlaying.title')}
         aria-haspopup="true"
+        size="large"
       >
         <Badge
           badgeContent={count}
@@ -373,7 +374,7 @@ const NowPlayingPanel = () => {
   const translate = useTranslate()
   const notify = useNotify()
   const theme = useTheme()
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'))
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'))
 
   const [anchorEl, setAnchorEl] = useState(null)
   const [entries, setEntries] = useState([])

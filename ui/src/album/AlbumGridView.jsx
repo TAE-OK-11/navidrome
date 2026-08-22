@@ -1,15 +1,15 @@
 import React from 'react'
 import {
-  GridList,
-  GridListTile,
+  ImageList,
+  ImageListItem,
   Typography,
-  GridListTileBar,
+  ImageListItemBar,
   useMediaQuery,
-} from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
-import withWidth from '@material-ui/core/withWidth'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
-import { linkToRecord, useListContext, Loading } from 'react-admin'
+import { useListContext, Loading } from 'react-admin'
+import { linkToRecord } from '../utils/linkToRecord'
 import { withContentRect } from 'react-measure'
 import { useDrag } from 'react-dnd'
 import subsonic from '../subsonic'
@@ -24,6 +24,13 @@ import config from '../config'
 import { DraggableTypes } from '../consts'
 import clsx from 'clsx'
 import { AlbumDatesField } from './AlbumDatesField.jsx'
+
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 const useStyles = makeStyles(
   (theme) => ({
@@ -53,7 +60,7 @@ const useStyles = makeStyles(
     },
     albumName: {
       fontSize: '14px',
-      color: theme.palette.type === 'dark' ? '#eee' : 'black',
+      color: theme.palette.mode === 'dark' ? '#eee' : 'black',
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
@@ -63,14 +70,14 @@ const useStyles = makeStyles(
     },
     albumVersion: {
       fontSize: '12px',
-      color: theme.palette.type === 'dark' ? '#c5c5c5' : '#696969',
+      color: theme.palette.mode === 'dark' ? '#c5c5c5' : '#696969',
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
     },
     albumSubtitle: {
       fontSize: '12px',
-      color: theme.palette.type === 'dark' ? '#c5c5c5' : '#696969',
+      color: theme.palette.mode === 'dark' ? '#c5c5c5' : '#696969',
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
@@ -126,7 +133,7 @@ const Cover = withContentRect('bounds')(({
   measureRef,
   contentRect,
 }) => {
-  // Force height to be the same as the width determined by the GridList
+  // Force height to be the same as the width determined by the ImageList
   // noinspection JSSuspiciousNameCombination
   const classes = useCoverStyles({ height: contentRect.bounds.width })
   const [, dragAlbumRef] = useDrag(
@@ -173,7 +180,7 @@ const AlbumGridTile = ({ showArtist, record, basePath, ...props }) => {
         to={linkToRecord(basePath, record.id, 'show')}
       >
         <Cover record={record} />
-        <GridListTileBar
+        <ImageListItemBar
           className={isDesktop ? classes.tileBar : classes.tileBarMobile}
           subtitle={
             !record.missing && (
@@ -217,22 +224,22 @@ const LoadedAlbumGrid = ({ ids, data, basePath, width }) => {
   const isArtistView = !!(filterValues && filterValues.artist_id)
   return (
     <div className={classes.root}>
-      <GridList
+      <ImageList
         component={'div'}
         cellHeight={'auto'}
         cols={getColsForWidth(width)}
         spacing={20}
       >
         {ids.map((id) => (
-          <GridListTile className={classes.gridListTile} key={id}>
+          <ImageListItem className={classes.gridListTile} key={id}>
             <AlbumGridTile
               record={data[id]}
               basePath={basePath}
               showArtist={!isArtistView}
             />
-          </GridListTile>
+          </ImageListItem>
         ))}
-      </GridList>
+      </ImageList>
     </div>
   )
 }

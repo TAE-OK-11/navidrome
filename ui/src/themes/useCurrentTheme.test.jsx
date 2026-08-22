@@ -2,7 +2,7 @@ import React from 'react'
 import { Provider } from 'react-redux'
 import { createStore } from 'redux'
 import mediaQuery from 'css-mediaquery'
-import { renderHook } from '@testing-library/react-hooks'
+import { renderHook } from '@testing-library/react'
 import useCurrentTheme from './useCurrentTheme'
 import { themeReducer } from '../reducers/themeReducer'
 import { AUTO_THEME_ID } from '../consts'
@@ -12,6 +12,9 @@ function createMatchMedia(theme) {
     matches: mediaQuery.match(query, { 'prefers-color-scheme': theme }),
     addListener: () => {},
     removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
   })
 }
 

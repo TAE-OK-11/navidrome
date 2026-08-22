@@ -1,11 +1,17 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import { Link } from 'react-admin'
-import { withWidth } from '@material-ui/core'
 import { useGetHandleArtistClick } from './useGetHandleArtistClick'
 import { intersperse } from '../utils/index.js'
 import { useDispatch } from 'react-redux'
 import { closeExtendedInfoDialog } from '../actions/dialogs.js'
+
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 // noSSR: withWidth otherwise renders null until mounted, so the artist line pops in and grows the row.
 const ALink = withWidth({ noSSR: true })((props) => {
@@ -64,7 +70,12 @@ const parseAndReplaceArtists = (
   return result
 }
 
-export const ArtistLinkField = ({ record, className, limit, source }) => {
+export const ArtistLinkField = ({
+  record,
+  className,
+  limit = 3,
+  source = 'albumArtist',
+}) => {
   const role = source.toLowerCase()
 
   // Get artists array with fallback
@@ -166,10 +177,4 @@ ArtistLinkField.propTypes = {
   record: PropTypes.object,
   className: PropTypes.string,
   source: PropTypes.string,
-}
-
-ArtistLinkField.defaultProps = {
-  addLabel: true,
-  limit: 3,
-  source: 'albumArtist',
 }

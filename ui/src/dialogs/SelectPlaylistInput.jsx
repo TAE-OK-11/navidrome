@@ -1,23 +1,23 @@
 import React, { useState } from 'react'
-import TextField from '@material-ui/core/TextField'
-import Checkbox from '@material-ui/core/Checkbox'
-import CheckBoxIcon from '@material-ui/icons/CheckBox'
-import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank'
+import TextField from '@mui/material/TextField'
+import Checkbox from '@mui/material/Checkbox'
+import CheckBoxIcon from '@mui/icons-material/CheckBox'
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import {
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Typography,
   Box,
   InputAdornment,
   IconButton,
-} from '@material-ui/core'
-import AddIcon from '@material-ui/icons/Add'
+} from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
 import { isWritable } from '../common'
-import { makeStyles } from '@material-ui/core'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -95,20 +95,22 @@ const PlaylistSearchField = ({
       onChange={(e) => onSearchChange(e.target.value)}
       onKeyDown={onKeyDown}
       placeholder={translate('resources.playlist.actions.searchOrCreate')}
-      InputProps={{
-        endAdornment: canCreateNew && (
-          <InputAdornment position="end">
-            <IconButton
-              onClick={onCreateNew}
-              size="small"
-              title={translate('resources.playlist.actions.addNewPlaylist', {
-                name: searchText,
-              })}
-            >
-              <AddIcon />
-            </IconButton>
-          </InputAdornment>
-        ),
+      slotProps={{
+        input: {
+          endAdornment: canCreateNew && (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={onCreateNew}
+                size="small"
+                title={translate('resources.playlist.actions.addNewPlaylist', {
+                  name: searchText,
+                })}
+              >
+                <AddIcon />
+              </IconButton>
+            </InputAdornment>
+          ),
+        },
       }}
     />
   )
@@ -138,9 +140,8 @@ const PlaylistListItem = ({ playlist, isSelected, onToggle }) => {
   const classes = useStyles()
 
   return (
-    <ListItem
+    <ListItemButton
       className={classes.listItem}
-      button
       onClick={() => onToggle(playlist)}
       dense
     >
@@ -154,7 +155,7 @@ const PlaylistListItem = ({ playlist, isSelected, onToggle }) => {
         />
       </ListItemIcon>
       <ListItemText primary={playlist.name} />
-    </ListItem>
+    </ListItemButton>
   )
 }
 
@@ -163,7 +164,7 @@ const CreatePlaylistItem = ({ searchText, onCreateNew }) => {
   const translate = useTranslate()
 
   return (
-    <ListItem className={classes.listItem} button onClick={onCreateNew} dense>
+    <ListItemButton className={classes.listItem} onClick={onCreateNew} dense>
       <ListItemIcon>
         <AddIcon className={classes.createIcon} />
       </ListItemIcon>
@@ -172,7 +173,7 @@ const CreatePlaylistItem = ({ searchText, onCreateNew }) => {
           name: searchText,
         })}
       />
-    </ListItem>
+    </ListItemButton>
   )
 }
 
@@ -260,16 +261,14 @@ export const SelectPlaylistInput = ({ onChange }) => {
   const [searchText, setSearchText] = useState('')
   const [selectedPlaylists, setSelectedPlaylists] = useState([])
 
-  const { ids, data } = useGetList(
+  const { data = [] } = useGetList(
     'playlist',
     { page: 1, perPage: -1 },
     { field: 'name', order: 'ASC' },
     { smart: false },
   )
 
-  const options =
-    ids &&
-    ids.map((id) => data[id]).filter((option) => isWritable(option.ownerId))
+  const options = data.filter((option) => isWritable(option.ownerId))
 
   // Filter playlists based on search text
   const filteredOptions =

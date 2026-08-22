@@ -1,18 +1,19 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Tooltip } from '@material-ui/core'
-import { makeStyles, alpha } from '@material-ui/core/styles'
-import grey from '@material-ui/core/colors/grey'
+import { Tooltip } from '@mui/material'
+import { alpha } from '@mui/material/styles'
+import makeStyles from '../themes/makeStyles'
+import { grey } from '@mui/material/colors'
 
 const useStyles = makeStyles(
   (theme) => ({
     tooltip: {
       backgroundColor:
-        theme.palette.type === 'dark'
+        theme.palette.mode === 'dark'
           ? alpha(grey[700], 0.92)
           : alpha(grey[300], 0.92),
       color:
-        theme.palette.type === 'dark'
+        theme.palette.mode === 'dark'
           ? theme.palette.common.white
           : theme.palette.common.black,
       borderRadius: theme.shape.borderRadius,

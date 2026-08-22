@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, fireEvent, waitFor, screen } from '@testing-library/react'
-import { TestContext } from 'ra-test'
+import { AdminContext as TestContext } from 'react-admin'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import ArtistActions from './ArtistActions'
 import subsonic from '../subsonic'
@@ -9,7 +9,11 @@ import {
   openDownloadMenu,
   DOWNLOAD_MENU_ARTIST,
 } from '../actions'
-import { ThemeProvider, createTheme } from '@material-ui/core/styles'
+import {
+  ThemeProvider,
+  StyledEngineProvider,
+  createTheme,
+} from '@mui/material/styles'
 
 const mockDispatch = vi.fn()
 vi.mock('react-redux', () => ({ useDispatch: () => mockDispatch }))
@@ -47,9 +51,11 @@ describe('ArtistActions', () => {
     const theme = createTheme()
     return render(
       <TestContext>
-        <ThemeProvider theme={theme}>
-          <ArtistActions record={record} />
-        </ThemeProvider>
+        <StyledEngineProvider injectFirst>
+          <ThemeProvider theme={theme}>
+            <ArtistActions record={record} />
+          </ThemeProvider>
+        </StyledEngineProvider>
       </TestContext>,
     )
   }

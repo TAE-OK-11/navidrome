@@ -63,7 +63,7 @@ vi.mock('react-admin', () => ({
   Typography: ({ children }) => <p>{children}</p>,
   required: () => () => null,
   email: () => () => null,
-  useMutation: () => [hooks.mutate],
+  useDataProvider: () => ({ update: hooks.mutate }),
   useNotify: () => hooks.notify,
   useRedirect: () => hooks.redirect,
   useRefresh: () => hooks.refresh,
@@ -84,12 +84,7 @@ vi.mock('../common', () => ({
   Title: ({ subTitle }) => <div data-testid="title">{subTitle}</div>,
 }))
 
-// Mock Material-UI
-vi.mock('@material-ui/core/styles', () => ({
-  makeStyles: () => () => ({}),
-}))
-
-vi.mock('@material-ui/core', () => ({
+vi.mock('@mui/material', () => ({
   Typography: ({ children }) => <p>{children}</p>,
 }))
 

@@ -8,13 +8,14 @@ import {
   useDataProvider,
   useNotify,
 } from 'react-admin'
-import { useMediaQuery, makeStyles } from '@material-ui/core'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
-import ShuffleIcon from '@material-ui/icons/Shuffle'
-import CloudDownloadOutlinedIcon from '@material-ui/icons/CloudDownloadOutlined'
+import { useMediaQuery } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import ShuffleIcon from '@mui/icons-material/Shuffle'
+import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
 import { RiPlayListAddFill, RiPlayList2Fill } from 'react-icons/ri'
-import QueueMusicIcon from '@material-ui/icons/QueueMusic'
-import ShareIcon from '@material-ui/icons/Share'
+import QueueMusicIcon from '@mui/icons-material/QueueMusic'
+import ShareIcon from '@mui/icons-material/Share'
 import { httpClient } from '../dataProvider'
 import {
   playNext,
@@ -35,7 +36,7 @@ const useStyles = makeStyles({
   toolbar: { display: 'flex', justifyContent: 'space-between', width: '100%' },
 })
 
-const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
+const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const classes = useStyles()
@@ -171,12 +172,6 @@ const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
 PlaylistActions.propTypes = {
   record: PropTypes.object.isRequired,
   selectedIds: PropTypes.arrayOf(PropTypes.number),
-}
-
-PlaylistActions.defaultProps = {
-  record: {},
-  selectedIds: [],
-  onUnselectItems: () => null,
 }
 
 export default PlaylistActions

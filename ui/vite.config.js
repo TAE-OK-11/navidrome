@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'node:url'
 
 const frontendPort = parseInt(process.env.PORT) || 4533
 const backendPort = frontendPort + 100
@@ -8,6 +9,16 @@ const sourceMapsEnabled = process.env.ND_UI_SOURCEMAP !== 'false'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@mui\/icons-material$/,
+        replacement: fileURLToPath(
+          new URL('./src/compat/muiIcons.js', import.meta.url),
+        ),
+      },
+    ],
+  },
   plugins: [
     react(),
     VitePWA({

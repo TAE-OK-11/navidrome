@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
-import IconButton from '@material-ui/core/IconButton'
-import Menu from '@material-ui/core/Menu'
-import MenuItem from '@material-ui/core/MenuItem'
-import MoreVertIcon from '@material-ui/icons/MoreVert'
+import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '../themes/makeStyles'
 import { useDataProvider, useNotify, useTranslate } from 'react-admin'
 import clsx from 'clsx'
 import {
@@ -225,10 +225,11 @@ const ContextMenu = ({
   )
 }
 
-export const AlbumContextMenu = (props) =>
+export const AlbumContextMenu = ({ showLove = true, ...props }) =>
   props.record ? (
     <ContextMenu
       {...props}
+      showLove={showLove}
       resource={'album'}
       songQueryParams={{
         pagination: { page: 1, perPage: -1 },
@@ -249,15 +250,11 @@ AlbumContextMenu.propTypes = {
   showLove: PropTypes.bool,
 }
 
-AlbumContextMenu.defaultProps = {
-  showLove: true,
-  addLabel: true,
-}
-
-export const ArtistContextMenu = (props) =>
+export const ArtistContextMenu = ({ showLove = true, ...props }) =>
   props.record ? (
     <ContextMenu
       {...props}
+      showLove={showLove}
       hideInfo={true}
       resource={'artist'}
       songQueryParams={{
@@ -275,9 +272,4 @@ ArtistContextMenu.propTypes = {
   record: PropTypes.object,
   color: PropTypes.string,
   showLove: PropTypes.bool,
-}
-
-ArtistContextMenu.defaultProps = {
-  showLove: true,
-  addLabel: true,
 }

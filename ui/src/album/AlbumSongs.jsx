@@ -6,13 +6,12 @@ import {
   NumberField,
   TextField,
   useListContext,
-  useVersion,
 } from 'react-admin'
 import clsx from 'clsx'
-import { useDispatch } from 'react-redux'
-import { Card, useMediaQuery } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
+import { useDispatch, useSelector } from 'react-redux'
+import { Card, useMediaQuery } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { playTracks } from '../actions'
 import {
   ArtistLinkField,
@@ -44,7 +43,7 @@ const useStyles = makeStyles(
       transition: theme.transitions.create('margin-top'),
       position: 'relative',
       flex: '1 1 auto',
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         boxShadow: 'none',
       },
     },
@@ -92,7 +91,9 @@ const AlbumSongs = (props) => {
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const classes = useStyles({ isDesktop })
   const dispatch = useDispatch()
-  const version = useVersion()
+  const version = useSelector(
+    (state) => state.activity?.refresh?.lastReceived || 0,
+  )
   useResourceRefresh('song', 'album')
 
   const toggleableFields = useMemo(() => {

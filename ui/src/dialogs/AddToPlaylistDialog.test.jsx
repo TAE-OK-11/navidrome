@@ -1,6 +1,5 @@
 import * as React from 'react'
-import { TestContext } from 'ra-test'
-import { DataProviderContext } from 'react-admin'
+import { TestContext } from '../test/TestContext'
 import {
   cleanup,
   fireEvent,
@@ -31,36 +30,35 @@ const selectedIds = ['song-1', 'song-2']
 
 const createTestUtils = (mockDataProvider) =>
   render(
-    <DataProviderContext.Provider value={mockDataProvider}>
-      <TestContext
-        initialState={{
-          addToPlaylistDialog: {
-            open: true,
-            duplicateSong: false,
-            selectedIds: selectedIds,
-          },
-          admin: {
-            ui: { optimistic: false },
-            resources: {
-              playlist: {
-                data: mockIndexedData,
-                list: {
-                  cachedRequests: {
-                    '{"pagination":{"page":1,"perPage":-1},"sort":{"field":"name","order":"ASC"},"filter":{"smart":false}}':
-                      {
-                        ids: ['sample-id1', 'sample-id2'],
-                        total: 2,
-                      },
-                  },
+    <TestContext
+      dataProvider={mockDataProvider}
+      initialState={{
+        addToPlaylistDialog: {
+          open: true,
+          duplicateSong: false,
+          selectedIds: selectedIds,
+        },
+        admin: {
+          ui: { optimistic: false },
+          resources: {
+            playlist: {
+              data: mockIndexedData,
+              list: {
+                cachedRequests: {
+                  '{"pagination":{"page":1,"perPage":-1},"sort":{"field":"name","order":"ASC"},"filter":{"smart":false}}':
+                    {
+                      ids: ['sample-id1', 'sample-id2'],
+                      total: 2,
+                    },
                 },
               },
             },
           },
-        }}
-      >
-        <AddToPlaylistDialog />
-      </TestContext>
-    </DataProviderContext.Provider>,
+        },
+      }}
+    >
+      <AddToPlaylistDialog />
+    </TestContext>,
   )
 
 vi.mock('../dataProvider', () => ({
@@ -93,11 +91,11 @@ describe('AddToPlaylistDialog', () => {
     fireEvent.change(textBox, { target: { value: 'sample' } })
 
     // Click on first playlist
-    const firstPlaylist = screen.getByText('sample playlist 1')
+    const firstPlaylist = await screen.findByText('sample playlist 1')
     fireEvent.click(firstPlaylist)
 
     // Click on second playlist
-    const secondPlaylist = screen.getByText('sample playlist 2')
+    const secondPlaylist = await screen.findByText('sample playlist 2')
     fireEvent.click(secondPlaylist)
 
     await waitFor(() => {

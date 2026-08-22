@@ -3,12 +3,16 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { createStore, combineReducers } from 'redux'
-import { ThemeProvider, createTheme } from '@material-ui/core/styles'
+import {
+  ThemeProvider,
+  StyledEngineProvider,
+  createTheme,
+} from '@mui/material/styles'
 import { settingsReducer, activityReducer } from '../reducers'
 import { processEvent, EVENT_REFRESH_RESOURCE } from '../actions'
 import PlaylistsSubMenu from './PlaylistsSubMenu'
 
-const mockUseQueryWithStore = vi.fn()
+const mockUseGetList = vi.fn()
 
 vi.mock('../config', () => ({
   // losslessFormats is read at module-load time by common/QualityInfo.jsx,
@@ -24,9 +28,7 @@ vi.mock('react-dnd', () => ({
   useDrop: () => [{}, () => {}],
 }))
 
-vi.mock('react-router-dom', () => ({
-  useHistory: () => ({ push: vi.fn() }),
-}))
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 
 vi.mock('react-admin', async (importOriginal) => {
   const actual = await importOriginal()
@@ -35,7 +37,7 @@ vi.mock('react-admin', async (importOriginal) => {
     useTranslate: () => (x) => x,
     useDataProvider: () => ({ addToPlaylist: vi.fn() }),
     useNotify: () => vi.fn(),
-    useQueryWithStore: (query) => mockUseQueryWithStore(query),
+    useGetList: (resource, params) => mockUseGetList(resource, params),
     MenuItemLink: ({ primaryText }) => <div>{primaryText}</div>,
   }
 })
@@ -71,35 +73,41 @@ const renderMenu = (preloadedSettings = {}, preloadedPlaylistData) => {
   const theme = createTheme()
   render(
     <Provider store={store}>
-      <ThemeProvider theme={theme}>
-        <PlaylistsSubMenu
-          state={{ menuPlaylists: true, menuSharedPlaylists: true }}
-          setState={vi.fn()}
-          sidebarIsOpen={true}
-          dense={false}
-        />
-      </ThemeProvider>
+      <StyledEngineProvider injectFirst>
+        <ThemeProvider theme={theme}>
+          <PlaylistsSubMenu
+            state={{ menuPlaylists: true, menuSharedPlaylists: true }}
+            setState={vi.fn()}
+            sidebarIsOpen={true}
+            dense={false}
+          />
+        </ThemeProvider>
+      </StyledEngineProvider>
     </Provider>,
   )
   return store
 }
 
 const lastQuery = () =>
-  mockUseQueryWithStore.mock.calls[
-    mockUseQueryWithStore.mock.calls.length - 1
-  ][0]
+  mockUseGetList.mock.calls[mockUseGetList.mock.calls.length - 1][1]
 
 describe('<PlaylistsSubMenu />', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.setItem('userId', 'user-1')
-    mockUseQueryWithStore.mockReturnValue({ data: playlists, loaded: true })
+    mockUseGetList.mockReturnValue({
+      data: Object.values(playlists),
+      isPending: false,
+    })
     // SubMenu uses MUI's useMediaQuery, which needs window.matchMedia in jsdom
     window.matchMedia = (query) => ({
       matches: false,
       media: query,
       addListener: () => {},
       removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
     })
     // OverflowTooltip (via MenuItemLink) needs ResizeObserver, unavailable in jsdom
     window.ResizeObserver = class {
@@ -111,26 +119,26 @@ describe('<PlaylistsSubMenu />', () => {
 
   it('queries without a starred filter by default', () => {
     renderMenu()
-    expect(lastQuery().payload.filter).toBeUndefined()
+    expect(lastQuery().filter).toEqual({})
     expect(screen.getByText('Mine')).not.toBeNull()
     expect(screen.getByText('Theirs')).not.toBeNull()
   })
 
   it('adds the starred filter when favourites-only is enabled', () => {
     renderMenu({ sidebarPlaylistsOnlyFavourites: true })
-    expect(lastQuery().payload.filter).toEqual({ starred: true })
+    expect(lastQuery().filter).toEqual({ starred: true })
   })
 
   it('toggles the setting when the heart action is clicked', () => {
     const store = renderMenu()
     fireEvent.click(screen.getByTitle('menu.onlyFavourites'))
     expect(store.getState().settings.sidebarPlaylistsOnlyFavourites).toBe(true)
-    expect(lastQuery().payload.filter).toEqual({ starred: true })
+    expect(lastQuery().filter).toEqual({ starred: true })
   })
 
   it('refetches on a playlist SSE event when favourites-only is on', async () => {
     const store = renderMenu({ sidebarPlaylistsOnlyFavourites: true })
-    const before = lastQuery().payload.refresh
+    const before = lastQuery().meta.refresh
     // useRefreshOnEvents compares Date.now() timestamps; make sure it advances
     await act(() => new Promise((resolve) => setTimeout(resolve, 5)))
     act(() => {
@@ -138,12 +146,12 @@ describe('<PlaylistsSubMenu />', () => {
         processEvent(EVENT_REFRESH_RESOURCE, { playlist: ['pl-1'] }),
       )
     })
-    expect(lastQuery().payload.refresh).toBe(before + 1)
+    expect(lastQuery().meta.refresh).toBe(before + 1)
   })
 
   it('does not change the query signature on an SSE event when favourites-only is off', async () => {
     const store = renderMenu()
-    const before = JSON.stringify(lastQuery().payload)
+    const before = JSON.stringify(lastQuery())
     await act(() => new Promise((resolve) => setTimeout(resolve, 5)))
     act(() => {
       store.dispatch(
@@ -151,8 +159,8 @@ describe('<PlaylistsSubMenu />', () => {
       )
     })
     // Signature unchanged → useQueryWithStore dedupes, no wasted refetch
-    expect(lastQuery().payload.refresh).toBeUndefined()
-    expect(JSON.stringify(lastQuery().payload)).toBe(before)
+    expect(lastQuery().meta).toBeUndefined()
+    expect(JSON.stringify(lastQuery())).toBe(before)
   })
 
   it('refetches when a playlist is starred locally (no SSE echo)', () => {
@@ -160,7 +168,7 @@ describe('<PlaylistsSubMenu />', () => {
       { sidebarPlaylistsOnlyFavourites: true },
       { 'pl-1': { id: 'pl-1', name: 'Mine', ownerId: 'user-1' } },
     )
-    const before = lastQuery().payload.starFingerprint
+    const before = lastQuery().meta.starFingerprint
     act(() => {
       store.dispatch({
         type: SET_PLAYLIST_DATA,
@@ -174,7 +182,7 @@ describe('<PlaylistsSubMenu />', () => {
         },
       })
     })
-    expect(lastQuery().payload.starFingerprint).not.toBe(before)
-    expect(lastQuery().payload.starFingerprint).toContain('pl-1')
+    expect(lastQuery().meta.starFingerprint).not.toBe(before)
+    expect(lastQuery().meta.starFingerprint).toContain('pl-1')
   })
 })

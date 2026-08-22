@@ -4,11 +4,10 @@ import {
   CardContent,
   CardMedia,
   Collapse,
-  makeStyles,
   Typography,
   useMediaQuery,
-  withWidth,
-} from '@material-ui/core'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import {
   ArrayField,
   ChipField,
@@ -36,10 +35,17 @@ import { formatFullDate, intersperse } from '../utils'
 import AlbumExternalLinks from './AlbumExternalLinks'
 import { SafeHTML } from '../common/SafeHTML'
 
+// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
+
 const useStyles = makeStyles(
   (theme) => ({
     root: {
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         padding: '0.7em',
         minWidth: '20em',
       },
@@ -59,7 +65,7 @@ const useStyles = makeStyles(
       flex: '2 0 auto',
     },
     coverParent: {
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         height: '8em',
         width: '8em',
         minWidth: '8em',
@@ -152,7 +158,7 @@ const GenreList = () => {
 }
 
 export const Details = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const translate = useTranslate()
   const record = useRecordContext(props)
 
@@ -218,7 +224,7 @@ export const Details = (props) => {
 
 const AlbumDetails = (props) => {
   const record = useRecordContext(props)
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   const classes = useStyles()
   const [expanded, setExpanded] = useState(false)
@@ -325,7 +331,7 @@ const AlbumDetails = (props) => {
             )}
             {isDesktop && notes && (
               <Collapse
-                collapsedHeight={'2.75em'}
+                collapsedSize={'2.75em'}
                 in={expanded}
                 timeout={'auto'}
                 className={classes.notes}
@@ -351,7 +357,7 @@ const AlbumDetails = (props) => {
       )}
       {!isDesktop && notes && (
         <div className={classes.notes}>
-          <Collapse collapsedHeight={'1.5em'} in={expanded} timeout={'auto'}>
+          <Collapse collapsedSize={'1.5em'} in={expanded} timeout={'auto'}>
             <Typography
               variant={'body1'}
               onClick={() => setExpanded(!expanded)}

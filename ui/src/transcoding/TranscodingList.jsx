@@ -1,11 +1,11 @@
 import React from 'react'
 import { Datagrid, TextField } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
+import { useMediaQuery } from '@mui/material'
 import { SimpleList, List } from '../common'
 import config from '../config'
 
 const TranscodingList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   return (
     <List
       {...props}

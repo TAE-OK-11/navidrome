@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react'
 import PropTypes from 'prop-types'
-import Chip from '@material-ui/core/Chip'
+import Chip from '@mui/material/Chip'
 import config from '../config'
-import { makeStyles } from '@material-ui/core'
+import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import { calculateGain } from '../utils/calculateReplayGain'
 
@@ -21,9 +21,9 @@ const useStyle = makeStyles(
 )
 
 export const QualityInfo = ({
-  record,
-  size,
-  gainMode,
+  record = {},
+  size = 'small',
+  gainMode = 'none',
   preAmp,
   className,
   transcodeStream,
@@ -87,10 +87,4 @@ QualityInfo.propTypes = {
   gainMode: PropTypes.string,
   transcodeStream: PropTypes.object,
   isDirectPlay: PropTypes.bool,
-}
-
-QualityInfo.defaultProps = {
-  record: {},
-  size: 'small',
-  gainMode: 'none',
 }

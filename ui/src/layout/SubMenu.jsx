@@ -1,16 +1,15 @@
 import React, { Fragment } from 'react'
-import { useDispatch } from 'react-redux'
-import ExpandMore from '@material-ui/icons/ExpandMore'
-import ArrowRightOutlined from '@material-ui/icons/ArrowRightOutlined'
-import List from '@material-ui/core/List'
-import MenuItem from '@material-ui/core/MenuItem'
-import ListItemIcon from '@material-ui/core/ListItemIcon'
-import Typography from '@material-ui/core/Typography'
-import Collapse from '@material-ui/core/Collapse'
-import Tooltip from '@material-ui/core/Tooltip'
-import { makeStyles } from '@material-ui/core/styles'
-import { setSidebarVisibility, useTranslate } from 'react-admin'
-import { IconButton, useMediaQuery } from '@material-ui/core'
+import ExpandMore from '@mui/icons-material/ExpandMore'
+import ArrowRightOutlined from '@mui/icons-material/ArrowRightOutlined'
+import List from '@mui/material/List'
+import ListItemButton from '@mui/material/ListItemButton'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import Typography from '@mui/material/Typography'
+import Collapse from '@mui/material/Collapse'
+import Tooltip from '@mui/material/Tooltip'
+import makeStyles from '../themes/makeStyles'
+import { useSidebarState, useTranslate } from 'react-admin'
+import { IconButton, useMediaQuery } from '@mui/material'
 
 const useStyles = makeStyles(
   (theme) => ({
@@ -57,7 +56,7 @@ const SubMenu = ({
   children,
   dense,
   onAction,
-  actionIcon,
+  actionIcon = <ArrowRightOutlined fontSize={'small'} />,
   onSecondaryAction,
   secondaryActionIcon,
   secondaryActionTitle,
@@ -66,14 +65,14 @@ const SubMenu = ({
   const translate = useTranslate()
   const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'))
-  const isSmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
-  const dispatch = useDispatch()
+  const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))
+  const [, setSidebarOpen] = useSidebarState()
 
   const handleOnClick = (e) => {
     e.stopPropagation()
     onAction(e)
     if (isSmall) {
-      dispatch(setSidebarVisibility(false))
+      setSidebarOpen(false)
     }
   }
 
@@ -84,9 +83,8 @@ const SubMenu = ({
 
   const header = (
     <div className={classes.headerWrapper}>
-      <MenuItem
+      <ListItemButton
         dense={dense}
-        button
         className={classes.menuHeader}
         onClick={handleToggle}
       >
@@ -122,7 +120,7 @@ const SubMenu = ({
             {actionIcon}
           </IconButton>
         )}
-      </MenuItem>
+      </ListItemButton>
     </div>
   )
 
@@ -149,11 +147,6 @@ const SubMenu = ({
       </Collapse>
     </Fragment>
   )
-}
-
-SubMenu.defaultProps = {
-  action: null,
-  actionIcon: <ArrowRightOutlined fontSize={'small'} />,
 }
 
 export default SubMenu

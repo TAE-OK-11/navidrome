@@ -402,7 +402,7 @@ func (e *provider) seedMix(ctx context.Context, count int, sample func() (model.
 	if len(matched) == 0 {
 		matched = seeds
 	}
-	rand.Shuffle(len(matched), func(i, j int) { matched[i], matched[j] = matched[j], matched[i] })
+	rand.Shuffle(len(matched), func(i, j int) { matched[i], matched[j] = matched[j], matched[i] }) //nolint:gosec // Cryptographic randomness is not needed for recommendation ordering.
 	if len(matched) > count {
 		matched = matched[:count]
 	}

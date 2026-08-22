@@ -1,5 +1,5 @@
-import blue from '@material-ui/core/colors/blue'
 import stylesheet from './dark.css.js'
+import { blue } from '@mui/material/colors'
 
 export default {
   themeName: 'Dark',

@@ -2,16 +2,16 @@ import React, { Fragment, useEffect } from 'react'
 import { useUnselectAll } from 'react-admin'
 import { addTracks, playNext, playTracks } from '../actions'
 import { RiPlayList2Fill, RiPlayListAddFill } from 'react-icons/ri'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { BatchPlayButton } from './index'
 import { AddToPlaylistButton } from './AddToPlaylistButton'
-import { makeStyles } from '@material-ui/core/styles'
+import makeStyles from '../themes/makeStyles'
 import { BatchShareButton } from './BatchShareButton'
 import config from '../config'
 
 const useStyles = makeStyles((theme) => ({
   button: {
-    color: theme.palette.type === 'dark' ? 'white' : undefined,
+    color: theme.palette.mode === 'dark' ? 'white' : undefined,
   },
 }))
 

@@ -4,8 +4,8 @@ import {
   CardMedia,
   Typography,
   useMediaQuery,
-} from '@material-ui/core'
-import { makeStyles } from '@material-ui/core/styles'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import { useTranslate } from 'react-admin'
 import Lightbox from 'react-image-lightbox'
 import 'react-image-lightbox/style.css'
@@ -25,7 +25,7 @@ import subsonic from '../subsonic'
 const useStyles = makeStyles(
   (theme) => ({
     root: {
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         padding: '0.7em',
         minWidth: '20em',
       },
@@ -45,7 +45,7 @@ const useStyles = makeStyles(
       flex: '2 0 auto',
     },
     coverParent: {
-      [theme.breakpoints.down('xs')]: {
+      [theme.breakpoints.down('sm')]: {
         height: '8em',
         width: '8em',
         minWidth: '8em',

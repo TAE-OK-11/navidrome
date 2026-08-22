@@ -1,7 +1,11 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
-import { ThemeProvider, createTheme } from '@material-ui/core/styles'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  ThemeProvider,
+  StyledEngineProvider,
+  createTheme,
+} from '@mui/material/styles'
 import { Provider } from 'react-redux'
 import { createStore } from 'redux'
 import { SchemaConfigEditor } from './SchemaConfigEditor'
@@ -14,7 +18,9 @@ const mockStore = createStore(() => ({}))
 const renderWithProviders = (component) => {
   return render(
     <Provider store={mockStore}>
-      <ThemeProvider theme={theme}>{component}</ThemeProvider>
+      <StyledEngineProvider injectFirst>
+        <ThemeProvider theme={theme}>{component}</ThemeProvider>
+      </StyledEngineProvider>
     </Provider>,
   )
 }
@@ -51,7 +57,7 @@ describe('SchemaConfigEditor', () => {
     ).toBeTruthy()
   })
 
-  it('calls onChange on initial render', () => {
+  it('does not emit a synthetic change on initial render', () => {
     const onChange = vi.fn()
     renderWithProviders(
       <SchemaConfigEditor
@@ -61,11 +67,10 @@ describe('SchemaConfigEditor', () => {
       />,
     )
 
-    // JSONForms calls onChange on initial render with initial state
-    expect(onChange).toHaveBeenCalled()
+    expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('passes data and errors to onChange callback', () => {
+  it('passes data and errors to onChange callback', async () => {
     const onChange = vi.fn()
     const initialData = { name: 'Test Value' }
 
@@ -77,10 +82,15 @@ describe('SchemaConfigEditor', () => {
       />,
     )
 
-    // Check that onChange was called with data and errors
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Test Value' }),
-      expect.any(Array),
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Changed Value' },
+    })
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Changed Value' }),
+        expect.any(Array),
+      ),
     )
   })
 })

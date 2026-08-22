@@ -8,7 +8,7 @@ import {
   NumberField,
   BooleanField,
 } from 'react-admin'
-import { useMediaQuery } from '@material-ui/core'
+import { useMediaQuery } from '@mui/material'
 import { List, DateField, useResourceRefresh, SizeField } from '../common'
 import LibraryListBulkActions from './LibraryListBulkActions'
 import LibraryListActions from './LibraryListActions'
@@ -20,7 +20,7 @@ const LibraryFilter = (props) => (
 )
 
 const LibraryList = (props) => {
-  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('xs'))
+  const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   useResourceRefresh('library')
 

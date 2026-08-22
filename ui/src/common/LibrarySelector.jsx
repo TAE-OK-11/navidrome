@@ -12,9 +12,9 @@ import {
   Typography,
   Paper,
   Popper,
-  makeStyles,
-} from '@material-ui/core'
-import { ExpandMore, ExpandLess, LibraryMusic } from '@material-ui/icons'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
+import { ExpandMore, ExpandLess, LibraryMusic } from '@mui/icons-material'
 import { setSelectedLibraries, setUserLibraries } from '../actions'
 import { useRefreshOnEvents } from './useRefreshOnEvents'
 

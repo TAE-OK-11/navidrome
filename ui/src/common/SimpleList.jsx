@@ -1,15 +1,16 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import Avatar from '@material-ui/core/Avatar'
-import List from '@material-ui/core/List'
-import ListItem from '@material-ui/core/ListItem'
-import ListItemAvatar from '@material-ui/core/ListItemAvatar'
-import ListItemIcon from '@material-ui/core/ListItemIcon'
-import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction'
-import ListItemText from '@material-ui/core/ListItemText'
-import { makeStyles } from '@material-ui/core/styles'
+import Avatar from '@mui/material/Avatar'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemAvatar from '@mui/material/ListItemAvatar'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
+import ListItemText from '@mui/material/ListItemText'
+import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
-import { linkToRecord, sanitizeListRestProps } from 'react-admin'
+import { sanitizeListRestProps } from 'react-admin'
+import { linkToRecord } from '../utils/linkToRecord'
 
 const useStyles = makeStyles(
   {
@@ -51,18 +52,18 @@ export const SimpleList = ({
   className,
   classes: classesOverride,
   data,
-  hasBulkActions,
+  hasBulkActions = false,
   ids,
   loading,
   leftAvatar,
   leftIcon,
-  linkType,
+  linkType = 'edit',
   onToggleItem,
   primaryText,
   rightAvatar,
   rightIcon,
   secondaryText,
-  selectedIds,
+  selectedIds = [],
   tertiaryText,
   total,
   ...rest
@@ -138,10 +139,4 @@ SimpleList.propTypes = {
   secondaryText: PropTypes.func,
   selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
   tertiaryText: PropTypes.func,
-}
-
-SimpleList.defaultProps = {
-  linkType: 'edit',
-  hasBulkActions: false,
-  selectedIds: [],
 }

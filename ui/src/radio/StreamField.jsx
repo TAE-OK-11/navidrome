@@ -1,11 +1,12 @@
-import { Button, makeStyles } from '@material-ui/core'
+import { Button } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import PropTypes from 'prop-types'
 import React, { useCallback } from 'react'
 import { useRecordContext } from 'react-admin'
 import { useDispatch } from 'react-redux'
 import { setTrack } from '../actions'
 import { songFromRadio } from './helper'
-import PlayArrowIcon from '@material-ui/icons/PlayArrow'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 
 const useStyles = makeStyles((theme) => ({
   button: {

@@ -5,14 +5,10 @@ import {
   TopToolbar,
   useTranslate,
 } from 'react-admin'
-import {
-  ButtonGroup,
-  useMediaQuery,
-  Typography,
-  makeStyles,
-} from '@material-ui/core'
-import ViewHeadlineIcon from '@material-ui/icons/ViewHeadline'
-import ViewModuleIcon from '@material-ui/icons/ViewModule'
+import { ButtonGroup, useMediaQuery, Typography } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
+import ViewHeadlineIcon from '@mui/icons-material/ViewHeadline'
+import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useDispatch, useSelector } from 'react-redux'
 import { albumViewGrid, albumViewTable } from '../actions'
 import { ToggleFieldsMenu } from '../common'
@@ -79,8 +75,8 @@ const AlbumListActions = ({
   permanentFilter,
   exporter,
   basePath,
-  selectedIds,
-  onUnselectItems,
+  selectedIds = [],
+  onUnselectItems = () => null,
   showFilter,
   maxResults,
   total,
@@ -110,11 +106,6 @@ const AlbumListActions = ({
       )}
     </TopToolbar>
   )
-}
-
-AlbumListActions.defaultProps = {
-  selectedIds: [],
-  onUnselectItems: () => null,
 }
 
 export default AlbumListActions

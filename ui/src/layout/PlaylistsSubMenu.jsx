@@ -3,16 +3,16 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   MenuItemLink,
   useDataProvider,
+  useGetList,
   useNotify,
-  useQueryWithStore,
   useTranslate,
 } from 'react-admin'
-import { useHistory } from 'react-router-dom'
-import QueueMusicIcon from '@material-ui/icons/QueueMusic'
-import { Typography } from '@material-ui/core'
-import QueueMusicOutlinedIcon from '@material-ui/icons/QueueMusicOutlined'
-import FavoriteIcon from '@material-ui/icons/Favorite'
-import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder'
+import { useNavigate } from 'react-router-dom'
+import QueueMusicIcon from '@mui/icons-material/QueueMusic'
+import { Typography } from '@mui/material'
+import QueueMusicOutlinedIcon from '@mui/icons-material/QueueMusicOutlined'
+import FavoriteIcon from '@mui/icons-material/Favorite'
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { BiListUl } from 'react-icons/bi'
 import { useDrop } from 'react-dnd'
 import SubMenu from './SubMenu'
@@ -57,7 +57,7 @@ const PlaylistMenuItemLink = ({ pls, sidebarIsOpen }) => {
 }
 
 const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
-  const history = useHistory()
+  const navigate = useNavigate()
   const dispatch = useDispatch()
   const translate = useTranslate()
   const onlyFavourites = useSelector(
@@ -88,22 +88,16 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
   }, [showFavouritesOnly])
   useRefreshOnEvents({ events: ['playlist'], onRefresh })
 
-  // A changed payload signature makes useQueryWithStore refetch
-  const { data, loaded } = useQueryWithStore({
-    type: 'getList',
-    resource: 'playlist',
-    payload: {
-      pagination: {
-        page: 0,
-        perPage: config.maxSidebarPlaylists,
-      },
-      sort: { field: 'name' },
-      ...(showFavouritesOnly && {
-        filter: { starred: true },
-        starFingerprint,
-        refresh: refreshCount,
-      }),
+  const { data = [], isPending } = useGetList('playlist', {
+    pagination: {
+      page: 1,
+      perPage: config.maxSidebarPlaylists,
     },
+    sort: { field: 'name', order: 'ASC' },
+    filter: showFavouritesOnly ? { starred: true } : {},
+    meta: showFavouritesOnly
+      ? { starFingerprint, refresh: refreshCount }
+      : undefined,
   })
 
   const handleToggle = (menu) => {
@@ -122,10 +116,8 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
   const myPlaylists = []
   const sharedPlaylists = []
 
-  if (loaded && data) {
-    const allPlaylists = Object.keys(data).map((id) => data[id])
-
-    allPlaylists.forEach((pls) => {
+  if (!isPending && data) {
+    data.forEach((pls) => {
       if (userId === pls.ownerId) {
         myPlaylists.push(pls)
       } else {
@@ -134,10 +126,7 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
     })
   }
 
-  const onPlaylistConfig = useCallback(
-    () => history.push('/playlist'),
-    [history],
-  )
+  const onPlaylistConfig = useCallback(() => navigate('/playlist'), [navigate])
 
   const handleToggleFavourites = useCallback(() => {
     dispatch(setSidebarPlaylistsOnlyFavourites(!onlyFavourites))

@@ -4,9 +4,7 @@
 // It is intended for use in Navidrome plugins built with extism-pdk.
 
 use serde::{Deserialize, Serialize};
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
-
+#[allow(dead_code)]
 mod base64_bytes {
     use serde::{self, Deserialize, Deserializer, Serializer};
     use base64::Engine as _;

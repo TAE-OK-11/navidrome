@@ -1,13 +1,13 @@
-import { renderHook, act } from '@testing-library/react-hooks'
+import { renderHook, act } from '@testing-library/react'
 import { render } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockLocation = { pathname: '/album', search: '' }
-const mockHistory = { action: 'PUSH' }
+let mockNavigationType = 'PUSH'
 vi.mock('react-router-dom', () => ({
   useLocation: () => mockLocation,
-  useHistory: () => mockHistory,
+  useNavigationType: () => mockNavigationType,
 }))
 
 import { useScrollRestoration } from './useScrollRestoration'
@@ -18,7 +18,7 @@ describe('useScrollRestoration', () => {
     window.scrollY = 0
     mockLocation.pathname = '/album'
     mockLocation.search = ''
-    mockHistory.action = 'PUSH'
+    mockNavigationType = 'PUSH'
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -47,7 +47,7 @@ describe('useScrollRestoration', () => {
 
     maxScroll = 0
     window.scrollY = 0
-    mockHistory.action = 'POP'
+    mockNavigationType = 'POP'
     renderHook(() => useScrollRestoration())
     return (height) => (maxScroll = height)
   }
@@ -70,7 +70,7 @@ describe('useScrollRestoration', () => {
     second.unmount()
 
     mockLocation.pathname = '/album'
-    mockHistory.action = 'POP'
+    mockNavigationType = 'POP'
     renderHook(() => useScrollRestoration())
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 640 })
   })
@@ -80,7 +80,7 @@ describe('useScrollRestoration', () => {
     scrollTo(500)
     first.unmount()
 
-    mockHistory.action = 'PUSH'
+    mockNavigationType = 'PUSH'
     renderHook(() => useScrollRestoration())
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0 })
   })
@@ -113,7 +113,7 @@ describe('useScrollRestoration', () => {
     detail.unmount()
 
     mockLocation.pathname = '/album'
-    mockHistory.action = 'POP'
+    mockNavigationType = 'POP'
     renderHook(() => useScrollRestoration())
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 900 })
   })
@@ -200,7 +200,7 @@ describe('useScrollRestoration', () => {
     rerender(<Incoming />)
 
     mockLocation.pathname = '/album'
-    mockHistory.action = 'POP'
+    mockNavigationType = 'POP'
     renderHook(() => useScrollRestoration())
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 1400 })
   })
@@ -210,7 +210,7 @@ describe('useScrollRestoration', () => {
     scrollTo(200)
     first.unmount()
 
-    mockHistory.action = 'POP'
+    mockNavigationType = 'POP'
     const second = renderHook(() => useScrollRestoration())
     expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 200 })
     scrollTo(900)

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { TestContext } from 'ra-test'
+import { TestContext } from '../test/TestContext'
 import { DataProviderContext } from 'react-admin'
 import {
   cleanup,
@@ -28,16 +28,14 @@ const createTestUtils = (mockDataProvider) =>
     </DataProviderContext.Provider>,
   )
 
-// Mock useHistory to update window.location.hash on push
+// Mock navigation to update the hash used by this application.
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
-    useHistory: () => ({
-      push: (url) => {
-        window.location.hash = `#${url}`
-      },
-    }),
+    useNavigate: () => (url) => {
+      window.location.hash = `#${url}`
+    },
   }
 })
 

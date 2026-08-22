@@ -1,19 +1,19 @@
 import * as React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { QuickFilter } from './QuickFilter'
-import StarIcon from '@material-ui/icons/Star'
+import StarIcon from '@mui/icons-material/Star'
 
 describe('QuickFilter', () => {
   afterEach(cleanup)
 
   it('renders label if provided', () => {
     render(<QuickFilter resource={'song'} source={'name'} label={'MyLabel'} />)
-    expect(screen.getByText('MyLabel')).not.toBeNull()
+    expect(screen.getByText('My label')).not.toBeNull()
   })
 
   it('renders resource translation if label is not provided', () => {
     render(<QuickFilter resource={'song'} source={'name'} />)
-    expect(screen.getByText('resources.song.fields.name')).not.toBeNull()
+    expect(screen.getByText('Name')).not.toBeNull()
   })
 
   it('renders a component label', () => {

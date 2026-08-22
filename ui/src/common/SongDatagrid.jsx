@@ -12,15 +12,10 @@ import {
   PureDatagridRow,
   useTranslate,
 } from 'react-admin'
-import {
-  TableCell,
-  TableRow,
-  Typography,
-  useMediaQuery,
-} from '@material-ui/core'
+import { TableCell, TableRow, Typography, useMediaQuery } from '@mui/material'
 import PropTypes from 'prop-types'
-import { makeStyles } from '@material-ui/core/styles'
-import AlbumIcon from '@material-ui/icons/Album'
+import makeStyles from '../themes/makeStyles'
+import AlbumIcon from '@mui/icons-material/Album'
 import clsx from 'clsx'
 import { useDrag } from 'react-dnd'
 import Lightbox from 'react-image-lightbox'
@@ -189,7 +184,7 @@ export const SongDatagridRow = ({
   children,
   firstTracksOfDiscs,
   contextAlwaysVisible,
-  onClickSubset,
+  onClickSubset = () => {},
   className,
   ...rest
 }) => {
@@ -265,10 +260,6 @@ SongDatagridRow.propTypes = {
   firstTracksOfDiscs: PropTypes.instanceOf(Set),
   contextAlwaysVisible: PropTypes.bool,
   onClickSubset: PropTypes.func,
-}
-
-SongDatagridRow.defaultProps = {
-  onClickSubset: () => {},
 }
 
 const SongDatagridBody = ({

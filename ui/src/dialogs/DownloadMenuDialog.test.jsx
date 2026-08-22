@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { TestContext } from 'ra-test'
+import { TestContext } from '../test/TestContext'
 import { render, screen, cleanup } from '@testing-library/react'
 import { describe, afterEach, it, expect, vi } from 'vitest'
 import DownloadMenuDialog from './DownloadMenuDialog'
@@ -26,6 +26,7 @@ vi.mock('react-admin', async (importOriginal) => {
 const renderDialog = (record, recordType) =>
   render(
     <TestContext
+      dataProvider={{}}
       initialState={{ downloadMenuDialog: { open: true, record, recordType } }}
     >
       <DownloadMenuDialog />

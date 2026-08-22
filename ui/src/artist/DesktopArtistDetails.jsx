@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { Typography, Collapse } from '@material-ui/core'
-import { makeStyles } from '@material-ui/core'
-import Card from '@material-ui/core/Card'
-import CardContent from '@material-ui/core/CardContent'
-import CardMedia from '@material-ui/core/CardMedia'
+import { Typography, Collapse } from '@mui/material'
+import makeStyles from '../themes/makeStyles'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import CardMedia from '@mui/material/CardMedia'
 import ArtistExternalLinks from './ArtistExternalLink'
 import config from '../config'
 import {
@@ -154,7 +154,7 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
               </div>
             )}
             <Collapse
-              collapsedHeight={'4.5em'}
+              collapsedSize={'4.5em'}
               in={expanded}
               timeout={'auto'}
               className={classes.biography}

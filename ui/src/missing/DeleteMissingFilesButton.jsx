@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import DeleteIcon from '@material-ui/icons/Delete'
-import { makeStyles, alpha } from '@material-ui/core/styles'
+import DeleteIcon from '@mui/icons-material/Delete'
+import { alpha } from '@mui/material/styles'
+import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import {
   Button,

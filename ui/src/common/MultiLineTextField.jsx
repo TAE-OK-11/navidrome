@@ -1,5 +1,5 @@
 import React, { memo } from 'react'
-import Typography from '@material-ui/core/Typography'
+import Typography from '@mui/material/Typography'
 import sanitizeFieldRestProps from './sanitizeFieldRestProps'
 import md5 from 'blueimp-md5'
 import { useRecordContext } from 'react-admin'
@@ -9,7 +9,7 @@ export const MultiLineTextField = memo(
     className,
     emptyText,
     source,
-    firstLine,
+    firstLine = 0,
     maxLines,
     addLabel,
     ...rest
@@ -36,7 +36,4 @@ export const MultiLineTextField = memo(
 
 MultiLineTextField.displayName = 'MultiLineTextField'
 
-MultiLineTextField.defaultProps = {
-  addLabel: true,
-  firstLine: 0,
-}
+MultiLineTextField.defaultProps = { addLabel: true }

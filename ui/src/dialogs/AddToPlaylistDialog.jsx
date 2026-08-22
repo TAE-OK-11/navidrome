@@ -12,8 +12,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  makeStyles,
-} from '@material-ui/core'
+} from '@mui/material'
+import makeStyles from '../themes/makeStyles'
 import {
   closeAddToPlaylist,
   closeDuplicateSongDialog,

@@ -51,14 +51,12 @@ describe('authProvider session recovery', () => {
     expect(localStorage.getItem('is-authenticated')).toBeNull()
   })
 
-  it('clears and rejects an expired token', async () => {
+  it('clears an expired token and returns no permissions', async () => {
     storeValidSession({
       token: token({ exp: Math.floor(Date.now() / 1000) - 60 }),
     })
 
-    await expect(authProvider.getPermissions()).rejects.toEqual({
-      redirectTo: '/login',
-    })
+    await expect(authProvider.getPermissions()).resolves.toBeNull()
     expect(localStorage.getItem('token')).toBeNull()
   })
 

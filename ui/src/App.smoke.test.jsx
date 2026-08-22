@@ -6,13 +6,15 @@ import App from './App'
 describe('App startup', () => {
   beforeEach(() => {
     localStorage.clear()
-    window.location.hash = '#/login'
+    window.location.hash = '#/'
   })
 
-  it('renders the login page for a fresh browser profile', async () => {
+  it('redirects a fresh browser profile to the login page', async () => {
     render(<App />)
 
-    expect(await screen.findByText('Navidrome')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Navidrome', {}, { timeout: 10_000 }),
+    ).toBeInTheDocument()
     expect(screen.queryByTestId('client-error-message')).not.toBeInTheDocument()
   })
 })

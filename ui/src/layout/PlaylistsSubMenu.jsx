@@ -67,7 +67,7 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
   // (with the toggle now hidden) doesn't strand the user on a filtered sidebar
   const showFavouritesOnly = config.enableFavourites && onlyFavourites
   const playlistData = useSelector(
-    (state) => state.admin.resources.playlist?.data,
+    (state) => state.admin?.resources?.playlist?.data,
   )
   // Fingerprint of local star state; changes only when a playlist is (un)starred,
   // so a local toggle refetches the sidebar without the SSE echo the actor never gets

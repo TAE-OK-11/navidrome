@@ -14,20 +14,20 @@ export const useTranscodingOptions = () => {
   const [maxBitRate, setMaxBitRate] = useState(DEFAULT_SHARE_BITRATE)
   const [originalFormat, setUseOriginalFormat] = useState(true)
 
-  const { data: formats, loading: loadingFormats } = useGetList(
+  const { data: formats = [], isPending: loadingFormats } = useGetList(
     'transcoding',
     {
-      page: 1,
-      perPage: 1000,
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: 'name', order: 'ASC' },
+      filter: {},
     },
-    { field: 'name', order: 'ASC' },
   )
 
   const formatOptions = useMemo(
     () =>
       loadingFormats
         ? []
-        : Object.values(formats).map((f) => {
+        : formats.map((f) => {
             return { id: f.targetFormat, name: f.name }
           }),
     [formats, loadingFormats],

@@ -86,7 +86,10 @@ const authProvider = {
 
   getPermissions: () => {
     if (!hasValidAuthentication()) {
-      return Promise.reject({ redirectTo: '/login' })
+      // Resource registration runs before react-admin performs checkAuth.
+      // Resolving with no permissions lets the router finish initializing so
+      // checkAuth can redirect anonymous or stale sessions to the login page.
+      return Promise.resolve(null)
     }
     const role = localStorage.getItem('role')
     return Promise.resolve(role)

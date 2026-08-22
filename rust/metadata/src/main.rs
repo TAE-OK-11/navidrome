@@ -12,6 +12,7 @@ use lofty::mp4::{Mp4Codec, Mp4File};
 use lofty::mpeg::MpegFile;
 use lofty::ogg::OpusFile;
 use lofty::ogg::tag::VorbisComments;
+use lofty::picture::PictureType;
 use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +51,27 @@ struct Metadata {
 }
 
 fn main() -> Result<()> {
+    let mut args = std::env::args_os().skip(1);
+    if let Some(command) = args.next() {
+        if command != "--extract-picture" {
+            bail!("unsupported command {:?}", command);
+        }
+        let path = args
+            .next()
+            .map(PathBuf::from)
+            .context("--extract-picture requires a file path")?;
+        if args.next().is_some() {
+            bail!("--extract-picture accepts exactly one file path");
+        }
+        let picture = extract_picture(&path)?;
+        io::stdout().lock().write_all(&picture)?;
+        return Ok(());
+    }
+
+    run_worker()
+}
+
+fn run_worker() -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
@@ -116,6 +138,29 @@ fn handle_request(request: Request) -> Response {
 }
 
 fn parse_file(path: &Path) -> Result<Metadata> {
+    let (tagged, codec, raw_vorbis) = read_file(path)?;
+
+    let mut tags = generic_tags(&tagged);
+    if let Some(vorbis) = raw_vorbis.as_ref() {
+        merge_vorbis_tags(&mut tags, vorbis);
+    }
+
+    let properties = tagged.properties();
+    let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
+
+    Ok(Metadata {
+        tags: tags.into_iter().collect(),
+        duration_ns: properties.duration().as_nanos().min(u128::from(u64::MAX)) as u64,
+        bit_rate: properties.audio_bitrate().unwrap_or(0),
+        bit_depth: properties.bit_depth().unwrap_or(0),
+        sample_rate: properties.sample_rate().unwrap_or(0),
+        channels: properties.channels().unwrap_or(0),
+        codec,
+        has_picture,
+    })
+}
+
+fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>)> {
     let mut raw_vorbis = None;
     let (tagged, codec) = match extension(path).as_str() {
         "flac" => {
@@ -171,24 +216,26 @@ fn parse_file(path: &Path) -> Result<Metadata> {
         other => bail!("Lofty detected unsupported file type {other:?}"),
     }
 
-    let mut tags = generic_tags(&tagged);
-    if let Some(vorbis) = raw_vorbis.as_ref() {
-        merge_vorbis_tags(&mut tags, vorbis);
+    Ok((tagged, codec, raw_vorbis))
+}
+
+fn extract_picture(path: &Path) -> Result<Vec<u8>> {
+    let (tagged, _, _) = read_file(path)?;
+    let pictures = tagged
+        .tags()
+        .iter()
+        .flat_map(|tag| tag.pictures().iter())
+        .collect::<Vec<_>>();
+    let picture = pictures
+        .iter()
+        .find(|picture| picture.pic_type() == PictureType::CoverFront)
+        .copied()
+        .or_else(|| pictures.first().copied())
+        .with_context(|| format!("no embedded picture found in {}", path.display()))?;
+    if picture.data().is_empty() {
+        bail!("embedded picture is empty in {}", path.display());
     }
-
-    let properties = tagged.properties();
-    let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
-
-    Ok(Metadata {
-        tags: tags.into_iter().collect(),
-        duration_ns: properties.duration().as_nanos().min(u128::from(u64::MAX)) as u64,
-        bit_rate: properties.audio_bitrate().unwrap_or(0),
-        bit_depth: properties.bit_depth().unwrap_or(0),
-        sample_rate: properties.sample_rate().unwrap_or(0),
-        channels: properties.channels().unwrap_or(0),
-        codec,
-        has_picture,
-    })
+    Ok(picture.data().to_vec())
 }
 
 fn extension(path: &Path) -> String {
@@ -308,5 +355,14 @@ mod tests {
     #[test]
     fn protocol_is_stable() {
         assert_eq!(PROTOCOL_VERSION, 1);
+    }
+
+    #[test]
+    fn extracts_the_original_embedded_picture() {
+        let path = Path::new("../../core/artwork/e2e/testdata/embedded_art.mp3");
+        let picture = extract_picture(path).expect("embedded picture");
+        assert!(
+            picture.starts_with(&[0x89, b'P', b'N', b'G']) || picture.starts_with(&[0xff, 0xd8])
+        );
     }
 }

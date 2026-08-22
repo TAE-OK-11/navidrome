@@ -45,6 +45,39 @@ var _ = Describe("client", func() {
 		})
 	})
 
+	Describe("AlbumImages", func() {
+		It("returns album cover variants from a successful search", func() {
+			httpClient.mock("https://api.deezer.com/search/album", http.Response{
+				StatusCode: 200,
+				Body: io.NopCloser(bytes.NewBufferString(`{"data":[{
+					"id":6575789,
+					"title":"Random Access Memories",
+					"cover_xl":"https://example.com/1000.jpg",
+					"artist":{"id":27,"name":"Daft Punk"}
+				}],"total":1}`)),
+			})
+
+			albums, err := client.searchAlbums(GinkgoT().Context(), "Random Access Memories", "Daft Punk", 20)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(albums).To(HaveLen(1))
+			Expect(albums[0].CoverXl).To(Equal("https://example.com/1000.jpg"))
+			Expect(albums[0].Artist.Name).To(Equal("Daft Punk"))
+			Expect(httpClient.lastRequest.URL.Query().Get("q")).To(Equal("Random Access Memories Daft Punk"))
+			Expect(httpClient.lastRequest.URL.Query().Get("limit")).To(Equal("20"))
+		})
+
+		It("fails if an album was not found", func() {
+			httpClient.mock("https://api.deezer.com/search/album", http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`{"data":[],"total":0}`)),
+			})
+
+			_, err := client.searchAlbums(GinkgoT().Context(), "Missing", "Artist", 20)
+			Expect(err).To(MatchError(ErrNotFound))
+		})
+	})
+
 	Describe("TopTracks", func() {
 		It("returns top tracks with artist and album info from a successful request", func() {
 			f, err := os.Open("tests/fixtures/deezer.artist.top.json")
@@ -201,7 +234,7 @@ func (c *fakeHttpClient) mock(url string, response http.Response) {
 
 func (c *fakeHttpClient) Do(req *http.Request) (*http.Response, error) {
 	c.lastRequest = req
-	u := req.URL
+	u := *req.URL
 	u.RawQuery = ""
 	if resp, ok := c.responses[u.String()]; ok {
 		return resp, nil

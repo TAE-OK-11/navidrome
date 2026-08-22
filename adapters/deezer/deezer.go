@@ -24,6 +24,7 @@ const deezerApiPictureBigSize = 500
 const deezerApiPictureMediumSize = 250
 const deezerApiPictureSmallSize = 56
 const deezerArtistSearchLimit = 50
+const deezerAlbumSearchLimit = 50
 
 type deezerAgent struct {
 	dataStore model.DataStore
@@ -78,6 +79,68 @@ func (s *deezerAgent) GetArtistImages(ctx context.Context, _, name, _ string) ([
 		}
 	}
 	return res, nil
+}
+
+func (s *deezerAgent) GetAlbumImages(ctx context.Context, name, artist, _ string) ([]agents.ExternalImage, error) {
+	album, err := s.searchAlbum(ctx, name, artist)
+	if err != nil {
+		if errors.Is(err, agents.ErrNotFound) {
+			log.Warn(ctx, "Album not found in deezer", "album", name, "artist", artist)
+		} else {
+			log.Error(ctx, "Error calling deezer", "album", name, "artist", artist, err)
+		}
+		return nil, err
+	}
+
+	possibleImages := []struct {
+		URL  string
+		Size int
+	}{
+		{album.CoverXl, deezerApiPictureXlSize},
+		{album.CoverBig, deezerApiPictureBigSize},
+		{album.CoverMedium, deezerApiPictureMediumSize},
+		{album.CoverSmall, deezerApiPictureSmallSize},
+	}
+	images := make([]agents.ExternalImage, 0, len(possibleImages))
+	for _, image := range possibleImages {
+		if image.URL != "" {
+			images = append(images, agents.ExternalImage{URL: image.URL, Size: image.Size})
+		}
+	}
+	if len(images) == 0 {
+		return nil, agents.ErrNotFound
+	}
+	return images, nil
+}
+
+func (s *deezerAgent) searchAlbum(ctx context.Context, name, artist string) (*Album, error) {
+	albums, err := s.client.searchAlbums(ctx, name, artist, deezerAlbumSearchLimit)
+	if errors.Is(err, ErrNotFound) || len(albums) == 0 {
+		return nil, agents.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Search ranking alone can return editions, compilations, or homonymous
+	// albums first. Require an exact title and prefer an exact artist when
+	// Deezer returns the artist name in the same locale as the library tags.
+	var titleMatch *Album
+	for i := range albums {
+		if !strings.EqualFold(strings.TrimSpace(albums[i].Title), strings.TrimSpace(name)) {
+			continue
+		}
+		if titleMatch == nil {
+			titleMatch = &albums[i]
+		}
+		if artist != "" && strings.EqualFold(strings.TrimSpace(albums[i].Artist.Name), strings.TrimSpace(artist)) {
+			return &albums[i], nil
+		}
+	}
+	if titleMatch == nil {
+		return nil, agents.ErrNotFound
+	}
+	return titleMatch, nil
 }
 
 func (s *deezerAgent) searchArtist(ctx context.Context, name string) (*Artist, error) {

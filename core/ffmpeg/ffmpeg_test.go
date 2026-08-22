@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,9 +37,32 @@ func TestFFmpeg(t *testing.T) {
 var _ = Describe("ffmpeg", func() {
 	BeforeEach(func() {
 		_ = os.Unsetenv("FFMPEG_THREADS")
+		_ = os.Unsetenv(metadataworker.EnvPath)
 		_, _ = ffmpegCmd()
 		ffmpegPath = "ffmpeg"
 		ffmpegErr = nil
+	})
+
+	Describe("ExtractImage", func() {
+		It("prefers the native metadata worker so image-only ffmpeg muxers are not required", func() {
+			if runtime.GOOS == "windows" {
+				Skip("POSIX helper script")
+			}
+			dir := GinkgoT().TempDir()
+			worker := filepath.Join(dir, "navidrome-metadata")
+			Expect(os.WriteFile(worker, []byte("#!/bin/sh\nprintf native-original-cover"), 0700)).To(Succeed())
+			Expect(os.Setenv(metadataworker.EnvPath, worker)).To(Succeed())
+			DeferCleanup(os.Unsetenv, metadataworker.EnvPath)
+
+			mediaFile := filepath.Join(dir, "track.m4a")
+			Expect(os.WriteFile(mediaFile, []byte("audio"), 0600)).To(Succeed())
+			reader, err := (&ffmpeg{}).ExtractImage(GinkgoT().Context(), mediaFile)
+			Expect(err).ToNot(HaveOccurred())
+			defer reader.Close()
+			data, err := io.ReadAll(reader)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(data).To(Equal([]byte("native-original-cover")))
+		})
 	})
 	Describe("createFFmpegCommand", func() {
 		It("creates a valid command line", func() {

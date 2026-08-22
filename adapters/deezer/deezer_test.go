@@ -94,6 +94,65 @@ var _ = Describe("deezerAgent", func() {
 		})
 	})
 
+	Describe("GetAlbumImages", func() {
+		var agent *deezerAgent
+		var httpClient *fakeHttpClient
+
+		BeforeEach(func() {
+			httpClient = &fakeHttpClient{}
+			agent = &deezerAgent{
+				dataStore: &tests.MockDataStore{},
+				client:    newClient(httpClient),
+			}
+		})
+
+		mockAlbums := func(data string) {
+			httpClient.mock("https://api.deezer.com/search/album", http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(`{"data":` + data + `,"total":3}`)),
+			})
+		}
+
+		It("prefers the exact album and artist and returns the 1000px cover first", func() {
+			mockAlbums(`[
+				{"id":1,"title":"Discovery","artist":{"name":"Other Artist"},"cover_xl":"https://wrong/1000.jpg"},
+				{"id":2,"title":"Discovery (Deluxe)","artist":{"name":"Daft Punk"},"cover_xl":"https://edition/1000.jpg"},
+				{"id":3,"title":"Discovery","artist":{"name":"Daft Punk"},"cover_xl":"https://right/1000.jpg","cover_big":"https://right/500.jpg","cover_medium":"https://right/250.jpg","cover_small":"https://right/56.jpg"}
+			]`)
+
+			images, err := agent.GetAlbumImages(ctx, "Discovery", "Daft Punk", "")
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(images).To(Equal([]agents.ExternalImage{
+				{URL: "https://right/1000.jpg", Size: 1000},
+				{URL: "https://right/500.jpg", Size: 500},
+				{URL: "https://right/250.jpg", Size: 250},
+				{URL: "https://right/56.jpg", Size: 56},
+			}))
+		})
+
+		It("keeps the exact title match when Deezer localizes the artist name", func() {
+			mockAlbums(`[
+				{"id":1,"title":"Random Access Memories","artist":{"name":"ダフト・パンク"},"cover_xl":"https://right/1000.jpg"},
+				{"id":2,"title":"Random Access Memories (Deluxe)","artist":{"name":"Daft Punk"},"cover_xl":"https://wrong/1000.jpg"}
+			]`)
+
+			images, err := agent.GetAlbumImages(ctx, "Random Access Memories", "Daft Punk", "")
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(images[0]).To(Equal(agents.ExternalImage{URL: "https://right/1000.jpg", Size: 1000}))
+		})
+
+		It("rejects an edition when no exact album title exists", func() {
+			mockAlbums(`[
+				{"id":1,"title":"Discovery (Deluxe)","artist":{"name":"Daft Punk"},"cover_xl":"https://wrong/1000.jpg"}
+			]`)
+
+			_, err := agent.GetAlbumImages(ctx, "Discovery", "Daft Punk", "")
+			Expect(err).To(MatchError(agents.ErrNotFound))
+		})
+	})
+
 	Describe("GetArtistBiography - Language Fallback", func() {
 		var agent *deezerAgent
 		var httpClient *langAwareHttpClient

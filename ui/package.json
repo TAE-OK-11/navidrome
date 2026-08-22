@@ -9,7 +9,7 @@
     "test:watch": "bun node_modules/vitest/vitest.mjs",
     "test": "bun node_modules/vitest/vitest.mjs --watch=false",
     "test:coverage": "bun node_modules/vitest/vitest.mjs run --coverage --watch=false",
-    "type-check": "bun node_modules/typescript/bin/tsc --noEmit",
+    "type-check": "bun node_modules/typescript/bin/tsc -b",
     "lint": "bun node_modules/eslint/bin/eslint.js . --ext ts,tsx,js,jsx --report-unused-disable-directives --max-warnings 0",
     "prettier": "bun node_modules/prettier/bin/prettier.cjs --write ./src",
     "check-formatting": "bun node_modules/prettier/bin/prettier.cjs -c ./src",

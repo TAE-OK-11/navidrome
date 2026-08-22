@@ -72,9 +72,9 @@ const authProvider = {
   },
 
   checkAuth: () =>
-    localStorage.getItem('is-authenticated')
+    hasValidAuthentication()
       ? Promise.resolve()
-      : Promise.reject(),
+      : Promise.reject({ redirectTo: '/login' }),
 
   checkError: ({ status }) => {
     if (status === 401) {
@@ -85,17 +85,52 @@ const authProvider = {
   },
 
   getPermissions: () => {
+    if (!hasValidAuthentication()) {
+      return Promise.reject({ redirectTo: '/login' })
+    }
     const role = localStorage.getItem('role')
-    return role ? Promise.resolve(role) : Promise.reject()
+    return Promise.resolve(role)
   },
 
   getIdentity: () => {
+    if (!hasValidAuthentication()) {
+      return Promise.reject({ redirectTo: '/login' })
+    }
     return Promise.resolve({
       id: localStorage.getItem('username'),
       fullName: localStorage.getItem('name'),
       avatar: localStorage.getItem('avatar'),
     })
   },
+}
+
+const hasValidAuthentication = () => {
+  const authenticated = localStorage.getItem('is-authenticated') === 'true'
+  const token = localStorage.getItem('token')
+  const username = localStorage.getItem('username')
+  const role = localStorage.getItem('role')
+  if (
+    !authenticated ||
+    !token ||
+    !username ||
+    (role !== 'admin' && role !== 'regular')
+  ) {
+    removeItems()
+    return false
+  }
+
+  try {
+    const decoded = jwtDecode(token)
+    if (decoded.exp && decoded.exp * 1000 <= Date.now()) {
+      removeItems()
+      return false
+    }
+  } catch {
+    removeItems()
+    return false
+  }
+
+  return true
 }
 
 const removeItems = () => {

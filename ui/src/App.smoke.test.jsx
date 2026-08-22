@@ -74,29 +74,31 @@ describe('App startup', () => {
       disconnect() {}
     }
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const url = String(input)
-      let body = []
-      if (/\/api\/user\/admin-id(?:\?|$)/.test(url)) {
-        body = { id: 'admin-id', libraries: [] }
-      } else if (url.includes('/rest/getScanStatus')) {
-        body = {
-          'subsonic-response': {
-            status: 'ok',
-            scanStatus: { scanning: false, count: 0 },
-          },
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input) => {
+        const url = String(input)
+        let body = []
+        if (/\/api\/user\/admin-id(?:\?|$)/.test(url)) {
+          body = { id: 'admin-id', libraries: [] }
+        } else if (url.includes('/rest/getScanStatus')) {
+          body = {
+            'subsonic-response': {
+              status: 'ok',
+              scanStatus: { scanning: false, count: 0 },
+            },
+          }
         }
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify(body), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Total-Count': Array.isArray(body) ? '0' : '1',
-          },
-        }),
-      )
-    })
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Total-Count': Array.isArray(body) ? '0' : '1',
+            },
+          }),
+        )
+      })
 
     render(<App />)
 

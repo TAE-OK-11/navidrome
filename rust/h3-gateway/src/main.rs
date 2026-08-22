@@ -594,14 +594,22 @@ fn decode_request_headers(
     {
         bail!(":scheme must be https")
     }
-    let authority =
-        HeaderValue::from_bytes(authority.ok_or_else(|| anyhow!("missing :authority"))?)?;
+    let authority = authority.ok_or_else(|| anyhow!("missing :authority"))?;
+    let authority_text = std::str::from_utf8(authority)?;
+    let authority_header = HeaderValue::from_bytes(authority)?;
     let path = std::str::from_utf8(path.ok_or_else(|| anyhow!("missing :path"))?)?;
     if !path.starts_with('/') {
         bail!(":path must be origin-form")
     }
-    let uri: Uri = path.parse()?;
-    output.insert(HOST, authority);
+    // Hyper's low-level HTTP/2 client derives :scheme and :authority from the
+    // request URI. An origin-form URI only contains :path and is rejected by
+    // SendRequest before it reaches the inherited bridge.
+    let uri = Uri::builder()
+        .scheme("https")
+        .authority(authority_text)
+        .path_and_query(path)
+        .build()?;
+    output.insert(HOST, authority_header);
     output.insert(TOKEN_HEADER, token.clone());
     output.insert(AUTHORITY_HEADER, output[HOST].clone());
     output.insert(
@@ -757,6 +765,11 @@ mod tests {
         let token = HeaderValue::from_static("test-token");
         let decoded = decode_request_headers(&headers, peer(), 443, &token).unwrap();
         assert_eq!(decoded.method, Method::GET);
+        assert_eq!(decoded.uri.scheme_str(), Some("https"));
+        assert_eq!(
+            decoded.uri.authority().map(|authority| authority.as_str()),
+            Some("music.example")
+        );
         assert_eq!(
             decoded.uri.path_and_query().unwrap().as_str(),
             "/rest/ping?x=1"

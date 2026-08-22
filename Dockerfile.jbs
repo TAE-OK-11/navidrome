@@ -546,6 +546,31 @@ fn is_cmd(name: &str, needle: &str) -> bool {
     name == needle || name.ends_with(needle)
 }
 
+fn tcp_listener_present(port: u16) -> bool {
+    let expected_port = format!("{port:04X}");
+
+    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            continue;
+        };
+
+        for line in contents.lines().skip(1) {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            if fields.len() < 4 || fields[3] != "0A" {
+                continue;
+            }
+            let Some((_, port_hex)) = fields[1].rsplit_once(':') else {
+                continue;
+            };
+            if port_hex.eq_ignore_ascii_case(&expected_port) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 fn run_healthcheck() -> i32 {
     let port: u16 = env::var("ND_PORT")
         .unwrap_or_default()
@@ -554,6 +579,16 @@ fn run_healthcheck() -> i32 {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let timeout = Duration::from_secs(4);
+
+    // Opening and immediately closing a raw TCP connection against a TLS
+    // listener produces a noisy handshake EOF every healthcheck interval.
+    // The slim runtime intentionally has no TLS client, so inspect the kernel
+    // listener table in TLS mode and retain the HTTP probe for plaintext mode.
+    let tls_enabled = env::var("ND_TLSCERT").is_ok_and(|value| !value.trim().is_empty())
+        && env::var("ND_TLSKEY").is_ok_and(|value| !value.trim().is_empty());
+    if tls_enabled {
+        return if tcp_listener_present(port) { 0 } else { 1 };
+    }
 
     let mut stream = match TcpStream::connect_timeout(&addr, timeout) {
         Ok(stream) => stream,

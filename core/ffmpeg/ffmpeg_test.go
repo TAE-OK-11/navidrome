@@ -50,7 +50,8 @@ var _ = Describe("ffmpeg", func() {
 			}
 			dir := GinkgoT().TempDir()
 			worker := filepath.Join(dir, "navidrome-metadata")
-			Expect(os.WriteFile(worker, []byte("#!/bin/sh\nprintf native-original-cover"), 0700)).To(Succeed())
+			Expect(os.WriteFile(worker, []byte("#!/bin/sh\nprintf native-original-cover"), 0600)).To(Succeed())
+			Expect(os.Chmod(worker, 0700)).To(Succeed()) //nolint:gosec // Executable test helper.
 			Expect(os.Setenv(metadataworker.EnvPath, worker)).To(Succeed())
 			DeferCleanup(os.Unsetenv, metadataworker.EnvPath)
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,7 +187,7 @@ func embeddedImageReadLimit() int64 {
 		raw = conf.Server.MaxImageSize
 	}
 	size, err := humanize.ParseBytes(raw)
-	if err != nil || size == 0 || size > uint64(^uint64(0)>>1) {
+	if err != nil || size == 0 || size > math.MaxInt64 {
 		return 20 << 20
 	}
 	return int64(size)

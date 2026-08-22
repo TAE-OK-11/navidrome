@@ -1,23 +1,24 @@
 import React, { useCallback } from 'react'
 import {
   Edit,
-  FormWithRedirect,
+  SimpleForm,
   TextInput,
   BooleanInput,
   required,
   SaveButton,
   DateField,
   useTranslate,
-  useMutation,
+  useDataProvider,
   useNotify,
   useRedirect,
   Toolbar,
+  useRecordContext,
 } from 'react-admin'
 import { Typography, Box } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import DeleteLibraryButton from './DeleteLibraryButton'
 import { Title } from '../common'
-import { formatBytes, formatDuration2, formatNumber } from '../utils/index.js'
+import { formatBytes, formatDuration2 } from '../utils/index.js'
 
 const useStyles = makeStyles({
   toolbar: {
@@ -34,22 +35,26 @@ const LibraryTitle = ({ record }) => {
   )
 }
 
-const CustomToolbar = ({ showDelete, ...props }) => (
-  <Toolbar {...props} classes={useStyles()}>
-    <SaveButton disabled={props.pristine} />
-    {showDelete && (
-      <DeleteLibraryButton
-        record={props.record}
-        resource="library"
-        basePath="/library"
-      />
-    )}
-  </Toolbar>
-)
+const CustomToolbar = ({ showDelete }) => {
+  const classes = useStyles()
+  const record = useRecordContext()
+  return (
+    <Toolbar className={classes.toolbar}>
+      <SaveButton />
+      {showDelete && (
+        <DeleteLibraryButton
+          record={record}
+          resource="library"
+          basePath="/library"
+        />
+      )}
+    </Toolbar>
+  )
+}
 
 const LibraryEdit = (props) => {
   const translate = useTranslate()
-  const [mutate] = useMutation()
+  const dataProvider = useDataProvider()
   const notify = useNotify()
   const redirect = useRedirect()
 
@@ -60,14 +65,11 @@ const LibraryEdit = (props) => {
   const save = useCallback(
     async (values) => {
       try {
-        await mutate(
-          {
-            type: 'update',
-            resource: 'library',
-            payload: { id: values.id, data: values },
-          },
-          { returnPromise: true },
-        )
+        await dataProvider.update('library', {
+          id: values.id,
+          data: values,
+          previousData: values,
+        })
         notify('resources.library.notifications.updated', 'info', {
           smart_count: 1,
         })
@@ -78,194 +80,149 @@ const LibraryEdit = (props) => {
         }
       }
     },
-    [mutate, notify, redirect],
+    [dataProvider, notify, redirect],
   )
 
   return (
     <Edit title={<LibraryTitle />} undoable={false} {...props}>
-      <FormWithRedirect
+      <SimpleForm
         {...props}
         save={save}
-        render={(formProps) => (
-          <form onSubmit={formProps.handleSubmit}>
-            <Box p="1em" maxWidth="800px">
-              <Box display="flex">
-                <Box flex={1} mr="1em">
-                  {/* Basic Information */}
-                  <Typography variant="h6" gutterBottom>
-                    {translate('resources.library.sections.basic')}
-                  </Typography>
+        toolbar={<CustomToolbar showDelete={canDelete} />}
+      >
+        <Box p="1em" maxWidth="800px">
+          <Box display="flex">
+            <Box flex={1} mr="1em">
+              {/* Basic Information */}
+              <Typography variant="h6" gutterBottom>
+                {translate('resources.library.sections.basic')}
+              </Typography>
 
+              <TextInput
+                source="name"
+                label={translate('resources.library.fields.name')}
+                validate={[required()]}
+                variant="outlined"
+              />
+              <TextInput
+                source="path"
+                label={translate('resources.library.fields.path')}
+                validate={[required()]}
+                fullWidth
+                variant="outlined"
+                InputProps={{ readOnly: !canEditPath }} // Disable editing path for library 1
+              />
+              <BooleanInput
+                source="defaultNewUsers"
+                label={translate('resources.library.fields.defaultNewUsers')}
+                variant="outlined"
+              />
+
+              <Box mt="2em" />
+
+              {/* Statistics - Two Column Layout */}
+              <Typography variant="h6" gutterBottom>
+                {translate('resources.library.sections.statistics')}
+              </Typography>
+
+              <Box display="flex">
+                <Box flex={1} mr="0.5em">
                   <TextInput
-                    source="name"
-                    label={translate('resources.library.fields.name')}
-                    validate={[required()]}
-                    variant="outlined"
-                  />
-                  <TextInput
-                    source="path"
-                    label={translate('resources.library.fields.path')}
-                    validate={[required()]}
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalSongs'}
+                    label={translate('resources.library.fields.totalSongs')}
                     fullWidth
                     variant="outlined"
-                    InputProps={{ readOnly: !canEditPath }} // Disable editing path for library 1
                   />
-                  <BooleanInput
-                    source="defaultNewUsers"
-                    label={translate(
-                      'resources.library.fields.defaultNewUsers',
-                    )}
+                </Box>
+                <Box flex={1} ml="0.5em">
+                  <TextInput
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalAlbums'}
+                    label={translate('resources.library.fields.totalAlbums')}
+                    fullWidth
                     variant="outlined"
                   />
-
-                  <Box mt="2em" />
-
-                  {/* Statistics - Two Column Layout */}
-                  <Typography variant="h6" gutterBottom>
-                    {translate('resources.library.sections.statistics')}
-                  </Typography>
-
-                  <Box display="flex">
-                    <Box flex={1} mr="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalSongs'}
-                        label={translate('resources.library.fields.totalSongs')}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Box flex={1} ml="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalAlbums'}
-                        label={translate(
-                          'resources.library.fields.totalAlbums',
-                        )}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                  </Box>
-
-                  <Box display="flex">
-                    <Box flex={1} mr="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalArtists'}
-                        label={translate(
-                          'resources.library.fields.totalArtists',
-                        )}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Box flex={1} ml="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalSize'}
-                        label={translate('resources.library.fields.totalSize')}
-                        format={(v) => formatBytes(v, 2)}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                  </Box>
-
-                  <Box display="flex">
-                    <Box flex={1} mr="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalDuration'}
-                        label={translate(
-                          'resources.library.fields.totalDuration',
-                        )}
-                        format={formatDuration2}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Box flex={1} ml="0.5em">
-                      <TextInput
-                        InputProps={{ readOnly: true }}
-                        resource={'library'}
-                        source={'totalMissingFiles'}
-                        label={translate(
-                          'resources.library.fields.totalMissingFiles',
-                        )}
-                        fullWidth
-                        variant="outlined"
-                      />
-                    </Box>
-                  </Box>
-
-                  {/* Timestamps Section */}
-                  <Box mb="1em">
-                    <Typography
-                      variant="body2"
-                      color="textSecondary"
-                      gutterBottom
-                    >
-                      {translate('resources.library.fields.lastScanAt')}
-                    </Typography>
-                    <DateField
-                      variant="body1"
-                      source="lastScanAt"
-                      showTime
-                      record={formProps.record}
-                    />
-                  </Box>
-
-                  <Box mb="1em">
-                    <Typography
-                      variant="body2"
-                      color="textSecondary"
-                      gutterBottom
-                    >
-                      {translate('resources.library.fields.updatedAt')}
-                    </Typography>
-                    <DateField
-                      variant="body1"
-                      source="updatedAt"
-                      showTime
-                      record={formProps.record}
-                    />
-                  </Box>
-
-                  <Box mb="2em">
-                    <Typography
-                      variant="body2"
-                      color="textSecondary"
-                      gutterBottom
-                    >
-                      {translate('resources.library.fields.createdAt')}
-                    </Typography>
-                    <DateField
-                      variant="body1"
-                      source="createdAt"
-                      showTime
-                      record={formProps.record}
-                    />
-                  </Box>
                 </Box>
               </Box>
-            </Box>
 
-            <CustomToolbar
-              handleSubmitWithRedirect={formProps.handleSubmitWithRedirect}
-              pristine={formProps.pristine}
-              saving={formProps.saving}
-              record={formProps.record}
-              showDelete={canDelete}
-            />
-          </form>
-        )}
-      />
+              <Box display="flex">
+                <Box flex={1} mr="0.5em">
+                  <TextInput
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalArtists'}
+                    label={translate('resources.library.fields.totalArtists')}
+                    fullWidth
+                    variant="outlined"
+                  />
+                </Box>
+                <Box flex={1} ml="0.5em">
+                  <TextInput
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalSize'}
+                    label={translate('resources.library.fields.totalSize')}
+                    format={(v) => formatBytes(v, 2)}
+                    fullWidth
+                    variant="outlined"
+                  />
+                </Box>
+              </Box>
+
+              <Box display="flex">
+                <Box flex={1} mr="0.5em">
+                  <TextInput
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalDuration'}
+                    label={translate('resources.library.fields.totalDuration')}
+                    format={formatDuration2}
+                    fullWidth
+                    variant="outlined"
+                  />
+                </Box>
+                <Box flex={1} ml="0.5em">
+                  <TextInput
+                    InputProps={{ readOnly: true }}
+                    resource={'library'}
+                    source={'totalMissingFiles'}
+                    label={translate(
+                      'resources.library.fields.totalMissingFiles',
+                    )}
+                    fullWidth
+                    variant="outlined"
+                  />
+                </Box>
+              </Box>
+
+              {/* Timestamps Section */}
+              <Box mb="1em">
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  {translate('resources.library.fields.lastScanAt')}
+                </Typography>
+                <DateField variant="body1" source="lastScanAt" showTime />
+              </Box>
+
+              <Box mb="1em">
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  {translate('resources.library.fields.updatedAt')}
+                </Typography>
+                <DateField variant="body1" source="updatedAt" showTime />
+              </Box>
+
+              <Box mb="2em">
+                <Typography variant="body2" color="textSecondary" gutterBottom>
+                  {translate('resources.library.fields.createdAt')}
+                </Typography>
+                <DateField variant="body1" source="createdAt" showTime />
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </SimpleForm>
     </Edit>
   )
 }

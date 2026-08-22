@@ -1,7 +1,7 @@
 import React from 'react'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { alpha } from '@mui/material/styles'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import {
   useDeleteWithConfirmController,

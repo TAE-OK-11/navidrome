@@ -7,9 +7,10 @@ import ListItemAvatar from '@mui/material/ListItemAvatar'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
-import { linkToRecord, sanitizeListRestProps } from 'react-admin'
+import { sanitizeListRestProps } from 'react-admin'
+import { linkToRecord } from '../utils/linkToRecord'
 
 const useStyles = makeStyles(
   {
@@ -51,18 +52,18 @@ export const SimpleList = ({
   className,
   classes: classesOverride,
   data,
-  hasBulkActions,
+  hasBulkActions = false,
   ids,
   loading,
   leftAvatar,
   leftIcon,
-  linkType,
+  linkType = 'edit',
   onToggleItem,
   primaryText,
   rightAvatar,
   rightIcon,
   secondaryText,
-  selectedIds,
+  selectedIds = [],
   tertiaryText,
   total,
   ...rest
@@ -138,10 +139,4 @@ SimpleList.propTypes = {
   secondaryText: PropTypes.func,
   selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
   tertiaryText: PropTypes.func,
-}
-
-SimpleList.defaultProps = {
-  linkType: 'edit',
-  hasBulkActions: false,
-  selectedIds: [],
 }

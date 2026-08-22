@@ -10,7 +10,7 @@ import {
   useRefresh,
   useTranslate,
 } from 'react-admin'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { useMediaQuery, Tooltip, Chip, Typography, Box } from '@mui/material'
 import { MdError, MdRefresh } from 'react-icons/md'
 import { List, DateField, SimpleList, useResourceRefresh } from '../common'

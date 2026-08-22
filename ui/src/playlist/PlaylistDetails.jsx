@@ -5,7 +5,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { useTranslate } from 'react-admin'
 import Lightbox from 'react-image-lightbox'
 import 'react-image-lightbox/style.css'

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useHistory } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Datagrid,
   DatagridBody,
@@ -17,7 +17,7 @@ import {
 import { useMediaQuery } from '@mui/material'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { useDrag } from 'react-dnd'
 import clsx from 'clsx'
 import {
@@ -37,9 +37,11 @@ import en from '../i18n/en.json'
 import { formatBytes } from '../utils/index.js'
 
 // FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => (props) => (
-  <WrappedComponent {...props} width="xs" />
-)
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 const useStyles = makeStyles({
   contextHeader: {
@@ -135,7 +137,7 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
   const { filterValues } = rest
   const classes = useStyles()
   const handleArtistLink = useGetHandleArtistClick(width)
-  const history = useHistory()
+  const navigate = useNavigate()
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   useResourceRefresh('artist')
 
@@ -173,7 +175,7 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
 
   return isXsmall ? (
     <ArtistSimpleList
-      linkType={(id) => history.push(handleArtistLink(id))}
+      linkType={(id) => navigate(handleArtistLink(id))}
       {...rest}
     />
   ) : (

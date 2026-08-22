@@ -1,5 +1,5 @@
 import { IconButton, Tooltip } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useTranslate, useNotify, useRefresh } from 'react-admin'

@@ -1,4 +1,4 @@
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 export const usePluginShowStyles = makeStyles(
   (theme) => ({

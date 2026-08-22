@@ -14,7 +14,7 @@ import {
 } from 'react-admin'
 import { TableCell, TableRow, Typography, useMediaQuery } from '@mui/material'
 import PropTypes from 'prop-types'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import AlbumIcon from '@mui/icons-material/Album'
 import clsx from 'clsx'
 import { useDrag } from 'react-dnd'
@@ -184,7 +184,7 @@ export const SongDatagridRow = ({
   children,
   firstTracksOfDiscs,
   contextAlwaysVisible,
-  onClickSubset,
+  onClickSubset = () => {},
   className,
   ...rest
 }) => {
@@ -260,10 +260,6 @@ SongDatagridRow.propTypes = {
   firstTracksOfDiscs: PropTypes.instanceOf(Set),
   contextAlwaysVisible: PropTypes.bool,
   onClickSubset: PropTypes.func,
-}
-
-SongDatagridRow.defaultProps = {
-  onClickSubset: () => {},
 }
 
 const SongDatagridBody = ({

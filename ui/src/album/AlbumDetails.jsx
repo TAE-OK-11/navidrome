@@ -7,7 +7,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import {
   ArrayField,
   ChipField,
@@ -36,9 +36,11 @@ import AlbumExternalLinks from './AlbumExternalLinks'
 import { SafeHTML } from '../common/SafeHTML'
 
 // FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => (props) => (
-  <WrappedComponent {...props} width="xs" />
-)
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 const useStyles = makeStyles(
   (theme) => ({

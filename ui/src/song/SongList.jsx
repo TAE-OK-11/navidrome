@@ -30,7 +30,7 @@ import {
   getStoredPerPage,
 } from '../common'
 import { useDispatch } from 'react-redux'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { setTrack } from '../actions'
 import { SongListActions } from './SongListActions'

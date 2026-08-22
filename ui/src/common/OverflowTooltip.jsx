@@ -2,7 +2,7 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { Tooltip } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { grey } from '@mui/material/colors'
 
 const useStyles = makeStyles(

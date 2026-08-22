@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, fireEvent, screen } from '@testing-library/react'
-import { TestContext } from 'ra-test'
+import { AdminContext as TestContext } from 'react-admin'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   ThemeProvider,

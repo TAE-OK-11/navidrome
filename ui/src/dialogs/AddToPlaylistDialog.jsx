@@ -13,7 +13,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import {
   closeAddToPlaylist,
   closeDuplicateSongDialog,

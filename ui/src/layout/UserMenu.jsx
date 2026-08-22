@@ -19,7 +19,7 @@ import {
   Divider,
   Typography,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import AccountCircle from '@mui/icons-material/AccountCircle'
 import config from '../config'
 import authProvider from '../authProvider'

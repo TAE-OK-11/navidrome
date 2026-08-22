@@ -2,7 +2,7 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import { useMediaQuery, CircularProgress } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import {
   Button,
   TopToolbar,
@@ -62,7 +62,7 @@ const LoadingButton = ({ loading, icon, ...rest }) => (
   </Button>
 )
 
-const ArtistActions = ({ className, record, ...rest }) => {
+const ArtistActions = ({ className = '', record, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const dataProvider = useDataProvider()
@@ -181,10 +181,6 @@ const ArtistActions = ({ className, record, ...rest }) => {
 ArtistActions.propTypes = {
   className: PropTypes.string,
   record: PropTypes.object.isRequired,
-}
-
-ArtistActions.defaultProps = {
-  className: '',
 }
 
 export default ArtistActions

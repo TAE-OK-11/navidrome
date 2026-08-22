@@ -5,7 +5,7 @@ import { RiPlayList2Fill, RiPlayListAddFill } from 'react-icons/ri'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { BatchPlayButton } from './index'
 import { AddToPlaylistButton } from './AddToPlaylistButton'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { BatchShareButton } from './BatchShareButton'
 import config from '../config'
 

@@ -1,5 +1,5 @@
 import { Avatar, useMediaQuery } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import React, { cloneElement } from 'react'
 import {
   CreateButton,

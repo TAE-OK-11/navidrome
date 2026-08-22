@@ -6,7 +6,7 @@ import { useDispatch } from 'react-redux'
 import { useDataProvider } from 'react-admin'
 import { playTracks } from '../actions'
 
-export const PlayButton = ({ record, size, className }) => {
+export const PlayButton = ({ record, size = 'small', className }) => {
   let extractSongsData = function (response) {
     const data = response.data.reduce(
       (acc, cur) => ({ ...acc, [cur.id]: cur }),
@@ -53,8 +53,4 @@ PlayButton.propTypes = {
   record: PropTypes.object.isRequired,
   size: PropTypes.string,
   className: PropTypes.string,
-}
-
-PlayButton.defaultProps = {
-  size: 'small',
 }

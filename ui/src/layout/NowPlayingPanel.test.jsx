@@ -46,14 +46,6 @@ vi.mock('@mui/material/useMediaQuery', () => ({
   default: () => mockUseMediaQuery(),
 }))
 
-vi.mock('@mui/material/styles/useTheme', () => ({
-  default: () => ({
-    breakpoints: {
-      down: () => '(max-width:959.95px)', // Mock breakpoint string
-    },
-  }),
-}))
-
 describe('<NowPlayingPanel />', () => {
   const createMockStore = (overrides = {}) => {
     const defaultState = {
@@ -75,7 +67,7 @@ describe('<NowPlayingPanel />', () => {
   })
 
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useRealTimers()
     vi.clearAllMocks()
     mockUseMediaQuery.mockReturnValue(false) // Default to large screen
 
@@ -110,8 +102,7 @@ describe('<NowPlayingPanel />', () => {
       </Provider>,
     )
 
-    // Advance past debounce and flush promises
-    await vi.advanceTimersByTimeAsync(500)
+    await waitFor(() => expect(subsonic.getNowPlaying).toHaveBeenCalled())
 
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => {
@@ -131,7 +122,7 @@ describe('<NowPlayingPanel />', () => {
       </Provider>,
     )
 
-    await vi.advanceTimersByTimeAsync(500)
+    await waitFor(() => expect(subsonic.getNowPlaying).toHaveBeenCalled())
 
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => {
@@ -168,7 +159,7 @@ describe('<NowPlayingPanel />', () => {
       </Provider>,
     )
 
-    await vi.advanceTimersByTimeAsync(500)
+    await waitFor(() => expect(subsonic.getNowPlaying).toHaveBeenCalled())
 
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => {
@@ -189,7 +180,7 @@ describe('<NowPlayingPanel />', () => {
       </Provider>,
     )
 
-    await vi.advanceTimersByTimeAsync(500)
+    await waitFor(() => expect(subsonic.getNowPlaying).toHaveBeenCalled())
 
     fireEvent.click(screen.getByRole('button'))
     await waitFor(() => {
@@ -207,7 +198,7 @@ describe('<NowPlayingPanel />', () => {
       </Provider>,
     )
 
-    await vi.advanceTimersByTimeAsync(500)
+    await waitFor(() => expect(subsonic.getNowPlaying).toHaveBeenCalled())
 
     // Open the panel
     fireEvent.click(screen.getByRole('button'))

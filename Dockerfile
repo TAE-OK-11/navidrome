@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM ghcr.io/crazy-max/osxcross:14.5-debian AS osxcros
 
 ########################################################################################################################
 ### Build xx (original image: tonistiigi/xx)
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/alpine:3.20 AS xx-build
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/alpine:3.24 AS xx-build
 
 # v1.9.0
 ENV XX_VERSION=a5592eab7a57895e8d385394ff12241bc65ecd50
@@ -28,7 +28,7 @@ COPY --from=xx-build /out/ /usr/bin/
 
 ########################################################################################################################
 ### Build Navidrome UI
-FROM --platform=$BUILDPLATFORM oven/bun:canary-alpine@sha256:25a7eb7173e57c7e4264a854552352e9bf1118c980f13e3457b3163f96df4714 AS ui
+FROM --platform=$BUILDPLATFORM oven/bun:canary-alpine@sha256:30cfdc4e436d66370920ae2b078e2e92efd9c3c5fddae69af5d928dc6ece04e8 AS ui
 WORKDIR /app
 
 # Install Bun dependencies
@@ -45,7 +45,7 @@ COPY --from=ui /app/build /build
 
 ########################################################################################################################
 ### Build Navidrome binary for Docker image (dynamic musl, enables native libwebp via dlopen)
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26.5-alpine AS build-alpine
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27.0-alpine AS build-alpine
 COPY --from=xx / /
 
 ARG TARGETPLATFORM
@@ -87,7 +87,7 @@ EOT
 
 ########################################################################################################################
 ### Build Navidrome binary for standalone distribution (static glibc, cross-compiled)
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26.5-trixie AS base
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27.0-trixie AS base
 RUN apt-get update && apt-get install -y clang lld
 COPY --from=xx / /
 WORKDIR /workspace
@@ -156,7 +156,7 @@ COPY --from=build /out /
 
 ########################################################################################################################
 ### Build Final Image
-FROM mirror.gcr.io/library/alpine:3.20 AS final
+FROM mirror.gcr.io/library/alpine:3.24 AS final
 LABEL maintainer="deluan@navidrome.org"
 LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
 

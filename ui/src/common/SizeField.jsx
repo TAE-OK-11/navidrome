@@ -2,7 +2,7 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { formatBytes } from '../utils'
 import { useRecordContext } from 'react-admin'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   root: {

@@ -22,7 +22,7 @@ import {
   SizeField,
 } from './index'
 import { MultiLineTextField } from './MultiLineTextField'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import config from '../config'
 import { AlbumLinkField } from '../song/AlbumLinkField'
 import { Tab, Tabs } from '@mui/material'

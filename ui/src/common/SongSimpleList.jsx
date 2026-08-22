@@ -5,7 +5,7 @@ import ListItem from '@mui/material/ListItem'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { sanitizeListRestProps } from 'react-admin'
 import { DurationField, SongContextMenu, RatingField } from './index'
 import { setTrack } from '../actions'
@@ -55,11 +55,11 @@ export const SongSimpleList = ({
   className,
   classes: classesOverride,
   data,
-  hasBulkActions,
+  hasBulkActions = false,
   ids,
   loading,
   onToggleItem,
-  selectedIds,
+  selectedIds = [],
   total,
   ...rest
 }) => {
@@ -124,9 +124,4 @@ SongSimpleList.propTypes = {
   ids: PropTypes.array,
   onToggleItem: PropTypes.func,
   selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
-}
-
-SongSimpleList.defaultProps = {
-  hasBulkActions: false,
-  selectedIds: [],
 }

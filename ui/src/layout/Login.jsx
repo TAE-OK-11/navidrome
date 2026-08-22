@@ -12,15 +12,10 @@ import {
   ThemeProvider,
   StyledEngineProvider,
   adaptV4Theme,
+  createTheme,
 } from '@mui/material/styles'
-import makeStyles from '@mui/styles/makeStyles'
-import {
-  createMuiTheme,
-  useLogin,
-  useNotify,
-  useTranslate,
-  useVersion,
-} from 'react-admin'
+import makeStyles from '../themes/makeStyles'
+import { useLogin, useNotify, useTranslate } from 'react-admin'
 import Logo from '../icons/android-icon-192x192.png'
 
 import Notification from './Notification'
@@ -409,15 +404,11 @@ Login.propTypes = {
 // the right theme
 const LoginWithTheme = (props) => {
   const theme = useCurrentTheme()
-  const version = useVersion()
-
   return (
     <StyledEngineProvider injectFirst>
-      (
-      <ThemeProvider theme={createMuiTheme(adaptV4Theme(theme))}>
-        <Login key={version} {...props} />
+      <ThemeProvider theme={createTheme(adaptV4Theme(theme))}>
+        <Login {...props} />
       </ThemeProvider>
-      )
     </StyledEngineProvider>
   )
 }

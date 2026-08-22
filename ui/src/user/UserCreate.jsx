@@ -8,7 +8,7 @@ import {
   required,
   SimpleForm,
   TextInput,
-  useMutation,
+  useDataProvider,
   useNotify,
   useRedirect,
   useTranslate,
@@ -19,7 +19,7 @@ import { LibrarySelectionField } from './LibrarySelectionField.jsx'
 
 const UserCreate = (props) => {
   const translate = useTranslate()
-  const [mutate] = useMutation()
+  const dataProvider = useDataProvider()
   const notify = useNotify()
   const redirect = useRedirect()
   const resourceName = translate('resources.user.name', { smart_count: 1 })
@@ -30,14 +30,7 @@ const UserCreate = (props) => {
   const save = useCallback(
     async (values) => {
       try {
-        await mutate(
-          {
-            type: 'create',
-            resource: 'user',
-            payload: { data: values },
-          },
-          { returnPromise: true },
-        )
+        await dataProvider.create('user', { data: values })
         notify('resources.user.notifications.created', 'info', {
           smart_count: 1,
         })
@@ -48,7 +41,7 @@ const UserCreate = (props) => {
         }
       }
     },
-    [mutate, notify, redirect],
+    [dataProvider, notify, redirect],
   )
 
   // Custom validation function

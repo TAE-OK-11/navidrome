@@ -1,6 +1,5 @@
 import * as React from 'react'
-import { TestContext } from 'ra-test'
-import { DataProviderContext } from 'react-admin'
+import { TestContext } from '../test/TestContext'
 import {
   cleanup,
   fireEvent,
@@ -43,31 +42,30 @@ const createTestComponent = (
   }
 
   return render(
-    <DataProviderContext.Provider value={dataProvider}>
-      <TestContext
-        initialState={{
-          admin: {
-            ui: { optimistic: false },
-            resources: {
-              playlist: {
-                data: indexedData,
-                list: {
-                  cachedRequests: {
-                    '{"pagination":{"page":1,"perPage":-1},"sort":{"field":"name","order":"ASC"},"filter":{"smart":false}}':
-                      {
-                        ids: Object.keys(indexedData),
-                        total: Object.keys(indexedData).length,
-                      },
-                  },
+    <TestContext
+      dataProvider={dataProvider}
+      initialState={{
+        admin: {
+          ui: { optimistic: false },
+          resources: {
+            playlist: {
+              data: indexedData,
+              list: {
+                cachedRequests: {
+                  '{"pagination":{"page":1,"perPage":-1},"sort":{"field":"name","order":"ASC"},"filter":{"smart":false}}':
+                    {
+                      ids: Object.keys(indexedData),
+                      total: Object.keys(indexedData).length,
+                    },
                 },
               },
             },
           },
-        }}
-      >
-        <SelectPlaylistInput onChange={onChangeMock} />
-      </TestContext>
-    </DataProviderContext.Provider>,
+        },
+      }}
+    >
+      <SelectPlaylistInput onChange={onChangeMock} />
+    </TestContext>,
   )
 }
 

@@ -10,7 +10,7 @@ import {
 } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { useDrag } from 'react-dnd'
 import {
   ArtistLinkField,

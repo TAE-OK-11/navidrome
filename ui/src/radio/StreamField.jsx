@@ -1,5 +1,5 @@
 import { Button } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import PropTypes from 'prop-types'
 import React, { useCallback } from 'react'
 import { useRecordContext } from 'react-admin'

@@ -6,7 +6,7 @@ import {
   useShowController,
   Title as RaTitle,
 } from 'react-admin'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import AlbumSongs from './AlbumSongs'
 import AlbumDetails from './AlbumDetails'
 import AlbumActions from './AlbumActions'

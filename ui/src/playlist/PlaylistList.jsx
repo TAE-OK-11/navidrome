@@ -17,7 +17,7 @@ import {
   usePermissions,
 } from 'react-admin'
 import Switch from '@mui/material/Switch'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { useMediaQuery } from '@mui/material'
 import {
   CoverArtAvatar,

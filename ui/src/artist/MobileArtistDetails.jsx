@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Typography, Collapse } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import Card from '@mui/material/Card'
 import CardMedia from '@mui/material/CardMedia'
 import config from '../config'

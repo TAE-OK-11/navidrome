@@ -13,8 +13,8 @@ export const SongListActions = ({
   permanentFilter,
   exporter,
   basePath,
-  selectedIds,
-  onUnselectItems,
+  selectedIds = [],
+  onUnselectItems = () => null,
   showFilter,
   maxResults,
   total,
@@ -36,9 +36,4 @@ export const SongListActions = ({
       {isNotSmall && <ToggleFieldsMenu resource="song" />}
     </TopToolbar>
   )
-}
-
-SongListActions.defaultProps = {
-  selectedIds: [],
-  onUnselectItems: () => null,
 }

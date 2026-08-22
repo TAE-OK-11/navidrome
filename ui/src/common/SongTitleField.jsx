@@ -1,4 +1,4 @@
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import React from 'react'
 import PropTypes from 'prop-types'
 import { useSelector } from 'react-redux'
@@ -26,10 +26,13 @@ const useStyles = makeStyles({
   },
 })
 
-export const SongTitleField = ({ showTrackNumbers, ...props }) => {
+export const SongTitleField = ({
+  showTrackNumbers = false,
+  record = {},
+  ...props
+}) => {
   const theme = useTheme()
   const classes = useStyles()
-  const { record } = props
   const currentTrack = useSelector((state) => state?.player?.current || {})
   const currentId = currentTrack.trackId
   const paused = currentTrack.paused
@@ -86,9 +89,4 @@ export const SongTitleField = ({ showTrackNumbers, ...props }) => {
 SongTitleField.propTypes = {
   record: PropTypes.object,
   showTrackNumbers: PropTypes.bool,
-}
-
-SongTitleField.defaultProps = {
-  record: {},
-  showTrackNumbers: false,
 }

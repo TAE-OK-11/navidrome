@@ -8,7 +8,7 @@ import {
   useDataProvider,
 } from 'react-admin'
 import { IconButton, Menu, MenuItem } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
 import clsx from 'clsx'
@@ -53,10 +53,10 @@ const MoreButton = ({ record, onClick, info }) => {
 }
 
 export const SongContextMenu = ({
-  resource,
-  record,
-  showLove,
-  onAddToPlaylist,
+  resource = 'song',
+  record = {},
+  showLove = true,
+  onAddToPlaylist = () => {},
   className,
 }) => {
   const classes = useStyles()
@@ -265,6 +265,11 @@ export const SongContextMenu = ({
                     ? (e) => e.stopPropagation()
                     : handleItemClick
                 }
+                onClickCapture={
+                  showInPlaylistDisabled
+                    ? (e) => e.stopPropagation()
+                    : undefined
+                }
                 disabled={showInPlaylistDisabled}
                 style={
                   showInPlaylistDisabled ? { pointerEvents: 'auto' } : undefined
@@ -304,12 +309,4 @@ SongContextMenu.propTypes = {
   record: PropTypes.object.isRequired,
   onAddToPlaylist: PropTypes.func,
   showLove: PropTypes.bool,
-}
-
-SongContextMenu.defaultProps = {
-  onAddToPlaylist: () => {},
-  record: {},
-  resource: 'song',
-  showLove: true,
-  addLabel: true,
 }

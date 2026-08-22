@@ -8,7 +8,7 @@ import { RiSaveLine } from 'react-icons/ri'
 import { LoveButton, useToggleLove } from '../common'
 import { openSaveQueueDialog } from '../actions'
 import { keyMap } from '../hotkeys'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   toolbar: {

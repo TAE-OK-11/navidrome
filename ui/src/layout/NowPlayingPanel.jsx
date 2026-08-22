@@ -17,7 +17,7 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { FaRegCirclePlay, FaPause } from 'react-icons/fa6'
 import subsonic from '../subsonic'
 import { useInterval } from '../common'

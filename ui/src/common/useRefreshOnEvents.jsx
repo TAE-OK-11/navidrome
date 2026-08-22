@@ -69,12 +69,10 @@ import { useSelector } from 'react-redux'
 export const useRefreshOnEvents = ({ events, onRefresh }) => {
   const [lastRefreshTime, setLastRefreshTime] = useState(Date.now())
 
-  const refreshData = useSelector(
-    (state) => state.activity?.refresh || { lastReceived: lastRefreshTime },
-  )
+  const refreshData = useSelector((state) => state.activity?.refresh)
 
   useEffect(() => {
-    const { resources, lastReceived } = refreshData
+    const { resources, lastReceived = lastRefreshTime } = refreshData || {}
 
     // Only process if we have new events
     if (lastReceived <= lastRefreshTime) {

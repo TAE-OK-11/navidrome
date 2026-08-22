@@ -13,7 +13,7 @@ import {
   Paper,
   Popper,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { ExpandMore, ExpandLess, LibraryMusic } from '@mui/icons-material'
 import { setSelectedLibraries, setUserLibraries } from '../actions'
 import { useRefreshOnEvents } from './useRefreshOnEvents'

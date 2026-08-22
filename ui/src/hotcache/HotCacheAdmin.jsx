@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Redirect } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Title, useNotify, usePermissions, useTranslate } from 'react-admin'
 import {
   Box,
@@ -23,7 +23,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import PauseIcon from '@mui/icons-material/Pause'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -349,7 +349,7 @@ const HotCacheAdmin = () => {
   }, [loadCandidates, loadDashboard, notify, selectedCandidates, t])
 
   if (loading) return <LinearProgress />
-  if (permissions !== 'admin') return <Redirect to="/" />
+  if (permissions !== 'admin') return <Navigate to="/" replace />
   const status = dashboard.status || {}
   const metrics = [
     [

@@ -6,7 +6,7 @@ import { ImLastfm2 } from 'react-icons/im'
 import MusicBrainz from '../icons/MusicBrainz'
 import { intersperse, isLastFmURL } from '../utils'
 import config from '../config'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles({
   linkBar: {

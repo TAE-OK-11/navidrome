@@ -1,15 +1,14 @@
 import React, { Fragment } from 'react'
-import { useDispatch } from 'react-redux'
 import ExpandMore from '@mui/icons-material/ExpandMore'
 import ArrowRightOutlined from '@mui/icons-material/ArrowRightOutlined'
 import List from '@mui/material/List'
-import MenuItem from '@mui/material/MenuItem'
+import ListItemButton from '@mui/material/ListItemButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import Typography from '@mui/material/Typography'
 import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
-import makeStyles from '@mui/styles/makeStyles'
-import { setSidebarVisibility, useTranslate } from 'react-admin'
+import makeStyles from '../themes/makeStyles'
+import { useSidebarState, useTranslate } from 'react-admin'
 import { IconButton, useMediaQuery } from '@mui/material'
 
 const useStyles = makeStyles(
@@ -57,7 +56,7 @@ const SubMenu = ({
   children,
   dense,
   onAction,
-  actionIcon,
+  actionIcon = <ArrowRightOutlined fontSize={'small'} />,
   onSecondaryAction,
   secondaryActionIcon,
   secondaryActionTitle,
@@ -67,13 +66,13 @@ const SubMenu = ({
   const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'))
   const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))
-  const dispatch = useDispatch()
+  const [, setSidebarOpen] = useSidebarState()
 
   const handleOnClick = (e) => {
     e.stopPropagation()
     onAction(e)
     if (isSmall) {
-      dispatch(setSidebarVisibility(false))
+      setSidebarOpen(false)
     }
   }
 
@@ -84,9 +83,8 @@ const SubMenu = ({
 
   const header = (
     <div className={classes.headerWrapper}>
-      <MenuItem
+      <ListItemButton
         dense={dense}
-        button
         className={classes.menuHeader}
         onClick={handleToggle}
       >
@@ -122,7 +120,7 @@ const SubMenu = ({
             {actionIcon}
           </IconButton>
         )}
-      </MenuItem>
+      </ListItemButton>
     </div>
   )
 
@@ -149,11 +147,6 @@ const SubMenu = ({
       </Collapse>
     </Fragment>
   )
-}
-
-SubMenu.defaultProps = {
-  action: null,
-  actionIcon: <ArrowRightOutlined fontSize={'small'} />,
 }
 
 export default SubMenu

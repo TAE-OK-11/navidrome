@@ -1,6 +1,6 @@
 import { cloneElement } from 'react'
 import { useSelector } from 'react-redux'
-import { Redirect, useLocation } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import {
   AutocompleteArrayInput,
   AutocompleteInput,
@@ -14,7 +14,6 @@ import {
   usePermissions,
   useRefresh,
   useTranslate,
-  useVersion,
 } from 'react-admin'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import {
@@ -38,12 +37,14 @@ import config from '../config'
 import AlbumInfo from './AlbumInfo'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { humanize } from 'inflection'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 // FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => (props) => (
-  <WrappedComponent {...props} width="xs" />
-)
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
 const ScrollRestorer = ({ children, ...rest }) => {
@@ -205,11 +206,13 @@ const AlbumList = (props) => {
   const albumView = useSelector((state) => state.albumView)
   const [perPage, perPageOptions] = useAlbumsPerPage(width)
   const location = useLocation()
-  const version = useVersion()
+  const refreshVersion = useSelector(
+    (state) => state.activity?.refresh?.lastReceived || 0,
+  )
   const refresh = useRefresh()
   useResourceRefresh('album')
 
-  const seed = `${randomStartingSeed}-${version}`
+  const seed = `${randomStartingSeed}-${refreshVersion}`
 
   const albumListType = location.pathname
     .replace(/^\/album/, '')
@@ -239,14 +242,14 @@ const AlbumList = (props) => {
   if (!location.search) {
     const type = albumListType || getStoredDefaultView()
     if (isResourceDefaultView(type)) {
-      return <Redirect to={`/${type}`} />
+      return <Navigate to={`/${type}`} replace />
     }
     const listParams = albumLists[type]
     if (type === 'random') {
       refresh()
     }
     if (listParams) {
-      return <Redirect to={`/album/${type}?${listParams.params}`} />
+      return <Navigate to={`/album/${type}?${listParams.params}`} replace />
     }
   }
 

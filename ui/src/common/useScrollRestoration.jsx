@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { useHistory, useLocation } from 'react-router-dom'
+import { useLocation, useNavigationType } from 'react-router-dom'
 
 // Keyed on the route because hash history assigns no location.key, so every page would
 // otherwise share one slot and overwrite the offset we came back for.
@@ -9,7 +9,7 @@ const MAX_FRAMES = 60
 
 export const useScrollRestoration = (ready = true) => {
   const { pathname, search } = useLocation()
-  const history = useHistory()
+  const navigationType = useNavigationType()
   const key = pathname + search
   const handled = useRef(null)
   const latest = useRef(0)
@@ -42,7 +42,7 @@ export const useScrollRestoration = (ready = true) => {
     if (!ready || handled.current === key) return
     handled.current = key
     const saved = positions.get(key)
-    const top = history.action === 'POP' && saved !== undefined ? saved : 0
+    const top = navigationType === 'POP' && saved !== undefined ? saved : 0
     window.scrollTo({ top })
     if (!top || Math.round(window.scrollY) === top) return
 
@@ -60,5 +60,5 @@ export const useScrollRestoration = (ready = true) => {
     }
     frame = requestAnimationFrame(retry)
     return () => cancelAnimationFrame(frame)
-  }, [ready, key, history.action])
+  }, [ready, key, navigationType])
 }

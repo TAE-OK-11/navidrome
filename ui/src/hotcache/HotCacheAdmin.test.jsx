@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import HotCacheAdmin from './HotCacheAdmin'
 
@@ -44,12 +44,10 @@ describe('HotCacheAdmin authorization', () => {
   it('redirects non-administrators', () => {
     render(
       <MemoryRouter initialEntries={['/admin/hot-cache']}>
-        <Route exact path="/admin/hot-cache">
-          <HotCacheAdmin />
-        </Route>
-        <Route exact path="/">
-          <div>library-home</div>
-        </Route>
+        <Routes>
+          <Route path="/admin/hot-cache" element={<HotCacheAdmin />} />
+          <Route path="/" element={<div>library-home</div>} />
+        </Routes>
       </MemoryRouter>,
     )
     expect(screen.getByText('library-home')).toBeInTheDocument()
@@ -59,9 +57,9 @@ describe('HotCacheAdmin authorization', () => {
     usePermissions.mockReturnValue({ permissions: 'admin', loading: false })
     render(
       <MemoryRouter initialEntries={['/admin/hot-cache']}>
-        <Route exact path="/admin/hot-cache">
-          <HotCacheAdmin />
-        </Route>
+        <Routes>
+          <Route path="/admin/hot-cache" element={<HotCacheAdmin />} />
+        </Routes>
       </MemoryRouter>,
     )
     await waitFor(() =>

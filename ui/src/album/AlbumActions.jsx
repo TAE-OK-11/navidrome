@@ -9,7 +9,7 @@ import {
   useTranslate,
 } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ShuffleIcon from '@mui/icons-material/Shuffle'
 import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
@@ -47,7 +47,7 @@ const AlbumActions = ({
   className,
   ids,
   data,
-  record,
+  record = {},
   permanentFilter,
   ...rest
 }) => {
@@ -149,11 +149,6 @@ const AlbumActions = ({
 AlbumActions.propTypes = {
   record: PropTypes.object.isRequired,
   selectedIds: PropTypes.arrayOf(PropTypes.number),
-}
-
-AlbumActions.defaultProps = {
-  record: {},
-  selectedIds: [],
 }
 
 export default AlbumActions

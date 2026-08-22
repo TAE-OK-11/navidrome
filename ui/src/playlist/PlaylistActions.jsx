@@ -9,7 +9,7 @@ import {
   useNotify,
 } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ShuffleIcon from '@mui/icons-material/Shuffle'
 import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
@@ -36,7 +36,7 @@ const useStyles = makeStyles({
   toolbar: { display: 'flex', justifyContent: 'space-between', width: '100%' },
 })
 
-const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
+const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const classes = useStyles()
@@ -172,12 +172,6 @@ const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
 PlaylistActions.propTypes = {
   record: PropTypes.object.isRequired,
   selectedIds: PropTypes.arrayOf(PropTypes.number),
-}
-
-PlaylistActions.defaultProps = {
-  record: {},
-  selectedIds: [],
-  onUnselectItems: () => null,
 }
 
 export default PlaylistActions

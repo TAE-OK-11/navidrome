@@ -26,7 +26,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import merge from 'lodash/merge'
 
 const useStyles = makeStyles(

@@ -6,7 +6,7 @@ import {
   useSetLocale,
   useSidebarState,
 } from 'react-admin'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { HotKeys } from 'react-hotkeys'
 import Menu from './Menu'
 import AppBar from './AppBar'

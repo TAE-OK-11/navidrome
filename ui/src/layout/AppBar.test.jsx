@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, beforeEach, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { createStore, combineReducers } from 'redux'
+import MenuList from '@mui/material/MenuList'
 import { activityReducer } from '../reducers'
 import AppBar from './AppBar'
 import config from '../config'
@@ -13,7 +14,8 @@ vi.mock('react-admin', () => ({
   AppBar: ({ userMenu }) => <div data-testid="appbar">{userMenu}</div>,
   useTranslate: () => (x) => x,
   usePermissions: () => ({ permissions: 'admin' }),
-  getResources: () => [],
+  useResourceDefinitions: () => ({}),
+  useLogout: () => vi.fn(),
 }))
 
 vi.mock('./NowPlayingPanel', () => ({
@@ -26,7 +28,7 @@ vi.mock('./PersonalMenu', () => ({
   default: () => <div />,
 }))
 vi.mock('./UserMenu', () => ({
-  default: ({ children }) => <div>{children}</div>,
+  default: ({ children }) => <MenuList>{children}</MenuList>,
 }))
 vi.mock('../dialogs/Dialogs', () => ({
   Dialogs: () => <div />,

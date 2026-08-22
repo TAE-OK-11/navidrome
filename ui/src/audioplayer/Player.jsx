@@ -2,13 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInterval } from '../common'
 import { useDispatch, useSelector } from 'react-redux'
 import { useMediaQuery, adaptV4Theme } from '@mui/material'
-import { ThemeProvider, StyledEngineProvider } from '@mui/material/styles'
 import {
-  createMuiTheme,
-  useAuthState,
-  useDataProvider,
-  useTranslate,
-} from 'react-admin'
+  createTheme,
+  ThemeProvider,
+  StyledEngineProvider,
+} from '@mui/material/styles'
+import { useAuthState, useDataProvider, useTranslate } from 'react-admin'
 import ReactGA from 'react-ga'
 import { GlobalHotKeys } from 'react-hotkeys'
 import ReactJkMusicPlayer from 'navidrome-music-player'
@@ -43,7 +42,7 @@ const isMobileUserAgent =
 
 const Player = () => {
   const theme = useCurrentTheme()
-  const muiTheme = useMemo(() => createMuiTheme(adaptV4Theme(theme)), [theme])
+  const muiTheme = useMemo(() => createTheme(adaptV4Theme(theme)), [theme])
   const translate = useTranslate()
   const playerTheme = theme.player?.theme || 'dark'
   const dataProvider = useDataProvider()

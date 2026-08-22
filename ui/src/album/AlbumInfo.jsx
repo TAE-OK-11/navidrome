@@ -15,7 +15,7 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import {
   ArtistLinkField,
   MultiLineTextField,

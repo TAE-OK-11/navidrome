@@ -13,7 +13,7 @@ import {
   Box,
   Typography,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { FiActivity } from 'react-icons/fi'
 import { BiError, BiMessageError } from 'react-icons/bi'
 import { VscSync } from 'react-icons/vsc'

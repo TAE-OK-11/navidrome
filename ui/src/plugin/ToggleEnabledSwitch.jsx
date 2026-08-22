@@ -8,7 +8,7 @@ import {
   useResourceContext,
 } from 'react-admin'
 import Switch from '@mui/material/Switch'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { Tooltip, FormControlLabel } from '@mui/material'
 import PropTypes from 'prop-types'
 

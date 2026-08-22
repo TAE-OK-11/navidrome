@@ -1,4 +1,4 @@
-import withStyles from '@mui/styles/withStyles'
+import withStyles from '../themes/withStyles'
 import MuiDialogTitle from '@mui/material/DialogTitle'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'

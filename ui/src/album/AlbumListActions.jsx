@@ -6,7 +6,7 @@ import {
   useTranslate,
 } from 'react-admin'
 import { ButtonGroup, useMediaQuery, Typography } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import ViewHeadlineIcon from '@mui/icons-material/ViewHeadline'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useDispatch, useSelector } from 'react-redux'
@@ -75,8 +75,8 @@ const AlbumListActions = ({
   permanentFilter,
   exporter,
   basePath,
-  selectedIds,
-  onUnselectItems,
+  selectedIds = [],
+  onUnselectItems = () => null,
   showFilter,
   maxResults,
   total,
@@ -106,11 +106,6 @@ const AlbumListActions = ({
       )}
     </TopToolbar>
   )
-}
-
-AlbumListActions.defaultProps = {
-  selectedIds: [],
-  onUnselectItems: () => null,
 }
 
 export default AlbumListActions

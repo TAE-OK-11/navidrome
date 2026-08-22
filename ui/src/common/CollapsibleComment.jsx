@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Typography, Collapse } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import AnchorMe from './Linkify'
 import clsx from 'clsx'
 

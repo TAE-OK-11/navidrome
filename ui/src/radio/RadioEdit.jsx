@@ -7,7 +7,7 @@ import {
   useTranslate,
 } from 'react-admin'
 import { CardMedia } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { urlValidate } from '../utils/validations'
 import { Title, ImageUploadOverlay, useImageLoadingState } from '../common'
 import subsonic from '../subsonic'

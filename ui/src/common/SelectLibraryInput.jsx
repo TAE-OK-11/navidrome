@@ -12,7 +12,7 @@ import {
 } from '@mui/material'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   root: {

@@ -1,7 +1,7 @@
 import React, { forwardRef } from 'react'
 import { MenuItemLink, useTranslate } from 'react-admin'
 import { MdTune } from 'react-icons/md'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 
 const useStyles = makeStyles((theme) => ({
   menuItem: {

@@ -6,7 +6,7 @@ import ListItemAvatar from '@mui/material/ListItemAvatar'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { sanitizeListRestProps } from 'react-admin'
 import { ArtistContextMenu, CoverArtAvatar, RatingField } from '../common'
 import config from '../config'
@@ -32,10 +32,10 @@ const ArtistSimpleList = ({
   className,
   classes: classesOverride,
   data,
-  hasBulkActions,
+  hasBulkActions = false,
   ids,
   loading,
-  selectedIds,
+  selectedIds = [],
   total,
   ...rest
 }) => {
@@ -88,11 +88,6 @@ ArtistSimpleList.propTypes = {
   hasBulkActions: PropTypes.bool.isRequired,
   ids: PropTypes.array,
   selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
-}
-
-ArtistSimpleList.defaultProps = {
-  hasBulkActions: false,
-  selectedIds: [],
 }
 
 export default ArtistSimpleList

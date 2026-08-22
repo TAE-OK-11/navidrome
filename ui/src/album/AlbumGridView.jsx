@@ -6,9 +6,10 @@ import {
   ImageListItemBar,
   useMediaQuery,
 } from '@mui/material'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
-import { linkToRecord, useListContext, Loading } from 'react-admin'
+import { useListContext, Loading } from 'react-admin'
+import { linkToRecord } from '../utils/linkToRecord'
 import { withContentRect } from 'react-measure'
 import { useDrag } from 'react-dnd'
 import subsonic from '../subsonic'
@@ -25,9 +26,11 @@ import clsx from 'clsx'
 import { AlbumDatesField } from './AlbumDatesField.jsx'
 
 // FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => (props) => (
-  <WrappedComponent {...props} width="xs" />
-)
+const withWidth = () => (WrappedComponent) => {
+  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
+  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
+  return WithWidth
+}
 
 const useStyles = makeStyles(
   (theme) => ({

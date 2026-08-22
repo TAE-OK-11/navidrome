@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import makeStyles from '@mui/styles/makeStyles'
+import makeStyles from '../themes/makeStyles'
 import {
   TextInput,
   BooleanInput,
@@ -12,7 +12,7 @@ import {
   useTranslate,
   Toolbar,
   SaveButton,
-  useMutation,
+  useDataProvider,
   useNotify,
   useRedirect,
   useRefresh,
@@ -68,7 +68,7 @@ const NewPasswordInput = ({ formData, ...rest }) => {
 const UserEdit = (props) => {
   const { permissions } = props
   const translate = useTranslate()
-  const [mutate] = useMutation()
+  const dataProvider = useDataProvider()
   const notify = useNotify()
   const redirect = useRedirect()
   const refresh = useRefresh()
@@ -83,14 +83,11 @@ const UserEdit = (props) => {
   const save = useCallback(
     async (values) => {
       try {
-        await mutate(
-          {
-            type: 'update',
-            resource: 'user',
-            payload: { id: values.id, data: values },
-          },
-          { returnPromise: true },
-        )
+        await dataProvider.update('user', {
+          id: values.id,
+          data: values,
+          previousData: values,
+        })
         notify('resources.user.notifications.updated', 'info', {
           smart_count: 1,
         })
@@ -102,7 +99,7 @@ const UserEdit = (props) => {
         notify('ra.page.error', 'warning')
       }
     },
-    [mutate, notify, permissions, redirect, refresh],
+    [dataProvider, notify, permissions, redirect, refresh],
   )
 
   // Custom validation function

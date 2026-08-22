@@ -10,7 +10,6 @@ import makeStyles from '../themes/makeStyles'
 import { Link } from 'react-router-dom'
 import { useListContext, Loading } from 'react-admin'
 import { linkToRecord } from '../utils/linkToRecord'
-import { withContentRect } from 'react-measure'
 import { useDrag } from 'react-dnd'
 import subsonic from '../subsonic'
 import {
@@ -105,14 +104,18 @@ const useStyles = makeStyles(
 const useCoverStyles = makeStyles({
   coverContainer: {
     width: '100%',
-    aspectRatio: '1',
+    aspectRatio: '1 / 1',
     overflow: 'hidden',
   },
-  cover: {
-    display: 'inline-block',
+  coverContent: {
     width: '100%',
+    height: '100%',
+  },
+  cover: {
+    display: 'block',
+    width: '100%',
+    height: '100%',
     objectFit: 'contain',
-    height: (props) => props.height,
     transition: 'opacity 0.3s ease-in-out',
   },
   coverLoading: {
@@ -128,14 +131,8 @@ const getColsForWidth = (width) => {
   return 9
 }
 
-const Cover = withContentRect('bounds')(({
-  record,
-  measureRef,
-  contentRect,
-}) => {
-  // Force height to be the same as the width determined by the ImageList
-  // noinspection JSSuspiciousNameCombination
-  const classes = useCoverStyles({ height: contentRect.bounds.width })
+const Cover = ({ record }) => {
+  const classes = useCoverStyles()
   const [, dragAlbumRef] = useDrag(
     () => ({
       type: DraggableTypes.ALBUM,
@@ -149,8 +146,8 @@ const Cover = withContentRect('bounds')(({
   const { imgUrl, loading: imageLoading } = useImageUrl(url)
 
   return (
-    <div ref={measureRef} className={classes.coverContainer}>
-      <div ref={dragAlbumRef}>
+    <div className={classes.coverContainer}>
+      <div ref={dragAlbumRef} className={classes.coverContent}>
         <img
           src={imgUrl || undefined}
           alt={record.name}
@@ -159,7 +156,7 @@ const Cover = withContentRect('bounds')(({
       </div>
     </div>
   )
-})
+}
 
 const AlbumGridTile = ({ showArtist, record, basePath, ...props }) => {
   const classes = useStyles()
@@ -226,9 +223,9 @@ const LoadedAlbumGrid = ({ records, basePath = '/album', width }) => {
     <div className={classes.root}>
       <ImageList
         component={'div'}
-        cellHeight={'auto'}
+        rowHeight={'auto'}
         cols={getColsForWidth(width)}
-        spacing={20}
+        gap={20}
       >
         {records.map((record) => (
           <ImageListItem className={classes.gridListTile} key={record.id}>

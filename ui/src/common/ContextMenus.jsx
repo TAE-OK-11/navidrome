@@ -7,7 +7,12 @@ import MenuItem from '@mui/material/MenuItem'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
 import makeStyles from '../themes/makeStyles'
-import { useDataProvider, useNotify, useTranslate } from 'react-admin'
+import {
+  useDataProvider,
+  useNotify,
+  useRecordContext,
+  useTranslate,
+} from 'react-admin'
 import clsx from 'clsx'
 import {
   playNext,
@@ -162,7 +167,7 @@ const ContextMenu = ({
 
   const handleItemClick = (e) => {
     setAnchorEl(null)
-    const key = e.target.getAttribute('value')
+    const key = e.currentTarget.dataset.action
     if (options[key].needData) {
       dataProvider
         .getList('song', songQueryParams)
@@ -215,7 +220,7 @@ const ContextMenu = ({
         {Object.keys(options).map(
           (key) =>
             options[key].enabled && (
-              <MenuItem value={key} key={key} onClick={handleItemClick}>
+              <MenuItem data-action={key} key={key} onClick={handleItemClick}>
                 {options[key].label}
               </MenuItem>
             ),
@@ -225,23 +230,30 @@ const ContextMenu = ({
   )
 }
 
-export const AlbumContextMenu = ({ showLove = true, ...props }) =>
-  props.record ? (
+export const AlbumContextMenu = ({
+  showLove = true,
+  record: recordOverride,
+  ...props
+}) => {
+  const record = useRecordContext({ record: recordOverride })
+  return record ? (
     <ContextMenu
       {...props}
+      record={record}
       showLove={showLove}
       resource={'album'}
       songQueryParams={{
         pagination: { page: 1, perPage: -1 },
         sort: { field: 'album', order: 'ASC' },
         filter: {
-          album_id: props.record.id,
+          album_id: record.id,
           disc_number: props.discNumber,
           missing: false,
         },
       }}
     />
   ) : null
+}
 
 AlbumContextMenu.propTypes = {
   record: PropTypes.object,
@@ -250,10 +262,16 @@ AlbumContextMenu.propTypes = {
   showLove: PropTypes.bool,
 }
 
-export const ArtistContextMenu = ({ showLove = true, ...props }) =>
-  props.record ? (
+export const ArtistContextMenu = ({
+  showLove = true,
+  record: recordOverride,
+  ...props
+}) => {
+  const record = useRecordContext({ record: recordOverride })
+  return record ? (
     <ContextMenu
       {...props}
+      record={record}
       showLove={showLove}
       hideInfo={true}
       resource={'artist'}
@@ -263,10 +281,11 @@ export const ArtistContextMenu = ({ showLove = true, ...props }) =>
           field: 'album',
           order: 'ASC',
         },
-        filter: { album_artist_id: props.record.id, missing: false },
+        filter: { album_artist_id: record.id, missing: false },
       }}
     />
   ) : null
+}
 
 ArtistContextMenu.propTypes = {
   record: PropTypes.object,

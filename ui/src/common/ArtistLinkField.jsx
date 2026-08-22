@@ -1,6 +1,6 @@
 import React from 'react'
 import PropTypes from 'prop-types'
-import { Link } from 'react-admin'
+import { Link, useRecordContext } from 'react-admin'
 import { useGetHandleArtistClick } from './useGetHandleArtistClick'
 import { intersperse } from '../utils/index.js'
 import { useDispatch } from 'react-redux'
@@ -71,11 +71,12 @@ const parseAndReplaceArtists = (
 }
 
 export const ArtistLinkField = ({
-  record,
+  record: recordOverride,
   className,
   limit = 3,
   source = 'albumArtist',
 }) => {
+  const record = useRecordContext({ record: recordOverride }) || {}
   const role = source.toLowerCase()
 
   // Get artists array with fallback

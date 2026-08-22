@@ -14,6 +14,7 @@ import {
   TopToolbar,
   UrlField,
   useTranslate,
+  useRecordContext,
 } from 'react-admin'
 import {
   List,
@@ -84,7 +85,8 @@ const RadioListActions = ({
 
 const avatarStyle = { width: 40, height: 40 }
 
-const CoverArtField = ({ record }) => {
+const CoverArtField = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const directUrl = record?.uploadedImage
     ? subsonic.getCoverArtUrl(record, 40, true)
     : null

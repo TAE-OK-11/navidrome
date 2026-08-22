@@ -1,9 +1,15 @@
 import React from 'react'
-import { Show, SimpleShowLayout, TextField } from 'react-admin'
+import {
+  Show,
+  SimpleShowLayout,
+  TextField,
+  useRecordContext,
+} from 'react-admin'
 import { Title } from '../common'
 import { TranscodingNote } from './TranscodingNote'
 
-const TranscodingTitle = ({ record }) => {
+const TranscodingTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   return <Title subTitle={`Transcoding ${record ? record.name : ''}`} />
 }
 

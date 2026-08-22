@@ -3,10 +3,15 @@ import PropTypes from 'prop-types'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { IconButton } from '@mui/material'
 import { useDispatch } from 'react-redux'
-import { useDataProvider } from 'react-admin'
+import { useDataProvider, useRecordContext } from 'react-admin'
 import { playTracks } from '../actions'
 
-export const PlayButton = ({ record, size = 'small', className }) => {
+export const PlayButton = ({
+  record: recordOverride,
+  size = 'small',
+  className,
+}) => {
+  const record = useRecordContext({ record: recordOverride })
   let extractSongsData = function (response) {
     const data = response.data.reduce(
       (acc, cur) => ({ ...acc, [cur.id]: cur }),
@@ -43,6 +48,7 @@ export const PlayButton = ({ record, size = 'small', className }) => {
       aria-label="play"
       className={className}
       size={size}
+      disabled={!record?.id}
     >
       <PlayArrowIcon fontSize={size} />
     </IconButton>

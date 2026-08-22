@@ -4,6 +4,8 @@ import { useToggleLove } from './useToggleLove'
 import subsonic from '../subsonic'
 import { useDataProvider } from 'react-admin'
 
+const refresh = vi.fn()
+
 vi.mock('../subsonic', () => ({
   default: {
     star: vi.fn(() => Promise.resolve()),
@@ -17,6 +19,7 @@ vi.mock('react-admin', async () => {
     ...actual,
     useDataProvider: vi.fn(),
     useNotify: vi.fn(() => vi.fn()),
+    useRefresh: vi.fn(() => refresh),
   }
 })
 
@@ -25,6 +28,7 @@ describe('useToggleLove', () => {
   beforeEach(() => {
     getOne = vi.fn(() => Promise.resolve())
     useDataProvider.mockReturnValue({ getOne })
+    refresh.mockClear()
     vi.clearAllMocks()
   })
 
@@ -36,6 +40,7 @@ describe('useToggleLove', () => {
     })
     expect(subsonic.star).toHaveBeenCalledWith('sg-1')
     expect(getOne).toHaveBeenCalledWith('song', { id: 'sg-1' })
+    expect(refresh).toHaveBeenCalled()
   })
 
   it('falls back to id when mediaFileId not present', async () => {

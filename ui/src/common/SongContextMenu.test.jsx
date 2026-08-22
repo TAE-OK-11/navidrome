@@ -69,12 +69,10 @@ describe('SongContextMenu', () => {
       </TestContext>,
     )
     fireEvent.click(screen.getAllByRole('button')[1])
-    await waitFor(() =>
-      screen.getByText(/resources\.song\.actions\.showInPlaylist/),
+    const showInPlaylist = await screen.findByText(
+      /resources\.song\.actions\.showInPlaylist ►/,
     )
-    fireEvent.click(
-      screen.getByText(/resources\.song\.actions\.showInPlaylist/),
-    )
+    fireEvent.click(showInPlaylist)
     await waitFor(() => screen.getByText('Pl 1'))
     fireEvent.click(screen.getByText('Pl 1'))
     expect(window.location.hash).toBe('#/playlist/pl1/show')
@@ -92,14 +90,12 @@ describe('SongContextMenu', () => {
 
     // Open main menu
     fireEvent.click(screen.getAllByRole('button')[1])
-    await waitFor(() =>
-      screen.getByText(/resources\.song\.actions\.showInPlaylist/),
+    const showInPlaylist = await screen.findByText(
+      /resources\.song\.actions\.showInPlaylist ►/,
     )
 
     // Open playlist submenu
-    fireEvent.click(
-      screen.getByText(/resources\.song\.actions\.showInPlaylist/),
-    )
+    fireEvent.click(showInPlaylist)
     await waitFor(() => screen.getByText('Pl 1'))
 
     // Click outside the playlist submenu (should close it without triggering parent click)

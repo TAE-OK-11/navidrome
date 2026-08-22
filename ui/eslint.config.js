@@ -14,7 +14,7 @@ export default [
       'build/**',
       'coverage/**',
       'prettier.config.js',
-      'vite.config.js',
+      'vite.config.ts',
       'public/3rdparty/workbox/**',
     ],
   },

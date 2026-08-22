@@ -29,16 +29,16 @@ const useStyles = makeStyles((theme) => ({
       duration: theme.transitions.duration.leavingScreen,
     }),
     paddingBottom: (props) => (props.addPadding ? '80px' : '20px'),
+    '& .RaMenuItemLink-active': {
+      color: theme.palette.text.primary,
+      fontWeight: 'bold',
+    },
   },
   open: {
     width: 240,
   },
   closed: {
     width: 55,
-  },
-  active: {
-    color: theme.palette.text.primary,
-    fontWeight: 'bold',
   },
 }))
 
@@ -77,7 +77,6 @@ const Menu = ({ dense = false }) => {
     <MenuItemLink
       key={resource.name}
       to={`/${resource.name}`}
-      activeClassName={classes.active}
       primaryText={translatedResourceName(resource, translate)}
       leftIcon={resource.icon || <ViewListIcon />}
       sidebarIsOpen={open}
@@ -100,7 +99,6 @@ const Menu = ({ dense = false }) => {
       <MenuItemLink
         key={albumListAddress}
         to={albumListAddress}
-        activeClassName={classes.active}
         primaryText={name}
         leftIcon={al.icon || <ViewListIcon />}
         sidebarIsOpen={open}
@@ -153,7 +151,6 @@ const Menu = ({ dense = false }) => {
           <Divider />
           <MenuItemLink
             to="/admin/hot-cache"
-            activeClassName={classes.active}
             primaryText={translate('hotCache.title')}
             leftIcon={<StorageIcon />}
             sidebarIsOpen={open}

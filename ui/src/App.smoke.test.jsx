@@ -48,4 +48,69 @@ describe('App startup', () => {
     })
     expect(screen.queryByText('Required')).not.toBeInTheDocument()
   }, 15_000)
+
+  it('renders the first resource for an authenticated admin', async () => {
+    const payload = btoa(
+      JSON.stringify({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        uid: 'admin-id',
+        sub: 'admin',
+      }),
+    )
+    localStorage.setItem('token', `eyJhbGciOiJIUzI1NiJ9.${payload}.test`)
+    localStorage.setItem('userId', 'admin-id')
+    localStorage.setItem('name', 'Admin')
+    localStorage.setItem('username', 'admin')
+    localStorage.setItem('role', 'admin')
+    localStorage.setItem('is-authenticated', 'true')
+    window.location.hash = '#/album/recent?initial=1'
+
+    window.EventSource = class {
+      addEventListener() {}
+      close() {}
+    }
+    window.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+    }
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input) => {
+        const url = String(input)
+        let body = []
+        if (/\/api\/user\/admin-id(?:\?|$)/.test(url)) {
+          body = { id: 'admin-id', libraries: [] }
+        } else if (url.includes('/rest/getScanStatus')) {
+          body = {
+            'subsonic-response': {
+              status: 'ok',
+              scanStatus: { scanning: false, count: 0 },
+            },
+          }
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Total-Count': Array.isArray(body) ? '0' : '1',
+            },
+          }),
+        )
+      })
+
+    render(<App />)
+
+    await waitFor(
+      () =>
+        expect(
+          fetchSpy.mock.calls.some(([input]) =>
+            String(input).includes('/api/album?'),
+          ),
+        ).toBe(true),
+      { timeout: 10_000 },
+    )
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
+  }, 15_000)
 })

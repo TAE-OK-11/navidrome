@@ -1,5 +1,5 @@
 import { useSelector } from 'react-redux'
-import { useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRefresh, useDataProvider } from 'react-admin'
 
 /**
@@ -64,34 +64,37 @@ import { useRefresh, useDataProvider } from 'react-admin'
  * - Specific resources: { album: ['id1', 'id2'], song: ['id3'] }
  */
 export const useResourceRefresh = (...visibleResources) => {
-  const [lastTime, setLastTime] = useState(Date.now())
+  const lastTime = useRef(Date.now())
+  const visibleResourcesRef = useRef(visibleResources)
+  visibleResourcesRef.current = visibleResources
   const refresh = useRefresh()
   const dataProvider = useDataProvider()
-  const refreshData = useSelector(
-    (state) => state.activity?.refresh || { lastReceived: lastTime },
-  )
-  const { resources, lastReceived } = refreshData
+  const refreshData = useSelector((state) => state.activity?.refresh)
 
-  if (lastReceived <= lastTime) {
-    return
-  }
-  setLastTime(lastReceived)
+  useEffect(() => {
+    const { resources, lastReceived = 0 } = refreshData || {}
+    if (lastReceived <= lastTime.current) {
+      return
+    }
+    lastTime.current = lastReceived
 
-  if (
-    resources &&
-    (resources['*'] === '*' ||
-      Object.values(resources).find((v) => v.find((v2) => v2 === '*')))
-  ) {
-    refresh()
-    return
-  }
-  if (resources) {
-    Object.keys(resources).forEach((r) => {
-      if (visibleResources.length === 0 || visibleResources?.includes(r)) {
-        if (resources[r]?.length > 0) {
-          dataProvider.getMany(r, { ids: resources[r] })
+    if (
+      resources &&
+      (resources['*'] === '*' ||
+        Object.values(resources).some((values) => values?.includes('*')))
+    ) {
+      refresh()
+      return
+    }
+    if (resources) {
+      Object.keys(resources).forEach((resource) => {
+        const watched = visibleResourcesRef.current
+        if (watched.length === 0 || watched.includes(resource)) {
+          if (resources[resource]?.length > 0) {
+            dataProvider.getMany(resource, { ids: resources[resource] })
+          }
         }
-      }
-    })
-  }
+      })
+    }
+  }, [dataProvider, refresh, refreshData])
 }

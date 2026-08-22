@@ -19,6 +19,13 @@ const clearClientState = async () => {
 
 const ClientError = ({ error, resetErrorBoundary }) => {
   const message = error instanceof Error ? error.message : String(error || '')
+  const retry = () => {
+    if (resetErrorBoundary) {
+      resetErrorBoundary()
+    } else {
+      window.location.reload()
+    }
+  }
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto', p: 3 }}>
@@ -39,7 +46,7 @@ const ClientError = ({ error, resetErrorBoundary }) => {
         </Box>
       )}
       <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-        <Button variant="contained" onClick={resetErrorBoundary}>
+        <Button variant="contained" onClick={retry}>
           Try again
         </Button>
         <Button variant="outlined" onClick={clearClientState}>

@@ -36,15 +36,19 @@ const DeleteMissingFilesButton = (props) => {
   const notify = useNotify()
 
   const ids = deleteAll ? [] : selectedIds
-  const [deleteMany, { loading }] = useDeleteMany('missing', ids, {
-    onSuccess: () => {
-      notify('resources.missing.notifications.removed')
-      refresh()
-      unselectAll('missing')
+  const [deleteMany, { isPending }] = useDeleteMany(
+    'missing',
+    { ids },
+    {
+      onSuccess: () => {
+        notify('resources.missing.notifications.removed')
+        refresh()
+        unselectAll('missing')
+      },
+      onError: () =>
+        notify('Error: missing files not deleted', { type: 'warning' }),
     },
-    onFailure: (error) =>
-      notify('Error: missing files not deleted', { type: 'warning' }),
-  })
+  )
   const handleClick = () => setOpen(true)
   const handleDialogClose = () => setOpen(false)
   const handleConfirm = () => {
@@ -70,7 +74,7 @@ const DeleteMissingFilesButton = (props) => {
       </Button>
       <Confirm
         isOpen={open}
-        loading={loading}
+        loading={isPending}
         title={
           deleteAll
             ? 'message.remove_all_missing_title'

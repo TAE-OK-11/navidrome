@@ -48,8 +48,8 @@ const withWidth = () => (WrappedComponent) => {
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
 const ScrollRestorer = ({ children, ...rest }) => {
-  const { loaded, total } = useListContext()
-  useScrollRestoration(loaded && total > 0)
+  const { isPending, total } = useListContext()
+  useScrollRestoration(!isPending && total > 0)
   return cloneElement(children, rest)
 }
 
@@ -192,8 +192,8 @@ const AlbumListTitle = ({ albumListType }) => {
 }
 
 const AlbumListPagination = ({ albumListType, ...rest }) => {
-  const { loading } = useListContext()
-  if (loading && albumListType === 'random') {
+  const { isPending } = useListContext()
+  if (isPending && albumListType === 'random') {
     return null
   }
   return <Pagination {...rest} />

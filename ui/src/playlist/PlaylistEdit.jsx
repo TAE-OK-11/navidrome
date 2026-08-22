@@ -39,9 +39,7 @@ const PlaylistEditForm = (props) => {
         minRows={3}
         source="comment"
         fullWidth
-        inputProps={{
-          style: { resize: 'vertical' },
-        }}
+        slotProps={{ htmlInput: { style: { resize: 'vertical' } } }}
       />
       {permissions === 'admin' ? (
         <ReferenceInput

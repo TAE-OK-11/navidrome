@@ -1,13 +1,13 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import List from '@mui/material/List'
-import ListItem from '@mui/material/ListItem'
+import ListItemButton from '@mui/material/ListItemButton'
 import ListItemAvatar from '@mui/material/ListItemAvatar'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
 import makeStyles from '../themes/makeStyles'
-import { sanitizeListRestProps } from 'react-admin'
+import { sanitizeListRestProps, useListContext } from 'react-admin'
 import { ArtistContextMenu, CoverArtAvatar, RatingField } from '../common'
 import config from '../config'
 
@@ -31,34 +31,30 @@ const ArtistSimpleList = ({
   linkType,
   className,
   classes: classesOverride,
-  data,
   hasBulkActions = false,
-  ids,
-  loading,
-  selectedIds = [],
-  total,
   ...rest
 }) => {
   const classes = useStyles({ classes: classesOverride })
+  const { data = [], isPending, total = 0 } = useListContext()
   return (
-    (loading || total > 0) && (
+    (isPending || total > 0) && (
       <List className={className} {...sanitizeListRestProps(rest)}>
-        {ids.map(
-          (id) =>
-            data[id] && (
-              <span key={id} onClick={() => linkType(id)}>
-                <ListItem className={classes.listItem} button={true}>
+        {data.map(
+          (record) =>
+            record && (
+              <span key={record.id} onClick={() => linkType(record.id)}>
+                <ListItemButton className={classes.listItem}>
                   <ListItemAvatar>
-                    <CoverArtAvatar record={data[id]} />
+                    <CoverArtAvatar record={record} />
                   </ListItemAvatar>
                   <ListItemText
                     style={{ marginLeft: '8px' }}
                     primary={
                       <>
-                        <div className={classes.title}>{data[id].name}</div>
+                        <div className={classes.title}>{record.name}</div>
                         {config.enableStarRating && (
                           <RatingField
-                            record={data[id]}
+                            record={record}
                             source={'rating'}
                             resource={'artist'}
                             size={'small'}
@@ -69,10 +65,10 @@ const ArtistSimpleList = ({
                   />
                   <ListItemSecondaryAction className={classes.rightIcon}>
                     <ListItemIcon>
-                      <ArtistContextMenu record={data[id]} />
+                      <ArtistContextMenu record={record} />
                     </ListItemIcon>
                   </ListItemSecondaryAction>
-                </ListItem>
+                </ListItemButton>
               </span>
             ),
         )}

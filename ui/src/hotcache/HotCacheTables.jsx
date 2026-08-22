@@ -65,7 +65,9 @@ export const CandidatesTable = ({ rows, labels, selected, onToggle }) => (
                   color="primary"
                   checked={selected.includes(row.mediaId)}
                   disabled={!available}
-                  inputProps={{ 'aria-label': row.title || row.mediaId }}
+                  slotProps={{
+                    input: { 'aria-label': row.title || row.mediaId },
+                  }}
                   onChange={() => onToggle(row.mediaId)}
                 />
               </TableCell>

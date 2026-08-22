@@ -24,7 +24,7 @@ const useStyles = makeStyles(
 )
 
 const AlbumShowLayout = (props) => {
-  const { loading, ...context } = useShowContext(props)
+  const context = useShowContext(props)
   const { record } = context
   const classes = useStyles()
   useResourceRefresh('album', 'song')

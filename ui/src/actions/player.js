@@ -16,8 +16,11 @@ export const setTrack = (data) => ({
 })
 
 export const filterSongs = (data, ids) => {
+  const entries = Array.isArray(data)
+    ? data.map((song) => [song.id, song])
+    : Object.entries(data || {})
   const filteredData = Object.fromEntries(
-    Object.entries(data).filter(([_, song]) => !song.missing),
+    entries.filter(([_, song]) => !song.missing),
   )
   return !ids
     ? filteredData

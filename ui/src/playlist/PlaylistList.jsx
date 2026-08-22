@@ -72,14 +72,14 @@ const TogglePublicInput = ({ resource, source }) => {
   const notify = useNotify()
   const [togglePublic] = useUpdate(
     resource,
-    record.id,
     {
-      ...record,
-      public: !record.public,
+      id: record.id,
+      data: { ...record, public: !record.public },
+      previousData: record,
     },
     {
-      undoable: false,
-      onFailure: (error) => {
+      mutationMode: 'pessimistic',
+      onError: () => {
         notify('ra.page.error', 'warning')
       },
     },
@@ -104,14 +104,14 @@ const ToggleAutoImport = ({ resource, source }) => {
   const notify = useNotify()
   const [ToggleAutoImport] = useUpdate(
     resource,
-    record.id,
     {
-      ...record,
-      sync: !record.sync,
+      id: record.id,
+      data: { ...record, sync: !record.sync },
+      previousData: record,
     },
     {
-      undoable: false,
-      onFailure: (error) => {
+      mutationMode: 'pessimistic',
+      onError: () => {
         notify('ra.page.error', 'warning')
       },
     },

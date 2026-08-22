@@ -31,17 +31,14 @@ export const LibraryPermissionCard = ({
   const translate = useTranslate()
 
   // Fetch all libraries
-  const { data: librariesData, loading: librariesLoading } = useGetList(
+  const { data: libraries = [], isPending: librariesLoading } = useGetList(
     'library',
     {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: 'name', order: 'ASC' },
+      filter: {},
     },
   )
-
-  const libraries = React.useMemo(() => {
-    return librariesData ? Object.values(librariesData) : []
-  }, [librariesData])
 
   const handleToggleLibrary = React.useCallback(
     (libraryId) => {

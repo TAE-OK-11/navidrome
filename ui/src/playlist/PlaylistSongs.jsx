@@ -91,8 +91,15 @@ const ReorderableList = ({ readOnly, children, ...rest }) => {
 
 const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
   const listContext = useListContext()
-  const { data, ids, selectedIds, onUnselectItems, refetch, setPage } =
-    listContext
+  const {
+    data = [],
+    selectedIds,
+    onUnselectItems,
+    refetch,
+    setPage,
+  } = listContext
+  const ids = data.map((record) => record.id)
+  const dataById = Object.fromEntries(data.map((record) => [record.id, record]))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const classes = useStyles({ isDesktop })
   const dispatch = useDispatch()
@@ -224,7 +231,7 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
             nodeSelector={'tr'}
           >
             <SongDatagrid
-              rowClick={(id) => dispatch(playTracks(data, ids, id))}
+              rowClick={(id) => dispatch(playTracks(dataById, ids, id))}
               {...listContext}
               hasBulkActions={!readOnly}
               contextAlwaysVisible={!isDesktop}
@@ -247,15 +254,15 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
 }
 
 const SanitizedPlaylistSongs = (props) => {
-  const { loaded, ...rest } = props
+  const { isPending } = useListContext()
   return (
     <>
-      {loaded && (
+      {!isPending && (
         <PlaylistSongs
           playlistId={props.id}
           actions={props.actions}
           pagination={props.pagination}
-          {...rest}
+          {...props}
         />
       )}
     </>

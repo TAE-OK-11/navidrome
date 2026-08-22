@@ -108,7 +108,7 @@ const UserEdit = (props) => {
   }
 
   return (
-    <Edit title={<UserTitle />} undoable={false} {...props}>
+    <Edit title={<UserTitle />} mutationMode="pessimistic" {...props}>
       <SimpleForm
         variant={'outlined'}
         toolbar={<UserToolbar showDelete={canDelete} />}

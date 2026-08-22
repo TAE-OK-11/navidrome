@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import { Field, Form } from 'react-final-form'
 import { useDispatch } from 'react-redux'
+import { useLocation } from 'react-router-dom'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardActions from '@mui/material/CardActions'
@@ -97,15 +98,17 @@ const renderInput = ({
   ...props
 }) => (
   <TextField
+    {...props}
+    {...inputProps}
     error={!!(touched && error)}
-    inputProps={{
-      // mobile keyboards: suppress capitalization and correction for login related fields
-      autocapitalize: 'none',
-      autocorrect: 'off',
-      ...inputProps,
+    slotProps={{
+      htmlInput: {
+        // Mobile keyboards: suppress capitalization and correction for login fields.
+        autoCapitalize: 'none',
+        autoCorrect: 'off',
+      },
     }}
     helperText={touched && error}
-    {...props}
     fullWidth
   />
 )
@@ -316,8 +319,9 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
   )
 }
 
-const Login = ({ location }) => {
+const Login = () => {
   const [loading, setLoading] = useState(false)
+  const location = useLocation()
   const translate = useTranslate()
   const notify = useNotify()
   const login = useLogin()
@@ -327,19 +331,17 @@ const Login = ({ location }) => {
     (auth) => {
       setLoading(true)
       dispatch(clearQueue())
-      login(auth, location.state ? location.state.nextPathname : '/').catch(
-        (error) => {
-          setLoading(false)
-          notify(
-            typeof error === 'string'
-              ? error
-              : typeof error === 'undefined' || !error.message
-                ? 'ra.auth.sign_in_error'
-                : error.message,
-            'warning',
-          )
-        },
-      )
+      login(auth, location.state?.nextPathname || '/').catch((error) => {
+        setLoading(false)
+        notify(
+          typeof error === 'string'
+            ? error
+            : typeof error === 'undefined' || !error.message
+              ? 'ra.auth.sign_in_error'
+              : error.message,
+          'warning',
+        )
+      })
     },
     [dispatch, login, notify, setLoading, location],
   )

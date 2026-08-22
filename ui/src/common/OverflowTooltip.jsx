@@ -76,7 +76,7 @@ export const OverflowTooltip = ({
       disableHoverListener={!isOverflowing}
       disableTouchListener
       placement={placement}
-      TransitionProps={transitionProps}
+      slotProps={{ transition: transitionProps }}
       classes={tooltipClasses}
     >
       {React.cloneElement(children, { ref: mergedRef })}

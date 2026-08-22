@@ -118,7 +118,7 @@ const HotCacheAdmin = () => {
   const classes = useStyles()
   const translate = useTranslate()
   const notify = useNotify()
-  const { permissions, loading } = usePermissions()
+  const { permissions, isPending } = usePermissions()
   const [tab, setTab] = useState(0)
   const [dashboard, setDashboard] = useState({
     status: null,
@@ -348,7 +348,7 @@ const HotCacheAdmin = () => {
     }
   }, [loadCandidates, loadDashboard, notify, selectedCandidates, t])
 
-  if (loading) return <LinearProgress />
+  if (isPending) return <LinearProgress />
   if (permissions !== 'admin') return <Navigate to="/" replace />
   const status = dashboard.status || {}
   const metrics = [

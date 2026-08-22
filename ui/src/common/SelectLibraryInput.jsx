@@ -92,14 +92,21 @@ export const SelectLibraryInput = ({
   const [selectedLibraryIds, setSelectedLibraryIds] = useState([])
   const [hasInitialized, setHasInitialized] = useState(false)
 
-  const { ids, data, isLoading } = useGetList(
-    'library',
-    { page: 1, perPage: -1 },
-    { field: 'name', order: 'ASC' },
-  )
+  const {
+    data = [],
+    ids,
+    isPending,
+    isLoading,
+  } = useGetList('library', {
+    pagination: { page: 1, perPage: -1 },
+    sort: { field: 'name', order: 'ASC' },
+    filter: {},
+  })
+  const loading = isPending ?? isLoading ?? false
 
   const options = useMemo(
-    () => (ids && ids.map((id) => data[id])) || [],
+    () =>
+      Array.isArray(data) ? data : (ids && ids.map((id) => data[id])) || [],
     [ids, data],
   )
 
@@ -114,7 +121,7 @@ export const SelectLibraryInput = ({
   useEffect(() => {
     if (
       isNewUser &&
-      !isLoading &&
+      !loading &&
       options.length > 0 &&
       !hasInitialized &&
       Array.isArray(value) &&
@@ -131,7 +138,7 @@ export const SelectLibraryInput = ({
 
       setHasInitialized(true)
     }
-  }, [isNewUser, isLoading, options, hasInitialized, value, onChange])
+  }, [isNewUser, loading, options, hasInitialized, value, onChange])
 
   // Update selectedLibraryIds when value prop changes (for editing mode and pre-selection)
   useEffect(() => {

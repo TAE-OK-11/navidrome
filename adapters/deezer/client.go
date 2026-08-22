@@ -61,6 +61,27 @@ func (c *client) searchArtists(ctx context.Context, name string, limit int) ([]A
 	return results.Data, nil
 }
 
+func (c *client) searchAlbums(ctx context.Context, name, artist string, limit int) ([]Album, error) {
+	params := url.Values{}
+	params.Add("q", strings.TrimSpace(name+" "+artist))
+	params.Add("order", "RANKING")
+	params.Add("limit", strconv.Itoa(limit))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiBaseURL+"/search/album", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.URL.RawQuery = params.Encode()
+
+	var results SearchAlbumResults
+	if err = c.makeRequest(req, &results); err != nil {
+		return nil, err
+	}
+	if len(results.Data) == 0 {
+		return nil, ErrNotFound
+	}
+	return results.Data, nil
+}
+
 func (c *client) makeRequest(req *http.Request, response any) error {
 	log.Trace(req.Context(), fmt.Sprintf("Sending Deezer %s request", req.Method), "url", req.URL)
 	resp, err := c.httpDoer.Do(req)

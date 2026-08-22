@@ -5,6 +5,7 @@ import {
   Button,
   sanitizeListRestProps,
   TopToolbar,
+  useListContext,
   useRecordContext,
   useTranslate,
 } from 'react-admin'
@@ -43,17 +44,13 @@ const AlbumButton = ({ children, ...rest }) => {
   )
 }
 
-const AlbumActions = ({
-  className,
-  ids,
-  data,
-  record = {},
-  permanentFilter,
-  ...rest
-}) => {
+const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const classes = useStyles()
+  const { data: records = [] } = useListContext()
+  const ids = records.map((song) => song.id)
+  const data = Object.fromEntries(records.map((song) => [song.id, song]))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
 

@@ -6,6 +6,12 @@ type SearchArtistResults struct {
 	Next  string   `json:"next"`
 }
 
+type SearchAlbumResults struct {
+	Data  []Album `json:"data"`
+	Total int     `json:"total"`
+	Next  string  `json:"next"`
+}
+
 type Artist struct {
 	ID            int    `json:"id"`
 	Name          string `json:"name"`
@@ -62,5 +68,6 @@ type Album struct {
 	CoverBig    string `json:"cover_big"`
 	CoverXl     string `json:"cover_xl"`
 	Tracklist   string `json:"tracklist"`
+	Artist      Artist `json:"artist"`
 	Type        string `json:"type"`
 }

@@ -15,12 +15,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/core/storage/local"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/metadata"
@@ -28,8 +28,7 @@ import (
 
 const (
 	protocolVersion = 1
-	loftyVersion    = "0.25.0"
-	workerEnv       = "ND_METADATAWORKERPATH"
+	loftyVersion    = "0.25.1"
 )
 
 type request struct {
@@ -239,20 +238,10 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 }
 
 func resolveWorkerPath() string {
-	if configured := strings.TrimSpace(os.Getenv(workerEnv)); configured != "" {
-		return configured
+	if workerPath, err := metadataworker.Resolve(); err == nil {
+		return workerPath
 	}
-	name := "navidrome-metadata"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	if executable, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(executable), name)
-		if _, err := os.Stat(candidate); err == nil { //nolint:gosec // trusted installation directory
-			return candidate
-		}
-	}
-	return name
+	return metadataworker.BinaryName()
 }
 
 var _ local.Extractor = (*extractor)(nil)

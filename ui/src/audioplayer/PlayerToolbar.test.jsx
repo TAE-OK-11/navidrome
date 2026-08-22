@@ -48,7 +48,7 @@ describe('<PlayerToolbar />', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    useGetOne.mockReturnValue({ data: mockSongData, loading: false })
+    useGetOne.mockReturnValue({ data: mockSongData, isPending: false })
     useToggleLove.mockReturnValue([mockToggleLove, false])
     useDispatch.mockReturnValue(mockDispatch)
     openSaveQueueDialog.mockReturnValue({ type: 'OPEN_SAVE_QUEUE_DIALOG' })
@@ -84,7 +84,7 @@ describe('<PlayerToolbar />', () => {
     })
 
     it('disables love button when conditions are met', () => {
-      useGetOne.mockReturnValue({ data: mockSongData, loading: true })
+      useGetOne.mockReturnValue({ data: mockSongData, isPending: true })
 
       render(<PlayerToolbar id="song-1" />)
 
@@ -133,7 +133,7 @@ describe('<PlayerToolbar />', () => {
     })
 
     it('disables love button when conditions are met', () => {
-      useGetOne.mockReturnValue({ data: mockSongData, loading: true })
+      useGetOne.mockReturnValue({ data: mockSongData, isPending: true })
 
       render(<PlayerToolbar id="song-1" />)
 

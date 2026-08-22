@@ -18,12 +18,17 @@ type cacheKey struct {
 	lastUpdate time.Time
 }
 
+// Bump when artwork source behavior changes so previously cached fallbacks do
+// not mask newly available originals.
+const artworkCacheVersion = 2
+
 func (k *cacheKey) Key() string {
 	return fmt.Sprintf(
-		"%s-%s.%d",
+		"%s-%s.%d.v%d",
 		k.artID.Kind,
 		k.artID.ID,
 		k.lastUpdate.UnixMilli(),
+		artworkCacheVersion,
 	)
 }
 

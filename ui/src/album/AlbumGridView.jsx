@@ -218,7 +218,7 @@ const AlbumGridTile = ({ showArtist, record, basePath, ...props }) => {
   )
 }
 
-const LoadedAlbumGrid = ({ ids, data, basePath, width }) => {
+const LoadedAlbumGrid = ({ records, basePath = '/album', width }) => {
   const classes = useStyles()
   const { filterValues } = useListContext()
   const isArtistView = !!(filterValues && filterValues.artist_id)
@@ -230,10 +230,10 @@ const LoadedAlbumGrid = ({ ids, data, basePath, width }) => {
         cols={getColsForWidth(width)}
         spacing={20}
       >
-        {ids.map((id) => (
-          <ImageListItem className={classes.gridListTile} key={id}>
+        {records.map((record) => (
+          <ImageListItem className={classes.gridListTile} key={record.id}>
             <AlbumGridTile
-              record={data[id]}
+              record={record}
               basePath={basePath}
               showArtist={!isArtistView}
             />
@@ -244,10 +244,14 @@ const LoadedAlbumGrid = ({ ids, data, basePath, width }) => {
   )
 }
 
-const AlbumGridView = ({ albumListType, loaded, loading, ...props }) => {
-  const hide =
-    (loading && albumListType === 'random') || !props.data || !props.ids
-  return hide ? <Loading /> : <LoadedAlbumGrid {...props} />
+const AlbumGridView = ({ albumListType, basePath, width }) => {
+  const { data = [], isPending } = useListContext()
+  const hide = isPending && albumListType === 'random'
+  return hide ? (
+    <Loading />
+  ) : (
+    <LoadedAlbumGrid records={data} basePath={basePath} width={width} />
+  )
 }
 
 const AlbumGridViewWithWidth = withWidth()(AlbumGridView)

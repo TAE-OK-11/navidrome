@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,8 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -123,14 +126,71 @@ func parseEncodersOutput(out []byte, name string) bool {
 }
 
 func (e *ffmpeg) ExtractImage(ctx context.Context, path string) (io.ReadCloser, error) {
-	if _, err := ffmpegCmd(); err != nil {
+	if err := fileExists(path); err != nil {
 		return nil, err
 	}
-	if err := fileExists(path); err != nil {
+	if reader, err := extractImageWithMetadataWorker(ctx, path); err == nil {
+		return reader, nil
+	} else {
+		log.Debug(ctx, "Native embedded artwork extraction unavailable; falling back to ffmpeg", "path", path, "error", err)
+	}
+	if _, err := ffmpegCmd(); err != nil {
 		return nil, err
 	}
 	args := createFFmpegCommand(extractImageCmd, path, 0, 0)
 	return e.start(ctx, args)
+}
+
+func extractImageWithMetadataWorker(ctx context.Context, path string) (io.ReadCloser, error) {
+	workerPath, err := metadataworker.Resolve()
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, workerPath, "--extract-picture", path) // #nosec -- resolved administrator-controlled binary
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("opening metadata worker output: %w", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &limitedWriter{buf: &stderr, limit: 4096}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("starting metadata worker: %w", err)
+	}
+
+	limit := embeddedImageReadLimit()
+	data, readErr := io.ReadAll(io.LimitReader(stdout, limit+1))
+	if int64(len(data)) > limit {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("embedded artwork exceeds maximum size of %d bytes", limit)
+	}
+	waitErr := cmd.Wait()
+	if readErr != nil {
+		return nil, fmt.Errorf("reading metadata worker output: %w", readErr)
+	}
+	if waitErr != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			return nil, fmt.Errorf("metadata worker could not extract artwork: %s: %w", message, waitErr)
+		}
+		return nil, fmt.Errorf("metadata worker could not extract artwork: %w", waitErr)
+	}
+	if len(data) == 0 {
+		return nil, errors.New("metadata worker returned empty artwork")
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func embeddedImageReadLimit() int64 {
+	raw := consts.DefaultMaxImageSize
+	if conf.Server != nil && conf.Server.MaxImageSize != "" {
+		raw = conf.Server.MaxImageSize
+	}
+	size, err := humanize.ParseBytes(raw)
+	if err != nil || size == 0 || size > math.MaxInt64 {
+		return 20 << 20
+	}
+	return int64(size)
 }
 
 func fileExists(path string) error {

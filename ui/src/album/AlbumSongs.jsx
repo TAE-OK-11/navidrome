@@ -87,7 +87,11 @@ const useStyles = makeStyles(
 )
 
 const AlbumSongs = (props) => {
-  const { data, ids } = props
+  const records = props.data || []
+  const ids = records.map((record) => record.id)
+  const dataById = Object.fromEntries(
+    records.map((record) => [record.id, record]),
+  )
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const classes = useStyles({ isDesktop })
   const dispatch = useDispatch()
@@ -186,7 +190,7 @@ const AlbumSongs = (props) => {
             <SongBulkActions />
           </BulkActionsToolbar>
           <SongDatagrid
-            rowClick={(id) => dispatch(playTracks(data, ids, id))}
+            rowClick={(id) => dispatch(playTracks(dataById, ids, id))}
             {...props}
             hasBulkActions={true}
             showDiscSubtitles={true}
@@ -216,9 +220,15 @@ const AlbumSongs = (props) => {
 }
 
 const SanitizedAlbumSongs = (props) => {
-  removeAlbumCommentsFromSongs(props)
-  const { loaded, loading, total, ...rest } = useListContext(props)
-  return <>{loaded && <AlbumSongs {...rest} actions={props.actions} />}</>
+  const context = useListContext()
+  removeAlbumCommentsFromSongs({ album: props.album, data: context.data })
+  return (
+    <>
+      {!context.isPending && (
+        <AlbumSongs {...context} actions={props.actions} album={props.album} />
+      )}
+    </>
+  )
 }
 
 export default SanitizedAlbumSongs

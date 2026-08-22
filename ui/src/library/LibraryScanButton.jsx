@@ -36,13 +36,13 @@ const LibraryScanButton = ({ fullScan, selectedIds, className }) => {
       const notificationKey = fullScan
         ? 'resources.library.notifications.fullScanStarted'
         : 'resources.library.notifications.quickScanStarted'
-      notify(notificationKey, 'info')
+      notify(notificationKey, { type: 'info' })
       refresh()
 
       // Unselect all items after successful scan
       unselectAll('library')
     } catch (error) {
-      notify('resources.library.notifications.scanError', 'warning')
+      notify('resources.library.notifications.scanError', { type: 'warning' })
     } finally {
       setLoading(false)
     }

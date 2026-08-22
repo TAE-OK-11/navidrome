@@ -35,7 +35,12 @@ export const LibrarySelectionField = () => {
       <FormLabel component="legend">
         {translate('resources.user.fields.libraries')}
       </FormLabel>
-      <Box mt={1} mb={1}>
+      <Box
+        sx={{
+          mt: 1,
+          mb: 1,
+        }}
+      >
         <SelectLibraryInput
           onChange={onChange}
           value={libraryIds}

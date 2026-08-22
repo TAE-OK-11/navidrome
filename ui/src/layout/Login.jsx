@@ -12,7 +12,6 @@ import TextField from '@mui/material/TextField'
 import {
   ThemeProvider,
   StyledEngineProvider,
-  adaptV4Theme,
   createTheme,
 } from '@mui/material/styles'
 import makeStyles from '../themes/makeStyles'
@@ -24,6 +23,7 @@ import useCurrentTheme from '../themes/useCurrentTheme'
 import config from '../config'
 import { clearQueue } from '../actions'
 import { INSIGHTS_DOC_URL } from '../consts.js'
+import modernizeTheme from '../themes/modernizeTheme'
 
 const useStyles = makeStyles(
   (theme) => ({
@@ -339,7 +339,7 @@ const Login = () => {
             : typeof error === 'undefined' || !error.message
               ? 'ra.auth.sign_in_error'
               : error.message,
-          'warning',
+          { type: 'warning' },
         )
       })
     },
@@ -408,7 +408,7 @@ const LoginWithTheme = (props) => {
   const theme = useCurrentTheme()
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={createTheme(adaptV4Theme(theme))}>
+      <ThemeProvider theme={createTheme(modernizeTheme(theme))}>
         <Login {...props} />
       </ThemeProvider>
     </StyledEngineProvider>

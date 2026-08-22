@@ -18,11 +18,21 @@ export const TranscodingNote = ({ message }) => {
     <Card>
       <CardContent>
         <Typography>
-          <Box fontWeight="fontWeightBold" component={'span'}>
+          <Box
+            component={'span'}
+            sx={{
+              fontWeight: 'fontWeightBold',
+            }}
+          >
             {translate('message.note')}:
           </Box>{' '}
           <Interpolate message={translate(message)} field={'config'}>
-            <Box fontFamily="Monospace" component={'span'}>
+            <Box
+              component={'span'}
+              sx={{
+                fontFamily: 'Monospace',
+              }}
+            >
               ND_ENABLETRANSCODINGCONFIG=true
             </Box>
           </Interpolate>

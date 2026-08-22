@@ -57,7 +57,7 @@ export const playSimilar = async (dispatch, notify, id, options = {}) => {
 
   // If no similar songs found and no seed, show warning
   if (!songs.length && !seedRecord) {
-    notify('message.noSimilarSongsFound', 'warning')
+    notify('message.noSimilarSongsFound', { type: 'warning' })
     return
   }
 

@@ -10,6 +10,7 @@ import {
   Datagrid,
   PureDatagridBody,
   PureDatagridRow,
+  useRecordContext,
   useTranslate,
 } from 'react-admin'
 import { TableCell, TableRow, Typography, useMediaQuery } from '@mui/material'
@@ -180,7 +181,7 @@ export const DiscSubtitleRow = forwardRef(
 DiscSubtitleRow.displayName = 'DiscSubtitleRow'
 
 export const SongDatagridRow = ({
-  record,
+  record: recordOverride,
   children,
   firstTracksOfDiscs,
   contextAlwaysVisible,
@@ -188,6 +189,7 @@ export const SongDatagridRow = ({
   className,
   ...rest
 }) => {
+  const record = useRecordContext({ record: recordOverride })
   const classes = useStyles()
   const fields = React.Children.toArray(children).filter((c) =>
     isValidElement(c),

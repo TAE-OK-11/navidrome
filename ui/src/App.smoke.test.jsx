@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
+const compatibilityWarning =
+  /adaptV4Theme|Invalid attribute name|ContentProps|InputProps|TransitionProps/
+
 describe('App startup', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -15,6 +18,8 @@ describe('App startup', () => {
   })
 
   it('redirects a fresh profile and submits entered credentials', async () => {
+    const consoleError = vi.spyOn(console, 'error')
+    const consoleWarn = vi.spyOn(console, 'warn')
     const NativeRequest = globalThis.Request
     vi.stubGlobal(
       'Request',
@@ -47,9 +52,16 @@ describe('App startup', () => {
       password: 'secret',
     })
     expect(screen.queryByText('Required')).not.toBeInTheDocument()
+    expect(
+      [...consoleError.mock.calls, ...consoleWarn.mock.calls].filter((args) =>
+        compatibilityWarning.test(args.join(' ')),
+      ),
+    ).toEqual([])
   }, 15_000)
 
   it('renders the first resource for an authenticated admin', async () => {
+    const consoleError = vi.spyOn(console, 'error')
+    const consoleWarn = vi.spyOn(console, 'warn')
     const payload = btoa(
       JSON.stringify({
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -118,5 +130,10 @@ describe('App startup', () => {
       await screen.findAllByText('Default View', {}, { timeout: 10_000 }),
     ).not.toHaveLength(0)
     expect(screen.queryByText('Not Found')).not.toBeInTheDocument()
+    expect(
+      [...consoleError.mock.calls, ...consoleWarn.mock.calls].filter((args) =>
+        compatibilityWarning.test(args.join(' ')),
+      ),
+    ).toEqual([])
   }, 15_000)
 })

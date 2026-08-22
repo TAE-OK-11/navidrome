@@ -116,7 +116,12 @@ const PluginEmpty = () => {
   return (
     <>
       <Empty />
-      <Box textAlign="center" mt={2}>
+      <Box
+        sx={{
+          textAlign: 'center',
+          mt: 2,
+        }}
+      >
         <RescanButton />
       </Box>
     </>

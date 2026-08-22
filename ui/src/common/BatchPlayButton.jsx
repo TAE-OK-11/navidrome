@@ -36,7 +36,7 @@ export const BatchPlayButton = ({
         dispatch(action(tracks, selectedIds))
       })
       .catch(() => {
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
       })
     unselectAll(resource)
   }

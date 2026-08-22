@@ -30,7 +30,12 @@ import {
 const EmptyRow = ({ columns, label }) => (
   <TableRow>
     <TableCell colSpan={columns} align="center">
-      <Box py={3} color="text.secondary">
+      <Box
+        sx={{
+          py: 3,
+          color: 'text.secondary',
+        }}
+      >
         {label}
       </Box>
     </TableCell>
@@ -399,13 +404,28 @@ EventsTable.propTypes = { rows: PropTypes.array, labels: PropTypes.object }
 export const CurrentPromotion = ({ value, labels }) => {
   if (!value)
     return (
-      <Box py={3} color="text.secondary">
+      <Box
+        sx={{
+          py: 3,
+          color: 'text.secondary',
+        }}
+      >
         {labels.empty}
       </Box>
     )
   return (
-    <Box py={2}>
-      <Box display="flex" justifyContent="space-between" mb={1}>
+    <Box
+      sx={{
+        py: 2,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          mb: 1,
+        }}
+      >
         <Typography variant="body2">{value.title || value.mediaId}</Typography>
         <Typography variant="body2">
           {Number(value.progress || 0).toFixed(1)}%
@@ -416,11 +436,13 @@ export const CurrentPromotion = ({ value, labels }) => {
         value={Math.min(100, value.progress || 0)}
       />
       <Box
-        display="flex"
-        flexWrap="wrap"
-        gap={16}
-        mt={1}
-        color="text.secondary"
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 16,
+          mt: 1,
+          color: 'text.secondary',
+        }}
       >
         <span>{labels.phase(value.phase)}</span>
         <span>

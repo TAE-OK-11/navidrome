@@ -88,15 +88,16 @@ const UserEdit = (props) => {
           data: values,
           previousData: values,
         })
-        notify('resources.user.notifications.updated', 'info', {
-          smart_count: 1,
+        notify('resources.user.notifications.updated', {
+          type: 'info',
+          messageArgs: { smart_count: 1 },
         })
         permissions === 'admin' ? redirect('/user') : refresh()
       } catch (error) {
         if (error?.body?.errors) {
           return error.body.errors
         }
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
       }
     },
     [dataProvider, notify, permissions, redirect, refresh],

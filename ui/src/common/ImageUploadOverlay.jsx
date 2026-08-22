@@ -72,11 +72,11 @@ export const ImageUploadOverlay = ({
           headers: new Headers({}),
           body: formData,
         })
-        notify(`message.coverUploaded`, 'success')
+        notify(`message.coverUploaded`, { type: 'success' })
         if (onImageChange) onImageChange()
         refresh()
       } catch (err) {
-        notify(`message.coverUploadError`, 'warning')
+        notify(`message.coverUploadError`, { type: 'warning' })
       }
 
       e.target.value = ''
@@ -93,11 +93,11 @@ export const ImageUploadOverlay = ({
         await httpClient(`${REST_URL}/${entityType}/${entityId}/image`, {
           method: 'DELETE',
         })
-        notify(`message.coverRemoved`, 'success')
+        notify(`message.coverRemoved`, { type: 'success' })
         if (onImageChange) onImageChange()
         refresh()
       } catch (err) {
-        notify(`message.coverRemoveError`, 'warning')
+        notify(`message.coverRemoveError`, { type: 'warning' })
       }
     },
     [entityType, entityId, notify, refresh, onImageChange],

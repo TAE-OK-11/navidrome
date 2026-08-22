@@ -59,7 +59,11 @@ export const ShareDialog = () => {
           navigator.clipboard
             .writeText(url)
             .then(() => {
-              notify('message.shareSuccess', 'info', { url }, false, 0)
+              notify('message.shareSuccess', {
+                type: 'info',
+                messageArgs: { url },
+                autoHideDuration: null,
+              })
             })
             .catch((err) => {
               notify(
@@ -67,7 +71,7 @@ export const ShareDialog = () => {
                 {
                   type: 'warning',
                   multiLine: true,
-                  duration: 0,
+                  autoHideDuration: null,
                 },
               )
             })

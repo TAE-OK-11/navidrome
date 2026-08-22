@@ -31,8 +31,9 @@ const UserCreate = (props) => {
     async (values) => {
       try {
         await dataProvider.create('user', { data: values })
-        notify('resources.user.notifications.created', 'info', {
-          smart_count: 1,
+        notify('resources.user.notifications.created', {
+          type: 'info',
+          messageArgs: { smart_count: 1 },
         })
         redirect('/user')
       } catch (error) {

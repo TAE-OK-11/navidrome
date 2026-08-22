@@ -136,7 +136,7 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
           refetch()
         })
         .catch(() => {
-          notify('ra.page.error', 'warning')
+          notify('ra.page.error', { type: 'warning' })
         })
     },
     [dataProvider, notify, refetch],

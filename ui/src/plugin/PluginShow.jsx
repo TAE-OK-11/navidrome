@@ -184,13 +184,12 @@ const PluginShowLayout = () => {
         setLastRecordLibraries(null)
         setLastRecordAllLibraries(null)
         setLastRecordAllowWriteAccess(null)
-        notify('resources.plugin.notifications.updated', 'info')
+        notify('resources.plugin.notifications.updated', { type: 'info' })
       },
       onError: (err) => {
-        notify(
-          err?.message || 'resources.plugin.notifications.error',
-          'warning',
-        )
+        notify(err?.message || 'resources.plugin.notifications.error', {
+          type: 'warning',
+        })
       },
     },
   )
@@ -323,7 +322,12 @@ const PluginShowLayout = () => {
           onAllowWriteAccessChange={handleAllowWriteAccessChange}
         />
 
-        <Box display="flex" justifyContent="flex-end">
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}
+        >
           <Button
             variant="contained"
             color="primary"

@@ -47,16 +47,38 @@ const useStyles = makeStyles((theme) => ({
     zIndex: 2,
   },
   counterStatus: {
-    minWidth: '20em',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    columnGap: theme.spacing(2),
+    width: '100%',
   },
   error: {
     color: theme.palette.error.main,
   },
   card: {
-    maxWidth: 'none',
+    width: 'clamp(17rem, 78vw, 20rem)',
+    maxWidth: 'calc(100vw - 24px)',
   },
   cardContent: {
-    padding: theme.spacing(2, 3),
+    padding: theme.spacing(1.5, 2),
+    '&:last-child': {
+      paddingBottom: theme.spacing(1.5),
+    },
+  },
+  statusLabel: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  statusValue: {
+    textAlign: 'right',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  actions: {
+    minHeight: 0,
+    padding: theme.spacing(0.5, 1),
+    justifyContent: 'flex-end',
   },
 }))
 
@@ -101,7 +123,10 @@ const ActivityPanel = () => {
 
   useEffect(() => {
     if (serverStart.version && serverStart.version !== config.version) {
-      notify('ra.notification.new_version', 'info', {}, false, 604800000 * 50)
+      notify('ra.notification.new_version', {
+        type: 'info',
+        autoHideDuration: 604800000 * 50,
+      })
     }
   }, [serverStart, notify])
 
@@ -156,17 +181,24 @@ const ActivityPanel = () => {
         }}
         open={open}
         onClose={handleMenuClose}
+        slotProps={{
+          paper: {
+            sx: {
+              maxWidth: 'calc(100vw - 16px)',
+              overflow: 'hidden',
+            },
+          },
+        }}
       >
         <Card className={classes.card}>
           <CardContent className={classes.cardContent}>
-            <Box display="flex" className={classes.counterStatus}>
-              <Box component="span" flex={2}>
+            <Box className={classes.counterStatus}>
+              <Box component="span" className={classes.statusLabel}>
                 {translate('activity.serverUptime')}:
               </Box>
               <Box
                 component="span"
-                flex={1}
-                className={!up ? classes.error : null}
+                className={`${classes.statusValue} ${!up ? classes.error : ''}`}
               >
                 {up ? <Uptime /> : translate('activity.serverDown')}
               </Box>
@@ -174,39 +206,51 @@ const ActivityPanel = () => {
           </CardContent>
           <Divider />
           <CardContent className={classes.cardContent}>
-            <Box display="flex" className={classes.counterStatus}>
-              <Box component="span" flex={2}>
+            <Box className={classes.counterStatus}>
+              <Box component="span" className={classes.statusLabel}>
                 {translate('activity.totalScanned')}:
               </Box>
-              <Box component="span" flex={1}>
+              <Box component="span" className={classes.statusValue}>
                 {scanStatus.folderCount || '-'}
               </Box>
             </Box>
 
-            <Box display="flex" className={classes.counterStatus} mt={2}>
-              <Box component="span" flex={2}>
+            <Box
+              className={classes.counterStatus}
+              sx={{
+                mt: 1,
+              }}
+            >
+              <Box component="span" className={classes.statusLabel}>
                 {translate('activity.scanType')}:
               </Box>
-              <Box component="span" flex={1}>
-                {lastScanType}
+              <Box component="span" className={classes.statusValue}>
+                {lastScanType || '-'}
               </Box>
             </Box>
 
-            <Box display="flex" className={classes.counterStatus} mt={2}>
-              <Box component="span" flex={2}>
+            <Box
+              className={classes.counterStatus}
+              sx={{
+                mt: 1,
+              }}
+            >
+              <Box component="span" className={classes.statusLabel}>
                 {translate('activity.elapsedTime')}:
               </Box>
-              <Box component="span" flex={1}>
+              <Box component="span" className={classes.statusValue}>
                 {formatShortDuration(elapsed)}
               </Box>
             </Box>
 
             {scanStatus.error && (
               <Box
-                display="flex"
-                flexDirection="column"
-                mt={2}
                 className={classes.error}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  mt: 2,
+                }}
               >
                 <Typography variant="subtitle2">
                   {translate('activity.status')}:
@@ -216,7 +260,7 @@ const ActivityPanel = () => {
             )}
           </CardContent>
           <Divider />
-          <CardActions>
+          <CardActions className={classes.actions}>
             <Tooltip title={translate('activity.quickScan')}>
               <IconButton
                 onClick={triggerScan(false)}

@@ -16,7 +16,12 @@ export const ManifestSection = ({ manifestJson, classes, translate }) => (
       </Typography>
     </AccordionSummary>
     <AccordionDetails>
-      <Box className={classes.manifestBox} width="100%">
+      <Box
+        className={classes.manifestBox}
+        sx={{
+          width: '100%',
+        }}
+      >
         {manifestJson}
       </Box>
     </AccordionDetails>

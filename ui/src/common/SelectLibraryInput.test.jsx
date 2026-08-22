@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // Mock Material-UI components
 vi.mock('@mui/material', () => ({
   List: ({ children }) => <div>{children}</div>,
-  ListItem: ({ children, button, onClick, dense, className }) => (
+  ListItemButton: ({ children, onClick, className }) => (
     <button onClick={onClick} className={className}>
       {children}
     </button>

@@ -4,7 +4,7 @@ import CheckBoxIcon from '@mui/icons-material/CheckBox'
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import {
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Typography,
@@ -62,9 +62,8 @@ const LibraryListItem = ({ library, isSelected, onToggle }) => {
   const classes = useStyles()
 
   return (
-    <ListItem
+    <ListItemButton
       className={classes.listItem}
-      button
       onClick={() => onToggle(library)}
       dense
     >
@@ -78,7 +77,7 @@ const LibraryListItem = ({ library, isSelected, onToggle }) => {
         />
       </ListItemIcon>
       <ListItemText primary={library.name} />
-    </ListItem>
+    </ListItemButton>
   )
 }
 

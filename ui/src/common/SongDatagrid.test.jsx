@@ -6,7 +6,13 @@ import {
   ThemeProvider,
   StyledEngineProvider,
 } from '@mui/material/styles'
-import { DiscSubtitleRow } from './SongDatagrid'
+import {
+  AdminContext,
+  ListContextProvider,
+  ResourceContextProvider,
+  TextField,
+} from 'react-admin'
+import { DiscSubtitleRow, SongDatagrid } from './SongDatagrid'
 
 vi.mock('../subsonic', () => ({
   default: { getDiscCoverArtUrl: () => 'http://localhost/cover.jpg' },
@@ -76,5 +82,42 @@ describe('DiscSubtitleRow', () => {
     openLightbox()
     fireEvent.click(document.querySelector('.ril__inner'))
     expect(onClick).not.toHaveBeenCalled()
+  })
+})
+
+describe('SongDatagrid', () => {
+  it('renders records supplied through the React-admin 5 record context', () => {
+    const listContext = {
+      data: [
+        {
+          id: 'song-1',
+          title: 'Visible Track',
+          albumId: 'album-1',
+          discNumber: 1,
+        },
+      ],
+      total: 1,
+      isPending: false,
+      resource: 'song',
+      sort: { field: 'title', order: 'ASC' },
+      selectedIds: [],
+      onSelect: vi.fn(),
+      onToggleItem: vi.fn(),
+      setSort: vi.fn(),
+    }
+
+    render(
+      <AdminContext>
+        <ResourceContextProvider value="song">
+          <ListContextProvider value={listContext}>
+            <SongDatagrid bulkActionButtons={false}>
+              <TextField source="title" />
+            </SongDatagrid>
+          </ListContextProvider>
+        </ResourceContextProvider>
+      </AdminContext>,
+    )
+
+    expect(screen.getByText('Visible Track')).toBeInTheDocument()
   })
 })

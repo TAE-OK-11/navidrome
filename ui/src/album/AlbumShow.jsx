@@ -41,7 +41,7 @@ const AlbumShowLayout = (props) => {
           reference="song"
           target="album_id"
           sort={{ field: 'album', order: 'ASC' }}
-          perPage={0}
+          perPage={-1}
           pagination={null}
         >
           <AlbumSongs

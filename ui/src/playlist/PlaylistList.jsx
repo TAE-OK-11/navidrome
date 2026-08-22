@@ -50,7 +50,7 @@ const PlaylistFilter = (props) => {
           source="owner_id"
           label={'resources.playlist.fields.ownerName'}
           reference="user"
-          perPage={0}
+          perPage={-1}
           sort={{ field: 'name', order: 'ASC' }}
           alwaysOn
         >
@@ -80,7 +80,7 @@ const TogglePublicInput = ({ resource, source }) => {
     {
       mutationMode: 'pessimistic',
       onError: () => {
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
       },
     },
   )
@@ -112,7 +112,7 @@ const ToggleAutoImport = ({ resource, source }) => {
     {
       mutationMode: 'pessimistic',
       onError: () => {
-        notify('ra.page.error', 'warning')
+        notify('ra.page.error', { type: 'warning' })
       },
     },
   )

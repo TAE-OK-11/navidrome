@@ -40,8 +40,9 @@ const DeleteLibraryButton = ({
   const redirect = useRedirect()
 
   const onSuccess = () => {
-    notify('resources.library.notifications.deleted', 'info', {
-      smart_count: 1,
+    notify('resources.library.notifications.deleted', {
+      type: 'info',
+      messageArgs: { smart_count: 1 },
     })
     redirect('/library')
   }

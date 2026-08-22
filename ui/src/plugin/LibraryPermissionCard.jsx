@@ -7,7 +7,7 @@ import {
   FormControlLabel,
   Switch,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Checkbox,
@@ -91,14 +91,22 @@ export const LibraryPermissionCard = ({
         )}
 
         {isConfigurationRequired && (
-          <Box mb={2}>
+          <Box
+            sx={{
+              mb: 2,
+            }}
+          >
             <Alert severity="warning">
               {translate('resources.plugin.messages.librariesRequired')}
             </Alert>
           </Box>
         )}
 
-        <Box mb={2}>
+        <Box
+          sx={{
+            mb: 2,
+          }}
+        >
           <FormControlLabel
             control={
               <Switch
@@ -115,7 +123,11 @@ export const LibraryPermissionCard = ({
         </Box>
 
         {hasFilesystem && (
-          <Box mb={2}>
+          <Box
+            sx={{
+              mb: 2,
+            }}
+          >
             <FormControlLabel
               control={
                 <Switch
@@ -156,9 +168,8 @@ export const LibraryPermissionCard = ({
                 }}
               >
                 {libraries.map((library) => (
-                  <ListItem
+                  <ListItemButton
                     key={library.id}
-                    button
                     onClick={() => handleToggleLibrary(library.id)}
                     dense
                   >
@@ -175,7 +186,7 @@ export const LibraryPermissionCard = ({
                       primary={library.name}
                       secondary={library.path}
                     />
-                  </ListItem>
+                  </ListItemButton>
                 ))}
               </List>
             )}

@@ -70,8 +70,9 @@ const LibraryEdit = (props) => {
           data: values,
           previousData: values,
         })
-        notify('resources.library.notifications.updated', 'info', {
-          smart_count: 1,
+        notify('resources.library.notifications.updated', {
+          type: 'info',
+          messageArgs: { smart_count: 1 },
         })
         redirect('/library')
       } catch (error) {
@@ -90,9 +91,23 @@ const LibraryEdit = (props) => {
         save={save}
         toolbar={<CustomToolbar showDelete={canDelete} />}
       >
-        <Box p="1em" maxWidth="800px">
-          <Box display="flex">
-            <Box flex={1} mr="1em">
+        <Box
+          sx={{
+            p: '1em',
+            maxWidth: '800px',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+            }}
+          >
+            <Box
+              sx={{
+                flex: 1,
+                mr: '1em',
+              }}
+            >
               {/* Basic Information */}
               <Typography variant="h6" gutterBottom>
                 {translate('resources.library.sections.basic')}
@@ -118,15 +133,28 @@ const LibraryEdit = (props) => {
                 variant="outlined"
               />
 
-              <Box mt="2em" />
+              <Box
+                sx={{
+                  mt: '2em',
+                }}
+              />
 
               {/* Statistics - Two Column Layout */}
               <Typography variant="h6" gutterBottom>
                 {translate('resources.library.sections.statistics')}
               </Typography>
 
-              <Box display="flex">
-                <Box flex={1} mr="0.5em">
+              <Box
+                sx={{
+                  display: 'flex',
+                }}
+              >
+                <Box
+                  sx={{
+                    flex: 1,
+                    mr: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -136,7 +164,12 @@ const LibraryEdit = (props) => {
                     variant="outlined"
                   />
                 </Box>
-                <Box flex={1} ml="0.5em">
+                <Box
+                  sx={{
+                    flex: 1,
+                    ml: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -148,8 +181,17 @@ const LibraryEdit = (props) => {
                 </Box>
               </Box>
 
-              <Box display="flex">
-                <Box flex={1} mr="0.5em">
+              <Box
+                sx={{
+                  display: 'flex',
+                }}
+              >
+                <Box
+                  sx={{
+                    flex: 1,
+                    mr: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -159,7 +201,12 @@ const LibraryEdit = (props) => {
                     variant="outlined"
                   />
                 </Box>
-                <Box flex={1} ml="0.5em">
+                <Box
+                  sx={{
+                    flex: 1,
+                    ml: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -172,8 +219,17 @@ const LibraryEdit = (props) => {
                 </Box>
               </Box>
 
-              <Box display="flex">
-                <Box flex={1} mr="0.5em">
+              <Box
+                sx={{
+                  display: 'flex',
+                }}
+              >
+                <Box
+                  sx={{
+                    flex: 1,
+                    mr: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -184,7 +240,12 @@ const LibraryEdit = (props) => {
                     variant="outlined"
                   />
                 </Box>
-                <Box flex={1} ml="0.5em">
+                <Box
+                  sx={{
+                    flex: 1,
+                    ml: '0.5em',
+                  }}
+                >
                   <TextInput
                     readOnly
                     resource={'library'}
@@ -199,21 +260,33 @@ const LibraryEdit = (props) => {
               </Box>
 
               {/* Timestamps Section */}
-              <Box mb="1em">
+              <Box
+                sx={{
+                  mb: '1em',
+                }}
+              >
                 <Typography variant="body2" color="textSecondary" gutterBottom>
                   {translate('resources.library.fields.lastScanAt')}
                 </Typography>
                 <DateField variant="body1" source="lastScanAt" showTime />
               </Box>
 
-              <Box mb="1em">
+              <Box
+                sx={{
+                  mb: '1em',
+                }}
+              >
                 <Typography variant="body2" color="textSecondary" gutterBottom>
                   {translate('resources.library.fields.updatedAt')}
                 </Typography>
                 <DateField variant="body1" source="updatedAt" showTime />
               </Box>
 
-              <Box mb="2em">
+              <Box
+                sx={{
+                  mb: '2em',
+                }}
+              >
                 <Typography variant="body2" color="textSecondary" gutterBottom>
                   {translate('resources.library.fields.createdAt')}
                 </Typography>

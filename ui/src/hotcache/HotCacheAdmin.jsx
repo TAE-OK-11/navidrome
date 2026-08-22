@@ -216,7 +216,9 @@ const HotCacheAdmin = () => {
       if (tab === 4) tasks.push(loadCandidates(controller.signal))
       await Promise.all(tasks)
     } catch (error) {
-      if (error.name !== 'AbortError') notify(error.message, 'warning')
+      if (error.name !== 'AbortError') {
+        notify(error.message, { type: 'warning' })
+      }
     } finally {
       setBusy(false)
     }
@@ -259,7 +261,7 @@ const HotCacheAdmin = () => {
       } catch (error) {
         delay = errorStatus(error) === 429 ? 60000 : 15000
         if (active && error.name !== 'AbortError' && !pollErrorShown.current) {
-          notify(error.message, 'warning')
+          notify(error.message, { type: 'warning' })
           pollErrorShown.current = true
         }
         setInitialLoading(false)
@@ -284,7 +286,8 @@ const HotCacheAdmin = () => {
     const controller = new AbortController()
     loadEntries(controller.signal).catch(
       (error) =>
-        error.name !== 'AbortError' && notify(error.message, 'warning'),
+        error.name !== 'AbortError' &&
+        notify(error.message, { type: 'warning' }),
     )
     return () => controller.abort()
   }, [loadEntries, notify, permissions, tab])
@@ -294,7 +297,8 @@ const HotCacheAdmin = () => {
     const controller = new AbortController()
     loadCandidates(controller.signal).catch(
       (error) =>
-        error.name !== 'AbortError' && notify(error.message, 'warning'),
+        error.name !== 'AbortError' &&
+        notify(error.message, { type: 'warning' }),
     )
     return () => controller.abort()
   }, [loadCandidates, notify, permissions, tab])
@@ -304,13 +308,13 @@ const HotCacheAdmin = () => {
       setBusy(true)
       try {
         await hotCacheAction(path, method, headers)
-        notify('hotCache.actionAccepted', 'info')
+        notify('hotCache.actionAccepted', { type: 'info' })
         const tasks = [loadDashboard()]
         if (tab === 3) tasks.push(loadEntries())
         if (tab === 4) tasks.push(loadCandidates())
         await Promise.all(tasks)
       } catch (error) {
-        notify(error.message, 'warning')
+        notify(error.message, { type: 'warning' })
       } finally {
         setBusy(false)
       }
@@ -337,12 +341,12 @@ const HotCacheAdmin = () => {
           count: result.accepted.length,
           rejected,
         }),
-        rejected ? 'warning' : 'info',
+        { type: rejected ? 'warning' : 'info' },
       )
       setSelectedCandidates([])
       await Promise.all([loadDashboard(), loadCandidates()])
     } catch (error) {
-      notify(error.message, 'warning')
+      notify(error.message, { type: 'warning' })
     } finally {
       setBusy(false)
     }

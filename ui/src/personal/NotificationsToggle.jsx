@@ -27,7 +27,9 @@ export const NotificationsToggle = () => {
       dispatch(setNotificationsState(false))
     } else {
       if (Notification.permission === 'denied') {
-        notify(translate('message.notifications_blocked'), 'warning')
+        notify(translate('message.notifications_blocked'), {
+          type: 'warning',
+        })
       } else {
         Notification.requestPermission().then((permission) => {
           dispatch(setNotificationsState(permission === 'granted'))

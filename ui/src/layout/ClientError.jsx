@@ -32,7 +32,12 @@ const ClientError = ({ error, resetErrorBoundary }) => {
       <Typography variant="h4" component="h1" gutterBottom>
         Something went wrong
       </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
+      <Typography
+        sx={{
+          color: 'text.secondary',
+          mb: 2,
+        }}
+      >
         The web client could not finish loading. Try again, or reset the saved
         browser state and sign in again.
       </Typography>

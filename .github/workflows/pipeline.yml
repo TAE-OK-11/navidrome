@@ -70,9 +70,10 @@ jobs:
       - name: Check
         working-directory: ui
         run: |
-          ./node_modules/.bin/prettier --write src/App.jsx
-          git diff --no-ext-diff -- src/App.jsx
-          exit 1
+          bun run type-check
+          bun run lint
+          bun run check-formatting
+          bun run test
       - name: Build
         working-directory: ui
         run: bun run build

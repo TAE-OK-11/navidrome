@@ -43,12 +43,14 @@ export const ShareDialog = () => {
   const [createShare] = useCreate(
     'share',
     {
-      resourceType: resource,
-      resourceIds: ids?.join(','),
-      description,
-      downloadable,
-      ...(!originalFormat && { format }),
-      ...(!originalFormat && { maxBitRate }),
+      data: {
+        resourceType: resource,
+        resourceIds: ids?.join(','),
+        description,
+        downloadable,
+        ...(!originalFormat && { format }),
+        ...(!originalFormat && { maxBitRate }),
+      },
     },
     {
       onSuccess: (res) => {
@@ -71,7 +73,7 @@ export const ShareDialog = () => {
             })
         } else prompt(translate('message.shareCopyToClipboard'), url)
       },
-      onFailure: (error) =>
+      onError: (error) =>
         notify(translate('ra.page.error') + ': ' + error.message, {
           type: 'warning',
         }),

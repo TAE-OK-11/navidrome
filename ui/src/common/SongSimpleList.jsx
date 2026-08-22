@@ -1,12 +1,12 @@
 import React from 'react'
 import PropTypes from 'prop-types'
 import List from '@mui/material/List'
-import ListItem from '@mui/material/ListItem'
+import ListItemButton from '@mui/material/ListItemButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
 import makeStyles from '../themes/makeStyles'
-import { sanitizeListRestProps } from 'react-admin'
+import { sanitizeListRestProps, useListContext } from 'react-admin'
 import { DurationField, SongContextMenu, RatingField } from './index'
 import { setTrack } from '../actions'
 import { useDispatch } from 'react-redux'
@@ -51,48 +51,42 @@ const useStyles = makeStyles(
 )
 
 export const SongSimpleList = ({
-  basePath,
   className,
   classes: classesOverride,
-  data,
   hasBulkActions = false,
-  ids,
-  loading,
-  onToggleItem,
-  selectedIds = [],
-  total,
   ...rest
 }) => {
   const dispatch = useDispatch()
   const classes = useStyles({ classes: classesOverride })
+  const { data = [], isPending, total = 0 } = useListContext()
   return (
-    (loading || total > 0) && (
+    (isPending || total > 0) && (
       <List className={className} {...sanitizeListRestProps(rest)}>
-        {ids.map(
-          (id) =>
-            data[id] && (
-              <span key={id} onClick={() => dispatch(setTrack(data[id]))}>
-                <ListItem className={classes.listItem} button={true}>
+        {data.map(
+          (record) =>
+            record && (
+              <span key={record.id} onClick={() => dispatch(setTrack(record))}>
+                <ListItemButton className={classes.listItem}>
                   <ListItemText
                     primary={
-                      <div className={classes.title}>{data[id].title}</div>
+                      <div className={classes.title}>{record.title}</div>
                     }
                     secondary={
                       <>
                         <span className={classes.secondary}>
                           <span className={classes.artist}>
-                            {data[id].artist}
+                            {record.artist}
                           </span>
                           <span className={classes.timeStamp}>
                             <DurationField
-                              record={data[id]}
+                              record={record}
                               source={'duration'}
                             />
                           </span>
                         </span>
                         {config.enableStarRating && (
                           <RatingField
-                            record={data[id]}
+                            record={record}
                             source={'rating'}
                             resource={'song'}
                             size={'small'}
@@ -103,10 +97,10 @@ export const SongSimpleList = ({
                   />
                   <ListItemSecondaryAction className={classes.rightIcon}>
                     <ListItemIcon>
-                      <SongContextMenu record={data[id]} visible={true} />
+                      <SongContextMenu record={record} visible={true} />
                     </ListItemIcon>
                   </ListItemSecondaryAction>
-                </ListItem>
+                </ListItemButton>
               </span>
             ),
         )}

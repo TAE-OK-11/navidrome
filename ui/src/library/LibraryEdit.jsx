@@ -84,7 +84,7 @@ const LibraryEdit = (props) => {
   )
 
   return (
-    <Edit title={<LibraryTitle />} undoable={false} {...props}>
+    <Edit title={<LibraryTitle />} mutationMode="pessimistic" {...props}>
       <SimpleForm
         {...props}
         save={save}
@@ -110,7 +110,7 @@ const LibraryEdit = (props) => {
                 validate={[required()]}
                 fullWidth
                 variant="outlined"
-                InputProps={{ readOnly: !canEditPath }} // Disable editing path for library 1
+                readOnly={!canEditPath} // Disable editing path for library 1
               />
               <BooleanInput
                 source="defaultNewUsers"
@@ -128,7 +128,7 @@ const LibraryEdit = (props) => {
               <Box display="flex">
                 <Box flex={1} mr="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalSongs'}
                     label={translate('resources.library.fields.totalSongs')}
@@ -138,7 +138,7 @@ const LibraryEdit = (props) => {
                 </Box>
                 <Box flex={1} ml="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalAlbums'}
                     label={translate('resources.library.fields.totalAlbums')}
@@ -151,7 +151,7 @@ const LibraryEdit = (props) => {
               <Box display="flex">
                 <Box flex={1} mr="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalArtists'}
                     label={translate('resources.library.fields.totalArtists')}
@@ -161,7 +161,7 @@ const LibraryEdit = (props) => {
                 </Box>
                 <Box flex={1} ml="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalSize'}
                     label={translate('resources.library.fields.totalSize')}
@@ -175,7 +175,7 @@ const LibraryEdit = (props) => {
               <Box display="flex">
                 <Box flex={1} mr="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalDuration'}
                     label={translate('resources.library.fields.totalDuration')}
@@ -186,7 +186,7 @@ const LibraryEdit = (props) => {
                 </Box>
                 <Box flex={1} ml="0.5em">
                   <TextInput
-                    InputProps={{ readOnly: true }}
+                    readOnly
                     resource={'library'}
                     source={'totalMissingFiles'}
                     label={translate(

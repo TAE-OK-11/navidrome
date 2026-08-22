@@ -261,12 +261,11 @@ export const SelectPlaylistInput = ({ onChange }) => {
   const [searchText, setSearchText] = useState('')
   const [selectedPlaylists, setSelectedPlaylists] = useState([])
 
-  const { data = [] } = useGetList(
-    'playlist',
-    { page: 1, perPage: -1 },
-    { field: 'name', order: 'ASC' },
-    { smart: false },
-  )
+  const { data = [] } = useGetList('playlist', {
+    pagination: { page: 1, perPage: -1 },
+    sort: { field: 'name', order: 'ASC' },
+    filter: { smart: false },
+  })
 
   const options = data.filter((option) => isWritable(option.ownerId))
 

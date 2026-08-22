@@ -27,7 +27,7 @@ describe('HotCacheAdmin authorization', () => {
     vi.clearAllMocks()
     usePermissions.mockReturnValue({
       permissions: 'regular',
-      loading: false,
+      isPending: false,
     })
     hotCacheApi.getHotCacheDashboard.mockResolvedValue({
       status: {},
@@ -54,7 +54,7 @@ describe('HotCacheAdmin authorization', () => {
   })
 
   it('loads the administrator dashboard through one aggregate request', async () => {
-    usePermissions.mockReturnValue({ permissions: 'admin', loading: false })
+    usePermissions.mockReturnValue({ permissions: 'admin', isPending: false })
     render(
       <MemoryRouter initialEntries={['/admin/hot-cache']}>
         <Routes>

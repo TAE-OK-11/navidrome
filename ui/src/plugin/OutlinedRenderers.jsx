@@ -118,7 +118,7 @@ const OutlinedControl = (props) => {
       size="small"
       error={showError}
       helperText={helperText}
-      inputProps={extraInputProps}
+      slotProps={{ htmlInput: extraInputProps }}
       className={classes.control}
     />
   )

@@ -29,14 +29,11 @@ export const UsersPermissionCard = ({
   const translate = useTranslate()
 
   // Fetch all users
-  const { data: usersData, loading: usersLoading } = useGetList('user', {
+  const { data: users = [], isPending: usersLoading } = useGetList('user', {
     pagination: { page: 1, perPage: 1000 },
     sort: { field: 'userName', order: 'ASC' },
+    filter: {},
   })
-
-  const users = React.useMemo(() => {
-    return usersData ? Object.values(usersData) : []
-  }, [usersData])
 
   const handleToggleUser = React.useCallback(
     (userId) => {

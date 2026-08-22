@@ -13,7 +13,7 @@ vi.mock('react-admin', async () => {
     ),
     Confirm: ({ isOpen }) => (isOpen ? <div data-testid="confirm" /> : null),
     useNotify: vi.fn(),
-    useDeleteMany: vi.fn(() => [vi.fn(), { loading: false }]),
+    useDeleteMany: vi.fn(() => [vi.fn(), { isPending: false }]),
     useRefresh: vi.fn(),
     useUnselectAll: vi.fn(),
   }
@@ -35,7 +35,7 @@ describe('DeleteMissingFilesButton', () => {
     render(<DeleteMissingFilesButton deleteAll />)
     expect(RA.useDeleteMany).toHaveBeenCalledWith(
       'missing',
-      [],
+      { ids: [] },
       expect.any(Object),
     )
   })

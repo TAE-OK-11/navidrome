@@ -32,7 +32,7 @@ const useStyles = makeStyles(
 )
 
 const PlaylistShowLayout = (props) => {
-  const { loading, ...context } = useShowContext(props)
+  const context = useShowContext(props)
   const { record } = context
   const classes = useStyles()
   useResourceRefresh('song')

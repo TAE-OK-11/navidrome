@@ -170,13 +170,11 @@ const PluginShowLayout = () => {
     setIsDirty(true)
   }, [])
 
-  const [updatePlugin, { loading }] = useUpdate(
+  const [updatePlugin, { isPending: isSaving }] = useUpdate(
     'plugin',
-    record?.id,
     {},
-    record,
     {
-      undoable: false,
+      mutationMode: 'pessimistic',
       onSuccess: () => {
         refresh()
         setIsDirty(false)
@@ -188,7 +186,7 @@ const PluginShowLayout = () => {
         setLastRecordAllowWriteAccess(null)
         notify('resources.plugin.notifications.updated', 'info')
       },
-      onFailure: (err) => {
+      onError: (err) => {
         notify(
           err?.message || 'resources.plugin.notifications.error',
           'warning',
@@ -221,7 +219,11 @@ const PluginShowLayout = () => {
       data.allowWriteAccess = allowWriteAccess
     }
 
-    updatePlugin('plugin', record.id, data, record)
+    updatePlugin('plugin', {
+      id: record.id,
+      data,
+      previousData: record,
+    })
   }, [
     updatePlugin,
     record,
@@ -327,7 +329,7 @@ const PluginShowLayout = () => {
             color="primary"
             startIcon={<MdSave />}
             onClick={handleSaveConfig}
-            disabled={!isDirty || loading || configErrors.length > 0}
+            disabled={!isDirty || isSaving || configErrors.length > 0}
             className={classes.saveButton}
           >
             {translate('ra.action.save')}

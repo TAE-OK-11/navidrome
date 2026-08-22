@@ -2,20 +2,19 @@
 import { useGetList } from 'react-admin'
 
 const useGetLanguageChoices = () => {
-  const { ids, data, loaded, loading } = useGetList(
-    'translation',
-    { page: 1, perPage: -1 },
-    { field: '', order: '' },
-    {},
-  )
+  const { data = [], isPending } = useGetList('translation', {
+    pagination: { page: 1, perPage: -1 },
+    sort: { field: 'name', order: 'ASC' },
+    filter: {},
+  })
 
   const choices = [{ id: 'en', name: 'English' }]
-  if (loaded) {
-    ids.forEach((id) => choices.push({ id: id, name: data[id].name }))
+  if (!isPending) {
+    data.forEach(({ id, name }) => choices.push({ id, name }))
   }
   choices.sort((a, b) => a.name.localeCompare(b.name))
 
-  return { choices, loaded, loading }
+  return { choices, loaded: !isPending, loading: isPending }
 }
 
 export default useGetLanguageChoices

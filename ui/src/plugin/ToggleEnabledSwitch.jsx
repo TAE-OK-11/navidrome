@@ -54,13 +54,15 @@ const ToggleEnabledSwitch = ({
   const translate = useTranslate()
   const classes = useStyles()
 
-  const [toggleEnabled, { loading }] = useUpdate(
+  const [toggleEnabled, { isPending }] = useUpdate(
     resource,
-    record?.id,
-    { enabled: !record?.enabled },
-    record,
     {
-      undoable: false,
+      id: record?.id,
+      data: { enabled: !record?.enabled },
+      previousData: record,
+    },
+    {
+      mutationMode: 'pessimistic',
       onSuccess: () => {
         refresh()
         notify(
@@ -70,7 +72,7 @@ const ToggleEnabledSwitch = ({
           'info',
         )
       },
-      onFailure: (error) => {
+      onError: (error) => {
         refresh()
         notify(
           error?.message || 'resources.plugin.notifications.error',
@@ -121,7 +123,7 @@ const ToggleEnabledSwitch = ({
   const permissionRequired =
     usersPermissionRequired || libraryPermissionRequired
   const isDisabled =
-    loading || hasError || (permissionRequired && !record?.enabled)
+    isPending || hasError || (permissionRequired && !record?.enabled)
 
   const tooltipTitle = useMemo(() => {
     if (hasError) {

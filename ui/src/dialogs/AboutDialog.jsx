@@ -434,16 +434,19 @@ const TabContent = ({
 const AboutDialog = ({ open, onClose }) => {
   const classes = useStyles()
   const { permissions } = usePermissions()
-  const { data: insightsData, loading } = useGetOne(
-    'insights',
-    'insights_status',
-  )
+  const { data: insightsData, isPending: loading } = useGetOne('insights', {
+    id: 'insights_status',
+  })
   const [serverVersion, setServerVersion] = useState('')
   const showConfigTab = permissions === 'admin' && config.devUIShowConfig
   const [tab, setTab] = useState(0)
-  const { data: configData } = useGetOne('config', 'config', {
-    enabled: showConfigTab,
-  })
+  const { data: configData } = useGetOne(
+    'config',
+    { id: 'config' },
+    {
+      enabled: showConfigTab,
+    },
+  )
   const expanded = showConfigTab && tab === 1
   const uiVersion = config.version
 

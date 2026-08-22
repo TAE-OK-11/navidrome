@@ -268,22 +268,26 @@ const SongDatagridBody = ({
   ...rest
 }) => {
   const dispatch = useDispatch()
-  const { ids, data } = rest
+  const records = rest.data || []
+  const ids = records.map((record) => record.id)
+  const dataById = Object.fromEntries(
+    records.map((record) => [record.id, record]),
+  )
 
   const playSubset = useCallback(
     (discNumber) => {
       let idsToPlay = []
       if (discNumber !== undefined) {
-        idsToPlay = ids.filter((id) => data[id].discNumber === discNumber)
+        idsToPlay = ids.filter((id) => dataById[id].discNumber === discNumber)
       }
       dispatch(
         playTracks(
-          data,
-          idsToPlay?.filter((id) => !data[id].missing),
+          dataById,
+          idsToPlay?.filter((id) => !dataById[id].missing),
         ),
       )
     },
-    [dispatch, data, ids],
+    [dispatch, dataById, ids],
   )
 
   const firstTracksOfDiscs = useMemo(() => {
@@ -293,13 +297,13 @@ const SongDatagridBody = ({
     let foundSubtitle = false
     const set = new Set(
       ids
-        .filter((i) => data[i])
+        .filter((i) => dataById[i])
         .reduce((acc, id) => {
           const last = acc && acc[acc.length - 1]
-          foundSubtitle = foundSubtitle || data[id].discSubtitle
+          foundSubtitle = foundSubtitle || dataById[id].discSubtitle
           if (
             acc.length === 0 ||
-            (last && data[id].discNumber !== data[last].discNumber)
+            (last && dataById[id].discNumber !== dataById[last].discNumber)
           ) {
             acc.push(id)
           }
@@ -310,7 +314,7 @@ const SongDatagridBody = ({
       set.clear()
     }
     return set
-  }, [ids, data, showDiscSubtitles])
+  }, [ids, dataById, showDiscSubtitles])
 
   return (
     <PureDatagridBody

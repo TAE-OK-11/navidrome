@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Divider } from '@mui/material'
+import { Divider, MenuList } from '@mui/material'
 import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import {
@@ -113,11 +113,13 @@ const Menu = ({ dense = false }) => {
     resource.hasList && resource.options && resource.options.subMenu === subMenu
 
   return (
-    <div
+    <MenuList
       className={clsx(classes.root, {
         [classes.open]: open,
         [classes.closed]: !open,
       })}
+      component="nav"
+      disablePadding
     >
       {open && <LibrarySelector />}
       <SubMenu
@@ -159,7 +161,7 @@ const Menu = ({ dense = false }) => {
           />
         </>
       )}
-    </div>
+    </MenuList>
   )
 }
 

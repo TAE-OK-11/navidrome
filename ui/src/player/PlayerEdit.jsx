@@ -7,13 +7,15 @@ import {
   SimpleForm,
   SelectInput,
   ReferenceInput,
+  useRecordContext,
   useTranslate,
 } from 'react-admin'
 import { Title } from '../common'
 import config from '../config'
 import { BITRATE_CHOICES } from '../consts'
 
-const PlayerTitle = ({ record }) => {
+const PlayerTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.player.name', { smart_count: 1 })
   return <Title subTitle={`${resourceName} ${record ? record.name : ''}`} />

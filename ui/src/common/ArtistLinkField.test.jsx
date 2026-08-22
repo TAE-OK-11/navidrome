@@ -26,6 +26,7 @@ vi.mock('@mui/material', () => ({
 }))
 
 vi.mock('react-admin', () => ({
+  useRecordContext: ({ record }) => record,
   Link: ({ children, to, ...props }) => (
     <a href={to} {...props}>
       {children}

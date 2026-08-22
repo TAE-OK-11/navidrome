@@ -5,13 +5,15 @@ import {
   SelectInput,
   SimpleForm,
   TextInput,
+  useRecordContext,
   useTranslate,
 } from 'react-admin'
 import { Title } from '../common'
 import { TranscodingNote } from './TranscodingNote'
 import { BITRATE_CHOICES } from '../consts'
 
-const TranscodingTitle = ({ record }) => {
+const TranscodingTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.transcoding.name', {
     smart_count: 1,

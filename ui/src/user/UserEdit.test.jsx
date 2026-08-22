@@ -68,6 +68,7 @@ vi.mock('react-admin', () => ({
   useRedirect: () => hooks.redirect,
   useRefresh: () => hooks.refresh,
   usePermissions: () => ({ permissions: 'admin' }),
+  useRecordContext: ({ record }) => record,
   useTranslate: () => (key) => key,
 }))
 

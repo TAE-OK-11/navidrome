@@ -10,6 +10,7 @@ import {
   usePermissions,
   ReferenceInput,
   SelectInput,
+  useRecordContext,
 } from 'react-admin'
 import { isWritable, Title } from '../common'
 
@@ -22,7 +23,8 @@ const SyncFragment = ({ formData, variant, ...rest }) => {
   )
 }
 
-const PlaylistTitle = ({ record }) => {
+const PlaylistTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.playlist.name', { smart_count: 1 })
   return <Title subTitle={`${resourceName} "${record ? record.name : ''}"`} />

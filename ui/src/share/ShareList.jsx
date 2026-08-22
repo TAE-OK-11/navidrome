@@ -6,6 +6,7 @@ import {
   SimpleList,
   TextField,
   useNotify,
+  useRecordContext,
   useTranslate,
 } from 'react-admin'
 import { List } from '../common'
@@ -16,7 +17,8 @@ import { DateField, QualityInfo } from '../common'
 import { sharePlayerUrl } from '../utils'
 import config from '../config'
 
-export const FormatInfo = ({ record, size }) => {
+export const FormatInfo = ({ record: recordOverride, size }) => {
+  const record = useRecordContext({ record: recordOverride }) || {}
   const r = { suffix: record.format, bitRate: record.maxBitRate }
   r.suffix =
     r.suffix || (r.bitRate ? config.defaultDownsamplingFormat : 'Original')
@@ -38,7 +40,7 @@ const ShareList = (props) => {
           notify(translate('message.shareSuccess', { url }), {
             type: 'info',
             multiLine: true,
-            duration: 0,
+            autoHideDuration: null,
           })
         })
         .catch((err) => {
@@ -47,7 +49,7 @@ const ShareList = (props) => {
             {
               type: 'warning',
               multiLine: true,
-              duration: 0,
+              autoHideDuration: null,
             },
           )
         })

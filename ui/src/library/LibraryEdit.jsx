@@ -27,7 +27,8 @@ const useStyles = makeStyles({
   },
 })
 
-const LibraryTitle = ({ record }) => {
+const LibraryTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.library.name', { smart_count: 1 })
   return (

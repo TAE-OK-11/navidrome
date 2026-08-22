@@ -50,23 +50,31 @@ const useStyles = makeStyles({
   },
   row: {
     cursor: 'pointer',
+    transition: 'background-color 150ms ease, transform 150ms ease',
     '&:hover': {
+      backgroundColor: 'rgba(127, 127, 127, 0.1)',
       '& $contextMenu': {
         visibility: 'visible',
       },
     },
+    '&:active': { transform: 'scale(0.998)' },
   },
   missingRow: {
     cursor: 'inherit',
     opacity: 0.3,
   },
   headerStyle: {
+    border: '1px solid rgba(127, 127, 127, 0.2)',
+    borderRadius: 16,
+    overflow: 'hidden',
     '& thead': {
-      boxShadow: '0px 3px 3px rgba(0, 0, 0, 0.15)',
+      boxShadow: '0px 3px 8px rgba(0, 0, 0, 0.08)',
+      backgroundColor: 'rgba(127, 127, 127, 0.08)',
     },
     '& th': {
       fontWeight: 'bold',
-      padding: '15px',
+      padding: '13px 15px',
+      letterSpacing: '0.02em',
     },
   },
   contextMenu: {

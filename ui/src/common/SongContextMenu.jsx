@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux'
 import {
   useNotify,
   usePermissions,
+  useRecordContext,
   useTranslate,
   useDataProvider,
 } from 'react-admin'
@@ -42,7 +43,12 @@ const MoreButton = ({ record, onClick, info }) => {
       }
     : onClick
   return (
-    <IconButton onClick={handleClick} size={'small'}>
+    <IconButton
+      onClick={handleClick}
+      size="small"
+      aria-label="more"
+      disabled={!record?.id}
+    >
       {record?.missing ? (
         <MdQuestionMark fontSize={'large'} />
       ) : (
@@ -54,11 +60,12 @@ const MoreButton = ({ record, onClick, info }) => {
 
 export const SongContextMenu = ({
   resource = 'song',
-  record = {},
+  record: recordOverride,
   showLove = true,
   onAddToPlaylist = () => {},
   className,
 }) => {
+  const record = useRecordContext({ record: recordOverride })
   const classes = useStyles()
   const dispatch = useDispatch()
   const translate = useTranslate()
@@ -159,7 +166,7 @@ export const SongContextMenu = ({
               {
                 type: 'warning',
                 multiLine: true,
-                duration: 0,
+                autoHideDuration: null,
               },
             )
           }
@@ -197,7 +204,7 @@ export const SongContextMenu = ({
 
   const handleItemClick = (e) => {
     e.preventDefault()
-    const key = e.target.getAttribute('value')
+    const key = e.currentTarget.dataset.action
     const action = options[key].action
 
     if (key === 'showInPlaylist') {
@@ -221,7 +228,7 @@ export const SongContextMenu = ({
   const handleMainMenuClose = (e) => {
     setAnchorEl(null)
     setPlaylistAnchorEl(null) // Close both menus
-    e.stopPropagation()
+    e?.stopPropagation()
   }
 
   const handlePlaylistClick = (id, e) => {
@@ -232,7 +239,7 @@ export const SongContextMenu = ({
 
   const open = Boolean(anchorEl)
 
-  if (!record) {
+  if (!record?.id) {
     return null
   }
 
@@ -258,7 +265,7 @@ export const SongContextMenu = ({
           return (
             options[key].enabled && (
               <MenuItem
-                value={key}
+                data-action={key}
                 key={key}
                 onClick={
                   showInPlaylistDisabled

@@ -5,6 +5,7 @@ import config from '../config'
 import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import { calculateGain } from '../utils/calculateReplayGain'
+import { useRecordContext } from 'react-admin'
 
 const llFormats = new Set(config.losslessFormats.split(','))
 const placeholder = 'N/A'
@@ -21,7 +22,7 @@ const useStyle = makeStyles(
 )
 
 export const QualityInfo = ({
-  record = {},
+  record: recordOverride,
   size = 'small',
   gainMode = 'none',
   preAmp,
@@ -29,6 +30,7 @@ export const QualityInfo = ({
   transcodeStream,
   isDirectPlay,
 }) => {
+  const record = useRecordContext({ record: recordOverride }) || {}
   const classes = useStyle()
   let { suffix, bitRate, rgAlbumGain, rgAlbumPeak, rgTrackGain, rgTrackPeak } =
     record

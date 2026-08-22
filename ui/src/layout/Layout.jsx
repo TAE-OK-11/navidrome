@@ -11,6 +11,7 @@ import { HotKeys } from 'react-hotkeys'
 import Menu from './Menu'
 import AppBar from './AppBar'
 import Notification from './Notification'
+import ClientError from './ClientError'
 import { useSearchRefocus } from '../common'
 import { retrieveTranslation } from '../i18n'
 import config from '../config'
@@ -56,6 +57,7 @@ const Layout = (props) => {
         className={classes.root}
         menu={Menu}
         appBar={AppBar}
+        error={ClientError}
         notification={Notification}
       />
     </HotKeys>

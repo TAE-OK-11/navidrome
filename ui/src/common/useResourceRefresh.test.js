@@ -1,23 +1,12 @@
+import { renderHook } from '@testing-library/react'
 import { vi } from 'vitest'
-import * as React from 'react'
 import * as Redux from 'react-redux'
 import * as RA from 'react-admin'
 import { useResourceRefresh } from './useResourceRefresh'
 
-vi.mock('react', async () => {
-  const actual = await vi.importActual('react')
-  return {
-    ...actual,
-    useState: vi.fn(),
-  }
-})
-
 vi.mock('react-redux', async () => {
   const actual = await vi.importActual('react-redux')
-  return {
-    ...actual,
-    useSelector: vi.fn(),
-  }
+  return { ...actual, useSelector: vi.fn() }
 })
 
 vi.mock('react-admin', async () => {
@@ -30,113 +19,81 @@ vi.mock('react-admin', async () => {
 })
 
 describe('useResourceRefresh', () => {
-  const setState = vi.fn()
-  const useStateMock = (initState) => [initState, setState]
   const refresh = vi.fn()
-  const useRefreshMock = () => refresh
   const getMany = vi.fn()
-  const useDataProviderMock = () => ({ getMany })
-  let lastTime
+  let refreshData
 
   beforeEach(() => {
-    vi.spyOn(React, 'useState').mockImplementation(useStateMock)
-    vi.spyOn(RA, 'useRefresh').mockImplementation(useRefreshMock)
-    vi.spyOn(RA, 'useDataProvider').mockImplementation(useDataProviderMock)
-    lastTime = new Date(new Date().valueOf() + 1000)
+    vi.mocked(RA.useRefresh).mockReturnValue(refresh)
+    vi.mocked(RA.useDataProvider).mockReturnValue({ getMany })
+    vi.mocked(Redux.useSelector).mockImplementation((selector) =>
+      selector({ activity: { refresh: refreshData } }),
+    )
+    refreshData = undefined
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('stores last time checked, to avoid redundant runs', () => {
-    const useSelectorMock = () => ({ lastReceived: lastTime })
-    vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
+  const renderRefreshHook = (...resources) =>
+    renderHook(() => useResourceRefresh(...resources))
 
-    useResourceRefresh()
+  it('does not repeat work for the same event timestamp', () => {
+    refreshData = {
+      lastReceived: Date.now() + 1000,
+      resources: { album: ['al-1'] },
+    }
+    const { rerender } = renderRefreshHook()
+    rerender()
 
-    expect(setState).toHaveBeenCalledWith(lastTime)
+    expect(getMany).toHaveBeenCalledOnce()
   })
 
-  it("does not run again if lastTime didn't change", () => {
-    vi.spyOn(React, 'useState').mockImplementation(() => [lastTime, setState])
-    const useSelectorMock = () => ({ lastReceived: lastTime })
-    vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
+  it('triggers a UI refresh for a global resource event', () => {
+    refreshData = {
+      lastReceived: Date.now() + 1000,
+      resources: { '*': '*' },
+    }
+    renderRefreshHook()
 
-    useResourceRefresh()
-
-    expect(setState).not.toHaveBeenCalled()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(getMany).not.toHaveBeenCalled()
   })
 
-  describe('No visible resources specified', () => {
-    it('triggers a UI refresh when received a "any" resource refresh', () => {
-      const useSelectorMock = () => ({
-        lastReceived: lastTime,
-        resources: { '*': '*' },
-      })
-      vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
+  it('triggers a UI refresh for a wildcard resource id', () => {
+    refreshData = {
+      lastReceived: Date.now() + 1000,
+      resources: { album: ['*'] },
+    }
+    renderRefreshHook()
 
-      useResourceRefresh()
-
-      expect(refresh).toHaveBeenCalledTimes(1)
-      expect(getMany).not.toHaveBeenCalled()
-    })
-
-    it('triggers a UI refresh when received an "any" id', () => {
-      const useSelectorMock = () => ({
-        lastReceived: lastTime,
-        resources: { album: ['*'] },
-      })
-      vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
-
-      useResourceRefresh()
-
-      expect(refresh).toHaveBeenCalledTimes(1)
-      expect(getMany).not.toHaveBeenCalled()
-    })
-
-    it('triggers a refetch of the resources received', () => {
-      const useSelectorMock = () => ({
-        lastReceived: lastTime,
-        resources: { album: ['al-1', 'al-2'], song: ['sg-1', 'sg-2'] },
-      })
-      vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
-
-      useResourceRefresh()
-
-      expect(refresh).not.toHaveBeenCalled()
-      expect(getMany).toHaveBeenCalledTimes(2)
-      expect(getMany).toHaveBeenCalledWith('album', { ids: ['al-1', 'al-2'] })
-      expect(getMany).toHaveBeenCalledWith('song', { ids: ['sg-1', 'sg-2'] })
-    })
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(getMany).not.toHaveBeenCalled()
   })
 
-  describe('Visible resources specified', () => {
-    it('triggers a UI refresh when received a "any" resource refresh', () => {
-      const useSelectorMock = () => ({
-        lastReceived: lastTime,
-        resources: { '*': '*' },
-      })
-      vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
+  it('refetches every received resource when no filter is specified', () => {
+    refreshData = {
+      lastReceived: Date.now() + 1000,
+      resources: { album: ['al-1', 'al-2'], song: ['sg-1', 'sg-2'] },
+    }
+    renderRefreshHook()
 
-      useResourceRefresh('album')
+    expect(refresh).not.toHaveBeenCalled()
+    expect(getMany).toHaveBeenCalledTimes(2)
+    expect(getMany).toHaveBeenCalledWith('album', { ids: ['al-1', 'al-2'] })
+    expect(getMany).toHaveBeenCalledWith('song', { ids: ['sg-1', 'sg-2'] })
+  })
 
-      expect(refresh).toHaveBeenCalledTimes(1)
-      expect(getMany).not.toHaveBeenCalled()
-    })
+  it('refetches only visible resources when a filter is specified', () => {
+    refreshData = {
+      lastReceived: Date.now() + 1000,
+      resources: { album: ['al-1', 'al-2'], song: ['sg-1', 'sg-2'] },
+    }
+    renderRefreshHook('song')
 
-    it('triggers a refetch of the resources received if they are visible', () => {
-      const useSelectorMock = () => ({
-        lastReceived: lastTime,
-        resources: { album: ['al-1', 'al-2'], song: ['sg-1', 'sg-2'] },
-      })
-      vi.spyOn(Redux, 'useSelector').mockImplementation(useSelectorMock)
-
-      useResourceRefresh('song')
-
-      expect(refresh).not.toHaveBeenCalled()
-      expect(getMany).toHaveBeenCalledTimes(1)
-      expect(getMany).toHaveBeenCalledWith('song', { ids: ['sg-1', 'sg-2'] })
-    })
+    expect(refresh).not.toHaveBeenCalled()
+    expect(getMany).toHaveBeenCalledOnce()
+    expect(getMany).toHaveBeenCalledWith('song', { ids: ['sg-1', 'sg-2'] })
   })
 })

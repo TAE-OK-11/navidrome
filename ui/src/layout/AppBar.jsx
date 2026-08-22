@@ -1,4 +1,4 @@
-import React, { createElement, forwardRef, Fragment } from 'react'
+import React, { createElement, forwardRef } from 'react'
 import {
   AppBar as RAAppBar,
   MenuItemLink,
@@ -23,9 +23,9 @@ const useStyles = makeStyles(
   (theme) => ({
     root: {
       color: theme.palette.text.secondary,
-    },
-    active: {
-      color: theme.palette.text.primary,
+      '&.RaMenuItemLink-active': {
+        color: theme.palette.text.primary,
+      },
     },
     icon: { minWidth: theme.spacing(5) },
   }),
@@ -85,7 +85,6 @@ const CustomUserMenu = (props) => {
     return (
       <MenuItemLink
         className={classes.root}
-        activeClassName={classes.active}
         key={resource.name}
         to={link}
         primaryText={label}
@@ -136,8 +135,14 @@ const CustomUserMenu = (props) => {
   )
 }
 
+const AppBarContainer = ({ children }) => <>{children}</>
+
 const AppBar = (props) => (
-  <RAAppBar {...props} container={Fragment} userMenu={<CustomUserMenu />} />
+  <RAAppBar
+    {...props}
+    container={AppBarContainer}
+    userMenu={<CustomUserMenu />}
+  />
 )
 
 export default AppBar

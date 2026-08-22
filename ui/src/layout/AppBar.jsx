@@ -70,7 +70,7 @@ const settingsResources = (resource) =>
 const CustomUserMenu = (props) => {
   const translate = useTranslate()
   const resourceDefinitions = useResourceDefinitions()
-  const resources = Object.values(resourceDefinitions)
+  const resources = Object.values(resourceDefinitions ?? {})
   const classes = useStyles(props)
   const { permissions } = usePermissions()
 

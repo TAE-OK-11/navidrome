@@ -60,7 +60,7 @@ const Menu = ({ dense = false }) => {
   const queue = useSelector((state) => state.player?.queue || [])
   const classes = useStyles({ addPadding: queue.length > 0 })
   const resourceDefinitions = useResourceDefinitions()
-  const resources = Object.values(resourceDefinitions)
+  const resources = Object.values(resourceDefinitions ?? {})
   const { permissions } = usePermissions()
 
   const [state, setState] = useState({

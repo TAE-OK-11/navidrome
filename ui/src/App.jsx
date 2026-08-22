@@ -93,6 +93,7 @@ const Admin = (props) => {
     <LegacyThemeProvider theme={theme}>
       <RAAdmin
         disableTelemetry
+        requireAuth
         dataProvider={dataProvider}
         authProvider={authProvider}
         i18nProvider={i18nProvider}

@@ -1,8 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Divider, MenuList } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
-import clsx from 'clsx'
 import {
   useTranslate,
   MenuItemLink,
@@ -20,28 +18,6 @@ import PlaylistsSubMenu from './PlaylistsSubMenu'
 import LibrarySelector from '../common/LibrarySelector'
 import config from '../config'
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    transition: theme.transitions.create('width', {
-      easing: theme.transitions.easing.sharp,
-      duration: theme.transitions.duration.leavingScreen,
-    }),
-    paddingBottom: (props) => (props.addPadding ? '80px' : '20px'),
-    '& .RaMenuItemLink-active': {
-      color: theme.palette.text.primary,
-      fontWeight: 'bold',
-    },
-  },
-  open: {
-    width: 240,
-  },
-  closed: {
-    width: 55,
-  },
-}))
-
 const translatedResourceName = (resource, translate) =>
   translate(`resources.${resource.name}.name`, {
     smart_count: 2,
@@ -58,7 +34,6 @@ const Menu = ({ dense = false }) => {
   const [open] = useSidebarState()
   const translate = useTranslate()
   const queue = useSelector((state) => state.player?.queue || [])
-  const classes = useStyles({ addPadding: queue.length > 0 })
   const resourceDefinitions = useResourceDefinitions()
   const resources = Object.values(resourceDefinitions ?? {})
   const { permissions } = usePermissions()
@@ -112,9 +87,19 @@ const Menu = ({ dense = false }) => {
 
   return (
     <MenuList
-      className={clsx(classes.root, {
-        [classes.open]: open,
-        [classes.closed]: !open,
+      sx={(theme) => ({
+        mt: 1,
+        mb: 1,
+        width: open ? 240 : 55,
+        pb: queue.length > 0 ? '80px' : '20px',
+        transition: theme.transitions.create('width', {
+          easing: theme.transitions.easing.sharp,
+          duration: theme.transitions.duration.leavingScreen,
+        }),
+        '& .RaMenuItemLink-active': {
+          color: 'text.primary',
+          fontWeight: 'bold',
+        },
       })}
       component="nav"
       disablePadding

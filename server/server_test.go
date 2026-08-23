@@ -30,6 +30,13 @@ var _ = Describe("HTTP server protocols", func() {
 		Expect(server.Protocols.HTTP1()).To(BeTrue())
 		Expect(server.Protocols.HTTP2()).To(BeTrue())
 		Expect(server.Protocols.UnencryptedHTTP2()).To(BeFalse())
+		Expect(server.HTTP2).ToNot(BeNil())
+		Expect(server.HTTP2.MaxConcurrentStreams).To(Equal(serverH2MaxConcurrentStreams))
+		Expect(server.HTTP2.MaxReceiveBufferPerConnection).To(Equal(serverH2ConnectionWindow))
+		Expect(server.HTTP2.MaxReceiveBufferPerStream).To(Equal(serverH2StreamWindow))
+		Expect(server.HTTP2.SendPingTimeout).To(Equal(serverH2SendPingTimeout))
+		Expect(server.HTTP2.PingTimeout).To(Equal(serverH2PingTimeout))
+		Expect(server.HTTP2.WriteByteTimeout).To(Equal(serverH2WriteByteTimeout))
 	})
 
 	It("serves HTTP/1.1 clients", func() {

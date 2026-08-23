@@ -23,6 +23,9 @@ Important settings:
   because qlogs are intentionally not enabled by default.
 - `HTTP3MaxConnections`: global connection admission limit (default 4096).
 - `HTTP3MaxConnectionsPerIP`: per-client active limit (default 128).
+- `HTTP3MaxInFlightRequests`: global request limit across all H3 connections
+  (default 1024). Excess streams receive 503 immediately instead of consuming
+  unbounded proxy tasks and memory.
 - `HTTP3ConnectionRatePerSecond` and `HTTP3ConnectionBurst`: per-IP token bucket
   defaults of 50/s and 100 additional burst connections.
 - `HTTP3CongestionControl`: defaults to `bbr2`, using quiche's gcongestion

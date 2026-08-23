@@ -207,6 +207,14 @@ func newHTTPServer(handler http.Handler) *http.Server {
 		IdleTimeout:       serverIdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,
+		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams:          serverH2MaxConcurrentStreams,
+			MaxReceiveBufferPerConnection: serverH2ConnectionWindow,
+			MaxReceiveBufferPerStream:     serverH2StreamWindow,
+			SendPingTimeout:                serverH2SendPingTimeout,
+			PingTimeout:                    serverH2PingTimeout,
+			WriteByteTimeout:               serverH2WriteByteTimeout,
+		},
 		Handler:           handler,
 	}
 }

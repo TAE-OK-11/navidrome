@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::{FromRawFd, RawFd};
 use std::os::unix::net::UnixStream as StdUnixStream;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -44,10 +45,14 @@ const MAX_AMPLIFICATION_FACTOR: usize = 3;
 const SOCKET_BUFFER_SIZE: usize = 7 * 1024 * 1024;
 const MAX_ADMISSION_PEERS: usize = 2_048;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
+const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+
+static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
+static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 
 const CONTROL_FD_ENV: &str = "NAVIDROME_H3_CONTROL_FD";
 const BRIDGE_FD_ENV: &str = "NAVIDROME_H3_BRIDGE_FD";
-
 
 type BoxError = Box<dyn StdError + Send + Sync>;
 type ProxyBody = UnsyncBoxBody<Bytes, BoxError>;
@@ -66,6 +71,7 @@ struct Config {
     max_concurrent_streams: u64,
     max_connections: usize,
     max_connections_per_ip: usize,
+    max_in_flight_requests: usize,
     connection_rate_per_second: f64,
     connection_burst: u32,
     congestion_control: String,
@@ -138,10 +144,10 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
         .handshake::<_, ProxyBody>(TokioIo::new(bridge))
         .await
         .context("failed to establish inherited HTTP/2 bridge")?;
+    let (bridge_stopped_tx, mut bridge_stopped_rx) = oneshot::channel();
     tokio::spawn(async move {
-        if let Err(error) = connection.await {
-            warn!("inherited HTTP/2 bridge stopped: {error}");
-        }
+        let result = connection.await.map_err(|error| error.to_string());
+        let _ = bridge_stopped_tx.send(result);
     });
 
     let socket = tuned_udp_socket(public)?;
@@ -210,6 +216,7 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     ))
     .context("invalid Alt-Svc value")?;
     let connection_limit = Arc::new(Semaphore::new(config.max_connections));
+    let request_limit = Arc::new(Semaphore::new(config.max_in_flight_requests));
     let admission = Arc::new(Admission::new(
         config.connection_rate_per_second,
         config.connection_burst,
@@ -252,6 +259,13 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                 break;
             }
             _ = terminate.recv() => break,
+            bridge_result = &mut bridge_stopped_rx => {
+                match bridge_result {
+                    Ok(Ok(())) => bail!("inherited HTTP/2 bridge closed"),
+                    Ok(Err(error)) => bail!("inherited HTTP/2 bridge stopped: {error}"),
+                    Err(_) => bail!("inherited HTTP/2 bridge monitor stopped"),
+                }
+            },
             connection = listener.next() => {
                 let Some(connection) = connection else { bail!("QUIC listener stopped") };
                 match connection {
@@ -259,7 +273,10 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                         let permit = match connection_limit.clone().try_acquire_owned() {
                             Ok(permit) => permit,
                             Err(_) => {
-                                warn!("connection rejected: global admission limit reached");
+                                let total = CONNECTION_REJECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
+                                if should_sample_log(total) {
+                                    warn!("connection rejected: global admission limit reached total={total}");
+                                }
                                 continue;
                             }
                         };
@@ -267,7 +284,10 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                         let peer_permit = match admission.admit(peer.ip()) {
                             Ok(permit) => permit,
                             Err(rejection) => {
-                                warn!("connection rejected peer={peer}: {rejection:?}");
+                                let total = CONNECTION_REJECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
+                                if should_sample_log(total) {
+                                    warn!("connection rejected peer={peer}: {rejection:?} total={total}");
+                                }
                                 continue;
                             }
                         };
@@ -285,6 +305,7 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                                 token: token.clone(),
                                 client: client.clone(),
                                 alt_svc: alt_svc.clone(),
+                                request_limit: Arc::clone(&request_limit),
                             },
                             permit,
                             peer_permit,
@@ -297,6 +318,10 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     }
     info!("HTTP/3 graceful shutdown requested");
     Ok(())
+}
+
+fn should_sample_log(total: u64) -> bool {
+    total <= 8 || total.is_power_of_two()
 }
 
 fn tuned_udp_socket(address: SocketAddr) -> Result<std::net::UdpSocket> {
@@ -416,6 +441,7 @@ struct ConnectionContext {
     token: HeaderValue,
     client: ProxyClient,
     alt_svc: HeaderValue,
+    request_limit: Arc<Semaphore>,
 }
 
 async fn handle_connection(
@@ -440,7 +466,25 @@ async fn handle_connection(
                     );
                     continue;
                 }
-                tokio::spawn(proxy_request(incoming_headers, context.clone()));
+                let request_permit = match context.request_limit.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        let total = REQUEST_REJECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
+                        if should_sample_log(total) {
+                            warn!(
+                                "HTTP/3 request rejected: bridge saturated peer={} total={total}",
+                                context.peer
+                            );
+                        }
+                        reject_overloaded(incoming_headers).await;
+                        continue;
+                    }
+                };
+                tokio::spawn(proxy_request(
+                    incoming_headers,
+                    context.clone(),
+                    request_permit,
+                ));
             }
             ServerH3Event::Core(H3Event::BodyBytesReceived { .. }) => {}
             ServerH3Event::Core(event) => log::debug!("HTTP/3 event: {event:?}"),
@@ -448,7 +492,18 @@ async fn handle_connection(
     }
 }
 
-async fn proxy_request(incoming: IncomingH3Headers, context: ConnectionContext) {
+async fn reject_overloaded(incoming: IncomingH3Headers) {
+    let mut send = incoming.send;
+    if let Err(error) = send_overloaded(&mut send).await {
+        log::debug!("failed to send HTTP/3 overload response: {error:#}");
+    }
+}
+
+async fn proxy_request(
+    incoming: IncomingH3Headers,
+    context: ConnectionContext,
+    _request_permit: tokio::sync::OwnedSemaphorePermit,
+) {
     let IncomingH3Headers {
         headers,
         send,
@@ -480,18 +535,14 @@ async fn proxy_request_inner(
         .await?;
         return Ok(());
     }
-    let decoded = match decode_request_headers(
-        &headers,
-        context.peer,
-        context.public_port,
-        &context.token,
-    ) {
-        Ok(decoded) => decoded,
-        Err(error) => {
-            send_error(&mut send, StatusCode::BAD_REQUEST, "invalid HTTP/3 request").await?;
-            return Err(error);
-        }
-    };
+    let decoded =
+        match decode_request_headers(&headers, context.peer, context.public_port, &context.token) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error(&mut send, StatusCode::BAD_REQUEST, "invalid HTTP/3 request").await?;
+                return Err(error);
+            }
+        };
     if decoded.method == Method::CONNECT {
         send_error(
             &mut send,
@@ -512,14 +563,15 @@ async fn proxy_request_inner(
     *request.headers_mut() = decoded.headers;
 
     let mut client = context.client.clone();
-    client
-        .ready()
+    tokio::time::timeout(BRIDGE_READY_TIMEOUT, client.ready())
         .await
+        .context("timed out waiting for inherited HTTP/2 bridge capacity")?
         .context("inherited HTTP/2 bridge is not ready")?;
-    let response = client
-        .send_request(request)
-        .await
-        .context("inherited HTTP/2 bridge request failed")?;
+    let response =
+        tokio::time::timeout(BRIDGE_RESPONSE_HEADER_TIMEOUT, client.send_request(request))
+            .await
+            .context("timed out waiting for inherited HTTP/2 response headers")?
+            .context("inherited HTTP/2 bridge request failed")?;
     forward_response(response, &mut send, &context.alt_svc).await
 }
 
@@ -736,6 +788,30 @@ async fn send_error(
     Ok(())
 }
 
+async fn send_overloaded(send: &mut OutboundFrameSender) -> Result<()> {
+    const MESSAGE: &str = "HTTP/3 bridge is busy; retry shortly";
+    let length = MESSAGE.len().to_string();
+    send.send(OutboundFrame::Headers(
+        vec![
+            h3::Header::new(
+                b":status",
+                StatusCode::SERVICE_UNAVAILABLE.as_str().as_bytes(),
+            ),
+            h3::Header::new(b"content-type", b"text/plain; charset=utf-8"),
+            h3::Header::new(b"content-length", length.as_bytes()),
+            h3::Header::new(b"retry-after", b"1"),
+        ],
+        None,
+    ))
+    .await?;
+    send.send(OutboundFrame::Body(
+        Bytes::from_static(MESSAGE.as_bytes()),
+        true,
+    ))
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -750,6 +826,17 @@ mod tests {
         assert_eq!(normalize_congestion_control("CUBIC").unwrap(), "cubic");
         assert_eq!(normalize_congestion_control("reno").unwrap(), "reno");
         assert!(normalize_congestion_control("bbr3").is_err());
+    }
+
+    #[test]
+    fn rejection_logs_are_sampled_after_the_initial_burst() {
+        for total in 1..=8 {
+            assert!(should_sample_log(total));
+        }
+        assert!(!should_sample_log(9));
+        assert!(should_sample_log(16));
+        assert!(!should_sample_log(17));
+        assert!(should_sample_log(1024));
     }
 
     #[test]

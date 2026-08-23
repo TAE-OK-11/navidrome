@@ -1,29 +1,13 @@
 import { useRecordContext } from 'react-admin'
 import { Avatar } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
-import clsx from 'clsx'
 import config from '../config'
 import subsonic from '../subsonic'
 import { useImageUrl } from './useImageUrl'
-
-const useStyles = makeStyles({
-  avatar: {
-    width: '55px',
-    height: '55px',
-  },
-  avatarEmpty: {
-    backgroundColor: 'transparent',
-  },
-  square: {
-    borderRadius: '4px',
-  },
-})
 
 export const CoverArtAvatar = ({
   record: recordProp,
   variant = 'circular',
 }) => {
-  const classes = useStyles()
   const recordContext = useRecordContext()
   const record = recordProp || recordContext
   const square = variant !== 'circular'
@@ -36,11 +20,12 @@ export const CoverArtAvatar = ({
     <Avatar
       src={imgUrl || undefined}
       variant={variant}
-      className={clsx(
-        classes.avatar,
-        square && classes.square,
-        !imgUrl && classes.avatarEmpty,
-      )}
+      sx={{
+        width: 55,
+        height: 55,
+        ...(square && { borderRadius: 1 }),
+        ...(!imgUrl && { backgroundColor: 'transparent' }),
+      }}
       alt={record.name}
     >
       {/* Empty child prevents default person icon while loading */}

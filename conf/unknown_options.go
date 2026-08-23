@@ -26,8 +26,10 @@ var extraKnownConfigKeys = []string{
 	"http3qlogdir",
 	"http3maxconnections",
 	"http3maxconnectionsperip",
+	"http3maxinflightrequests",
 	"http3connectionratepersecond",
 	"http3connectionburst",
+	"http3congestioncontrol",
 }
 
 func logUnknownOptions() {

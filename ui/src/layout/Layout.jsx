@@ -6,7 +6,7 @@ import {
   useSetLocale,
   useSidebarState,
 } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
+import { styled } from '@mui/material/styles'
 import { HotKeys } from 'react-hotkeys'
 import Menu from './Menu'
 import AppBar from './AppBar'
@@ -16,13 +16,12 @@ import { useSearchRefocus } from '../common'
 import { retrieveTranslation } from '../i18n'
 import config from '../config'
 
-const useStyles = makeStyles({
-  root: { paddingBottom: (props) => (props.addPadding ? '80px' : 0) },
-})
+const StyledLayout = styled(RALayout, {
+  shouldForwardProp: (prop) => prop !== 'addPadding',
+})(({ addPadding }) => ({ paddingBottom: addPadding ? 80 : 0 }))
 
 const Layout = (props) => {
   const queue = useSelector((state) => state.player?.queue || [])
-  const classes = useStyles({ addPadding: queue.length > 0 })
   const [sidebarOpen, setSidebarOpen] = useSidebarState()
   const setLocale = useSetLocale()
   const refresh = useRefresh()
@@ -52,9 +51,9 @@ const Layout = (props) => {
 
   return (
     <HotKeys handlers={{ TOGGLE_MENU: toggleMenu }}>
-      <RALayout
+      <StyledLayout
         {...props}
-        className={classes.root}
+        addPadding={queue.length > 0}
         menu={Menu}
         appBar={AppBar}
         error={ClientError}

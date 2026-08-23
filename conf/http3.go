@@ -15,6 +15,7 @@ const (
 	http3QlogDirKey           = "http3qlogdir"
 	http3MaxConnectionsKey    = "http3maxconnections"
 	http3MaxPerIPKey          = "http3maxconnectionsperip"
+	http3MaxInFlightKey       = "http3maxinflightrequests"
 	http3RatePerSecondKey     = "http3connectionratepersecond"
 	http3ConnectionBurstKey   = "http3connectionburst"
 	http3CongestionControlKey = "http3congestioncontrol"
@@ -62,6 +63,13 @@ func HTTP3MaxConnectionsPerIP() int {
 	return viper.GetInt(http3MaxPerIPKey)
 }
 
+// HTTP3MaxInFlightRequests bounds the number of requests concurrently crossing
+// the private H3-to-H2 bridge. This prevents a large number of multiplexed QUIC
+// connections from turning into an unbounded number of proxy tasks.
+func HTTP3MaxInFlightRequests() int {
+	return viper.GetInt(http3MaxInFlightKey)
+}
+
 func HTTP3ConnectionRatePerSecond() float64 {
 	return viper.GetFloat64(http3RatePerSecondKey)
 }
@@ -96,6 +104,7 @@ func setHTTP3Defaults() {
 	viper.SetDefault(http3QlogDirKey, "")
 	viper.SetDefault(http3MaxConnectionsKey, 4096)
 	viper.SetDefault(http3MaxPerIPKey, 128)
+	viper.SetDefault(http3MaxInFlightKey, 1024)
 	viper.SetDefault(http3RatePerSecondKey, 50.0)
 	viper.SetDefault(http3ConnectionBurstKey, 100)
 	viper.SetDefault(http3CongestionControlKey, HTTP3CongestionControlBBR2)

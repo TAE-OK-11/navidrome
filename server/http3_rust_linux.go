@@ -54,6 +54,7 @@ type rustHTTP3Config struct {
 	MaxConcurrentStreams uint64  `json:"max_concurrent_streams"`
 	MaxConnections       int     `json:"max_connections"`
 	MaxConnectionsPerIP  int     `json:"max_connections_per_ip"`
+	MaxInFlightRequests  int     `json:"max_in_flight_requests"`
 	ConnectionRate       float64 `json:"connection_rate_per_second"`
 	ConnectionBurst      int     `json:"connection_burst"`
 	CongestionControl    string  `json:"congestion_control"`
@@ -87,6 +88,7 @@ func newRustHTTP3Runtime(
 		return nil, fmt.Errorf("generating HTTP/3 bridge token: %w", err)
 	}
 	if conf.HTTP3MaxConnections() < 1 || conf.HTTP3MaxConnectionsPerIP() < 1 ||
+		conf.HTTP3MaxInFlightRequests() < 1 ||
 		conf.HTTP3ConnectionRatePerSecond() <= 0 || conf.HTTP3ConnectionBurst() < 0 {
 		return nil, errors.New("HTTP/3 admission limits must be positive (connection burst may be zero)")
 	}
@@ -106,6 +108,14 @@ func newRustHTTP3Runtime(
 		IdleTimeout:       serverHTTP3IdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,
+		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams:          serverH3BridgeMaxStreams,
+			MaxReceiveBufferPerConnection: serverH2ConnectionWindow,
+			MaxReceiveBufferPerStream:     serverH2StreamWindow,
+			SendPingTimeout:                serverH2SendPingTimeout,
+			PingTimeout:                    serverH2PingTimeout,
+			WriteByteTimeout:               serverH2WriteByteTimeout,
+		},
 		Handler:           authenticatedHTTP3Bridge(token, handler),
 	}
 
@@ -129,6 +139,7 @@ func newRustHTTP3Runtime(
 			MaxConcurrentStreams: serverQUICMaxIncomingStreams,
 			MaxConnections:       conf.HTTP3MaxConnections(),
 			MaxConnectionsPerIP:  conf.HTTP3MaxConnectionsPerIP(),
+			MaxInFlightRequests:  conf.HTTP3MaxInFlightRequests(),
 			ConnectionRate:       conf.HTTP3ConnectionRatePerSecond(),
 			ConnectionBurst:      conf.HTTP3ConnectionBurst(),
 			CongestionControl:    congestionControl,

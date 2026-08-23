@@ -13,6 +13,9 @@ func TestHTTP3QuicheDefaults(t *testing.T) {
 	if HTTP3MaxConnections() < HTTP3MaxConnectionsPerIP() {
 		t.Fatal("per-IP HTTP/3 connection limit exceeds the global limit")
 	}
+	if HTTP3MaxInFlightRequests() < 128 || HTTP3MaxInFlightRequests() > 4096 {
+		t.Fatalf("HTTP3MaxInFlightRequests()=%d outside safe default range", HTTP3MaxInFlightRequests())
+	}
 	if HTTP3ConnectionRatePerSecond() <= 0 || HTTP3ConnectionBurst() < 0 {
 		t.Fatal("invalid default HTTP/3 connection admission policy")
 	}

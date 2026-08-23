@@ -1,18 +1,10 @@
 import React from 'react'
 import { Chip } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { useTranslate } from 'react-admin'
 import { humanize, underscore } from 'inflection'
 
-const useQuickFilterStyles = makeStyles((theme) => ({
-  chip: {
-    marginBottom: theme.spacing(1),
-  },
-}))
-
 export const QuickFilter = ({ source, resource, label, defaultValue }) => {
   const translate = useTranslate()
-  const classes = useQuickFilterStyles()
   let lbl = label || source
   if (typeof lbl === 'string' || lbl instanceof String) {
     if (label) {
@@ -25,5 +17,5 @@ export const QuickFilter = ({ source, resource, label, defaultValue }) => {
       })
     }
   }
-  return <Chip className={classes.chip} label={lbl} />
+  return <Chip sx={{ mb: 1 }} label={lbl} />
 }

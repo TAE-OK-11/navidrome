@@ -1,6 +1,5 @@
 import { SimpleForm, Title, useTranslate } from 'react-admin'
 import { Card } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { SelectLanguage } from './SelectLanguage'
 import { SelectTheme } from './SelectTheme'
 import { SelectDefaultView } from './SelectDefaultView'
@@ -10,16 +9,11 @@ import { ListenBrainzScrobbleToggle } from './ListenBrainzScrobbleToggle'
 import config from '../config'
 import { ReplayGainToggle } from './ReplayGainToggle'
 
-const useStyles = makeStyles({
-  root: { marginTop: '1em' },
-})
-
 const Personal = () => {
   const translate = useTranslate()
-  const classes = useStyles()
 
   return (
-    <Card className={classes.root}>
+    <Card sx={{ mt: '1em' }}>
       <Title title={'Navidrome - ' + translate('menu.personal.name')} />
       <SimpleForm toolbar={null} variant={'outlined'}>
         <SelectTheme />

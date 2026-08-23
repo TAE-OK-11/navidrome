@@ -3,36 +3,29 @@ import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import CloseIcon from '@mui/icons-material/Close'
 import React from 'react'
-import withStyles from '../themes/withStyles'
+import { styled } from '@mui/material/styles'
 
-const styles = (theme) => ({
-  root: {
-    margin: 0,
-    padding: theme.spacing(2),
-  },
-  closeButton: {
-    position: 'absolute',
-    right: theme.spacing(1),
-    top: theme.spacing(1),
-    color: theme.palette.grey[500],
-  },
-})
+const StyledDialogTitle = styled(MuiDialogTitle)(({ theme }) => ({
+  margin: 0,
+  padding: theme.spacing(2),
+}))
 
-export const DialogTitle = withStyles(styles)((props) => {
-  const { children, classes, onClose, ...other } = props
+const CloseButton = styled(IconButton)(({ theme }) => ({
+  position: 'absolute',
+  right: theme.spacing(1),
+  top: theme.spacing(1),
+  color: theme.palette.grey[500],
+}))
+
+export const DialogTitle = ({ children, onClose, ...other }) => {
   return (
-    <MuiDialogTitle className={classes.root} component="div" {...other}>
+    <StyledDialogTitle component="div" {...other}>
       <Typography variant="h5" component="span">
         {children}
       </Typography>
-      <IconButton
-        aria-label="close"
-        className={classes.closeButton}
-        onClick={onClose}
-        size="large"
-      >
+      <CloseButton aria-label="close" onClick={onClose} size="large">
         <CloseIcon />
-      </IconButton>
-    </MuiDialogTitle>
+      </CloseButton>
+    </StyledDialogTitle>
   )
-})
+}

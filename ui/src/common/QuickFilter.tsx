@@ -1,12 +1,19 @@
-import React from 'react'
+import type { ReactNode } from 'react'
 import { Chip } from '@mui/material'
 import { useTranslate } from 'react-admin'
 import { humanize, underscore } from 'inflection'
 
-export const QuickFilter = ({ source, resource, label, defaultValue }) => {
+type QuickFilterProps = {
+  source: string
+  resource: string
+  label?: ReactNode
+  defaultValue?: unknown
+}
+
+export const QuickFilter = ({ source, resource, label }: QuickFilterProps) => {
   const translate = useTranslate()
-  let lbl = label || source
-  if (typeof lbl === 'string' || lbl instanceof String) {
+  let lbl: ReactNode = label || source
+  if (typeof lbl === 'string') {
     if (label) {
       lbl = translate(lbl, {
         _: humanize(underscore(lbl)),

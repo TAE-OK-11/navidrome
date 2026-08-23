@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.25
+
+ARG RUST_IMAGE=rust:1.98.0-slim-trixie@sha256:cc0448b41c3b7b7fea44f5dc50eacba729a56db365b65b7bd5e8a82d5b3db078
+
+FROM ${RUST_IMAGE} AS metadata-builder
+
+ARG NAVIDROME_BUILD_CORES=4
+ARG RUST_TARGET_CPU=znver3
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates
+
+WORKDIR /build
+
+COPY rust/metadata/Cargo.toml rust/metadata/Cargo.lock ./
+COPY rust/metadata/src ./src
+COPY core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release && \
+    install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && \
+    /out/navidrome-metadata --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && \
+    test -s /tmp/embedded-cover.bin && \
+    test -x /out/navidrome-metadata
+
+FROM jbs-navidrome-base:current
+
+USER root
+
+COPY --from=metadata-builder --chown=1000:1000 --chmod=750 \
+    /out/navidrome-metadata /app/navidrome-metadata
+
+ENV ND_METADATAWORKERPATH=/app/navidrome-metadata \
+    ND_SCANNER_EXTRACTOR=lofty
+
+RUN test -x /app/navidrome-metadata && \
+    deps="$(ldd /app/navidrome-metadata 2>&1 || true)" && \
+    printf '%s\n' "$deps" && \
+    case "$deps" in *"not found"*) exit 1 ;; *) : ;; esac
+
+USER 1000:1000

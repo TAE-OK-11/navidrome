@@ -21,7 +21,15 @@ const removedProps = new Map<string, Set<string>>([
     ]),
   ],
   ['Avatar', new Set(['imgProps'])],
+  ['AvatarGroup', new Set(['componentsProps'])],
+  [
+    'Backdrop',
+    new Set(['components', 'componentsProps', 'TransitionComponent']),
+  ],
+  ['Badge', new Set(['components', 'componentsProps'])],
   ['Dialog', new Set(['disableEscapeKeyDown'])],
+  ['Divider', new Set(['light'])],
+  ['FormControlLabel', new Set(['componentsProps'])],
   ['ListItem', new Set(['button', 'components', 'componentsProps'])],
   ['Menu', new Set(['MenuListProps', 'PaperProps', 'TransitionProps'])],
   [
@@ -34,6 +42,7 @@ const removedProps = new Map<string, Set<string>>([
       'disableEscapeKeyDown',
     ]),
   ],
+  ['MobileStepper', new Set(['LinearProgressProps'])],
   [
     'Popover',
     new Set([
@@ -45,6 +54,18 @@ const removedProps = new Map<string, Set<string>>([
     ]),
   ],
   ['Popper', new Set(['components', 'componentsProps'])],
+  ['Slider', new Set(['components', 'componentsProps'])],
+  ['SpeedDial', new Set(['TransitionComponent', 'TransitionProps'])],
+  [
+    'SpeedDialAction',
+    new Set([
+      'FabProps',
+      'tooltipTitle',
+      'tooltipPlacement',
+      'tooltipOpen',
+      'TooltipClasses',
+    ]),
+  ],
   [
     'Tabs',
     new Set([
@@ -74,6 +95,7 @@ const removedProps = new Map<string, Set<string>>([
       'componentsProps',
     ]),
   ],
+  ['Typography', new Set(['paragraph'])],
 ])
 
 const removedGridProps = new Set(['item', 'xs', 'sm', 'md', 'lg', 'xl'])

@@ -23,4 +23,34 @@ describe('modernizeTheme', () => {
     })
     expect(theme.spacing(2)).toBe('20px')
   })
+
+  it('rewrites legacy JSS state and slot selectors for Emotion', () => {
+    const theme = modernizeTheme({
+      overrides: {
+        MuiSwitch: {
+          colorSecondary: {
+            '&$checked': { color: '#f00' },
+            '&$checked + $track': { backgroundColor: '#0f0' },
+          },
+        },
+        MuiOutlinedInput: {
+          root: {
+            '& $notchedOutline': { borderColor: '#111' },
+            '&$focused $notchedOutline': { borderColor: '#222' },
+          },
+        },
+      },
+    })
+
+    expect(theme.components.MuiSwitch.styleOverrides.colorSecondary).toEqual({
+      '&.Mui-checked': { color: '#f00' },
+      '&.Mui-checked + .MuiSwitch-track': { backgroundColor: '#0f0' },
+    })
+    expect(theme.components.MuiOutlinedInput.styleOverrides.root).toEqual({
+      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#111' },
+      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        borderColor: '#222',
+      },
+    })
+  })
 })

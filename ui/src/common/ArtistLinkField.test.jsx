@@ -17,12 +17,13 @@ vi.mock('../utils/index.js', () => ({
   intersperse: vi.fn((arr) => arr),
 }))
 
-vi.mock('@mui/material', () => ({
+vi.mock('../themes/useWidth', () => ({
   withWidth: () => (Component) => {
     const WithWidthComponent = (props) => <Component {...props} width="md" />
     WithWidthComponent.displayName = `WithWidth(${Component.displayName || Component.name || 'Component'})`
     return WithWidthComponent
   },
+  useWidth: () => 'md',
 }))
 
 vi.mock('react-admin', () => ({

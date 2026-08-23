@@ -1,9 +1,9 @@
-import withStyles from '../themes/withStyles'
 import MuiDialogTitle from '@mui/material/DialogTitle'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import CloseIcon from '@mui/icons-material/Close'
 import React from 'react'
+import withStyles from '../themes/withStyles'
 
 const styles = (theme) => ({
   root: {
@@ -21,8 +21,10 @@ const styles = (theme) => ({
 export const DialogTitle = withStyles(styles)((props) => {
   const { children, classes, onClose, ...other } = props
   return (
-    <MuiDialogTitle disableTypography className={classes.root} {...other}>
-      <Typography variant="h5">{children}</Typography>
+    <MuiDialogTitle className={classes.root} component="div" {...other}>
+      <Typography variant="h5" component="span">
+        {children}
+      </Typography>
       <IconButton
         aria-label="close"
         className={classes.closeButton}

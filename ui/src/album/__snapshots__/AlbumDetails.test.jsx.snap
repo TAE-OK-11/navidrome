@@ -22,7 +22,7 @@ exports[`Details component > Desktop view > renders correctly with all date fiel
    · 
   <span>
     <span
-      class="makeStyles-root-6"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>
@@ -48,7 +48,7 @@ exports[`Details component > Desktop view > renders correctly with date 1`] = `
    · 
   <span>
     <span
-      class="makeStyles-root-2"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>
@@ -74,7 +74,7 @@ exports[`Details component > Desktop view > renders correctly with date and orig
    · 
   <span>
     <span
-      class="makeStyles-root-4"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>
@@ -96,7 +96,7 @@ exports[`Details component > Desktop view > renders correctly with just year ran
    · 
   <span>
     <span
-      class="makeStyles-root-1"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>
@@ -122,7 +122,7 @@ exports[`Details component > Desktop view > renders correctly with originalDate 
    · 
   <span>
     <span
-      class="makeStyles-root-3"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>
@@ -148,7 +148,7 @@ exports[`Details component > Desktop view > renders correctly with releaseDate 1
    · 
   <span>
     <span
-      class="makeStyles-root-5"
+      class="css-er6dhr-root"
     >
       100 KB
     </span>

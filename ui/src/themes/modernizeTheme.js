@@ -73,11 +73,74 @@ const modernComponentDefaults = {
   },
 }
 
+const MUI_STATE_CLASSES = {
+  checked: 'Mui-checked',
+  disabled: 'Mui-disabled',
+  error: 'Mui-error',
+  focused: 'Mui-focused',
+  focusVisible: 'Mui-focusVisible',
+  required: 'Mui-required',
+  expanded: 'Mui-expanded',
+  selected: 'Mui-selected',
+  active: 'Mui-active',
+  completed: 'Mui-completed',
+}
+
+const MUI_SLOT_CLASSES = {
+  notchedOutline: 'MuiOutlinedInput-notchedOutline',
+  track: 'MuiSwitch-track',
+  thumb: 'MuiSwitch-thumb',
+  switchBase: 'MuiSwitch-switchBase',
+  icon: 'MuiStepIcon-root',
+}
+
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const rewriteLegacySelector = (selector) =>
+  selector.replace(
+    /(^|[^A-Za-z0-9_-])\$([A-Za-z0-9_]+)/g,
+    (match, prefix, name) => {
+      if (MUI_STATE_CLASSES[name]) {
+        return `${prefix}.${MUI_STATE_CLASSES[name]}`
+      }
+      if (MUI_SLOT_CLASSES[name]) {
+        return `${prefix}.${MUI_SLOT_CLASSES[name]}`
+      }
+      return match
+    },
+  )
+
+const modernizeStyleObject = (styles) => {
+  if (!isPlainObject(styles)) {
+    return styles
+  }
+
+  const next = {}
+  for (const [key, value] of Object.entries(styles)) {
+    next[rewriteLegacySelector(key)] = isPlainObject(value)
+      ? modernizeStyleObject(value)
+      : value
+  }
+  return next
+}
+
+const modernizeStyleOverrides = (styleOverrides = {}) => {
+  const next = {}
+  for (const [slot, value] of Object.entries(styleOverrides)) {
+    next[slot] = isPlainObject(value) ? modernizeStyleObject(value) : value
+  }
+  return next
+}
+
 const mergeComponentOptions = (base = {}, next = {}) => ({
   ...base,
   ...next,
   defaultProps: { ...base.defaultProps, ...next.defaultProps },
-  styleOverrides: { ...base.styleOverrides, ...next.styleOverrides },
+  styleOverrides: modernizeStyleOverrides({
+    ...base.styleOverrides,
+    ...next.styleOverrides,
+  }),
 })
 
 // Navidrome's themes still use the v4 `overrides`, `props`, and palette `type`
@@ -105,12 +168,14 @@ const modernizeTheme = (inputTheme) => {
   const addComponentOptions = (options, key) => {
     for (const [component, value] of Object.entries(options)) {
       const current = modernComponents[component] || {}
+      const nextValue =
+        key === 'styleOverrides' ? modernizeStyleOverrides(value) : value
       modernComponents[component] = {
         ...current,
         [key]:
           key === 'defaultProps' || key === 'styleOverrides'
-            ? { ...current[key], ...value }
-            : value,
+            ? { ...current[key], ...nextValue }
+            : nextValue,
       }
     }
   }
@@ -119,6 +184,16 @@ const modernizeTheme = (inputTheme) => {
   addComponentOptions(props, 'defaultProps')
   addComponentOptions(styleOverrides, 'styleOverrides')
   addComponentOptions(overrides, 'styleOverrides')
+
+  // Ensure styleOverrides that came through merge still have modern selectors.
+  for (const [component, value] of Object.entries(modernComponents)) {
+    if (value?.styleOverrides) {
+      modernComponents[component] = {
+        ...value,
+        styleOverrides: modernizeStyleOverrides(value.styleOverrides),
+      }
+    }
+  }
 
   const spacing = createSpacing(inputTheme.spacing)
   const breakpoints = createBreakpoints(inputTheme.breakpoints || {})

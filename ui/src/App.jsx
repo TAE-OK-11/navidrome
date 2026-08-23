@@ -3,7 +3,6 @@ import ReactGA from 'react-ga'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
 import { createTheme } from '@mui/material/styles'
-import { ThemeProvider as LegacyThemeProvider } from '@mui/styles'
 import { HotKeys } from 'react-hotkeys'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
@@ -91,87 +90,85 @@ const Admin = (props) => {
   useChangeThemeColor()
 
   return (
-    <LegacyThemeProvider theme={theme}>
-      <RAAdmin
-        disableTelemetry
-        requireAuth
-        dataProvider={dataProvider}
-        authProvider={authProvider}
-        i18nProvider={i18nProvider}
-        layout={Layout}
-        loginPage={Login}
-        error={ClientError}
-        theme={theme}
-        {...props}
-      >
-        {(permissions) => (
-          <>
+    <RAAdmin
+      disableTelemetry
+      requireAuth
+      dataProvider={dataProvider}
+      authProvider={authProvider}
+      i18nProvider={i18nProvider}
+      layout={Layout}
+      loginPage={Login}
+      error={ClientError}
+      theme={theme}
+      {...props}
+    >
+      {(permissions) => (
+        <>
+          <Resource
+            name="album"
+            {...album}
+            options={{ subMenu: 'albumList' }}
+          />
+          <Resource name="artist" {...artist} />
+          <Resource name="song" {...song} />
+          <Resource
+            name="radio"
+            {...(permissions === 'admin' ? radio.admin : radio.all)}
+          />
+          {config.enableSharing && <Resource name="share" {...share} />}
+          <Resource
+            name="playlist"
+            {...playlist}
+            options={{ subMenu: 'playlist' }}
+          />
+          <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
+          <Resource
+            name="player"
+            {...player}
+            options={{ subMenu: 'settings' }}
+          />
+          {permissions === 'admin' ? (
             <Resource
-              name="album"
-              {...album}
-              options={{ subMenu: 'albumList' }}
-            />
-            <Resource name="artist" {...artist} />
-            <Resource name="song" {...song} />
-            <Resource
-              name="radio"
-              {...(permissions === 'admin' ? radio.admin : radio.all)}
-            />
-            {config.enableSharing && <Resource name="share" {...share} />}
-            <Resource
-              name="playlist"
-              {...playlist}
-              options={{ subMenu: 'playlist' }}
-            />
-            <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
-            <Resource
-              name="player"
-              {...player}
+              name="transcoding"
+              {...transcoding}
               options={{ subMenu: 'settings' }}
             />
-            {permissions === 'admin' ? (
-              <Resource
-                name="transcoding"
-                {...transcoding}
-                options={{ subMenu: 'settings' }}
-              />
-            ) : (
-              <Resource name="transcoding" />
-            )}
-            {permissions === 'admin' && (
-              <Resource
-                name="library"
-                {...library}
-                options={{ subMenu: 'settings' }}
-              />
-            )}
-            {permissions === 'admin' && (
-              <Resource
-                name="missing"
-                {...missing}
-                options={{ subMenu: 'settings' }}
-              />
-            )}
-            {permissions === 'admin' && config.pluginsEnabled && (
-              <Resource
-                name="plugin"
-                {...plugin}
-                options={{ subMenu: 'settings' }}
-              />
-            )}
-            <Resource name="translation" />
-            <Resource name="genre" />
-            <Resource name="tag" />
-            <Resource name="playlistTrack" />
-            <Resource name="keepalive" />
-            <Resource name="insights" />
-            <Resource name="config" />
-            {AppRoutes()}
-            <Player />
-          </>
-        )}
-      </RAAdmin>
-    </LegacyThemeProvider>
+          ) : (
+            <Resource name="transcoding" />
+          )}
+          {permissions === 'admin' && (
+            <Resource
+              name="library"
+              {...library}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          {permissions === 'admin' && (
+            <Resource
+              name="missing"
+              {...missing}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          {permissions === 'admin' && config.pluginsEnabled && (
+            <Resource
+              name="plugin"
+              {...plugin}
+              options={{ subMenu: 'settings' }}
+            />
+          )}
+          <Resource name="translation" />
+          <Resource name="genre" />
+          <Resource name="tag" />
+          <Resource name="playlistTrack" />
+          <Resource name="keepalive" />
+          <Resource name="insights" />
+          <Resource name="config" />
+          {AppRoutes()}
+          <Player />
+        </>
+      )}
+    </RAAdmin>
   )
 }
 

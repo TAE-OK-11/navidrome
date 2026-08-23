@@ -1,20 +1,8 @@
 import React, { useCallback, useMemo } from 'react'
 import { Link } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import PropTypes from 'prop-types'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    link: {
-      textDecoration: 'none',
-      color: theme.palette.primary.main,
-    },
-  }),
-  { name: 'RaLink' },
-)
-
 const Linkify = ({ text, ...rest }) => {
-  const classes = useStyles()
   const linkify = useCallback((text) => {
     const urlRegex =
       /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#/%?=~_|!:,.;]*[-A-Z0-9+&@#/%=~_|])/gi
@@ -39,7 +27,7 @@ const Linkify = ({ text, ...rest }) => {
         <Link
           {...rest}
           target="_blank"
-          className={classes.link}
+          sx={{ textDecoration: 'none', color: 'primary.main' }}
           rel="noopener noreferrer"
           key={index}
           href={href}
@@ -57,7 +45,7 @@ const Linkify = ({ text, ...rest }) => {
     }
 
     return elements.length === 1 ? elements[0] : elements
-  }, [linkify, text, rest, classes.link])
+  }, [linkify, text, rest])
 
   const parsedText = useMemo(() => parse(), [parse])
 

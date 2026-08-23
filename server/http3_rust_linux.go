@@ -40,6 +40,7 @@ const (
 	rustHTTP3RestartMinDelay    = 100 * time.Millisecond
 	rustHTTP3RestartMaxDelay    = 5 * time.Second
 	rustHTTP3ControlMaxLineSize = 64 * 1024
+	rustHTTP3BridgeSocketBuffer = 4 << 20
 )
 
 type rustHTTP3Config struct {
@@ -112,21 +113,21 @@ func newRustHTTP3Runtime(
 			MaxConcurrentStreams:          serverH3BridgeMaxStreams,
 			MaxReceiveBufferPerConnection: serverH2ConnectionWindow,
 			MaxReceiveBufferPerStream:     serverH2StreamWindow,
-			SendPingTimeout:                serverH2SendPingTimeout,
-			PingTimeout:                    serverH2PingTimeout,
-			WriteByteTimeout:               serverH2WriteByteTimeout,
+			SendPingTimeout:               serverH2SendPingTimeout,
+			PingTimeout:                   serverH2PingTimeout,
+			WriteByteTimeout:              serverH2WriteByteTimeout,
 		},
-		Handler:           authenticatedHTTP3Bridge(token, handler),
+		Handler: authenticatedHTTP3Bridge(token, handler),
 	}
 
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	r := &rustHTTP3Runtime{
-		ctx:              runtimeCtx,
-		cancel:           cancel,
-		internalServer:   internalServer,
-		bridgeListener:   listener,
-		binaryPath:       resolveHTTP3GatewayPath(),
-		altSvc:           altSvcForAddress(addr, conf.HTTP3AltSvcMaxAge()),
+		ctx:            runtimeCtx,
+		cancel:         cancel,
+		internalServer: internalServer,
+		bridgeListener: listener,
+		binaryPath:     resolveHTTP3GatewayPath(),
+		altSvc:         altSvcForAddress(addr, conf.HTTP3AltSvcMaxAge()),
 		config: rustHTTP3Config{
 			UDPAddress:           addr,
 			Certificate:          certFile,
@@ -220,10 +221,24 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 	})
 }
 
-func inheritedSocketpair(parentName, childName string) (net.Conn, *os.File, error) {
+func inheritedSocketpair(parentName, childName string, socketBuffer int) (net.Conn, *os.File, error) {
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return nil, nil, err
+	}
+	if socketBuffer > 0 {
+		for _, fd := range fds {
+			if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF, socketBuffer); err != nil {
+				_ = unix.Close(fds[0])
+				_ = unix.Close(fds[1])
+				return nil, nil, fmt.Errorf("setting inherited socket receive buffer: %w", err)
+			}
+			if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_SNDBUF, socketBuffer); err != nil {
+				_ = unix.Close(fds[0])
+				_ = unix.Close(fds[1])
+				return nil, nil, fmt.Errorf("setting inherited socket send buffer: %w", err)
+			}
+		}
 	}
 	parentFile := os.NewFile(uintptr(fds[0]), parentName)
 	child := os.NewFile(uintptr(fds[1]), childName)
@@ -246,11 +261,13 @@ func inheritedSocketpair(parentName, childName string) (net.Conn, *os.File, erro
 }
 
 func (r *rustHTTP3Runtime) startChild() error {
-	parent, child, err := inheritedSocketpair("navidrome-h3-control-parent", "navidrome-h3-control-child")
+	parent, child, err := inheritedSocketpair("navidrome-h3-control-parent", "navidrome-h3-control-child", 0)
 	if err != nil {
 		return fmt.Errorf("creating HTTP/3 control socket: %w", err)
 	}
-	bridgeParent, bridgeChild, err := inheritedSocketpair("navidrome-h3-bridge-parent", "navidrome-h3-bridge-child")
+	bridgeParent, bridgeChild, err := inheritedSocketpair(
+		"navidrome-h3-bridge-parent", "navidrome-h3-bridge-child", rustHTTP3BridgeSocketBuffer,
+	)
 	if err != nil {
 		_ = parent.Close()
 		_ = child.Close()

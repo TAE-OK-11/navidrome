@@ -1,21 +1,13 @@
 import React from 'react'
 import { useTranslate } from 'react-admin'
-import { IconButton, Tooltip, Link } from '@mui/material'
+import { Box, IconButton, Tooltip, Link } from '@mui/material'
 
 import { ImLastfm2 } from 'react-icons/im'
 import MusicBrainz from '../icons/MusicBrainz'
 import { intersperse, isLastFmURL } from '../utils'
 import config from '../config'
-import makeStyles from '../themes/makeStyles'
-
-const useStyles = makeStyles({
-  linkBar: {
-    minHeight: '1.875em',
-  },
-})
 
 const ArtistExternalLinks = ({ artistInfo, record }) => {
-  const classes = useStyles()
   const translate = useTranslate()
   let linkButtons = []
   const lastFMlink = artistInfo?.biography?.match(
@@ -60,7 +52,9 @@ const ArtistExternalLinks = ({ artistInfo, record }) => {
       <MusicBrainz className="musicbrainz-icon" />,
     )
 
-  return <div className={classes.linkBar}>{intersperse(linkButtons, ' ')}</div>
+  return (
+    <Box sx={{ minHeight: '1.875em' }}>{intersperse(linkButtons, ' ')}</Box>
+  )
 }
 
 export default ArtistExternalLinks

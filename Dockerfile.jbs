@@ -12,7 +12,6 @@
 #   - jemalloc 5.3.1
 #   - Opus 1.6.1
 #   - LAME 3.100 (FFmpeg 8.1.x stable compatibility)
-#   - Lofty 0.25 metadata worker
 #   - rusqlite 0.40.1 Anti-hero
 #
 # Main fixes:
@@ -1077,52 +1076,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     test -x /out/jbs-helper
 
 # =========================================================
-# Lofty metadata companion (persistent Go <-> Rust worker)
-# =========================================================
-
-FROM ${RUST_IMAGE} AS metadata-builder
-
-ARG NAVIDROME_BUILD_CORES
-ARG RUST_TARGET_CPU
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      ca-certificates \
-      musl-tools && \
-    rustup target add x86_64-unknown-linux-musl
-
-WORKDIR /build
-
-COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock ./
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    mkdir src && \
-    printf 'fn main() {}\n' > src/main.rs && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C target-feature=+crt-static" \
-    cargo build --locked --release --target x86_64-unknown-linux-musl && \
-    rm -rf src target/x86_64-unknown-linux-musl/release/deps/navidrome_metadata-* \
-      target/x86_64-unknown-linux-musl/release/navidrome-metadata
-
-COPY --link --from=source /src/rust/metadata/src ./src
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    cargo test --locked --release && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C target-feature=+crt-static" \
-    cargo build --locked --release --target x86_64-unknown-linux-musl && \
-    install -D -m 755 target/x86_64-unknown-linux-musl/release/navidrome-metadata \
-      /out/navidrome-metadata && \
-    test -x /out/navidrome-metadata
-
-# =========================================================
 # Tokio-quiche HTTP/3 companion
 # =========================================================
 
@@ -1317,13 +1270,15 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     train api ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${GO_PGO_BENCHTIME}"; \
     train scanner ./scanner '^BenchmarkScan$' "${GO_PGO_BENCHTIME}"; \
     train hotcache ./core/stream/hotcache '^BenchmarkResolverDirectAndHotHit$' 250ms; \
+    train streaming ./core/stream '^BenchmarkLegacyStreamDecision$' 250ms; \
     go tool pprof \
       -proto \
       -output=/tmp/default.pgo \
       /tmp/pgo/compression.pprof \
       /tmp/pgo/api.pprof \
       /tmp/pgo/scanner.pprof \
-      /tmp/pgo/hotcache.pprof; \
+      /tmp/pgo/hotcache.pprof \
+      /tmp/pgo/streaming.pprof; \
     test -s /tmp/default.pgo; \
     go tool pprof -top -nodecount=20 /tmp/default.pgo; \
     printf '[gobuilder] merged Go PGO profile: %s bytes\n' "$(wc -c </tmp/default.pgo)"
@@ -1376,7 +1331,7 @@ LABEL org.opencontainers.image.authors="JBS Networks" \
       org.opencontainers.image.description="AMD EPYC Zen3 optimized Navidrome with static Opus/MP3, native AAC/FLAC, jemalloc light profile and Rust helpers" \
       org.opencontainers.image.source="https://github.com/TAE-OK-11/navidrome" \
       org.opencontainers.image.vendor="JBS Networks" \
-      jbs.optimization="JBS-Navidrome-Ultra-6.1-Slim-v10.4/AMD-EPYC-Zen3/Go1.26.5/Bun1.4/Rust1.97/FFmpeg8.1.2/LLVM-FatLTO/Go-PGO/BR11-Zstd19-Gzip9/NoSourceMaps/SQLite-Light/HotCache-3GiB/Resource-Aware"
+      jbs.optimization="JBS-Navidrome-Ultra-6.1-Slim-v10.4/AMD-EPYC-Zen3/Go1.27/Bun1.4/Rust1.98/FFmpeg8.1.2/LLVM-FatLTO/Go-PGO/BR11-Zstd19-Gzip9/NoSourceMaps/SQLite-Light/HotCache-3GiB/Resource-Aware"
 
 COPY --link --from=source /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
@@ -1451,7 +1406,6 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
-COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
 RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
@@ -1461,7 +1415,6 @@ RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
 
 RUN test -x /app/navidrome && \
     test -x /app/navidrome-h3 && \
-    test -x /app/navidrome-metadata && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
     test -x /usr/local/bin/ffprobe && \

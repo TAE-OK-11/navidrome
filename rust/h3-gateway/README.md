@@ -30,6 +30,8 @@ Important settings:
   defaults of 50/s and 100 additional burst connections.
 - `HTTP3CongestionControl`: defaults to `bbr2`, using quiche's gcongestion
   BBRv2 implementation. `cubic` and `reno` remain explicit rollback choices.
+- `NAVIDROME_H3_THREADS`: optional Tokio worker override. By default the
+  companion uses the available CPU parallelism capped at four workers.
 
 0-RTT request data is always disabled. Session resumption remains available,
 but Navidrome never receives an application request before handshake

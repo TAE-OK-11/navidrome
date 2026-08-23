@@ -2,22 +2,15 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { formatBytes } from '../utils'
 import { useRecordContext } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    display: 'inline-block',
-  },
-}))
+import { Box } from '@mui/material'
 
 export const SizeField = ({ source, ...rest }) => {
-  const classes = useStyles()
   const record = useRecordContext(rest)
   if (!record) return null
   return (
-    <span className={classes.root}>
+    <Box component="span" sx={{ display: 'inline-block' }}>
       {record[source] ? formatBytes(record[source]) : '0 MB'}
-    </span>
+    </Box>
   )
 }
 

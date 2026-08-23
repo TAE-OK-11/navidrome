@@ -41,6 +41,7 @@ func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCach
 		cache:      cache,
 		resolver:   resolver,
 		limiter:    NewTranscodeLimiter(conf.Server.Transcoding.MaxConcurrent, conf.Server.Transcoding.MaxConcurrentPerUser),
+		profiles:   newTranscodingProfileCache(),
 	}
 }
 
@@ -50,6 +51,7 @@ type mediaStreamer struct {
 	cache      cache.FileCache
 	resolver   hotcache.Resolver
 	limiter    TranscodeLimiter
+	profiles   *transcodingProfileCache
 }
 
 type streamJob struct {
@@ -191,7 +193,7 @@ var streamCopyBufferPool = sync.Pool{
 	},
 }
 
-func (s *Stream) Seekable() bool { return s.Seeker != nil }
+func (s *Stream) Seekable() bool    { return s.Seeker != nil }
 func (s *Stream) Duration() float32 { return s.mf.Duration }
 func (s *Stream) ContentType() string {
 	if s.contentType == "" {
@@ -205,7 +207,7 @@ func (s *Stream) Name() string {
 	}
 	return s.name
 }
-func (s *Stream) ModTime() time.Time  { return s.mf.UpdatedAt }
+func (s *Stream) ModTime() time.Time { return s.mf.UpdatedAt }
 func (s *Stream) EstimatedContentLength() int {
 	return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
 }
@@ -348,7 +350,7 @@ func NewTranscodingCache() TranscodingCache {
 		consts.TranscodingCacheDir, consts.DefaultTranscodingCacheMaxItems,
 		func(ctx context.Context, arg cache.Item) (io.Reader, error) {
 			job := arg.(*streamJob)
-			command := LookupTranscodeCommand(ctx, job.ms.ds, job.format)
+			command := newTranscodeLookupWithCache(ctx, job.ms.ds, job.ms.profiles).commandFor(job.format)
 			if command == "" {
 				log.Error(ctx, "No transcoding command available", "format", job.format)
 				return nil, os.ErrInvalid

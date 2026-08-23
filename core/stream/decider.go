@@ -47,14 +47,16 @@ type TranscodeDecider interface {
 
 func NewTranscodeDecider(ds model.DataStore, ff ffmpeg.FFmpeg) TranscodeDecider {
 	return &deciderService{
-		ds: ds,
-		ff: ff,
+		ds:       ds,
+		ff:       ff,
+		profiles: newTranscodingProfileCache(),
 	}
 }
 
 type deciderService struct {
-	ds model.DataStore
-	ff ffmpeg.FFmpeg
+	ds       model.DataStore
+	ff       ffmpeg.FFmpeg
+	profiles *transcodingProfileCache
 }
 
 func (s *deciderService) MakeDecision(ctx context.Context, mf *model.MediaFile, clientInfo *ClientInfo, opts TranscodeOptions) (*TranscodeDecision, error) {
@@ -127,7 +129,7 @@ func (s *deciderService) evaluateDecision(ctx context.Context, decision *Transco
 	}
 
 	// Try transcoding profiles (in order of preference)
-	lookup := newTranscodeLookup(ctx, s.ds)
+	lookup := newTranscodeLookupWithCache(ctx, s.ds, s.profiles)
 	for _, profile := range clientInfo.TranscodingProfiles {
 		if ts, transcodeFormat := s.computeTranscodedStream(ctx, lookup, src, &profile, clientInfo); ts != nil {
 			decision.CanTranscode = true
@@ -384,20 +386,31 @@ type transcodeLookup struct {
 	transcodings   map[string]*model.Transcoding
 	defaultBitrate map[string]int
 	command        map[string]string
+	cache          *transcodingProfileCache
 }
 
 func newTranscodeLookup(ctx context.Context, ds model.DataStore) *transcodeLookup {
+	return newTranscodeLookupWithCache(ctx, ds, nil)
+}
+
+func newTranscodeLookupWithCache(ctx context.Context, ds model.DataStore, cache *transcodingProfileCache) *transcodeLookup {
 	return &transcodeLookup{
 		ctx:            ctx,
 		ds:             ds,
 		transcodings:   make(map[string]*model.Transcoding),
 		defaultBitrate: make(map[string]int),
 		command:        make(map[string]string),
+		cache:          cache,
 	}
 }
 
 func (l *transcodeLookup) transcoding(format string) *model.Transcoding {
 	if t, ok := l.transcodings[format]; ok {
+		return t
+	}
+	if l.cache != nil {
+		t := l.cache.get(l.ctx, l.ds, format)
+		l.transcodings[format] = t
 		return t
 	}
 	t, err := l.ds.Transcoding(l.ctx).FindByFormat(format)

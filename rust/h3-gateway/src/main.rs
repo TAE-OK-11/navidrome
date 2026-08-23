@@ -119,7 +119,7 @@ fn main() -> Result<()> {
             std::thread::available_parallelism()
                 .map(usize::from)
                 .unwrap_or(1)
-                .clamp(1, 2)
+                .clamp(1, 4)
         })
         .clamp(1, 4);
     tokio::runtime::Builder::new_multi_thread()

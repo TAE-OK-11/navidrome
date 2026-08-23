@@ -242,6 +242,18 @@ for (const file of await listSources(sourceRoot)) {
         })
       }
     }
+
+    if (moduleName === '@mui/styles' || moduleName.startsWith('@mui/styles/')) {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(
+        statement.getStart(sourceFile),
+      )
+      findings.push({
+        file: relative(sourceRoot, file),
+        line: line + 1,
+        message:
+          'MUI 9 migration forbids @mui/styles; use themes/makeStyles, styled(), or sx',
+      })
+    }
   }
 
   const report = (node: ts.Node, message: string) => {

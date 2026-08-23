@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDataProvider, useNotify } from 'react-admin'
+import { useDataProvider, useNotify, useRefresh } from 'react-admin'
 import subsonic from '../subsonic'
 
 export const useToggleLove = (resource, record = {}) => {
   const [loading, setLoading] = useState(false)
+  const [loved, setLoved] = useState(Boolean(record.starred))
   const notify = useNotify()
+  const refresh = useRefresh()
 
   const mountedRef = useRef(false)
   useEffect(() => {
@@ -13,6 +15,10 @@ export const useToggleLove = (resource, record = {}) => {
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    setLoved(Boolean(record.starred))
+  }, [record.id, record.starred])
 
   const dataProvider = useDataProvider()
 
@@ -31,28 +37,41 @@ export const useToggleLove = (resource, record = {}) => {
       promises.push(dataProvider.getOne('song', { id: record.mediaFileId }))
     }
 
-    Promise.all(promises)
+    return Promise.all(promises)
       .catch((e) => {
         // eslint-disable-next-line no-console
         console.log('Error encountered: ' + e)
       })
       .finally(() => {
+        refresh()
         if (mountedRef.current) {
           setLoading(false)
         }
       })
-  }, [dataProvider, record.mediaFileId, record.id, record.playlistId, resource])
+  }, [
+    dataProvider,
+    record.mediaFileId,
+    record.id,
+    record.playlistId,
+    refresh,
+    resource,
+  ])
 
   const toggleLove = () => {
-    const toggle = record.starred ? subsonic.unstar : subsonic.star
+    if (loading || (!record.id && !record.mediaFileId)) return Promise.resolve()
+
+    const previousLoved = loved
+    const toggle = previousLoved ? subsonic.unstar : subsonic.star
     const id = record.mediaFileId || record.id
 
     setLoading(true)
-    toggle(id)
+    setLoved(!previousLoved)
+    return toggle(id)
       .then(refreshRecord)
       .catch((e) => {
         // eslint-disable-next-line no-console
         console.log('Error toggling love: ', e)
+        setLoved(previousLoved)
         notify('ra.page.error', { type: 'warning' })
         if (mountedRef.current) {
           setLoading(false)
@@ -60,5 +79,5 @@ export const useToggleLove = (resource, record = {}) => {
       })
   }
 
-  return [toggleLove, loading]
+  return [toggleLove, loading, loved]
 }

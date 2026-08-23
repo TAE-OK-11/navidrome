@@ -17,23 +17,17 @@ import config from '../config'
 import { DraggableTypes } from '../consts'
 import clsx from 'clsx'
 import { AlbumDatesField } from './AlbumDatesField.jsx'
-
-// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => {
-  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
-  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
-  return WithWidth
-}
+import { withWidth } from '../themes/useWidth'
 
 const useStyles = makeStyles(
   (theme) => ({
     root: {
-      margin: '20px',
+      margin: 'clamp(12px, 2vw, 24px)',
       minWidth: 0,
     },
     grid: {
       display: 'grid',
-      gap: '20px',
+      gap: 'clamp(12px, 1.8vw, 22px)',
       minWidth: 0,
       width: '100%',
     },
@@ -48,11 +42,13 @@ const useStyles = makeStyles(
       textAlign: 'left',
       background:
         'linear-gradient(to top, rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0) 100%)',
+      borderRadius: '0 0 12px 12px',
     },
     tileBarMobile: {
       textAlign: 'left',
       background:
         'linear-gradient(to top, rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0) 100%)',
+      borderRadius: '0 0 12px 12px',
     },
     albumArtistName: {
       whiteSpace: 'nowrap',
@@ -62,8 +58,11 @@ const useStyles = makeStyles(
       fontSize: '1em',
     },
     albumName: {
-      fontSize: '14px',
-      color: theme.palette.mode === 'dark' ? '#eee' : 'black',
+      marginTop: theme.spacing(1),
+      fontSize: '0.95rem',
+      fontWeight: 700,
+      lineHeight: 1.35,
+      color: theme.palette.text.primary,
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
@@ -73,14 +72,14 @@ const useStyles = makeStyles(
     },
     albumVersion: {
       fontSize: '12px',
-      color: theme.palette.mode === 'dark' ? '#c5c5c5' : '#696969',
+      color: theme.palette.text.secondary,
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
     },
     albumSubtitle: {
       fontSize: '12px',
-      color: theme.palette.mode === 'dark' ? '#c5c5c5' : '#696969',
+      color: theme.palette.text.secondary,
       overflow: 'hidden',
       whiteSpace: 'nowrap',
       textOverflow: 'ellipsis',
@@ -89,6 +88,8 @@ const useStyles = makeStyles(
       position: 'relative',
       display: 'block',
       textDecoration: 'none',
+      overflow: 'hidden',
+      borderRadius: 12,
       '&:hover $tileBar, &:focus-within $tileBar': {
         opacity: 1,
         pointerEvents: 'auto',
@@ -102,17 +103,29 @@ const useStyles = makeStyles(
     albumContainer: {
       minWidth: 0,
       width: '100%',
+      padding: theme.spacing(1),
+      border: `1px solid ${theme.palette.divider}`,
+      borderRadius: 16,
+      backgroundColor: theme.palette.background.paper,
+      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.1)',
+      transition: 'transform 180ms ease, box-shadow 180ms ease',
+      '&:hover': {
+        transform: 'translateY(-3px)',
+        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
+      },
     },
     albumPlayButton: { color: 'white' },
   }),
   { name: 'NDAlbumGridView' },
 )
 
-const useCoverStyles = makeStyles({
+const useCoverStyles = makeStyles((theme) => ({
   coverContainer: {
     width: '100%',
     aspectRatio: '1 / 1',
     overflow: 'hidden',
+    borderRadius: '12px',
+    backgroundColor: theme.palette.action.hover,
   },
   coverContent: {
     width: '100%',
@@ -122,13 +135,16 @@ const useCoverStyles = makeStyles({
     display: 'block',
     width: '100%',
     height: '100%',
-    objectFit: 'contain',
-    transition: 'opacity 0.3s ease-in-out',
+    objectFit: 'cover',
+    transition: 'opacity 0.3s ease-in-out, transform 250ms ease',
+    '&:hover': {
+      transform: 'scale(1.025)',
+    },
   },
   coverLoading: {
     opacity: 0,
   },
-})
+}))
 
 const getColsForWidth = (width) => {
   if (width === 'xs') return 2

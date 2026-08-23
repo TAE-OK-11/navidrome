@@ -151,9 +151,12 @@ const PlaylistListBulkActions = (props) => {
 
 // Datagrid reads `source`/`sortable`/`label` off this element for the column
 // header; only record/resource are forwarded so they never leak onto the button.
-export const PlaylistLove = ({ record, className }) => (
-  <LoveButton record={record} resource={'playlist'} className={className} />
-)
+export const PlaylistLove = ({ record: recordOverride, className }) => {
+  const record = useRecordContext({ record: recordOverride })
+  return (
+    <LoveButton record={record} resource="playlist" className={className} />
+  )
+}
 PlaylistLove.defaultProps = { source: 'starred', sortable: false }
 
 const PlaylistList = (props) => {

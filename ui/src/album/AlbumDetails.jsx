@@ -34,28 +34,33 @@ import {
 import { formatFullDate, intersperse } from '../utils'
 import AlbumExternalLinks from './AlbumExternalLinks'
 import { SafeHTML } from '../common/SafeHTML'
-
-// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => {
-  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
-  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
-  return WithWidth
-}
+import { withWidth } from '../themes/useWidth'
 
 const useStyles = makeStyles(
   (theme) => ({
     root: {
+      width: '100%',
+      overflow: 'hidden',
+      borderRadius: 20,
+      background: `linear-gradient(135deg, ${theme.palette.background.paper}, ${theme.palette.action.hover})`,
       [theme.breakpoints.down('sm')]: {
-        padding: '0.7em',
-        minWidth: '20em',
+        padding: theme.spacing(1.5),
+        minWidth: 0,
       },
       [theme.breakpoints.up('sm')]: {
-        padding: '1em',
-        minWidth: '32em',
+        padding: theme.spacing(2),
+        minWidth: 0,
       },
     },
     cardContents: {
-      display: 'flex',
+      display: 'grid',
+      gridTemplateColumns: 'minmax(7.5rem, 15rem) minmax(0, 1fr)',
+      gap: theme.spacing(2),
+      alignItems: 'start',
+      [theme.breakpoints.down('sm')]: {
+        gridTemplateColumns: '7.5rem minmax(0, 1fr)',
+        gap: theme.spacing(1.5),
+      },
     },
     details: {
       display: 'flex',
@@ -66,9 +71,9 @@ const useStyles = makeStyles(
     },
     coverParent: {
       [theme.breakpoints.down('sm')]: {
-        height: '8em',
-        width: '8em',
-        minWidth: '8em',
+        height: '7.5rem',
+        width: '7.5rem',
+        minWidth: '7.5rem',
       },
       [theme.breakpoints.up('sm')]: {
         height: '10em',
@@ -81,25 +86,29 @@ const useStyles = makeStyles(
         minWidth: '15em',
       },
       backgroundColor: 'transparent',
+      overflow: 'hidden',
+      borderRadius: 16,
+      boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
     },
     cover: {
-      objectFit: 'contain',
+      objectFit: 'cover',
       cursor: 'pointer',
       display: 'block',
       width: '100%',
       height: '100%',
       backgroundColor: 'transparent',
-      transition: 'opacity 0.3s ease-in-out',
+      transition: 'opacity 0.3s ease-in-out, transform 250ms ease',
+      '&:hover': { transform: 'scale(1.025)' },
     },
     coverLoading: {
       opacity: 0.5,
     },
     loveButton: {
-      top: theme.spacing(-0.2),
-      left: theme.spacing(0.5),
+      marginLeft: theme.spacing(0.5),
+      verticalAlign: 'middle',
     },
     notes: {
       display: 'inline-block',
@@ -108,9 +117,21 @@ const useStyles = makeStyles(
       wordBreak: 'break-word',
       cursor: 'pointer',
     },
-    recordName: {},
-    recordArtist: {},
-    recordMeta: {},
+    recordName: {
+      fontWeight: 750,
+      lineHeight: 1.18,
+      letterSpacing: '-0.02em',
+      overflowWrap: 'anywhere',
+    },
+    recordArtist: {
+      marginTop: theme.spacing(0.5),
+      color: theme.palette.text.secondary,
+    },
+    recordMeta: {
+      marginTop: theme.spacing(1),
+      color: theme.palette.text.secondary,
+      lineHeight: 1.6,
+    },
     genreList: {
       marginTop: theme.spacing(0.5),
     },

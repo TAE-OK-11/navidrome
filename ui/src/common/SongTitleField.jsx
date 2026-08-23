@@ -2,7 +2,7 @@ import makeStyles from '../themes/makeStyles'
 import React from 'react'
 import PropTypes from 'prop-types'
 import { useSelector } from 'react-redux'
-import { FunctionField } from 'react-admin'
+import { FunctionField, useRecordContext } from 'react-admin'
 import { useTheme } from '@mui/material/styles'
 import PlayingLight from '../icons/playing-light.gif'
 import PlayingDark from '../icons/playing-dark.gif'
@@ -28,9 +28,10 @@ const useStyles = makeStyles({
 
 export const SongTitleField = ({
   showTrackNumbers = false,
-  record = {},
+  record: recordOverride,
   ...props
 }) => {
+  const record = useRecordContext({ record: recordOverride }) || {}
   const theme = useTheme()
   const classes = useStyles()
   const currentTrack = useSelector((state) => state?.player?.current || {})

@@ -4,6 +4,8 @@ import { useRating } from './useRating'
 import subsonic from '../subsonic'
 import { useDataProvider } from 'react-admin'
 
+const refresh = vi.fn()
+
 vi.mock('../subsonic', () => ({
   default: {
     setRating: vi.fn(() => Promise.resolve()),
@@ -16,6 +18,7 @@ vi.mock('react-admin', async () => {
     ...actual,
     useDataProvider: vi.fn(),
     useNotify: vi.fn(() => vi.fn()),
+    useRefresh: vi.fn(() => refresh),
   }
 })
 
@@ -24,6 +27,7 @@ describe('useRating', () => {
   beforeEach(() => {
     getOne = vi.fn(() => Promise.resolve())
     useDataProvider.mockReturnValue({ getOne })
+    refresh.mockClear()
     vi.clearAllMocks()
   })
 
@@ -44,6 +48,7 @@ describe('useRating', () => {
     })
     expect(subsonic.setRating).toHaveBeenCalledWith('sg-1', 4)
     expect(getOne).toHaveBeenCalledWith('song', { id: 'sg-1' })
+    expect(refresh).toHaveBeenCalled()
   })
 
   it('handles zero rating (unrate)', async () => {

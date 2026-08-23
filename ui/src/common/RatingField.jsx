@@ -30,7 +30,7 @@ export const RatingField = ({
   ...rest
 }) => {
   const record = useRecordContext(rest) || {}
-  const [rate, rating] = useRating(resource, record)
+  const [rate, rating, loading] = useRating(resource, record)
   const classes = useStyles({ color, visible })
 
   const stopPropagation = (e) => {
@@ -63,7 +63,7 @@ export const RatingField = ({
         )}
         value={rating}
         size={size}
-        disabled={record?.missing}
+        disabled={record?.missing || loading}
         emptyIcon={<StarBorderIcon fontSize="inherit" />}
         onChange={(e, newValue) => handleRating(e, newValue)}
       />

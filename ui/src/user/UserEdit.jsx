@@ -33,7 +33,8 @@ const useStyles = makeStyles({
   },
 })
 
-const UserTitle = ({ record }) => {
+const UserTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.user.name', { smart_count: 1 })
   return <Title subTitle={`${resourceName} ${record ? record.name : ''}`} />

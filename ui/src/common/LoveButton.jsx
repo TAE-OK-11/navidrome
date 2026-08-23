@@ -6,7 +6,7 @@ import IconButton from '@mui/material/IconButton'
 import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import { useToggleLove } from './useToggleLove'
-import { useRecordContext } from 'react-admin'
+import { useRecordContext, useTranslate } from 'react-admin'
 import config from '../config'
 import { isDateSet } from '../utils/validations'
 
@@ -38,8 +38,9 @@ export const LoveButton = ({
   ...rest
 }) => {
   const record = useRecordContext({ record: recordProp }) || {}
-  const classes = useStyles({ color, visible, loved: record.starred })
-  const [toggleLove, loading] = useToggleLove(resource, record)
+  const translate = useTranslate()
+  const [toggleLove, loading, loved] = useToggleLove(resource, record)
+  const classes = useStyles({ color, visible, loved })
 
   const handleToggleLove = useCallback(
     (e) => {
@@ -59,6 +60,8 @@ export const LoveButton = ({
       size={'small'}
       disabled={disabled || loading || record.missing}
       className={clsx(classes.love, className)}
+      aria-label={translate('message.toggle_love')}
+      aria-pressed={loved}
       title={
         isDateSet(record.starredAt)
           ? new Date(record.starredAt).toLocaleString()
@@ -66,7 +69,7 @@ export const LoveButton = ({
       }
       {...rest}
     >
-      {record.starred ? (
+      {loved ? (
         <FavoriteIcon fontSize={size} />
       ) : (
         <FavoriteBorderIcon fontSize={size} />

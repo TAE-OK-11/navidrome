@@ -1,9 +1,24 @@
-import legacyWithStyles from '@mui/styles/withStyles'
-import { createTheme } from '@mui/material/styles'
+import { createElement, forwardRef } from 'react'
+import makeStyles from './makeStyles'
 
-const defaultTheme = createTheme()
+/**
+ * @mui/styles withStyles-compatible wrapper.
+ * Prefer styled()/sx for new code; this exists for remaining call sites.
+ */
+const withStyles = (stylesOrCreator, options = {}) => {
+  const useStyles = makeStyles(stylesOrCreator, options)
 
-const withStyles = (styles, options = {}) =>
-  legacyWithStyles(styles, { defaultTheme, ...options })
+  return (Component) => {
+    const WithStyles = forwardRef(function WithStyles(props, ref) {
+      const classes = useStyles(props)
+      return createElement(Component, { ...props, classes, ref })
+    })
+
+    WithStyles.displayName = `WithStyles(${
+      Component.displayName || Component.name || 'Component'
+    })`
+    return WithStyles
+  }
+}
 
 export default withStyles

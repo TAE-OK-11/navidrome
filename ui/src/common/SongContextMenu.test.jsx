@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, fireEvent, screen, waitFor } from '@testing-library/react'
-import { AdminContext as TestContext } from 'react-admin'
+import { AdminContext as TestContext, RecordContextProvider } from 'react-admin'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { SongContextMenu } from './SongContextMenu'
 import subsonic from '../subsonic'
@@ -10,7 +10,11 @@ vi.mock('../dataProvider', () => ({
 }))
 
 vi.mock('../subsonic', () => ({
-  default: { getSimilarSongs2: vi.fn() },
+  default: {
+    getSimilarSongs2: vi.fn(),
+    star: vi.fn(() => Promise.resolve()),
+    unstar: vi.fn(() => Promise.resolve()),
+  },
 }))
 
 vi.mock('../config', () => ({
@@ -26,6 +30,7 @@ const mockDispatch = vi.fn()
 vi.mock('react-redux', () => ({ useDispatch: () => mockDispatch }))
 
 const getPlaylistsMock = vi.fn()
+const getOneMock = vi.fn(() => Promise.resolve({ data: {} }))
 const mockNotify = vi.fn()
 
 vi.mock('react-admin', async (importOriginal) => {
@@ -38,6 +43,7 @@ vi.mock('react-admin', async (importOriginal) => {
     },
     useDataProvider: () => ({
       getPlaylists: getPlaylistsMock,
+      getOne: getOneMock,
       inspect: vi.fn().mockResolvedValue({
         data: { rawTags: {} },
       }),
@@ -60,6 +66,31 @@ describe('SongContextMenu', () => {
         },
       },
     })
+  })
+
+  it('uses RecordContext for favourite and menu actions', async () => {
+    render(
+      <TestContext>
+        <RecordContextProvider
+          value={{ id: 'context-song', title: 'Context Song', size: 1 }}
+        >
+          <SongContextMenu resource="song" />
+        </RecordContextProvider>
+      </TestContext>,
+    )
+
+    const loveButton = screen.getByRole('button', {
+      name: 'message.toggle_love',
+    })
+    fireEvent.click(loveButton)
+    expect(subsonic.star).toHaveBeenCalledWith('context-song')
+    expect(loveButton).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'more' }))
+    expect(
+      await screen.findByText('resources.song.actions.playNow'),
+    ).toBeInTheDocument()
+    expect(getPlaylistsMock).toHaveBeenCalledWith('context-song')
   })
 
   it('navigates to playlist when selected', async () => {

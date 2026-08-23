@@ -4,6 +4,7 @@ import {
   required,
   SimpleForm,
   TextInput,
+  useRecordContext,
   useTranslate,
 } from 'react-admin'
 import { CardMedia } from '@mui/material'
@@ -39,7 +40,8 @@ const useStyles = makeStyles({
   },
 })
 
-const RadioTitle = ({ record }) => {
+const RadioTitle = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.radio.name', {
     smart_count: 1,
@@ -72,7 +74,8 @@ const RadioEdit = (props) => {
   )
 }
 
-const RadioCoverArt = ({ record }) => {
+const RadioCoverArt = ({ record: recordOverride }) => {
+  const record = useRecordContext({ record: recordOverride })
   const classes = useStyles()
   const { imageLoading, handleImageLoad, handleImageError } =
     useImageLoadingState(record?.id)

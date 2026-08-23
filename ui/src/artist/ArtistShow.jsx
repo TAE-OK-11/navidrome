@@ -21,13 +21,7 @@ import {
 } from '../common/index.js'
 import ArtistActions from './ArtistActions'
 import makeStyles from '../themes/makeStyles'
-
-// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => {
-  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
-  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
-  return WithWidth
-}
+import { withWidth } from '../themes/useWidth'
 
 const useStyles = makeStyles(
   (theme) => ({

@@ -86,7 +86,8 @@ describe('DiscSubtitleRow', () => {
 })
 
 describe('SongDatagrid', () => {
-  it('renders records supplied through the React-admin 5 record context', () => {
+  it('renders and plays records supplied through the React-admin 5 record context', () => {
+    const rowClick = vi.fn()
     const listContext = {
       data: [
         {
@@ -110,7 +111,7 @@ describe('SongDatagrid', () => {
       <AdminContext>
         <ResourceContextProvider value="song">
           <ListContextProvider value={listContext}>
-            <SongDatagrid bulkActionButtons={false}>
+            <SongDatagrid bulkActionButtons={false} rowClick={rowClick}>
               <TextField source="title" />
             </SongDatagrid>
           </ListContextProvider>
@@ -119,5 +120,11 @@ describe('SongDatagrid', () => {
     )
 
     expect(screen.getByText('Visible Track')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Visible Track'))
+    expect(rowClick).toHaveBeenCalledWith(
+      'song-1',
+      'song',
+      expect.objectContaining({ title: 'Visible Track' }),
+    )
   })
 })

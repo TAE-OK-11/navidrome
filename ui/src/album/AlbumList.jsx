@@ -38,13 +38,7 @@ import AlbumInfo from './AlbumInfo'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { humanize } from 'inflection'
 import makeStyles from '../themes/makeStyles'
-
-// FIXME checkout https://mui.com/components/use-media-query/#migrating-from-withwidth
-const withWidth = () => (WrappedComponent) => {
-  const WithWidth = (props) => <WrappedComponent {...props} width="xs" />
-  WithWidth.displayName = `WithWidth(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`
-  return WithWidth
-}
+import { withWidth } from '../themes/useWidth'
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
 const ScrollRestorer = ({ children, ...rest }) => {

@@ -1076,6 +1076,26 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     test -x /out/jbs-helper
 
 # =========================================================
+# Rust Lofty metadata worker
+# Native tag scanning + embedded cover extraction
+# =========================================================
+
+FROM ${RUST_IMAGE} AS metadata-builder
+
+ARG NAVIDROME_BUILD_CORES
+ARG RUST_TARGET_CPU
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates
+
+WORKDIR /build
+
+COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock ./
+COPY --link --from=source /src/rust/metadata/src ./src
+COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo test --locked --release && CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo build --locked --release && install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && /out/navidrome-metadata --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && test -s /tmp/embedded-cover.bin && test -x /out/navidrome-metadata
+
+# =========================================================
 # Tokio-quiche HTTP/3 companion
 # =========================================================
 
@@ -1406,6 +1426,7 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
+COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
 RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
@@ -1415,6 +1436,7 @@ RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
 
 RUN test -x /app/navidrome && \
     test -x /app/navidrome-h3 && \
+    test -x /app/navidrome-metadata && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
     test -x /usr/local/bin/ffprobe && \
@@ -2028,6 +2050,7 @@ ENV TZ=Asia/Seoul \
     ND_HTTP3PROVIDER=tokio-quiche \
     ND_HTTP3GATEWAYPATH=/app/navidrome-h3 \
     ND_FFMPEGPATH=/usr/local/bin/ffmpeg \
+    ND_METADATAWORKERPATH=/app/navidrome-metadata \
     ND_MUSICFOLDER=/music \
     ND_DATAFOLDER=/data \
     ND_CACHEFOLDER=/cache \
@@ -2041,7 +2064,7 @@ ENV TZ=Asia/Seoul \
     ND_SCANNER_WATCHERWAIT=0s \
     ND_SCANNER_PURGEMISSING=never \
     ND_SCANNER_FOLLOWSYMLINKS=false \
-    ND_SCANNER_EXTRACTOR=taglib \
+    ND_SCANNER_EXTRACTOR=lofty \
     ND_SEARCH_BACKEND=fts \
     ND_SEARCH_FULLSTRING=false \
     ND_SMARTPLAYLISTREFRESHDELAY=5m \

@@ -8,8 +8,11 @@ on:
       - "go.mod"
       - "go.sum"
       - "rust/h3-gateway/**"
+      - "rust/metadata/**"
+      - "core/artwork/e2e/testdata/embedded_art.mp3"
       - "ui/**"
       - "Dockerfile.jbs"
+      - "Dockerfile.jbs.metadata"
       - ".github/workflows/jbs-ghcr.yml"
   pull_request:
     branches: [master]
@@ -18,8 +21,11 @@ on:
       - "go.mod"
       - "go.sum"
       - "rust/h3-gateway/**"
+      - "rust/metadata/**"
+      - "core/artwork/e2e/testdata/embedded_art.mp3"
       - "ui/**"
       - "Dockerfile.jbs"
+      - "Dockerfile.jbs.metadata"
       - ".github/workflows/jbs-ghcr.yml"
   workflow_dispatch:
 
@@ -63,18 +69,48 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=sha,format=short,prefix=sha-
 
-      - name: Build and push
+      - name: Build optimized JBS base image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.jbs
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          push: false
+          tags: jbs-navidrome-base:current
           cache-from: type=gha,scope=jbs-navidrome
           cache-to: type=gha,scope=jbs-navidrome,mode=max
           build-args: |
             NAVIDROME_REF=${{ env.SOURCE_SHA }}
             NAVIDROME_CACHEBUST=${{ env.SOURCE_SHA }}
             GO_PGO_ENABLED=true
+
+      - name: Add Lofty metadata worker and verify embedded artwork
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --builder default \
+            --load \
+            --file Dockerfile.jbs.metadata \
+            --tag jbs-navidrome-final:current \
+            .
+          docker run --rm --entrypoint /bin/sh jbs-navidrome-final:current -c '
+            set -eu
+            test "$ND_SCANNER_EXTRACTOR" = lofty
+            test "$ND_METADATAWORKERPATH" = /app/navidrome-metadata
+            test -x /app/navidrome-metadata
+          '
+
+      - name: Push final image
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag jbs-navidrome-final:current "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"

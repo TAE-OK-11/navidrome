@@ -13,9 +13,14 @@ import (
 	_ "github.com/navidrome/navidrome/db/migrations"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/utils/hasher"
+	"github.com/navidrome/navidrome/utils/natural"
 	"github.com/navidrome/navidrome/utils/singleton"
 	"github.com/pressly/goose/v3"
 )
+
+// NaturalCollation sorts embedded numbers by value. It is registered on every
+// connection, but only referenced when conf.Server.EnableNaturalSorting is on.
+const NaturalCollation = "NATSORT"
 
 var (
 	Dialect = "sqlite3"
@@ -33,6 +38,9 @@ func Db() *sql.DB {
 		sql.Register(Driver, &sqlite3.SQLiteDriver{
 			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
 				if err := conn.RegisterFunc("SEEDEDRAND", hasher.HashFunc(), false); err != nil {
+					return err
+				}
+				if err := conn.RegisterCollation(NaturalCollation, natural.CompareFold); err != nil {
 					return err
 				}
 				return configureSQLiteConn(conn)

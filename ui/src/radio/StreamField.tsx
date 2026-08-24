@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Button } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import PropTypes from 'prop-types'
 import React, { useCallback } from 'react'
 import { useRecordContext } from 'react-admin'
@@ -9,18 +8,9 @@ import { setTrack } from '../actions'
 import { songFromRadio } from './helper'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 
-const useStyles = makeStyles((theme) => ({
-  button: {
-    padding: '5px 0px',
-    textTransform: 'none',
-    marginRight: theme.spacing(1.5),
-  },
-}))
-
 export const StreamField = (props) => {
   const record = useRecordContext(props)
   const dispatch = useDispatch()
-  const classes = useStyles()
 
   const playTrack = useCallback(
     async (evt) => {
@@ -32,7 +22,10 @@ export const StreamField = (props) => {
   )
 
   return (
-    <Button className={classes.button} onClick={playTrack}>
+    <Button
+      sx={{ py: '5px', px: 0, textTransform: 'none', mr: 1.5 }}
+      onClick={playTrack}
+    >
       <PlayArrowIcon />
     </Button>
   )

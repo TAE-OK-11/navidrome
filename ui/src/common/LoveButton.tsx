@@ -4,27 +4,10 @@ import PropTypes from 'prop-types'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import IconButton from '@mui/material/IconButton'
-import makeStyles from '../themes/makeStyles'
-import clsx from 'clsx'
 import { useToggleLove } from './useToggleLove'
 import { useRecordContext, useTranslate } from 'react-admin'
 import config from '../config'
 import { isDateSet } from '../utils/validations'
-
-const useStyles = makeStyles(
-  {
-    love: {
-      color: (props) => props.color,
-      visibility: (props) =>
-        props.visible === false
-          ? 'hidden'
-          : props.loved
-            ? 'visible'
-            : 'inherit',
-    },
-  },
-  { name: 'NDLoveButton' },
-)
 
 export const LoveButton = ({
   resource,
@@ -36,12 +19,12 @@ export const LoveButton = ({
   disabled = false,
   className,
   record: recordProp,
+  sx,
   ...rest
 }) => {
   const record = useRecordContext({ record: recordProp }) || {}
   const translate = useTranslate()
   const [toggleLove, loading, loved] = useToggleLove(resource, record)
-  const classes = useStyles({ color, visible, loved })
 
   const handleToggleLove = useCallback(
     (e) => {
@@ -60,7 +43,15 @@ export const LoveButton = ({
       onClick={handleToggleLove}
       size={'small'}
       disabled={disabled || loading || record.missing}
-      className={clsx(classes.love, className)}
+      className={className}
+      sx={[
+        {
+          color,
+          visibility:
+            visible === false ? 'hidden' : loved ? 'visible' : 'inherit',
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
       aria-label={translate('message.toggle_love')}
       aria-pressed={loved}
       title={

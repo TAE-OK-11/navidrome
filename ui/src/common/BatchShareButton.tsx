@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux'
 import { openShareMenu } from '../actions'
 import ShareIcon from '@mui/icons-material/Share'
 
-export const BatchShareButton = ({ resource, selectedIds, className }) => {
+export const BatchShareButton = ({ resource, selectedIds, className, sx }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const unselectAll = useUnselectAll()
@@ -31,6 +31,7 @@ export const BatchShareButton = ({ resource, selectedIds, className }) => {
       onClick={share}
       label={caption}
       className={className}
+      sx={sx}
     >
       <ShareIcon />
     </Button>

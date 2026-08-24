@@ -16,6 +16,7 @@ export const BatchPlayButton = ({
   label,
   icon,
   className,
+  sx,
 }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
@@ -48,6 +49,7 @@ export const BatchPlayButton = ({
       onClick={addToQueue}
       label={caption}
       className={className}
+      sx={sx}
     >
       {icon}
     </Button>

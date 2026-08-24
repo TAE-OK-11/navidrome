@@ -209,6 +209,8 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
 
     let token = HeaderValue::from_str(&config.internal_token).context("invalid bridge token")?;
     let public_port = public.port();
+    let forwarded_port = HeaderValue::from_str(&public_port.to_string())
+        .context("invalid public port forwarding value")?;
     let alt_svc = HeaderValue::from_str(&format!(
         "h3=\":{}\"; ma={}",
         public_port,
@@ -291,6 +293,13 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                                 continue;
                             }
                         };
+                        let bridge_headers = match BridgeHeaders::new(peer, &token, &forwarded_port) {
+                            Ok(headers) => headers,
+                            Err(error) => {
+                                warn!("failed to prepare HTTP/3 forwarding headers peer={peer}: {error:#}");
+                                continue;
+                            }
+                        };
                         let settings = Http3Settings {
                             max_header_list_size: Some(64 * 1024),
                             ..Http3Settings::default()
@@ -299,14 +308,13 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
                         connection.start(driver);
                         tokio::spawn(handle_connection(
                             controller,
-                            ConnectionContext {
+                            Arc::new(ConnectionContext {
                                 peer,
-                                public_port,
-                                token: token.clone(),
+                                bridge_headers,
                                 client: client.clone(),
                                 alt_svc: alt_svc.clone(),
                                 request_limit: Arc::clone(&request_limit),
-                            },
+                            }),
                             permit,
                             peer_permit,
                         ));
@@ -434,11 +442,27 @@ impl Drop for AdmissionPermit {
     }
 }
 
-#[derive(Clone)]
+struct BridgeHeaders {
+    token: HeaderValue,
+    remote_addr: HeaderValue,
+    forwarded_for: HeaderValue,
+    forwarded_port: HeaderValue,
+}
+
+impl BridgeHeaders {
+    fn new(peer: SocketAddr, token: &HeaderValue, forwarded_port: &HeaderValue) -> Result<Self> {
+        Ok(Self {
+            token: token.clone(),
+            remote_addr: HeaderValue::from_str(&peer.to_string())?,
+            forwarded_for: HeaderValue::from_str(&peer.ip().to_string())?,
+            forwarded_port: forwarded_port.clone(),
+        })
+    }
+}
+
 struct ConnectionContext {
     peer: SocketAddr,
-    public_port: u16,
-    token: HeaderValue,
+    bridge_headers: BridgeHeaders,
     client: ProxyClient,
     alt_svc: HeaderValue,
     request_limit: Arc<Semaphore>,
@@ -446,7 +470,7 @@ struct ConnectionContext {
 
 async fn handle_connection(
     mut controller: ServerH3Controller,
-    context: ConnectionContext,
+    context: Arc<ConnectionContext>,
     _permit: tokio::sync::OwnedSemaphorePermit,
     _peer_permit: AdmissionPermit,
 ) {
@@ -482,7 +506,7 @@ async fn handle_connection(
                 };
                 tokio::spawn(proxy_request(
                     incoming_headers,
-                    context.clone(),
+                    Arc::clone(&context),
                     request_permit,
                 ));
             }
@@ -501,7 +525,7 @@ async fn reject_overloaded(incoming: IncomingH3Headers) {
 
 async fn proxy_request(
     incoming: IncomingH3Headers,
-    context: ConnectionContext,
+    context: Arc<ConnectionContext>,
     _request_permit: tokio::sync::OwnedSemaphorePermit,
 ) {
     let IncomingH3Headers {
@@ -511,7 +535,7 @@ async fn proxy_request(
         read_fin,
         ..
     } = incoming;
-    if let Err(error) = proxy_request_inner(headers, send, recv, read_fin, context.clone()).await {
+    if let Err(error) = proxy_request_inner(headers, send, recv, read_fin, &context).await {
         warn!(
             "HTTP/3 stream proxy failed peer={}: {error:#}",
             context.peer
@@ -524,7 +548,7 @@ async fn proxy_request_inner(
     mut send: OutboundFrameSender,
     recv: tokio_quiche::http3::driver::InboundFrameStream,
     read_fin: bool,
-    context: ConnectionContext,
+    context: &ConnectionContext,
 ) -> Result<()> {
     if is_connect_request(&headers) {
         send_error(
@@ -535,14 +559,13 @@ async fn proxy_request_inner(
         .await?;
         return Ok(());
     }
-    let decoded =
-        match decode_request_headers(&headers, context.peer, context.public_port, &context.token) {
-            Ok(decoded) => decoded,
-            Err(error) => {
-                send_error(&mut send, StatusCode::BAD_REQUEST, "invalid HTTP/3 request").await?;
-                return Err(error);
-            }
-        };
+    let decoded = match decode_request_headers(&headers, &context.bridge_headers) {
+        Ok(decoded) => decoded,
+        Err(error) => {
+            send_error(&mut send, StatusCode::BAD_REQUEST, "invalid HTTP/3 request").await?;
+            return Err(error);
+        }
+    };
     if decoded.method == Method::CONNECT {
         send_error(
             &mut send,
@@ -589,16 +612,15 @@ struct DecodedRequest {
 
 fn decode_request_headers(
     headers: &[h3::Header],
-    peer: SocketAddr,
-    public_port: u16,
-    token: &HeaderValue,
+    bridge_headers: &BridgeHeaders,
 ) -> Result<DecodedRequest> {
     let mut method = None;
     let mut scheme = None;
     let mut authority = None;
     let mut path = None;
     let mut regular_seen = false;
-    let mut output = HeaderMap::with_capacity(headers.len() + 5);
+    // Four required pseudo-headers are replaced by seven private-hop headers.
+    let mut output = HeaderMap::with_capacity(headers.len() + 3);
 
     for header in headers {
         let name = header.name();
@@ -661,22 +683,13 @@ fn decode_request_headers(
         .authority(authority_text)
         .path_and_query(path)
         .build()?;
-    output.insert(HOST, authority_header);
-    output.insert(TOKEN_HEADER, token.clone());
-    output.insert(AUTHORITY_HEADER, output[HOST].clone());
-    output.insert(
-        REMOTE_ADDR_HEADER,
-        HeaderValue::from_str(&peer.to_string())?,
-    );
-    output.insert(
-        "x-forwarded-for",
-        HeaderValue::from_str(&peer.ip().to_string())?,
-    );
+    output.insert(HOST, authority_header.clone());
+    output.insert(AUTHORITY_HEADER, authority_header);
+    output.insert(TOKEN_HEADER, bridge_headers.token.clone());
+    output.insert(REMOTE_ADDR_HEADER, bridge_headers.remote_addr.clone());
+    output.insert("x-forwarded-for", bridge_headers.forwarded_for.clone());
     output.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-    output.insert(
-        "x-forwarded-port",
-        HeaderValue::from_str(&public_port.to_string())?,
-    );
+    output.insert("x-forwarded-port", bridge_headers.forwarded_port.clone());
     Ok(DecodedRequest {
         method,
         uri,
@@ -729,10 +742,11 @@ async fn forward_response(
     alt_svc: &HeaderValue,
 ) -> Result<()> {
     let (parts, mut body) = response.into_parts();
-    let mut headers = vec![h3::Header::new(
+    let mut headers = Vec::with_capacity(parts.headers.len() + 2);
+    headers.push(h3::Header::new(
         b":status",
         parts.status.as_str().as_bytes(),
-    )];
+    ));
     let mut has_alt_svc = false;
     for (name, value) in &parts.headers {
         if forbidden_response_header(name) {
@@ -820,6 +834,15 @@ mod tests {
         "192.0.2.10:12345".parse().unwrap()
     }
 
+    fn bridge_headers() -> BridgeHeaders {
+        BridgeHeaders::new(
+            peer(),
+            &HeaderValue::from_static("test-token"),
+            &HeaderValue::from_static("443"),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn congestion_control_is_normalized_and_validated() {
         assert_eq!(normalize_congestion_control(" BBR2 ").unwrap(), "bbr2");
@@ -849,8 +872,7 @@ mod tests {
             h3::Header::new(b"x-forwarded-for", b"attacker"),
             h3::Header::new(b"x-real-ip", b"198.51.100.99"),
         ];
-        let token = HeaderValue::from_static("test-token");
-        let decoded = decode_request_headers(&headers, peer(), 443, &token).unwrap();
+        let decoded = decode_request_headers(&headers, &bridge_headers()).unwrap();
         assert_eq!(decoded.method, Method::GET);
         assert_eq!(decoded.uri.scheme_str(), Some("https"));
         assert_eq!(
@@ -876,8 +898,7 @@ mod tests {
             h3::Header::new(b":path", b"/"),
             h3::Header::new(b"connection", b"close"),
         ];
-        let token = HeaderValue::from_static("test-token");
-        assert!(decode_request_headers(&headers, peer(), 443, &token).is_err());
+        assert!(decode_request_headers(&headers, &bridge_headers()).is_err());
     }
 
     #[test]

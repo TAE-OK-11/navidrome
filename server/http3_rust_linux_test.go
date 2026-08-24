@@ -92,6 +92,24 @@ func TestAuthenticatedHTTP3BridgeRejectsUntrustedRequests(t *testing.T) {
 	}
 }
 
+func BenchmarkAuthenticatedHTTP3Bridge(b *testing.B) {
+	handler := authenticatedHTTP3Bridge("secret", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "http://navidrome.local/rest/ping", nil)
+	req.RemoteAddr = "socketpair"
+	res := httptest.NewRecorder()
+	token := []string{"secret"}
+	authority := []string{"music.example"}
+	remoteAddr := []string{"192.0.2.10:54321"}
+	b.ReportAllocs()
+
+	for b.Loop() {
+		req.Header[rustHTTP3TokenHeader] = token
+		req.Header[rustHTTP3AuthorityHeader] = authority
+		req.Header[rustHTTP3RemoteAddrHeader] = remoteAddr
+		handler.ServeHTTP(res, req)
+	}
+}
+
 func TestClearHTTP3Advertisement(t *testing.T) {
 	t.Parallel()
 

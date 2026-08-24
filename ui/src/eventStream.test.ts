@@ -1,7 +1,7 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, beforeEach, vi, expect } from 'vitest'
 import { startEventStream } from './eventStream'
-import { serverDown } from './actions'
+import { serverDown, streamReconnected } from './actions'
 import config from './config'
 
 class MockEventSource {
@@ -10,6 +10,7 @@ class MockEventSource {
     this.readyState = 1
     this.listeners = {}
     this.onerror = null
+    this.onopen = null
   }
   addEventListener(type, handler) {
     this.listeners[type] = handler
@@ -33,12 +34,22 @@ describe('startEventStream', () => {
     localStorage.setItem('is-authenticated', 'true')
     localStorage.setItem('token', 'abc')
     config.devNewEventStream = true
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
     // Mock console.log to suppress output during tests
     vi.spyOn(console, 'log').mockImplementation(() => {})
   })
 
   afterEach(() => {
     config.devNewEventStream = false
+    vi.restoreAllMocks()
+  })
+
+  it('marks the stream reconnected only after it actually opens', async () => {
+    await startEventStream(dispatch)
+    expect(dispatch).not.toHaveBeenCalledWith(streamReconnected())
+
+    instance.onopen(new Event('open'))
+    expect(dispatch).toHaveBeenCalledWith(streamReconnected())
   })
 
   it('reconnects after an error', async () => {

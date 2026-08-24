@@ -33,6 +33,20 @@ func TestBuildRequestRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestWorkerPoolSize(t *testing.T) {
+	t.Parallel()
+
+	if got := workerPoolSize(0); got != 1 {
+		t.Fatalf("workerPoolSize(0) = %d, want 1", got)
+	}
+	if got := workerPoolSize(5); got != 5 {
+		t.Fatalf("workerPoolSize(5) = %d, want 5", got)
+	}
+	if got := workerPoolSize(100); got != maxWorkerPool {
+		t.Fatalf("workerPoolSize(100) = %d, want %d", got, maxWorkerPool)
+	}
+}
+
 func TestConvertResponse(t *testing.T) {
 	t.Parallel()
 

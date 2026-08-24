@@ -7,14 +7,13 @@ import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
-import makeStyles from '../themes/makeStyles'
+import Box from '@mui/material/Box'
 import {
   useDataProvider,
   useNotify,
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import clsx from 'clsx'
 import {
   playNext,
   addTracks,
@@ -31,15 +30,6 @@ import { LoveButton } from './LoveButton'
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from './artist'
-
-const useStyles = makeStyles({
-  noWrap: {
-    whiteSpace: 'nowrap',
-  },
-  menu: {
-    color: (props) => props.color,
-  },
-})
 
 const MoreButton = ({ record, onClick, info, ...rest }) => {
   const handleClick = record.missing
@@ -70,7 +60,6 @@ const ContextMenu = ({
   hideShare,
   hideInfo,
 }) => {
-  const classes = useStyles({ color })
   const dataProvider = useDataProvider()
   const dispatch = useDispatch()
   const translate = useTranslate()
@@ -195,7 +184,7 @@ const ContextMenu = ({
   const present = !record.missing
 
   return (
-    <span className={clsx(classes.noWrap, className)}>
+    <Box component="span" className={className} sx={{ whiteSpace: 'nowrap' }}>
       <LoveButton
         record={record}
         resource={resource}
@@ -209,7 +198,7 @@ const ContextMenu = ({
         aria-label="more"
         aria-controls="context-menu"
         aria-haspopup="true"
-        className={classes.menu}
+        sx={{ color }}
       />
       <Menu
         id="context-menu"
@@ -227,7 +216,7 @@ const ContextMenu = ({
             ),
         )}
       </Menu>
-    </span>
+    </Box>
   )
 }
 

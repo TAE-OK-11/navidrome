@@ -140,7 +140,7 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 		log.Debug(ctx, "Rust search freshness check failed", err)
 		return
 	}
-	if scanGeneration(libraries) <= e.generation.Load() {
+	if !searchIndexStale(e.Ready(), e.generation.Load(), libraries) {
 		return
 	}
 	go func() {
@@ -307,6 +307,10 @@ func scanGeneration(libraries model.Libraries) int64 {
 		latest = max(latest, library.UpdatedAt.UnixNano())
 	}
 	return latest
+}
+
+func searchIndexStale(ready bool, generation int64, libraries model.Libraries) bool {
+	return !ready || scanGeneration(libraries) > generation
 }
 
 func (e *Engine) roundTrip(req request) (response, error) {

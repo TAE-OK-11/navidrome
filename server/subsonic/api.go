@@ -402,12 +402,12 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 			break
 		}
 		w.Header().Set("Content-Type", "application/javascript")
-		body, marshalErr := json.Marshal(responses.JsonWrapper{Subsonic: *payload})
-		if marshalErr != nil {
-			err = marshalErr
-			break
+		buf.WriteString(callback)
+		buf.WriteByte('(')
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
+		if err == nil {
+			buf.WriteByte(')')
 		}
-		_, err = fmt.Fprintf(buf, "%s(%s)", callback, body)
 	default:
 		w.Header().Set("Content-Type", "application/xml")
 		err = xml.NewEncoder(buf).Encode(payload)

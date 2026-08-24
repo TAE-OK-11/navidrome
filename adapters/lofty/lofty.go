@@ -29,6 +29,7 @@ import (
 const (
 	protocolVersion = 1
 	loftyVersion    = "0.25.1"
+	maxWorkerPool   = 16
 )
 
 type request struct {
@@ -65,10 +66,14 @@ type worker struct {
 	decoder *json.Decoder
 }
 
+type workerSlot struct {
+	worker *worker
+}
+
 type extractor struct {
-	baseDir string
-	mu      sync.Mutex
-	worker  *worker
+	baseDir  string
+	poolOnce sync.Once
+	pool     chan *workerSlot
 }
 
 func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
@@ -81,15 +86,16 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 		return nil, err
 	}
 
-	// A worker carries a single ordered request/response stream. Serializing each
-	// scanner batch keeps framing trivial and still amortizes process startup over
-	// the complete scan. Scanner batching already keeps this boundary coarse.
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	// Each worker carries one ordered request/response stream. A bounded pool
+	// preserves that simple framing while allowing the scanner's independent
+	// folder workers to use Rust concurrently. Slots start their process lazily.
+	pool := e.workerPool()
+	slot := <-pool
+	defer func() { pool <- slot }()
 
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		w, err := e.ensureWorker()
+		w, err := slot.ensureWorker()
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +105,7 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 		}
 		lastErr = err
 		log.Warn("Lofty metadata worker request failed; restarting", "attempt", attempt+1, "error", err)
-		e.stopWorker()
+		slot.stopWorker()
 	}
 	return nil, fmt.Errorf("Lofty metadata worker failed after restart: %w", lastErr)
 }
@@ -132,24 +138,41 @@ func (e *extractor) buildRequest(files []string) (request, error) {
 	return request{Files: inputs}, nil
 }
 
-func (e *extractor) ensureWorker() (*worker, error) {
-	if e.worker != nil {
-		return e.worker, nil
+func (e *extractor) workerPool() chan *workerSlot {
+	e.poolOnce.Do(func() {
+		e.pool = make(chan *workerSlot, workerPoolSize(conf.Server.DevScannerThreads))
+		for range cap(e.pool) {
+			e.pool <- &workerSlot{}
+		}
+	})
+	return e.pool
+}
+
+func workerPoolSize(scannerThreads uint) int {
+	if scannerThreads < 1 {
+		return 1
+	}
+	return int(min(scannerThreads, maxWorkerPool))
+}
+
+func (s *workerSlot) ensureWorker() (*worker, error) {
+	if s.worker != nil {
+		return s.worker, nil
 	}
 	w, err := startWorker(resolveWorkerPath())
 	if err != nil {
 		return nil, err
 	}
-	e.worker = w
+	s.worker = w
 	return w, nil
 }
 
-func (e *extractor) stopWorker() {
-	if e.worker == nil {
+func (s *workerSlot) stopWorker() {
+	if s.worker == nil {
 		return
 	}
-	e.worker.close()
-	e.worker = nil
+	s.worker.close()
+	s.worker = nil
 }
 
 func startWorker(binary string) (*worker, error) {

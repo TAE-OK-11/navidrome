@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -182,12 +183,17 @@ func altSvcForAddress(addr string, maxAge time.Duration) string {
 }
 
 func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
+	tokenBytes := []byte(token)
+	tlsState := &tls.ConnectionState{
+		Version:           tls.VersionTLS13,
+		HandshakeComplete: true,
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		// The bridge connection is an inherited AF_UNIX socketpair and therefore
 		// has no externally reachable address. Keep the per-process token as
 		// defense in depth and compare it in constant time.
 		provided := req.Header.Get(rustHTTP3TokenHeader)
-		if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(provided), tokenBytes) != 1 {
 			http3BridgeRejected.WithLabelValues("invalid_token").Inc()
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
@@ -195,8 +201,7 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 
 		req.Header.Del(rustHTTP3TokenHeader)
 		if remoteAddr := req.Header.Get(rustHTTP3RemoteAddrHeader); remoteAddr != "" {
-			remoteHost, _, remoteErr := net.SplitHostPort(remoteAddr)
-			if remoteErr != nil || net.ParseIP(remoteHost) == nil {
+			if _, remoteErr := netip.ParseAddrPort(remoteAddr); remoteErr != nil {
 				http3BridgeRejected.WithLabelValues("invalid_remote_addr").Inc()
 				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 				return
@@ -213,10 +218,7 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 		req.Proto = "HTTP/3.0"
 		req.ProtoMajor = 3
 		req.ProtoMinor = 0
-		req.TLS = &tls.ConnectionState{
-			Version:           tls.VersionTLS13,
-			HandshakeComplete: true,
-		}
+		req.TLS = tlsState
 		next.ServeHTTP(w, req)
 	})
 }

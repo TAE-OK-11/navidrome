@@ -169,9 +169,15 @@ type Stream struct {
 	io.Seeker
 }
 
+// Match the largest inherited HTTP/2 bridge frame used by the Rust HTTP/3
+// companion. Transcoded streams are not seekable, so this is their hot copy
+// path; 64 KiB halves Go-level writes versus io.Copy's 32 KiB default without
+// retaining large per-request buffers.
+const streamCopyBufferSize = 64 * 1024
+
 var streamCopyBufferPool = sync.Pool{
 	New: func() any {
-		buf := make([]byte, 32*1024)
+		buf := make([]byte, streamCopyBufferSize)
 		return &buf
 	},
 }

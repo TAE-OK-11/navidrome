@@ -691,7 +691,14 @@ fn select_request_compression(
         return None;
     }
     let path = path.split_once('?').map_or(path, |(path, _)| path);
-    let normalized = path.to_ascii_lowercase();
+    // Native API routes are already lowercase. Avoid allocating a lowercase
+    // copy on that hot path while retaining compatibility with camel-cased
+    // Subsonic method names.
+    let normalized_storage = path
+        .bytes()
+        .any(|byte| byte.is_ascii_uppercase())
+        .then(|| path.to_ascii_lowercase());
+    let normalized = normalized_storage.as_deref().unwrap_or(path);
     let normalized = normalized.strip_suffix(".view").unwrap_or(&normalized);
     if !is_api_path(normalized) || is_media_path(normalized) || is_sensitive_auth_path(normalized) {
         return None;
@@ -744,13 +751,16 @@ fn parse_accept_encoding(value: &str) -> AcceptedEncodings {
                     .unwrap_or(0.0);
             }
         }
-        match token.to_ascii_lowercase().as_str() {
-            "br" => accepted.brotli = Some(quality),
-            "zstd" => accepted.zstd = Some(quality),
-            "gzip" => accepted.gzip = Some(quality),
-            "identity" => accepted.identity = Some(quality),
-            "*" => accepted.wildcard = Some(quality),
-            _ => {}
+        if token.eq_ignore_ascii_case("br") {
+            accepted.brotli = Some(quality);
+        } else if token.eq_ignore_ascii_case("zstd") {
+            accepted.zstd = Some(quality);
+        } else if token.eq_ignore_ascii_case("gzip") {
+            accepted.gzip = Some(quality);
+        } else if token.eq_ignore_ascii_case("identity") {
+            accepted.identity = Some(quality);
+        } else if token == "*" {
+            accepted.wildcard = Some(quality);
         }
     }
     accepted
@@ -1325,7 +1335,7 @@ mod tests {
 
     #[test]
     fn compression_quality_and_identity_are_honored() {
-        let accepted = parse_accept_encoding("br;q=0.4, zstd;q=0.9, gzip;q=1, identity;q=0");
+        let accepted = parse_accept_encoding("BR;q=0.4, Zstd;q=0.9, GZIP;q=1, identity;q=0");
         assert_eq!(accepted.quality(CompressionEncoding::Brotli), 0.4);
         assert_eq!(accepted.quality(CompressionEncoding::Zstd), 0.9);
         assert_eq!(accepted.quality(CompressionEncoding::Gzip), 1.0);

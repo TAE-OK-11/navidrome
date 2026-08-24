@@ -20,6 +20,7 @@ func BenchmarkLegacyStreamDecision(b *testing.B) {
 	ctx := context.Background()
 
 	b.Run("direct", func(b *testing.B) {
+		b.ReportAllocs()
 		for b.Loop() {
 			request := decider.ResolveRequest(ctx, mediaFile, "", 0, 0)
 			if request.Format != "raw" {
@@ -28,6 +29,7 @@ func BenchmarkLegacyStreamDecision(b *testing.B) {
 		}
 	})
 	b.Run("transcode", func(b *testing.B) {
+		b.ReportAllocs()
 		for b.Loop() {
 			request := decider.ResolveRequest(ctx, mediaFile, "mp3", 192, 0)
 			if request.Format != "mp3" {

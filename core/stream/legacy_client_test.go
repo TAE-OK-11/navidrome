@@ -182,6 +182,16 @@ var _ = Describe("ResolveRequest", func() {
 		Expect(req.Format).To(Equal("raw"))
 	})
 
+	It("preserves offset on unconstrained direct play", func() {
+		mf := withProbe(&model.MediaFile{ID: "1", Suffix: "mp3", Codec: "MP3", BitRate: 320, Channels: 2, SampleRate: 44100})
+
+		decider := svc.(*deciderService)
+		req := decider.ResolveRequest(ctx, mf, "", 0, 30)
+
+		Expect(req.Format).To(Equal("raw"))
+		Expect(req.Offset).To(Equal(30))
+	})
+
 	It("transcodes to requested format", func() {
 		mf := withProbe(&model.MediaFile{ID: "1", Suffix: "flac", Codec: "FLAC", BitRate: 1000, Channels: 2, SampleRate: 44100, BitDepth: new(16)})
 

@@ -504,6 +504,9 @@ func (r *resolver) promote(ctx context.Context, task *promotionTask) error {
 		meta: meta, dataPath: dataPath, metadataPath: metadataPath, metadataSize: metadataInfo.Size(),
 		createdAt: now, lastUsed: now, lastPersisted: metadataInfo.ModTime(),
 	}
+	if meta.SourceID != "" {
+		r.sourceKeys[meta.SourceID] = task.key
+	}
 	r.used += meta.DataSize + metadataInfo.Size()
 	_ = syncDirectory(r.path)
 	return nil
@@ -610,6 +613,9 @@ func (r *resolver) removeEntryLocked(key string, cached *entry) error {
 		return err
 	}
 	delete(r.entries, key)
+	if r.sourceKeys[cached.meta.SourceID] == key {
+		delete(r.sourceKeys, cached.meta.SourceID)
+	}
 	r.used -= cached.meta.DataSize + cached.metadataSize
 	if r.used < 0 {
 		r.used = 0

@@ -56,6 +56,10 @@ func TestResolverMissPromotionHitIntegrityAndRange(t *testing.T) {
 	require.Equal(t, expected[101:4097], response.Body.Bytes())
 
 	entry := onlyEntry(t, r)
+	r.mu.Lock()
+	indexedKey := r.sourceKeys[mf.ID]
+	r.mu.Unlock()
+	require.Equal(t, entry.meta.Key, indexedKey)
 	cached, err := os.ReadFile(entry.dataPath)
 	require.NoError(t, err)
 	require.Equal(t, sha256.Sum256(expected), sha256.Sum256(cached))
@@ -218,10 +222,16 @@ func TestResolverEvictsLeastRecentlyUsedEntry(t *testing.T) {
 	_, hasFirst := r.entries[keyFor(first.ID, first.AbsolutePath())]
 	_, hasSecond := r.entries[keyFor(second.ID, second.AbsolutePath())]
 	_, hasThird := r.entries[keyFor(third.ID, third.AbsolutePath())]
+	_, indexesFirst := r.sourceKeys[first.ID]
+	_, indexesSecond := r.sourceKeys[second.ID]
+	_, indexesThird := r.sourceKeys[third.ID]
 	r.mu.Unlock()
 	require.True(t, hasFirst)
 	require.False(t, hasSecond)
 	require.True(t, hasThird)
+	require.True(t, indexesFirst)
+	require.False(t, indexesSecond)
+	require.True(t, indexesThird)
 	require.GreaterOrEqual(t, r.Stats().Evictions, uint64(1))
 	require.LessOrEqual(t, r.Stats().Bytes, int64(3500))
 }
@@ -435,6 +445,16 @@ func BenchmarkResolverDirectAndHotHit(b *testing.B) {
 				b.Fatal(err)
 			}
 			_, _ = io.Copy(io.Discard, file)
+			_ = file.Close()
+		}
+	})
+	b.Run("hot-cache-hit-open-close", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			file, err := r.Open(context.Background(), mf)
+			if err != nil {
+				b.Fatal(err)
+			}
 			_ = file.Close()
 		}
 	})

@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	metadataVersion = 1
-	defaultMaxSize  = "3GiB"
+	metadataVersion       = 1
+	defaultMaxSize        = "3GiB"
 	copyBufferSize        = 64 * 1024
 	sourceRecheckInterval = 2 * time.Second
 )
@@ -76,6 +76,7 @@ type resolver struct {
 	used           int64
 	reserved       int64
 	entries        map[string]*entry
+	sourceKeys     map[string]string
 	playing        map[string]int
 	queue          chan *promotionTask
 	promoting      map[string]*promotionTask
@@ -191,6 +192,7 @@ func New(options Options) Resolver {
 		path:           options.Path,
 		maxSize:        options.MaxSize,
 		entries:        make(map[string]*entry),
+		sourceKeys:     make(map[string]string),
 		playing:        make(map[string]int),
 		queueMax:       options.QueueMax,
 		promotionDelay: options.PromotionDelayAfterPlay,
@@ -367,6 +369,9 @@ func (r *resolver) initialize() (CleanupResult, error) {
 			continue
 		}
 		r.entries[key] = loaded
+		if loaded.meta.SourceID != "" {
+			r.sourceKeys[loaded.meta.SourceID] = key
+		}
 		r.used += loaded.meta.DataSize + loaded.metadataSize
 		delete(dataFiles, key)
 	}
@@ -418,19 +423,35 @@ func loadEntry(key, dataPath, metadataPath string) (*entry, error) {
 }
 
 func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) {
-	sourcePath := mf.AbsolutePath()
 	if !r.enabled {
-		return os.Open(sourcePath)
+		return os.Open(mf.AbsolutePath())
 	}
 
-	openedAt := time.Now()
-	key := keyFor(mf.ID, sourcePath)
 	now := time.Now()
+	openedAt := now
+	var sourcePath string
 	r.mu.Lock()
+	key := r.sourceKeys[mf.ID]
+	if key == "" {
+		if mf.ID == "" {
+			r.mu.Unlock()
+			sourcePath = mf.AbsolutePath()
+			key = keyFor("", sourcePath)
+			r.mu.Lock()
+		} else {
+			key = keyFor(mf.ID, "")
+		}
+	}
 	cached := r.entries[key]
 	if cached == nil || cached.stale {
 		r.mu.Unlock()
+		if sourcePath == "" {
+			sourcePath = mf.AbsolutePath()
+		}
 		return r.openSource(ctx, mf, sourcePath, key, openedAt, "", false)
+	}
+	if mf.ID != "" && r.sourceKeys[mf.ID] == "" {
+		r.sourceKeys[mf.ID] = key
 	}
 	// Pin once, then keep path and cache-file I/O outside the global lock.
 	cached.active++
@@ -441,9 +462,10 @@ func (r *resolver) Open(ctx context.Context, mf *model.MediaFile) (File, error) 
 	r.mu.Unlock()
 
 	if skipSourceStat {
-		return r.openCachedFile(ctx, cached, key, now, openedAt, mf, sourcePath)
+		return r.openCachedFile(ctx, cached, key, now, openedAt, mf, cached.meta.SourcePath)
 	}
 
+	sourcePath = mf.AbsolutePath()
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil || !sourceInfo.Mode().IsRegular() {
 		r.mu.Lock()

@@ -68,16 +68,29 @@ func (s *deciderService) ResolveRequest(ctx context.Context, mf *model.MediaFile
 	}
 
 	playerMaxBitRate := 0
-	if player, ok := request.PlayerFrom(ctx); ok {
+	player, hasPlayer := request.PlayerFrom(ctx)
+	if hasPlayer {
 		playerMaxBitRate = player.MaxBitRate
+	}
+	transcoding, hasTranscoding := request.TranscodingFrom(ctx)
+
+	// The usual Subsonic stream request has no format or bitrate constraint.
+	// Its synthetic legacy profile accepts every source, so avoid allocating
+	// ClientInfo and nested profile slices only to arrive at raw direct play.
+	if reqFormat == "" &&
+		!(reqBitRate > 0 && reqBitRate < mf.BitRate) &&
+		!(playerMaxBitRate > 0 && playerMaxBitRate < mf.BitRate) &&
+		(!hasTranscoding || transcoding.TargetFormat == "") {
+		req.Format = "raw"
+		return req
 	}
 
 	clientInfo := buildLegacyClientInfo(mf, reqFormat, reqBitRate, playerMaxBitRate)
 
 	// Apply server-side player transcoding override before making the decision
-	if trc, ok := request.TranscodingFrom(ctx); ok && trc.TargetFormat != "" {
-		clientInfo = applyServerOverride(ctx, clientInfo, &trc)
-	} else if player, ok := request.PlayerFrom(ctx); ok {
+	if hasTranscoding && transcoding.TargetFormat != "" {
+		clientInfo = applyServerOverride(ctx, clientInfo, &transcoding)
+	} else if hasPlayer {
 		modified := *clientInfo
 		if modified.CapBitrate(player.MaxBitRate) {
 			clientInfo = &modified

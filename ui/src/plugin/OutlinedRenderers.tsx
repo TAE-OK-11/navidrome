@@ -27,17 +27,13 @@ import {
   Select,
   MenuItem,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import merge from 'lodash/merge'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    control: {
-      marginBottom: theme.spacing(2),
-    },
-  }),
-  { name: 'NDOutlinedRenderers' },
-)
+const controlSx = [
+  { mb: 2 },
+  (theme) => componentStyleOverride(theme, 'NDOutlinedRenderers', 'control'),
+]
 
 /**
  * Hook for common control state (focus, validation, description visibility)
@@ -77,7 +73,6 @@ const useControlState = (props) => {
  * instead of the default Input component used by JSONForms 2.x
  */
 const OutlinedControl = (props) => {
-  const classes = useStyles()
   const {
     data,
     id,
@@ -120,7 +115,7 @@ const OutlinedControl = (props) => {
       error={showError}
       helperText={helperText}
       slotProps={{ htmlInput: extraInputProps }}
-      className={classes.control}
+      sx={controlSx}
     />
   )
 }
@@ -178,7 +173,6 @@ const OutlinedNumberControl = (props) => {
 
 // Enum/Select control wrapper
 const OutlinedEnumControl = (props) => {
-  const classes = useStyles()
   const {
     data,
     id,
@@ -208,7 +202,7 @@ const OutlinedEnumControl = (props) => {
       variant="outlined"
       size="small"
       error={showError}
-      className={classes.control}
+      sx={controlSx}
     >
       <InputLabel id={`${id}-label`}>{label}</InputLabel>
       <Select

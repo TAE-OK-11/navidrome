@@ -9,7 +9,6 @@ import {
 } from 'react-admin'
 import { MdInfo, MdPerson, MdSupervisorAccount } from 'react-icons/md'
 import { MenuItem, ListItemIcon, Divider } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import { Dialogs } from '../dialogs/Dialogs'
 import { AboutDialog } from '../dialogs'
@@ -20,23 +19,12 @@ import UserMenu from './UserMenu'
 import Logout from './Logout'
 import config from '../config'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      color: theme.palette.text.secondary,
-      '&.RaMenuItemLink-active': {
-        color: theme.palette.text.primary,
-      },
-    },
-    icon: { minWidth: theme.spacing(5) },
-  }),
-  {
-    name: 'NDAppBar',
-  },
-)
+const menuItemSx = {
+  color: 'text.secondary',
+  '&.RaMenuItemLink-active': { color: 'text.primary' },
+}
 
 const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
-  const classes = useStyles(rest)
   const translate = useTranslate()
   const [open, setOpen] = React.useState(false)
 
@@ -49,8 +37,8 @@ const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
 
   return (
     <>
-      <MenuItem ref={ref} onClick={handleOpen} className={classes.root}>
-        <ListItemIcon className={classes.icon}>
+      <MenuItem ref={ref} onClick={handleOpen} sx={menuItemSx}>
+        <ListItemIcon sx={{ minWidth: 5 }}>
           <MdInfo title={label} size={24} />
         </ListItemIcon>
         {label}
@@ -72,7 +60,6 @@ const CustomUserMenu = (props) => {
   const translate = useTranslate()
   const resourceDefinitions = useResourceDefinitions()
   const resources = Object.values(resourceDefinitions ?? {})
-  const classes = useStyles(props)
   const { permissions } = usePermissions()
 
   const resourceDefinition = (resourceName) =>
@@ -85,7 +72,7 @@ const CustomUserMenu = (props) => {
     const link = id ? `/${resource.name}/${id}` : `/${resource.name}`
     return (
       <MenuItemLink
-        className={classes.root}
+        sx={menuItemSx}
         key={resource.name}
         to={link}
         primaryText={label}

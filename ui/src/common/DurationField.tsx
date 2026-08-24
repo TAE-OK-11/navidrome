@@ -1,11 +1,16 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import React from 'react'
-import PropTypes from 'prop-types'
 import { formatDuration } from '../utils'
 import { useRecordContext } from 'react-admin'
 
-export const DurationField = ({ source, ...rest }) => {
-  const record = useRecordContext(rest)
+type DurationFieldProps = {
+  source: string
+  label?: string
+  record?: Record<string, unknown>
+  addLabel?: boolean
+}
+
+export const DurationField = ({ source, ...rest }: DurationFieldProps) => {
+  const record = useRecordContext<Record<string, unknown>>(rest)
+  if (!record) return null
   try {
     return <span>{formatDuration(record[source])}</span>
   } catch (e) {
@@ -13,12 +18,6 @@ export const DurationField = ({ source, ...rest }) => {
     console.log('Error in DurationField! Record:', record)
     return <span>00:00</span>
   }
-}
-
-DurationField.propTypes = {
-  label: PropTypes.string,
-  record: PropTypes.object,
-  source: PropTypes.string.isRequired,
 }
 
 DurationField.defaultProps = {

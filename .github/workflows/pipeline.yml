@@ -71,6 +71,7 @@ jobs:
         working-directory: ui
         run: |
           bun run type-check
+          bun run check:typescript-migration
           bun run check:mui9
           bun run lint
           bun run check-formatting

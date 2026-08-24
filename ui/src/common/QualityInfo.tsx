@@ -1,26 +1,32 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import React, { useMemo } from 'react'
-import PropTypes from 'prop-types'
+import { useMemo } from 'react'
 import Chip from '@mui/material/Chip'
 import config from '../config'
-import makeStyles from '../themes/makeStyles'
-import clsx from 'clsx'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { useRecordContext } from 'react-admin'
 
 const llFormats = new Set(config.losslessFormats.split(','))
 const placeholder = 'N/A'
 
-const useStyle = makeStyles(
-  (theme) => ({
-    chip: {
-      transform: 'scale(0.8)',
-    },
-  }),
-  {
-    name: 'NDQualityInfo',
-  },
-)
+type QualityRecord = {
+  suffix?: string
+  bitRate?: number
+  rgAlbumGain?: number
+  rgAlbumPeak?: number
+  rgTrackGain?: number
+  rgTrackPeak?: number
+}
+
+type QualityInfoProps = {
+  record?: QualityRecord
+  size?: 'small' | 'medium'
+  gainMode?: string
+  preAmp?: number
+  className?: string
+  transcodeStream?: { codec?: string; audioBitrate?: number }
+  isDirectPlay?: boolean
+  source?: string
+  sortable?: boolean
+}
 
 export const QualityInfo = ({
   record: recordOverride,
@@ -30,9 +36,9 @@ export const QualityInfo = ({
   className,
   transcodeStream,
   isDirectPlay,
-}) => {
-  const record = useRecordContext({ record: recordOverride }) || {}
-  const classes = useStyle()
+}: QualityInfoProps) => {
+  const record =
+    useRecordContext<QualityRecord>({ record: recordOverride }) || {}
   let { suffix, bitRate, rgAlbumGain, rgAlbumPeak, rgTrackGain, rgTrackPeak } =
     record
   let info = placeholder
@@ -40,7 +46,7 @@ export const QualityInfo = ({
   if (suffix) {
     suffix = suffix.toUpperCase()
     info = suffix
-    if (!llFormats.has(suffix) && bitRate > 0) {
+    if (!llFormats.has(suffix) && typeof bitRate === 'number' && bitRate > 0) {
       info += ' ' + bitRate
     }
   }
@@ -75,19 +81,11 @@ export const QualityInfo = ({
 
   return (
     <Chip
-      className={clsx(classes.chip, className)}
+      className={className}
+      sx={{ transform: 'scale(0.8)' }}
       variant="outlined"
       size={size}
       label={`${info}${extra}`}
     />
   )
-}
-
-QualityInfo.propTypes = {
-  record: PropTypes.object.isRequired,
-  size: PropTypes.string,
-  className: PropTypes.string,
-  gainMode: PropTypes.string,
-  transcodeStream: PropTypes.object,
-  isDirectPlay: PropTypes.bool,
 }

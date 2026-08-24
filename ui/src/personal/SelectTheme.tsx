@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { SelectInput, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import { AUTO_THEME_ID } from '../consts'
@@ -11,7 +10,7 @@ const helpKey = '_help'
 export const SelectTheme = (props) => {
   const translate = useTranslate()
   const dispatch = useDispatch()
-  const currentTheme = useSelector((state) => state.theme)
+  const currentTheme = useSelector((state: { theme: string }) => state.theme)
   const themeChoices = [
     {
       id: AUTO_THEME_ID,

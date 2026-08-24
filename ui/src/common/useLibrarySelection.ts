@@ -1,5 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useSelector } from 'react-redux'
+
+type LibraryState = {
+  userLibraries: Array<{ id: string }>
+  selectedLibraries: string[]
+}
 
 /**
  * Hook to get the currently selected library IDs
@@ -8,7 +12,7 @@ import { useSelector } from 'react-redux'
  */
 export const useSelectedLibraries = () => {
   const { userLibraries, selectedLibraries } = useSelector(
-    (state) => state.library,
+    (state: { library: LibraryState }) => state.library,
   )
 
   // If no specific selection, default to all accessible libraries
@@ -39,7 +43,7 @@ export const useLibraryFilter = () => {
 /**
  * Hook to check if a specific library is currently selected
  */
-export const useIsLibrarySelected = (libraryId) => {
+export const useIsLibrarySelected = (libraryId: string) => {
   const selectedLibraryIds = useSelectedLibraries()
   return selectedLibraryIds.includes(libraryId)
 }

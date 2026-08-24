@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { SimpleForm, Title, useTranslate } from 'react-admin'
 import { Card } from '@mui/material'
 import { SelectLanguage } from './SelectLanguage'
@@ -16,7 +15,7 @@ const Personal = () => {
   return (
     <Card sx={{ mt: '1em' }}>
       <Title title={'Navidrome - ' + translate('menu.personal.name')} />
-      <SimpleForm toolbar={null} variant={'outlined'}>
+      <SimpleForm toolbar={null}>
         <SelectTheme />
         <SelectLanguage />
         <SelectDefaultView />

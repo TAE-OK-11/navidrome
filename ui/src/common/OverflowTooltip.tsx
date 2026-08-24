@@ -1,45 +1,42 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { Tooltip } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import makeStyles from '../themes/makeStyles'
 import { grey } from '@mui/material/colors'
+import type { Theme } from '@mui/material/styles'
+import type { TooltipProps } from '@mui/material/Tooltip'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    tooltip: {
-      backgroundColor:
-        theme.palette.mode === 'dark'
-          ? alpha(grey[700], 0.92)
-          : alpha(grey[300], 0.92),
-      color:
-        theme.palette.mode === 'dark'
-          ? theme.palette.common.white
-          : theme.palette.common.black,
-      borderRadius: theme.shape.borderRadius,
-      ...theme.typography.body2,
-      padding: theme.spacing(0.5, 1),
-      maxWidth: 300,
-    },
-  }),
-  { name: 'NDOverflowTooltip' },
-)
+const tooltipSx = (theme: Theme) => ({
+  backgroundColor:
+    theme.palette.mode === 'dark'
+      ? alpha(grey[700], 0.92)
+      : alpha(grey[300], 0.92),
+  color:
+    theme.palette.mode === 'dark'
+      ? theme.palette.common.white
+      : theme.palette.common.black,
+  borderRadius: theme.shape.borderRadius,
+  ...theme.typography.body2,
+  p: theme.spacing(0.5, 1),
+  maxWidth: 300,
+})
 
 const transitionProps = { timeout: 0 }
+
+type RefChildProps = { ref?: React.Ref<HTMLElement> }
+
+type OverflowTooltipProps = {
+  children: React.ReactElement<RefChildProps>
+  title: string
+  placement?: TooltipProps['placement']
+}
 
 export const OverflowTooltip = ({
   children,
   title,
   placement = 'bottom-start',
-}) => {
-  const classes = useStyles()
-  const textRef = React.useRef(null)
+}: OverflowTooltipProps) => {
+  const textRef = React.useRef<HTMLElement | null>(null)
   const [isOverflowing, setIsOverflowing] = React.useState(false)
-  const tooltipClasses = React.useMemo(
-    () => ({ tooltip: classes.tooltip }),
-    [classes.tooltip],
-  )
 
   React.useLayoutEffect(() => {
     const el = textRef.current
@@ -58,10 +55,10 @@ export const OverflowTooltip = ({
   }, [])
 
   const mergedRef = React.useCallback(
-    (el) => {
+    (el: HTMLElement | null) => {
       textRef.current = el
 
-      const { ref } = children
+      const { ref } = children.props
       if (typeof ref === 'function') {
         ref(el)
       } else if (ref && typeof ref === 'object') {
@@ -77,16 +74,9 @@ export const OverflowTooltip = ({
       disableHoverListener={!isOverflowing}
       disableTouchListener
       placement={placement}
-      slotProps={{ transition: transitionProps }}
-      classes={tooltipClasses}
+      slotProps={{ transition: transitionProps, tooltip: { sx: tooltipSx } }}
     >
       {React.cloneElement(children, { ref: mergedRef })}
     </Tooltip>
   )
-}
-
-OverflowTooltip.propTypes = {
-  children: PropTypes.element.isRequired,
-  title: PropTypes.string.isRequired,
-  placement: PropTypes.string,
 }

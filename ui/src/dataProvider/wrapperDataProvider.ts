@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import jsonServerProvider from 'ra-data-json-server'
 import httpClient from './httpClient'
 import { REST_URL } from '../consts'
@@ -12,7 +11,9 @@ const isAdmin = () => {
 
 const getSelectedLibraries = () => {
   try {
-    const state = JSON.parse(localStorage.getItem('state'))
+    const serializedState = localStorage.getItem('state')
+    if (!serializedState) return []
+    const state = JSON.parse(serializedState)
     const selectedLibraries = state?.library?.selectedLibraries || []
     const userLibraries = state?.library?.userLibraries || []
 

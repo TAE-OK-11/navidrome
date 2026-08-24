@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { SelectInput, useLocale, useSetLocale, useTranslate } from 'react-admin'
 import { useGetLanguageChoices } from '../i18n'
 import { docsUrl, openInNewTab } from '../utils'
@@ -29,10 +28,9 @@ export const SelectLanguage = (props) => {
           openInNewTab(docsUrl('/docs/developers/translations/'))
           return
         }
-        setLocale(event.target.value).then(() => {
-          localStorage.setItem('locale', event.target.value)
-          document.documentElement.lang = event.target.value
-        })
+        setLocale(event.target.value)
+        localStorage.setItem('locale', event.target.value)
+        document.documentElement.lang = event.target.value
       }}
     />
   )

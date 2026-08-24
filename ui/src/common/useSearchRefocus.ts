@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -9,16 +8,17 @@ import { useLocation } from 'react-router-dom'
 // If a new list view uses a different source field, add it here.
 const SEARCH_FIELDS = ['name', 'title', 'q']
 
-const getSearchValue = (filter) => {
+const getSearchValue = (filter: Record<string, unknown>) => {
   for (const field of SEARCH_FIELDS) {
-    if (filter[field]) return filter[field]
+    const value = filter[field]
+    if (typeof value === 'string' && value) return value
   }
   return ''
 }
 
 export const useSearchRefocus = () => {
   const location = useLocation()
-  const prevSearchValue = useRef(null)
+  const prevSearchValue = useRef<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -39,7 +39,9 @@ export const useSearchRefocus = () => {
       requestAnimationFrame(() => {
         // Selector depends on react-admin's internal class naming.
         // If react-admin changes these class names, this will need updating.
-        const input = document.querySelector('[class*="RaSearchInput"] input')
+        const input = document.querySelector<HTMLInputElement>(
+          '[class*="RaSearchInput"] input',
+        )
         if (input) {
           input.focus()
         }

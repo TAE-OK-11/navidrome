@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { NumberInput, SelectInput, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import { changeGain, changePreamp } from '../actions'
@@ -6,7 +5,10 @@ import { changeGain, changePreamp } from '../actions'
 export const ReplayGainToggle = (props) => {
   const translate = useTranslate()
   const dispatch = useDispatch()
-  const gainInfo = useSelector((state) => state.replayGain)
+  const gainInfo = useSelector(
+    (state: { replayGain: { gainMode: string; preAmp: number } }) =>
+      state.replayGain,
+  )
 
   return (
     <>

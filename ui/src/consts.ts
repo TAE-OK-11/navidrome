@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 export const REST_URL = '/api'
 
 export const INSIGHTS_DOC_URL =
@@ -10,7 +9,13 @@ export const AUTO_THEME_ID = 'AUTO_THEME_ID'
 
 export const AUTO_THEME_CONFIG_VALUE = 'Auto'
 
-export const DraggableTypes = {
+export const DraggableTypes: {
+  SONG: string
+  ALBUM: string
+  DISC: string
+  ARTIST: string
+  ALL: string[]
+} = {
   SONG: 'song',
   ALBUM: 'album',
   DISC: 'disc',

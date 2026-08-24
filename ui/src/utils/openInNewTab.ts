@@ -1,6 +1,5 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-export const openInNewTab = (url) => {
+export const openInNewTab = (url: string) => {
   const win = window.open(url, '_blank')
-  win.focus()
+  win?.focus()
   return win
 }

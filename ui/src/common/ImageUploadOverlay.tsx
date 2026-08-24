@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import { IconButton, Tooltip } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, IconButton, Tooltip } from '@mui/material'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useTranslate, useNotify, useRefresh } from 'react-admin'
@@ -9,33 +8,31 @@ import config from '../config'
 import { REST_URL } from '../consts'
 import { httpClient } from '../dataProvider'
 
-const useStyles = makeStyles(() => ({
-  coverOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    display: 'flex',
-    gap: '2px',
-    padding: '2px',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: '4px 0 0 0',
-    opacity: 0,
-    transition: 'opacity 0.2s ease-in-out',
-    '*:hover > &': {
-      opacity: 1,
-    },
+const coverOverlaySx = {
+  position: 'absolute',
+  bottom: 0,
+  right: 0,
+  display: 'flex',
+  gap: '2px',
+  p: '2px',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  borderRadius: '4px 0 0 0',
+  opacity: 0,
+  transition: 'opacity 0.2s ease-in-out',
+  '*:hover > &': {
+    opacity: 1,
   },
-  overlayButton: {
-    color: '#fff',
-    padding: '4px',
-    '&:hover': {
-      backgroundColor: 'rgba(255,255,255,0.2)',
-    },
+} as const
+
+const overlayButtonSx = {
+  color: '#fff',
+  p: '4px',
+  '&:hover': {
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  overlayIcon: {
-    fontSize: '1.2rem',
-  },
-}))
+} as const
+
+const overlayIconSx = { fontSize: '1.2rem' } as const
 
 export const ImageUploadOverlay = ({
   entityType,
@@ -46,7 +43,6 @@ export const ImageUploadOverlay = ({
   const translate = useTranslate()
   const notify = useNotify()
   const refresh = useRefresh()
-  const classes = useStyles()
   const fileInputRef = useRef(null)
 
   const canEdit =
@@ -107,24 +103,24 @@ export const ImageUploadOverlay = ({
   if (!canEdit) return null
 
   return (
-    <div className={classes.coverOverlay}>
+    <Box sx={coverOverlaySx}>
       <Tooltip title={translate(`message.uploadCover`)}>
         <IconButton
-          className={classes.overlayButton}
+          sx={overlayButtonSx}
           onClick={handleUploadClick}
           size="small"
         >
-          <PhotoCameraIcon className={classes.overlayIcon} />
+          <PhotoCameraIcon sx={overlayIconSx} />
         </IconButton>
       </Tooltip>
       {hasUploadedImage && (
         <Tooltip title={translate(`message.removeCover`)}>
           <IconButton
-            className={classes.overlayButton}
+            sx={overlayButtonSx}
             onClick={handleRemoveCover}
             size="small"
           >
-            <DeleteIcon className={classes.overlayIcon} />
+            <DeleteIcon sx={overlayIconSx} />
           </IconButton>
         </Tooltip>
       )}
@@ -135,6 +131,6 @@ export const ImageUploadOverlay = ({
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
-    </div>
+    </Box>
   )
 }

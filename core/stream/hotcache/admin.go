@@ -326,6 +326,9 @@ func (r *resolver) MediaStates(mediaIDs []string) map[string]string {
 			result[mediaID] = "cached"
 		}
 		if task := r.promoting[key]; task != nil {
+			if !task.cancelled.Load() && (task.state == "completed" || task.state == "failed") {
+				continue
+			}
 			state := "queued"
 			switch {
 			case task.cancelled.Load():
@@ -392,6 +395,9 @@ func (r *resolver) Cancel(mediaID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if task := r.promoting[keyFor(mediaID, "")]; task != nil {
+		if promotionTaskTerminal(task) {
+			return model.ErrNotFound
+		}
 		task.cancelled.Store(true)
 		task.state = "cancelled"
 		r.notifyControl()

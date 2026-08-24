@@ -1,17 +1,15 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import React from 'react'
-import PropTypes from 'prop-types'
 import { useRecordContext } from 'react-admin'
 
-export const BitrateField = ({ source, ...rest }) => {
-  const record = useRecordContext(rest)
-  return <span>{`${record[source]} kbps`}</span>
+type BitrateFieldProps = {
+  source: string
+  label?: string
+  record?: Record<string, unknown>
+  addLabel?: boolean
 }
 
-BitrateField.propTypes = {
-  label: PropTypes.string,
-  record: PropTypes.object,
-  source: PropTypes.string.isRequired,
+export const BitrateField = ({ source, ...rest }: BitrateFieldProps) => {
+  const record = useRecordContext<Record<string, unknown>>(rest)
+  return record ? <span>{`${record[source]} kbps`}</span> : null
 }
 
 BitrateField.defaultProps = {

@@ -1,29 +1,15 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useCallback, useMemo, useState } from 'react'
 import { Typography, Collapse } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import AnchorMe from './Linkify'
-import clsx from 'clsx'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    commentBlock: {
-      display: 'inline-block',
-      marginTop: '1em',
-      float: 'left',
-      wordBreak: 'break-word',
-    },
-    pointerCursor: {
-      cursor: 'pointer',
-    },
-  }),
-  {
-    name: 'NDCollapsibleComment',
-  },
-)
+type CollapsibleCommentProps = {
+  record: {
+    id: string
+    comment?: string
+  }
+}
 
-export const CollapsibleComment = ({ record }) => {
-  const classes = useStyles()
+export const CollapsibleComment = ({ record }: CollapsibleCommentProps) => {
   const [expanded, setExpanded] = useState(false)
 
   const lines = useMemo(
@@ -40,8 +26,8 @@ export const CollapsibleComment = ({ record }) => {
   }, [lines, record.id])
 
   const handleExpandClick = useCallback(() => {
-    setExpanded(!expanded)
-  }, [expanded, setExpanded])
+    setExpanded((current) => !current)
+  }, [])
 
   if (lines.length === 0) {
     return null
@@ -52,10 +38,13 @@ export const CollapsibleComment = ({ record }) => {
       collapsedSize={'2em'}
       in={expanded}
       timeout={'auto'}
-      className={clsx(
-        classes.commentBlock,
-        lines.length > 1 && classes.pointerCursor,
-      )}
+      sx={{
+        display: 'inline-block',
+        mt: '1em',
+        float: 'left',
+        wordBreak: 'break-word',
+        cursor: lines.length > 1 ? 'pointer' : 'inherit',
+      }}
     >
       <Typography variant={'h6'} onClick={handleExpandClick}>
         {formatted}

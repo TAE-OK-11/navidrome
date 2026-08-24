@@ -1,7 +1,17 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 // User form validation utilities
-export const validateUserForm = (values, translate) => {
-  const errors = {}
+type UserFormValues = {
+  isAdmin?: boolean
+  libraryIds?: string[]
+  libraries?: Array<{ id?: string }>
+}
+
+type Translate = (key: string) => string
+
+export const validateUserForm = (
+  values: UserFormValues,
+  translate: Translate,
+) => {
+  const errors: { libraryIds?: string } = {}
 
   // Only require library selection for non-admin users
   if (!values.isAdmin) {

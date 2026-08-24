@@ -1,4 +1,5 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
+import { useEffect } from 'react'
+import type { ChangeEvent } from 'react'
 import { useNotify, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import { setNotificationsState } from '../actions'
@@ -13,17 +14,22 @@ export const NotificationsToggle = () => {
   const translate = useTranslate()
   const dispatch = useDispatch()
   const notify = useNotify()
-  const currentSetting = useSelector((state) => state.settings.notifications)
+  const currentSetting = useSelector(
+    (state: { settings: { notifications: boolean } }) =>
+      state.settings.notifications,
+  )
   const notAvailable = !('Notification' in window) || !window.isSecureContext
 
-  if (
-    (currentSetting && Notification.permission !== 'granted') ||
-    notAvailable
-  ) {
-    dispatch(setNotificationsState(false))
-  }
+  useEffect(() => {
+    if (
+      notAvailable ||
+      (currentSetting && Notification.permission !== 'granted')
+    ) {
+      dispatch(setNotificationsState(false))
+    }
+  }, [currentSetting, dispatch, notAvailable])
 
-  const toggleNotifications = (event) => {
+  const toggleNotifications = (event: ChangeEvent<HTMLInputElement>) => {
     if (currentSetting && !event.target.checked) {
       dispatch(setNotificationsState(false))
     } else {

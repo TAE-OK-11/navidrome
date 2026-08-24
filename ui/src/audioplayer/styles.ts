@@ -42,7 +42,7 @@ const useStyle = makeStyles(
         flexDirection: 'column',
       },
       '& .play-mode-title': {
-        'pointer-events': 'none',
+        pointerEvents: 'none',
       },
       '& .music-player-panel .panel-content div.img-rotate': {
         // Customize desktop player when cover animation is disabled

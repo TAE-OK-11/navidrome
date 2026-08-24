@@ -15,10 +15,10 @@ import {
   CardContent,
   Typography,
   LinearProgress,
+  Box,
   useTheme,
   useMediaQuery,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { FaRegCirclePlay, FaPause } from 'react-icons/fa6'
 import subsonic from '../subsonic'
 import { useInterval } from '../common'
@@ -26,138 +26,20 @@ import { nowPlayingCountSync } from '../actions'
 import { formatDuration } from '../utils'
 import config from '../config'
 
-const useStyles = makeStyles((theme) => ({
-  button: { color: 'inherit' },
-  list: {
-    width: '26em',
-    maxHeight: (props) => {
-      const entryHeight = 120
-      const maxEntries = Math.min(props.entryCount || 0, 3)
-      return maxEntries > 0 ? `${maxEntries * entryHeight}px` : '12em'
-    },
-    overflowY: 'auto',
-    padding: 0,
-  },
-  card: {
-    padding: 0,
-  },
-  cardContent: {
-    padding: `${theme.spacing(1)} !important`,
-    '&:last-child': {
-      paddingBottom: `${theme.spacing(1)} !important`,
-    },
-  },
-  listItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: theme.spacing(1.5),
-    padding: theme.spacing(1),
-  },
-  avatarContainer: {
-    position: 'relative',
-    flexShrink: 0,
-    width: theme.spacing(8),
-    height: theme.spacing(8),
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-    cursor: 'pointer',
-    borderRadius: theme.spacing(0.5),
-    '&:hover': {
-      opacity: 0.8,
-    },
-  },
-  stateOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: theme.spacing(0.5),
-    pointerEvents: 'none',
-  },
-  stateIcon: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 18,
-  },
-  entryContent: {
-    flex: 1,
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.25),
-  },
-  trackTitle: {
-    fontWeight: 600,
-    fontSize: '0.875rem',
-    lineHeight: 1.3,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  trackDetail: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  artistLink: {
-    cursor: 'pointer',
-    color: theme.palette.text.secondary,
-    fontSize: '0.75rem',
-    '&:hover': {
-      textDecoration: 'underline',
-    },
-  },
-  progressRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.75),
-    marginTop: theme.spacing(0.5),
-  },
-  progressTime: {
-    fontSize: '0.65rem',
-    color: theme.palette.text.secondary,
-    fontVariantNumeric: 'tabular-nums',
-    flexShrink: 0,
-  },
-  progressBar: {
-    flex: 1,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: theme.palette.action.disabledBackground,
-    '& .MuiLinearProgress-bar': {
-      borderRadius: 2,
-    },
-  },
-  userInfo: {
-    fontSize: '0.65rem',
-    color: theme.palette.text.disabled,
-    marginTop: theme.spacing(0.25),
-  },
-  badge: {
-    '& .MuiBadge-badge': {
-      backgroundColor: theme.palette.primary.main,
-      color: theme.palette.primary.contrastText,
-    },
-  },
-}))
+const ellipsisSx = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
 
 // NowPlayingButton component - handles the button with badge
 const NowPlayingButton = React.memo(({ count, onClick }) => {
-  const classes = useStyles()
   const translate = useTranslate()
 
   return (
     <Tooltip title={translate('nowPlaying.title')}>
       <IconButton
-        className={classes.button}
+        sx={{ color: 'inherit' }}
         onClick={onClick}
         aria-label={translate('nowPlaying.title')}
         aria-haspopup="true"
@@ -167,7 +49,12 @@ const NowPlayingButton = React.memo(({ count, onClick }) => {
           badgeContent={count}
           color="primary"
           overlap="rectangular"
-          className={classes.badge}
+          sx={(theme) => ({
+            '& .MuiBadge-badge': {
+              backgroundColor: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+            },
+          })}
         >
           <FaRegCirclePlay size={20} />
         </Badge>
@@ -185,7 +72,6 @@ NowPlayingButton.propTypes = {
 
 const NowPlayingItem = React.memo(
   ({ nowPlayingEntry, onLinkClick, getArtistLink, now }) => {
-    const classes = useStyles()
     const isPaused = nowPlayingEntry.state === 'paused'
     const isPlaying =
       nowPlayingEntry.state === 'playing' ||
@@ -207,14 +93,22 @@ const NowPlayingItem = React.memo(
     const artistName = nowPlayingEntry.albumArtist || nowPlayingEntry.artist
 
     return (
-      <ListItem className={classes.listItem}>
-        <div className={classes.avatarContainer}>
+      <ListItem sx={{ alignItems: 'flex-start', gap: 1.5, p: 1 }}>
+        <Box
+          sx={{ position: 'relative', flexShrink: 0, width: 64, height: 64 }}
+        >
           <Link
             to={`/album/${nowPlayingEntry.albumId}/show`}
             onClick={onLinkClick}
           >
             <Avatar
-              className={classes.avatar}
+              sx={{
+                width: '100%',
+                height: '100%',
+                cursor: 'pointer',
+                borderRadius: 0.5,
+                '&:hover': { opacity: 0.8 },
+              }}
               src={subsonic.getCoverArtUrl(nowPlayingEntry, 80)}
               variant="square"
               alt={`${nowPlayingEntry.album} cover art`}
@@ -222,57 +116,130 @@ const NowPlayingItem = React.memo(
             />
           </Link>
           {isPaused && (
-            <div className={classes.stateOverlay}>
-              <FaPause className={classes.stateIcon} />
-            </div>
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                borderRadius: 0.5,
+                pointerEvents: 'none',
+              }}
+            >
+              <Box
+                component={FaPause}
+                sx={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 18 }}
+              />
+            </Box>
           )}
-        </div>
-        <div className={classes.entryContent}>
+        </Box>
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.25,
+          }}
+        >
           <Typography
-            className={classes.trackTitle}
+            sx={{
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              lineHeight: 1.3,
+              ...ellipsisSx,
+            }}
             title={nowPlayingEntry.title}
           >
             {nowPlayingEntry.title}
           </Typography>
           {artistId ? (
-            <Link
+            <Box
+              component={Link}
               to={getArtistLink(artistId)}
-              className={classes.artistLink}
               onClick={onLinkClick}
+              sx={(theme) => ({
+                cursor: 'pointer',
+                color: theme.palette.text.secondary,
+                fontSize: '0.75rem',
+                '&:hover': { textDecoration: 'underline' },
+              })}
             >
               {artistName}
-            </Link>
+            </Box>
           ) : (
-            <Typography className={classes.trackDetail}>
+            <Typography
+              sx={(theme) => ({
+                fontSize: '0.75rem',
+                color: theme.palette.text.secondary,
+                ...ellipsisSx,
+              })}
+            >
               {artistName}
             </Typography>
           )}
           <Typography
-            className={classes.trackDetail}
+            sx={(theme) => ({
+              fontSize: '0.75rem',
+              color: theme.palette.text.secondary,
+              ...ellipsisSx,
+            })}
             title={nowPlayingEntry.album}
           >
             {nowPlayingEntry.album}
           </Typography>
-          <div className={classes.progressRow}>
-            <span className={classes.progressTime}>
+          <Box
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}
+          >
+            <Box
+              component="span"
+              sx={(theme) => ({
+                fontSize: '0.65rem',
+                color: theme.palette.text.secondary,
+                fontVariantNumeric: 'tabular-nums',
+                flexShrink: 0,
+              })}
+            >
               {formatDuration(positionSec)}
-            </span>
+            </Box>
             <LinearProgress
-              className={classes.progressBar}
+              sx={(theme) => ({
+                flex: 1,
+                height: 3,
+                borderRadius: 0.5,
+                backgroundColor: theme.palette.action.disabledBackground,
+                '& .MuiLinearProgress-bar': { borderRadius: 0.5 },
+              })}
               variant="determinate"
               value={Math.min(progress, 100)}
             />
-            <span className={classes.progressTime}>
+            <Box
+              component="span"
+              sx={(theme) => ({
+                fontSize: '0.65rem',
+                color: theme.palette.text.secondary,
+                fontVariantNumeric: 'tabular-nums',
+                flexShrink: 0,
+              })}
+            >
               {formatDuration(durationSec)}
-            </span>
-          </div>
-          <Typography className={classes.userInfo}>
+            </Box>
+          </Box>
+          <Typography
+            sx={(theme) => ({
+              fontSize: '0.65rem',
+              color: theme.palette.text.disabled,
+              mt: 0.25,
+            })}
+          >
             {nowPlayingEntry.username}
             {nowPlayingEntry.playerName
               ? ` (${nowPlayingEntry.playerName})`
               : ''}
           </Typography>
-        </div>
+        </Box>
       </ListItem>
     )
   },
@@ -306,7 +273,6 @@ NowPlayingItem.propTypes = {
 // NowPlayingList component - handles the popover content
 const NowPlayingList = React.memo(
   ({ anchorEl, open, onClose, entries, onLinkClick, getArtistLink, now }) => {
-    const classes = useStyles({ entryCount: entries.length })
     const translate = useTranslate()
 
     return (
@@ -319,15 +285,23 @@ const NowPlayingList = React.memo(
         onClose={onClose}
         aria-labelledby="now-playing-title"
       >
-        <Card className={classes.card}>
-          <CardContent className={classes.cardContent}>
+        <Card sx={{ p: 0 }}>
+          <CardContent sx={{ p: '8px !important', pb: '8px !important' }}>
             {entries.length === 0 ? (
               <Typography id="now-playing-title">
                 {translate('nowPlaying.empty')}
               </Typography>
             ) : (
               <List
-                className={classes.list}
+                sx={{
+                  width: '26em',
+                  maxHeight:
+                    entries.length > 0
+                      ? `${Math.min(entries.length, 3) * 120}px`
+                      : '12em',
+                  overflowY: 'auto',
+                  p: 0,
+                }}
                 dense
                 aria-label={translate('nowPlaying.title')}
               >
@@ -474,7 +448,7 @@ const NowPlayingPanel = () => {
   )
 
   return (
-    <div>
+    <Box>
       <NowPlayingButton count={count} onClick={handleMenuOpen} />
       <NowPlayingList
         anchorEl={anchorEl}
@@ -485,7 +459,7 @@ const NowPlayingPanel = () => {
         onLinkClick={handleLinkClick}
         getArtistLink={getArtistLink}
       />
-    </div>
+    </Box>
   )
 }
 

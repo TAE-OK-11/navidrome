@@ -5,12 +5,14 @@ import ts from 'typescript'
 const sourceRoot = resolve(import.meta.dir, '../src')
 const sourceExtensions = new Set(['.js', '.jsx', '.ts', '.tsx'])
 
-const legacyJavaScript = (await readdir(sourceRoot, { recursive: true })).filter(
-  (file) => file.endsWith('.js') || file.endsWith('.jsx'),
-)
+const legacyJavaScript = (
+  await readdir(sourceRoot, { recursive: true })
+).filter((file) => file.endsWith('.js') || file.endsWith('.jsx'))
 if (legacyJavaScript.length) {
   for (const file of legacyJavaScript) {
-    process.stderr.write(`${file}: JavaScript source is forbidden; use TypeScript\n`)
+    process.stderr.write(
+      `${file}: JavaScript source is forbidden; use TypeScript\n`,
+    )
   }
   process.exit(1)
 }
@@ -282,8 +284,7 @@ for (const file of await listSources(sourceRoot)) {
       findings.push({
         file: relative(sourceRoot, file),
         line: line + 1,
-        message:
-          'MUI 9 migration forbids @mui/styles; use themes/makeStyles, styled(), or sx',
+        message: 'MUI 9 migration forbids @mui/styles; use styled() or sx',
       })
     }
   }

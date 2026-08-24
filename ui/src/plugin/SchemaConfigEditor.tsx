@@ -3,8 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import PropTypes from 'prop-types'
 import { JsonForms } from '@jsonforms/react'
 import { materialRenderers, materialCells } from '@jsonforms/material-renderers'
-import makeStyles from '../themes/makeStyles'
-import { Typography } from '@mui/material'
+import { Box, Typography } from '@mui/material'
 import { useTranslate } from 'react-admin'
 import Ajv from 'ajv'
 import {
@@ -13,6 +12,7 @@ import {
   OutlinedEnumRenderer,
   OutlinedOneOfEnumRenderer,
 } from './OutlinedRenderers'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 // Error boundary for catching JSONForms rendering errors
 class SchemaErrorBoundary extends React.Component {
@@ -65,68 +65,44 @@ ajv.compile = (schema) => {
   return wrapped
 }
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      '& .MuiFormControl-root': {
-        marginBottom: theme.spacing(2),
-      },
-      // Label elements (type: "Label" in UI schema) - make slightly smaller
-      '& .MuiTypography-h6': {
-        fontSize: '0.95rem',
-      },
-      // Group/array styling
-      '& .MuiPaper-root': {
-        backgroundColor: 'transparent',
-      },
-      // Array items styling
-      '& .MuiAccordion-root': {
-        marginBottom: theme.spacing(1),
-        '&:before': {
-          display: 'none',
-        },
-      },
-      '& .MuiAccordionSummary-root': {
-        backgroundColor:
-          theme.palette.mode === 'dark'
-            ? theme.palette.grey[800]
-            : theme.palette.grey[100],
-        // Hide expand icon - items are always expanded
-        '& .MuiAccordionSummary-expandIcon': {
-          display: 'none',
-        },
-      },
-      // Checkbox/switch styling
-      '& .MuiCheckbox-root, & .MuiSwitch-root': {
-        color: theme.palette.text.secondary,
-      },
-      '& .Mui-checked': {
-        color: theme.palette.primary.main,
-      },
+const rootSx = (theme) => ({
+  '& .MuiFormControl-root': {
+    mb: 2,
+  },
+  // Label elements (type: "Label" in UI schema) - make slightly smaller
+  '& .MuiTypography-h6': {
+    fontSize: '0.95rem',
+  },
+  // Group/array styling
+  '& .MuiPaper-root': {
+    backgroundColor: 'transparent',
+  },
+  // Array items styling
+  '& .MuiAccordion-root': {
+    mb: 1,
+    '&:before': {
+      display: 'none',
     },
-    errorContainer: {
-      padding: theme.spacing(2),
-      backgroundColor:
-        theme.palette.mode === 'dark'
-          ? 'rgba(244, 67, 54, 0.1)'
-          : 'rgba(244, 67, 54, 0.05)',
-      borderRadius: theme.shape.borderRadius,
-      border: `1px solid ${theme.palette.error.main}`,
+  },
+  '& .MuiAccordionSummary-root': {
+    backgroundColor:
+      theme.palette.mode === 'dark'
+        ? theme.palette.grey[800]
+        : theme.palette.grey[100],
+    // Hide expand icon - items are always expanded
+    '& .MuiAccordionSummary-expandIcon': {
+      display: 'none',
     },
-    errorMessage: {
-      color: theme.palette.error.main,
-      marginBottom: theme.spacing(1),
-    },
-    errorDetails: {
-      color: theme.palette.text.secondary,
-      fontSize: '0.85em',
-      fontFamily: 'monospace',
-      whiteSpace: 'pre-wrap',
-      wordBreak: 'break-word',
-    },
-  }),
-  { name: 'NDSchemaConfigEditor' },
-)
+  },
+  // Checkbox/switch styling
+  '& .MuiCheckbox-root, & .MuiSwitch-root': {
+    color: theme.palette.text.secondary,
+  },
+  '& .Mui-checked': {
+    color: theme.palette.primary.main,
+  },
+  ...componentStyleOverride(theme, 'NDSchemaConfigEditor', 'root'),
+})
 
 // Custom renderers with outlined text inputs and always-expanded array layout
 const customRenderers = [
@@ -146,7 +122,6 @@ export const SchemaConfigEditor = ({
   onChange,
   readOnly = false,
 }) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const containerRef = useRef(null)
 
@@ -203,16 +178,56 @@ export const SchemaConfigEditor = ({
   }
 
   const renderError = (error) => (
-    <div className={classes.errorContainer}>
-      <Typography className={classes.errorMessage}>
+    <Box
+      sx={(theme) => ({
+        p: 2,
+        backgroundColor:
+          theme.palette.mode === 'dark'
+            ? 'rgba(244, 67, 54, 0.1)'
+            : 'rgba(244, 67, 54, 0.05)',
+        borderRadius: 1,
+        border: `1px solid ${theme.palette.error.main}`,
+        ...componentStyleOverride(
+          theme,
+          'NDSchemaConfigEditor',
+          'errorContainer',
+        ),
+      })}
+    >
+      <Typography
+        sx={(theme) => ({
+          color: theme.palette.error.main,
+          mb: 1,
+          ...componentStyleOverride(
+            theme,
+            'NDSchemaConfigEditor',
+            'errorMessage',
+          ),
+        })}
+      >
         {translate('resources.plugin.messages.schemaRenderError')}
       </Typography>
-      <Typography className={classes.errorDetails}>{error?.message}</Typography>
-    </div>
+      <Typography
+        sx={(theme) => ({
+          color: theme.palette.text.secondary,
+          fontSize: '0.85em',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          ...componentStyleOverride(
+            theme,
+            'NDSchemaConfigEditor',
+            'errorDetails',
+          ),
+        })}
+      >
+        {error?.message}
+      </Typography>
+    </Box>
   )
 
   return (
-    <div ref={containerRef} className={classes.root}>
+    <Box ref={containerRef} sx={rootSx}>
       <SchemaErrorBoundary fallback={renderError}>
         <JsonForms
           schema={normalizedSchema}
@@ -227,7 +242,7 @@ export const SchemaConfigEditor = ({
           validationMode="ValidateAndShow"
         />
       </SchemaErrorBoundary>
-    </div>
+    </Box>
   )
 }
 

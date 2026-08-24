@@ -16,17 +16,9 @@ import {
   useRecordContext,
 } from 'react-admin'
 import { Typography, Box } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import DeleteLibraryButton from './DeleteLibraryButton'
 import { Title } from '../common'
 import { formatBytes, formatDuration2 } from '../utils/index'
-
-const useStyles = makeStyles({
-  toolbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-  },
-})
 
 const LibraryTitle = ({ record: recordOverride }) => {
   const record = useRecordContext({ record: recordOverride })
@@ -38,10 +30,9 @@ const LibraryTitle = ({ record: recordOverride }) => {
 }
 
 const CustomToolbar = ({ showDelete }) => {
-  const classes = useStyles()
   const record = useRecordContext()
   return (
-    <Toolbar className={classes.toolbar}>
+    <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
       <SaveButton />
       {showDelete && (
         <DeleteLibraryButton

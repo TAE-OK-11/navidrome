@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import {
   Create,
@@ -34,11 +33,16 @@ const PlaylistCreate = (props) => {
   }
 
   return (
-    <Create title={<Title subTitle={title} />} {...props} onSuccess={onSuccess}>
-      <SimpleForm redirect="list" variant={'outlined'}>
+    <Create
+      title={<Title subTitle={title} />}
+      redirect="list"
+      {...props}
+      onSuccess={onSuccess}
+    >
+      <SimpleForm>
         <TextInput source="name" validate={required()} />
         <TextInput multiline source="comment" />
-        <BooleanInput source="public" initialValue={true} />
+        <BooleanInput source="public" defaultValue={true} />
       </SimpleForm>
     </Create>
   )

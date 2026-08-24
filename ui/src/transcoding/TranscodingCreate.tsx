@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import {
   TextInput,
@@ -23,8 +22,8 @@ const TranscodingTitle = () => {
 }
 
 const TranscodingCreate = (props) => (
-  <Create title={<TranscodingTitle />} {...props}>
-    <SimpleForm redirect="list" variant={'outlined'}>
+  <Create title={<TranscodingTitle />} redirect="list" {...props}>
+    <SimpleForm>
       <TextInput source="name" validate={[required()]} />
       <TextInput source="targetFormat" validate={[required()]} />
       <SelectInput

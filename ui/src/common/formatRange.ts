@@ -1,9 +1,10 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-export const formatRange = (record, source) => {
+type RangeRecord = Record<string, string | number | null | undefined>
+
+export const formatRange = (record: RangeRecord, source: string) => {
   const nameCapitalized = source.charAt(0).toUpperCase() + source.slice(1)
   const min = record[`min${nameCapitalized}`]
   const max = record[`max${nameCapitalized}`]
-  let range = []
+  const range: Array<string | number> = []
   if (min) {
     range.push(min)
   }

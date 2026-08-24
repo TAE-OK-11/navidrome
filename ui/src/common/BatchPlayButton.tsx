@@ -29,10 +29,8 @@ export const BatchPlayButton = ({
       .getMany(resource, { ids: selectedIds })
       .then((response) => {
         // Add tracks to a map for easy lookup by ID, needed for the next step
-        const tracks = response.data.reduce(
-          (acc, cur) => ({ ...acc, [cur.id]: cur }),
-          {},
-        )
+        const tracks = {}
+        for (const track of response.data) tracks[track.id] = track
         // Add the tracks to the queue in the selection order
         dispatch(action(tracks, selectedIds))
       })

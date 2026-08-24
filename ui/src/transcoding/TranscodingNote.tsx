@@ -2,7 +2,13 @@ import React from 'react'
 import { Card, CardContent, Typography, Box } from '@mui/material'
 import { useTranslate } from 'react-admin'
 
-export const Interpolate = ({ message, field, children }) => {
+type InterpolateProps = {
+  message: string
+  field: string
+  children: React.ReactNode
+}
+
+export const Interpolate = ({ message, field, children }: InterpolateProps) => {
   const split = message.split(`%{${field}}`)
   return (
     <span>
@@ -12,7 +18,7 @@ export const Interpolate = ({ message, field, children }) => {
     </span>
   )
 }
-export const TranscodingNote = ({ message }) => {
+export const TranscodingNote = ({ message }: { message: string }) => {
   const translate = useTranslate()
   return (
     <Card>

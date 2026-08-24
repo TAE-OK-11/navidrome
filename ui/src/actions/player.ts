@@ -16,23 +16,36 @@ export const setTrack = (data) => ({
 })
 
 export const filterSongs = (data, ids) => {
-  const entries = Array.isArray(data)
-    ? data.map((song) => [song.id, song])
-    : Object.entries(data || {})
-  const filteredData = Object.fromEntries(
-    entries.filter(([_, song]) => !song.missing),
-  )
-  return !ids
-    ? filteredData
-    : ids.reduce((acc, id) => {
-        if (filteredData[id]) {
-          return { ...acc, [id]: filteredData[id] }
-        }
-        return acc
-      }, {})
+  const filteredData = {}
+  if (ids) {
+    const songsById = Array.isArray(data)
+      ? Object.fromEntries(data.map((song) => [song.id, song]))
+      : data || {}
+    for (const id of ids) {
+      const song = songsById[id]
+      if (song && !song.missing) filteredData[id] = song
+    }
+    return filteredData
+  }
+
+  if (Array.isArray(data)) {
+    for (const song of data) {
+      if (!song.missing) filteredData[song.id] = song
+    }
+  } else {
+    const entries =
+      data && typeof data === 'object'
+        ? Object.entries(data as Record<string, { missing?: boolean }>)
+        : []
+    for (const [id, song] of entries) {
+      // Preserve caller-provided keys such as the shuffled queue's `_id` keys.
+      if (!song.missing) filteredData[id] = song
+    }
+  }
+  return filteredData
 }
 
-export const addTracks = (data, ids) => {
+export const addTracks = (data: unknown, ids?: Array<string | number>) => {
   const songs = filterSongs(data, ids)
   return {
     type: PLAYER_ADD_TRACKS,
@@ -40,7 +53,7 @@ export const addTracks = (data, ids) => {
   }
 }
 
-export const playNext = (data, ids) => {
+export const playNext = (data: unknown, ids?: Array<string | number>) => {
   const songs = filterSongs(data, ids)
   return {
     type: PLAYER_PLAY_NEXT,
@@ -61,7 +74,7 @@ export const shuffle = (data) => {
   return shuffled
 }
 
-export const shuffleTracks = (data, ids) => {
+export const shuffleTracks = (data: unknown, ids?: Array<string | number>) => {
   const songs = filterSongs(data, ids)
   const shuffled = shuffle(songs)
   const firstId = Object.keys(shuffled)[0]
@@ -72,7 +85,11 @@ export const shuffleTracks = (data, ids) => {
   }
 }
 
-export const playTracks = (data, ids, selectedId) => {
+export const playTracks = (
+  data: unknown,
+  ids?: Array<string | number>,
+  selectedId?: string | number,
+) => {
   const songs = filterSongs(data, ids)
   return {
     type: PLAYER_PLAY_TRACKS,

@@ -53,10 +53,8 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
           filter: { playlist_id: record.id },
         })
         .then((res) => {
-          const data = res.data.reduce(
-            (acc, curr) => ({ ...acc, [curr.id]: curr }),
-            {},
-          )
+          const data = {}
+          for (const track of res.data) data[track.id] = track
           dispatch(action(data))
         })
         .catch(() => {

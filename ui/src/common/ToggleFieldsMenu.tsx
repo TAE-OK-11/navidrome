@@ -11,11 +11,17 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useTranslate } from 'react-admin'
 import { setToggleableFields } from '../actions'
 
+type ToggleFieldsMenuProps = {
+  resource: string
+  topbarComponent?: React.ElementType
+  hideColumns?: boolean
+}
+
 export const ToggleFieldsMenu = ({
   resource,
   topbarComponent: TopBarComponent,
   hideColumns,
-}) => {
+}: ToggleFieldsMenuProps) => {
   const [anchorEl, setAnchorEl] = useState(null)
   const dispatch = useDispatch()
   const translate = useTranslate()

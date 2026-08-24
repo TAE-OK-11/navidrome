@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import {
   Show,
@@ -9,7 +8,11 @@ import {
 import { Title } from '../common'
 import { TranscodingNote } from './TranscodingNote'
 
-const TranscodingTitle = ({ record: recordOverride }) => {
+const TranscodingTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   return <Title subTitle={`Transcoding ${record ? record.name : ''}`} />
 }

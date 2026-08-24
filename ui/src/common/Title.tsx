@@ -2,7 +2,12 @@ import React from 'react'
 import { useMediaQuery } from '@mui/material'
 import { useTranslate } from 'react-admin'
 
-export const Title = ({ subTitle, args }) => {
+type TitleProps = {
+  subTitle: string
+  args?: Record<string, unknown>
+}
+
+export const Title = ({ subTitle, args }: TitleProps) => {
   const translate = useTranslate()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const text = translate(subTitle, { ...args, _: subTitle })

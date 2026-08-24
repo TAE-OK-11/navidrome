@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Datagrid, TextField } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
@@ -15,9 +14,9 @@ const TranscodingList = (props) => {
     >
       {isXsmall ? (
         <SimpleList
-          primaryText={(r) => r.name}
-          secondaryText={(r) => `format: ${r.targetFormat}`}
-          tertiaryText={(r) => r.defaultBitRate}
+          primaryText={(r) => String(r.name ?? '')}
+          secondaryText={(r) => `format: ${String(r.targetFormat ?? '')}`}
+          tertiaryText={(r) => String(r.defaultBitRate ?? '')}
         />
       ) : (
         <Datagrid rowClick={config.enableTranscodingConfig ? 'edit' : 'show'}>

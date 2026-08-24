@@ -1,10 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 // From https://overreacted.io/making-setinterval-declarative-with-react-hooks/
 
 import { useEffect, useRef } from 'react'
 
-export const useInterval = (callback, delay) => {
-  const savedCallback = useRef()
+export const useInterval = (callback: () => void, delay: number | null) => {
+  const savedCallback = useRef(callback)
 
   // Remember the latest callback.
   useEffect(() => {
@@ -13,11 +12,11 @@ export const useInterval = (callback, delay) => {
 
   // Set up the interval.
   useEffect(() => {
-    function tick() {
+    const tick = () => {
       savedCallback.current()
     }
     if (delay !== null) {
-      let id = setInterval(tick, delay)
+      const id = window.setInterval(tick, delay)
       return () => clearInterval(id)
     }
   }, [delay])

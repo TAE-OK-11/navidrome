@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   TextInput,
   BooleanInput,
@@ -15,7 +14,11 @@ import { Title } from '../common'
 import config from '../config'
 import { BITRATE_CHOICES } from '../consts'
 
-const PlayerTitle = ({ record: recordOverride }) => {
+const PlayerTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.player.name', { smart_count: 1 })
@@ -24,7 +27,7 @@ const PlayerTitle = ({ record: recordOverride }) => {
 
 const PlayerEdit = (props) => (
   <Edit title={<PlayerTitle />} {...props}>
-    <SimpleForm variant={'outlined'}>
+    <SimpleForm>
       <TextInput source="name" validate={[required()]} />
       <ReferenceInput
         source="transcodingId"

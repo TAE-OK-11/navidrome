@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   Create,
   required,
@@ -22,8 +21,8 @@ const RadioTitle = () => {
 
 const RadioCreate = (props) => {
   return (
-    <Create title={<RadioTitle />} {...props}>
-      <SimpleForm redirect="list" variant={'outlined'}>
+    <Create title={<RadioTitle />} redirect="list" {...props}>
+      <SimpleForm>
         <TextInput source="name" validate={[required()]} />
         <TextInput
           type="url"

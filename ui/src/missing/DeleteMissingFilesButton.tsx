@@ -2,7 +2,6 @@
 import React, { useState } from 'react'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { alpha } from '@mui/material/styles'
-import makeStyles from '../themes/makeStyles'
 import clsx from 'clsx'
 import {
   Button,
@@ -13,21 +12,15 @@ import {
   useUnselectAll,
 } from 'react-admin'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    deleteButton: {
-      color: theme.palette.error.main,
-      '&:hover': {
-        backgroundColor: alpha(theme.palette.error.main, 0.12),
-        // Reset on mouse devices
-        '@media (hover: none)': {
-          backgroundColor: 'transparent',
-        },
-      },
+const deleteButtonSx = (theme) => ({
+  color: theme.palette.error.main,
+  '&:hover': {
+    backgroundColor: alpha(theme.palette.error.main, 0.12),
+    '@media (hover: none)': {
+      backgroundColor: 'transparent',
     },
-  }),
-  { name: 'RaDeleteWithConfirmButton' },
-)
+  },
+})
 
 const DeleteMissingFilesButton = (props) => {
   const { selectedIds, className, deleteAll = false } = props
@@ -57,8 +50,6 @@ const DeleteMissingFilesButton = (props) => {
     setOpen(false)
   }
 
-  const classes = useStyles(props)
-
   return (
     <>
       <Button
@@ -69,7 +60,8 @@ const DeleteMissingFilesButton = (props) => {
             : 'ra.action.remove'
         }
         key="button"
-        className={clsx('ra-delete-button', classes.deleteButton, className)}
+        className={clsx('ra-delete-button', className)}
+        sx={deleteButtonSx}
       >
         <DeleteIcon />
       </Button>

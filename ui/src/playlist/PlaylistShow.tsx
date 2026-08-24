@@ -7,7 +7,7 @@ import {
   useShowController,
   Title as RaTitle,
 } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
+import { styled } from '@mui/material/styles'
 import PlaylistDetails from './PlaylistDetails'
 import PlaylistSongs from './PlaylistSongs'
 import PlaylistActions from './PlaylistActions'
@@ -21,21 +21,11 @@ import {
 
 const playlistTrackPerPageOptions = [100, 250, 500]
 
-const useStyles = makeStyles(
-  (theme) => ({
-    playlistActions: {
-      width: '100%',
-    },
-  }),
-  {
-    name: 'NDPlaylistShow',
-  },
-)
+const FullWidthPlaylistActions = styled(PlaylistActions)({ width: '100%' })
 
 const PlaylistShowLayout = (props) => {
   const context = useShowContext(props)
   const { record } = context
-  const classes = useStyles()
   useResourceRefresh('song')
 
   return (
@@ -59,12 +49,7 @@ const PlaylistShowLayout = (props) => {
             {...props}
             readOnly={!canChangeTracks(record)}
             title={<Title subTitle={record.name} />}
-            actions={
-              <PlaylistActions
-                className={classes.playlistActions}
-                record={record}
-              />
-            }
+            actions={<FullWidthPlaylistActions record={record} />}
             resource={'playlistTrack'}
             exporter={false}
             pagination={

@@ -55,6 +55,7 @@ enum Request {
         library_ids: Vec<u64>,
         #[serde(default)]
         offset: usize,
+        #[serde(default)]
         limit: usize,
     },
     Stats,

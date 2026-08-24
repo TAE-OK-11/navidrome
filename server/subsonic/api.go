@@ -2,6 +2,7 @@ package subsonic
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/deluan/rest"
 	"github.com/go-chi/chi/v5"
+	"github.com/navidrome/navidrome/adapters/rustsearch"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/artwork"
@@ -89,6 +91,7 @@ type Router struct {
 	sonic             *sonicsvc.Sonic
 	genreCache        genreResponseCache
 	streamFiles       *streamMediaCache
+	rustSearch        *rustsearch.Engine
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,
@@ -115,6 +118,14 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		transcodeDecision: transcodeDecision,
 		sonic:             sonic,
 		streamFiles:       newStreamMediaCache(streamMediaCacheLimit, streamMediaCacheTTL),
+	}
+	if rustsearch.Available() {
+		r.rustSearch = rustsearch.New()
+		go func() {
+			if err := r.rustSearch.Rebuild(context.Background(), ds); err != nil {
+				log.Warn("Rust search startup failed; SQLite search remains active", err)
+			}
+		}()
 	}
 	r.Handler = r.routes()
 	return r

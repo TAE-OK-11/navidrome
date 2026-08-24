@@ -5,6 +5,16 @@ import ts from 'typescript'
 const sourceRoot = resolve(import.meta.dir, '../src')
 const sourceExtensions = new Set(['.js', '.jsx', '.ts', '.tsx'])
 
+const legacyJavaScript = (await readdir(sourceRoot, { recursive: true })).filter(
+  (file) => file.endsWith('.js') || file.endsWith('.jsx'),
+)
+if (legacyJavaScript.length) {
+  for (const file of legacyJavaScript) {
+    process.stderr.write(`${file}: JavaScript source is forbidden; use TypeScript\n`)
+  }
+  process.exit(1)
+}
+
 const removedProps = new Map<string, Set<string>>([
   ['Accordion', new Set(['TransitionComponent', 'TransitionProps'])],
   ['Alert', new Set(['components', 'componentsProps'])],

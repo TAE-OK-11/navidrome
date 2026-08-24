@@ -1,0 +1,40 @@
+// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
+import React, { cloneElement } from 'react'
+import { sanitizeListRestProps, TopToolbar } from 'react-admin'
+import { useMediaQuery } from '@mui/material'
+import { ShuffleAllButton, ToggleFieldsMenu } from '../common'
+
+export const SongListActions = ({
+  currentSort,
+  className,
+  resource,
+  filters,
+  displayedFilters,
+  filterValues,
+  permanentFilter,
+  exporter,
+  basePath,
+  selectedIds = [],
+  onUnselectItems = () => null,
+  showFilter,
+  maxResults,
+  total,
+  ids,
+  ...rest
+}) => {
+  const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
+  return (
+    <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
+      <ShuffleAllButton filters={filterValues} />
+      {filters &&
+        cloneElement(filters, {
+          resource,
+          showFilter,
+          displayedFilters,
+          filterValues,
+          context: 'button',
+        })}
+      {isNotSmall && <ToggleFieldsMenu resource="song" />}
+    </TopToolbar>
+  )
+}

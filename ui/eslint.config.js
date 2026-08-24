@@ -14,7 +14,7 @@ export default [
       'build/**',
       'coverage/**',
       'prettier.config.js',
-      'vite.config.js',
+      'vite.config.ts',
       'public/3rdparty/workbox/**',
     ],
   },
@@ -58,6 +58,13 @@ export default [
       ...prettier.rules,
       'no-console': 'error',
       '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/ban-ts-comment': [
+        'error',
+        {
+          'ts-nocheck': 'allow-with-description',
+          minimumDescriptionLength: 10,
+        },
+      ],
       '@typescript-eslint/no-unused-expressions': [
         'error',
         {

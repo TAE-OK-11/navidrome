@@ -47,6 +47,32 @@ func TestWorkerPoolSize(t *testing.T) {
 	}
 }
 
+func TestMetadataTaskCount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		files     int
+		poolSize  int
+		wantTasks int
+	}{
+		{name: "empty", files: 0, poolSize: 8, wantTasks: 1},
+		{name: "single worker", files: 200, poolSize: 1, wantTasks: 1},
+		{name: "small batch", files: minFilesPerWorkerTask, poolSize: 8, wantTasks: 1},
+		{name: "large folder", files: 200, poolSize: 8, wantTasks: 7},
+		{name: "bounded by pool", files: 4096, poolSize: 8, wantTasks: 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := metadataTaskCount(tt.files, tt.poolSize); got != tt.wantTasks {
+				t.Fatalf("metadataTaskCount(%d, %d) = %d, want %d", tt.files, tt.poolSize, got, tt.wantTasks)
+			}
+		})
+	}
+}
+
 func TestConvertResponse(t *testing.T) {
 	t.Parallel()
 

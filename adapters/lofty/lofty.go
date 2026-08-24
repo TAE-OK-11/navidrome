@@ -27,9 +27,10 @@ import (
 )
 
 const (
-	protocolVersion = 1
-	loftyVersion    = "0.25.1"
-	maxWorkerPool   = 16
+	protocolVersion       = 1
+	loftyVersion          = "0.25.1"
+	maxWorkerPool         = 16
+	minFilesPerWorkerTask = 32
 )
 
 type request struct {
@@ -86,10 +87,72 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 		return nil, err
 	}
 
-	// Each worker carries one ordered request/response stream. A bounded pool
-	// preserves that simple framing while allowing the scanner's independent
-	// folder workers to use Rust concurrently. Slots start their process lazily.
 	pool := e.workerPool()
+	taskCount := metadataTaskCount(len(req.Files), cap(pool))
+	if taskCount == 1 {
+		resp, err := e.roundTrip(pool, req)
+		if err != nil {
+			return nil, err
+		}
+		return convertResponse(resp)
+	}
+
+	// Folder-level scanner concurrency normally keeps the Rust workers busy, but
+	// a library with many files in one folder previously occupied only one slot.
+	// Split large batches across the same bounded persistent pool. This improves
+	// that worst case without nesting Rust thread pools or creating more worker
+	// processes than DevScannerThreads allows.
+	type taskResult struct {
+		response response
+		err      error
+	}
+	results := make(chan taskResult, taskCount)
+	chunkSize := (len(req.Files) + taskCount - 1) / taskCount
+	for start := 0; start < len(req.Files); start += chunkSize {
+		end := min(start+chunkSize, len(req.Files))
+		task := request{Files: req.Files[start:end]}
+		go func() {
+			resp, err := e.roundTrip(pool, task)
+			results <- taskResult{response: resp, err: err}
+		}()
+	}
+
+	merged := response{
+		Protocol: protocolVersion,
+		Lofty:    loftyVersion,
+		Results:  make(map[string]rawResult, len(req.Files)),
+		Errors:   make(map[string]string),
+	}
+	var taskErrors []error
+	for range taskCount {
+		result := <-results
+		if result.err != nil {
+			taskErrors = append(taskErrors, result.err)
+			continue
+		}
+		for key, value := range result.response.Results {
+			merged.Results[key] = value
+		}
+		for key, value := range result.response.Errors {
+			merged.Errors[key] = value
+		}
+	}
+	if len(taskErrors) > 0 {
+		return nil, fmt.Errorf("Lofty metadata tasks failed: %w", errors.Join(taskErrors...))
+	}
+	return convertResponse(merged)
+}
+
+func metadataTaskCount(fileCount, poolSize int) int {
+	if fileCount <= 0 || poolSize <= 1 {
+		return 1
+	}
+	return min(poolSize, max(1, (fileCount+minFilesPerWorkerTask-1)/minFilesPerWorkerTask))
+}
+
+// roundTrip reserves one persistent worker for one ordered request/response.
+// A failed worker is replaced once before the request is returned to the scanner.
+func (e *extractor) roundTrip(pool chan *workerSlot, req request) (response, error) {
 	slot := <-pool
 	defer func() { pool <- slot }()
 
@@ -97,17 +160,17 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		w, err := slot.ensureWorker()
 		if err != nil {
-			return nil, err
+			return response{}, err
 		}
 		resp, err := w.roundTrip(req)
 		if err == nil {
-			return convertResponse(resp)
+			return resp, nil
 		}
 		lastErr = err
 		log.Warn("Lofty metadata worker request failed; restarting", "attempt", attempt+1, "error", err)
 		slot.stopWorker()
 	}
-	return nil, fmt.Errorf("Lofty metadata worker failed after restart: %w", lastErr)
+	return response{}, fmt.Errorf("Lofty metadata worker failed after restart: %w", lastErr)
 }
 
 func (e *extractor) Version() string {

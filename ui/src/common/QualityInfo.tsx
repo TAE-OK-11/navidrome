@@ -1,4 +1,5 @@
 import Chip from '@mui/material/Chip'
+import type { SxProps, Theme } from '@mui/material/styles'
 import config from '../config'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { useRecordContext } from 'react-admin'
@@ -26,6 +27,7 @@ type QualityInfoProps = {
   isDirectPlay?: boolean
   source?: string
   sortable?: boolean
+  sx?: SxProps<Theme>
 }
 
 export const QualityInfo = ({
@@ -36,6 +38,7 @@ export const QualityInfo = ({
   className,
   transcodeStream,
   isDirectPlay,
+  sx,
 }: QualityInfoProps) => {
   const record =
     useRecordContext<QualityRecord>({ record: recordOverride }) || {}
@@ -76,10 +79,16 @@ export const QualityInfo = ({
     extra = ` (${toDb} dB)`
   }
 
+  const combinedSx: SxProps<Theme> = Array.isArray(sx)
+    ? [chipSx, ...sx]
+    : sx
+      ? [chipSx, sx]
+      : chipSx
+
   return (
     <Chip
       className={className}
-      sx={chipSx}
+      sx={combinedSx}
       variant="outlined"
       size={size}
       label={`${info}${extra}`}

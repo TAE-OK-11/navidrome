@@ -6,6 +6,7 @@ import { isDateSet } from '../utils/validations'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
 import { useRating } from './useRating'
 import { useRecordContext } from 'react-admin'
+import clsx from 'clsx'
 
 export const RatingField = ({
   resource,
@@ -42,7 +43,7 @@ export const RatingField = ({
     >
       <Rating
         name={record.mediaFileId || record.id}
-        className={className}
+        className={clsx('nd-rating-field', className)}
         sx={[
           {
             color,

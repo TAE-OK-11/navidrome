@@ -18,7 +18,6 @@ import {
 import { useMediaQuery } from '@mui/material'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
-import makeStyles from '../themes/makeStyles'
 import { useDrag } from 'react-dnd'
 import clsx from 'clsx'
 import {
@@ -38,36 +37,8 @@ import en from '../i18n/en.json'
 import { formatBytes } from '../utils/index'
 import { withWidth } from '../themes/useWidth'
 
-const useStyles = makeStyles({
-  contextHeader: {
-    marginLeft: '3px',
-    marginTop: '-2px',
-    verticalAlign: 'text-top',
-  },
-  row: {
-    '& td': {
-      paddingTop: '4px !important',
-      paddingBottom: '4px !important',
-    },
-    '&:hover': {
-      '& $contextMenu': {
-        visibility: 'visible',
-      },
-      '& $ratingField': {
-        visibility: 'visible',
-      },
-    },
-  },
-  missingRow: {
-    opacity: 0.3,
-  },
-  contextMenu: {
-    visibility: 'hidden',
-  },
-  ratingField: {
-    visibility: 'hidden',
-  },
-})
+const rowClass = 'nd-artist-grid-row'
+const missingRowClass = 'nd-artist-grid-row-missing'
 
 const ArtistFilter = (props) => {
   const translate = useTranslate()
@@ -109,11 +80,10 @@ const ArtistDatagridRow = (props) => {
     }),
     [record],
   )
-  const classes = useStyles()
   const computedClasses = clsx(
     props.className,
-    classes.row,
-    record?.missing && classes.missingRow,
+    rowClass,
+    record?.missing && missingRowClass,
   )
   return (
     <DatagridRow ref={dragArtistRef} {...props} className={computedClasses} />
@@ -124,13 +94,30 @@ const ArtistDatagridBody = (props) => (
   <DatagridBody {...props} row={<ArtistDatagridRow />} />
 )
 
-const ArtistDatagrid = (props) => (
-  <Datagrid {...props} body={<ArtistDatagridBody />} />
+const ArtistDatagrid = ({ sx, ...props }) => (
+  <Datagrid
+    {...props}
+    sx={[
+      {
+        [`& .${rowClass} td`]: {
+          paddingTop: '4px !important',
+          paddingBottom: '4px !important',
+        },
+        [`& .${rowClass}:hover`]: {
+          '& .nd-artist-context-menu, & .nd-rating-field': {
+            visibility: 'visible',
+          },
+        },
+        [`& .${missingRowClass}`]: { opacity: 0.3 },
+      },
+      ...(Array.isArray(sx) ? sx : [sx]),
+    ]}
+    body={<ArtistDatagridBody />}
+  />
 )
 
 const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
   const { filterValues } = rest
-  const classes = useStyles()
   const handleArtistLink = useGetHandleArtistClick(width)
   const navigate = useNavigate()
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
@@ -156,11 +143,11 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
           source="rating"
           sortByOrder={'DESC'}
           resource={'artist'}
-          className={classes.ratingField}
+          sx={{ visibility: 'hidden' }}
         />
       ),
     }),
-    [classes.ratingField],
+    [],
   )
 
   const columns = useSelectedFields({
@@ -174,7 +161,7 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
       {...rest}
     />
   ) : (
-    <ArtistDatagrid rowClick={handleArtistLink} classes={{ row: classes.row }}>
+    <ArtistDatagrid rowClick={handleArtistLink}>
       <CoverArtAvatar source="id" />
       <TextField source="name" />
       <FunctionField
@@ -193,12 +180,13 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
         source={'starred_at'}
         sortByOrder={'DESC'}
         sortable={config.enableFavourites}
-        className={classes.contextMenu}
+        className="nd-artist-context-menu"
+        sx={{ visibility: 'hidden' }}
         label={
           config.enableFavourites && (
             <FavoriteBorderIcon
               fontSize={'small'}
-              className={classes.contextHeader}
+              sx={{ ml: '3px', mt: '-2px', verticalAlign: 'text-top' }}
             />
           )
         }

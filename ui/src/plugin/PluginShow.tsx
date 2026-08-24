@@ -15,7 +15,7 @@ import { Box, useMediaQuery, Button } from '@mui/material'
 import { MdSave } from 'react-icons/md'
 import Alert from '@mui/material/Alert'
 import { Title, useResourceRefresh } from '../common'
-import { usePluginShowStyles } from './styles'
+import { pluginShowSx, usePluginShowStyles } from './styles'
 import { ErrorSection } from './ErrorSection'
 import { StatusCard } from './StatusCard'
 import { InfoCard } from './InfoCard'
@@ -272,7 +272,7 @@ const PluginShowLayout = () => {
           />
         }
       />
-      <Box className={classes.root}>
+      <Box className={classes.root} sx={pluginShowSx}>
         <ErrorSection error={record.lastError} translate={translate} />
 
         <StatusCard

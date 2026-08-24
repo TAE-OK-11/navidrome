@@ -11,7 +11,6 @@ import {
 } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
-import makeStyles from '../themes/makeStyles'
 import { useDrag } from 'react-dnd'
 import {
   ArtistLinkField,
@@ -26,41 +25,15 @@ import {
 } from '../common'
 import config from '../config'
 import { DraggableTypes } from '../consts'
-import clsx from 'clsx'
 
-const useStyles = makeStyles({
-  columnIcon: {
-    marginLeft: '3px',
-    marginTop: '-2px',
-    verticalAlign: 'text-top',
+const hoverRevealSx = {
+  '&:hover .album-context-menu, &:hover .album-rating-field': {
+    visibility: 'visible',
   },
-  row: {
-    '&:hover': {
-      '& $contextMenu': {
-        visibility: 'visible',
-      },
-      '& $ratingField': {
-        visibility: 'visible',
-      },
-    },
-  },
-  missingRow: {
-    opacity: 0.3,
-  },
-  tableCell: {
-    width: '17.5%',
-  },
-  contextMenu: {
-    visibility: 'hidden',
-  },
-  ratingField: {
-    visibility: 'hidden',
-  },
-})
+}
 
 const AlbumDatagridRow = (props) => {
   const { record, className } = props
-  const classes = useStyles()
   const [, dragAlbumRef] = useDrag(
     () => ({
       type: DraggableTypes.ALBUM,
@@ -69,13 +42,17 @@ const AlbumDatagridRow = (props) => {
     }),
     [record],
   )
-  const computedClasses = clsx(
-    className,
-    classes.row,
-    record.missing && classes.missingRow,
-  )
   return (
-    <DatagridRow ref={dragAlbumRef} {...props} className={computedClasses} />
+    <DatagridRow
+      ref={dragAlbumRef}
+      {...props}
+      className={className}
+      sx={[
+        hoverRevealSx,
+        record.missing && { opacity: 0.3 },
+        ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
+      ]}
+    />
   )
 }
 
@@ -94,7 +71,6 @@ const AlbumTableView = ({
   syncWithLocation,
   ...rest
 }) => {
-  const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
 
@@ -124,12 +100,13 @@ const AlbumTableView = ({
           source={'rating'}
           resource={'album'}
           sortByOrder={'DESC'}
-          className={classes.ratingField}
+          className="album-rating-field"
+          sx={{ visibility: 'hidden' }}
         />
       ),
       createdAt: isDesktop && <DateField source="createdAt" showTime />,
     }
-  }, [classes.ratingField, isDesktop])
+  }, [isDesktop])
 
   const columns = useSelectedFields({
     resource: 'album',
@@ -173,7 +150,7 @@ const AlbumTableView = ({
       {...rest}
     />
   ) : (
-    <AlbumDatagrid rowClick={'show'} classes={{ row: classes.row }} {...rest}>
+    <AlbumDatagrid rowClick={'show'} {...rest}>
       <CoverArtAvatar source="id" variant="square" />
       <TextField source="name" />
       {columns}
@@ -181,12 +158,12 @@ const AlbumTableView = ({
         source={'starred_at'}
         sortByOrder={'DESC'}
         sortable={config.enableFavourites}
-        className={classes.contextMenu}
+        className="album-context-menu"
         label={
           config.enableFavourites && (
             <FavoriteBorderIcon
               fontSize={'small'}
-              className={classes.columnIcon}
+              sx={{ ml: '3px', mt: '-2px', verticalAlign: 'text-top' }}
             />
           )
         }

@@ -31,7 +31,6 @@ import {
   getStoredPerPage,
 } from '../common'
 import { useDispatch } from 'react-redux'
-import makeStyles from '../themes/makeStyles'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { setTrack } from '../actions'
 import { SongListActions } from './SongListActions'
@@ -40,36 +39,11 @@ import { SongBulkActions, QualityInfo, useSelectedFields } from '../common'
 import config from '../config'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 
-const useStyles = makeStyles({
-  contextHeader: {
-    marginLeft: '3px',
-    marginTop: '-2px',
-    verticalAlign: 'text-top',
-  },
-  row: {
-    '&:hover': {
-      '& $contextMenu': {
-        visibility: 'visible',
-      },
-      '& $ratingField': {
-        visibility: 'visible',
-      },
-    },
-  },
-  contextMenu: {
-    visibility: 'hidden',
-  },
-  ratingField: {
-    visibility: 'hidden',
-  },
-  chip: {
-    margin: 0,
-    height: '24px',
-  },
-})
+const autocompleteSx = {
+  '& .MuiChip-root': { m: 0, height: 24 },
+}
 
 const SongFilter = (props) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
@@ -84,7 +58,7 @@ const SongFilter = (props) => {
         sort={{ field: 'name', order: 'ASC' }}
         filterToQuery={(searchText) => ({ name: [searchText] })}
       >
-        <AutocompleteArrayInput emptyText="-- None --" classes={classes} />
+        <AutocompleteArrayInput emptyText="-- None --" sx={autocompleteSx} />
       </ReferenceArrayInput>
       <ReferenceArrayInput
         label={translate('resources.song.fields.grouping')}
@@ -99,7 +73,7 @@ const SongFilter = (props) => {
       >
         <AutocompleteArrayInput
           emptyText="-- None --"
-          classes={classes}
+          sx={autocompleteSx}
           optionText="tagValue"
         />
       </ReferenceArrayInput>
@@ -116,7 +90,7 @@ const SongFilter = (props) => {
       >
         <AutocompleteArrayInput
           emptyText="-- None --"
-          classes={classes}
+          sx={autocompleteSx}
           optionText="tagValue"
         />
       </ReferenceArrayInput>
@@ -132,7 +106,6 @@ const SongFilter = (props) => {
 }
 
 const SongList = (props) => {
-  const classes = useStyles()
   const dispatch = useDispatch()
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
@@ -172,7 +145,7 @@ const SongList = (props) => {
           source="rating"
           sortByOrder={'DESC'}
           resource={'song'}
-          className={classes.ratingField}
+          sx={{ visibility: 'hidden' }}
         />
       ),
       bpm: isDesktop && <NumberField source="bpm" />,
@@ -190,7 +163,7 @@ const SongList = (props) => {
         <DateField source="createdAt" sortBy="recently_added" showTime />
       ),
     }
-  }, [isDesktop, classes.ratingField])
+  }, [isDesktop])
 
   const columns = useSelectedFields({
     resource: 'song',
@@ -230,7 +203,6 @@ const SongList = (props) => {
           <SongDatagrid
             rowClick={handleRowClick}
             contextAlwaysVisible={!isDesktop}
-            classes={{ row: classes.row }}
           >
             <SongTitleField source="title" showTrackNumbers={false} />
             {columns}
@@ -238,12 +210,12 @@ const SongList = (props) => {
               source={'starred_at'}
               sortByOrder={'DESC'}
               sortable={config.enableFavourites}
-              className={classes.contextMenu}
+              sx={{ visibility: isDesktop ? 'hidden' : 'visible' }}
               label={
                 config.enableFavourites && (
                   <FavoriteBorderIcon
                     fontSize={'small'}
-                    className={classes.contextHeader}
+                    sx={{ ml: '3px', mt: '-2px', verticalAlign: 'text-top' }}
                   />
                 )
               }

@@ -38,7 +38,6 @@ import config from '../config'
 import AlbumInfo from './AlbumInfo'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { humanize } from 'inflection'
-import makeStyles from '../themes/makeStyles'
 import { withWidth } from '../themes/useWidth'
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
@@ -48,18 +47,14 @@ const ScrollRestorer = ({ children, ...rest }) => {
   return cloneElement(children, rest)
 }
 
-const useStyles = makeStyles({
-  chip: {
-    margin: 0,
-    height: '24px',
-  },
-})
+const autocompleteSx = {
+  '& .MuiChip-root': { m: 0, height: 24 },
+}
 
 const formatReleaseType = (record) =>
   record?.tagValue ? humanize(record?.tagValue) : '-- None --'
 
 const AlbumFilter = (props) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
@@ -83,7 +78,7 @@ const AlbumFilter = (props) => {
         sort={{ field: 'name', order: 'ASC' }}
         filterToQuery={(searchText) => ({ name: [searchText] })}
       >
-        <AutocompleteArrayInput emptyText="-- None --" classes={classes} />
+        <AutocompleteArrayInput emptyText="-- None --" sx={autocompleteSx} />
       </ReferenceArrayInput>
       <ReferenceInput
         label={translate('resources.album.fields.recordLabel')}
@@ -111,7 +106,7 @@ const AlbumFilter = (props) => {
       >
         <AutocompleteArrayInput
           emptyText="-- None --"
-          classes={classes}
+          sx={autocompleteSx}
           optionText="tagValue"
         />
       </ReferenceArrayInput>
@@ -128,7 +123,7 @@ const AlbumFilter = (props) => {
       >
         <AutocompleteArrayInput
           emptyText="-- None --"
-          classes={classes}
+          sx={autocompleteSx}
           optionText="tagValue"
         />
       </ReferenceArrayInput>

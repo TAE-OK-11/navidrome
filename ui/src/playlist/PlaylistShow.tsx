@@ -18,10 +18,14 @@ import {
   getStoredPerPage,
   useResourceRefresh,
 } from '../common'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const playlistTrackPerPageOptions = [100, 250, 500]
 
-const FullWidthPlaylistActions = styled(PlaylistActions)({ width: '100%' })
+const FullWidthPlaylistActions = styled(PlaylistActions)(({ theme }) => ({
+  width: '100%',
+  ...componentStyleOverride(theme, 'NDPlaylistShow', 'playlistActions'),
+}))
 
 const PlaylistShowLayout = (props) => {
   const context = useShowContext(props)

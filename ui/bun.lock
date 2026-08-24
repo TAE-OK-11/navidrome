@@ -42,7 +42,6 @@
         "react-redux": "9.3.0",
         "react-router-dom": "7.18.2",
         "redux": "5.0.1",
-        "tss-react": "^4.9.21",
         "uuid": "14.0.2",
         "workbox-cli": "^7.4.1",
       },
@@ -1614,8 +1613,6 @@
     "ts-api-utils": ["ts-api-utils@2.5.0", "", { "peerDependencies": { "typescript": ">=4.8.4" } }, "sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA=="],
 
     "tslib": ["tslib@1.14.1", "", {}, "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg=="],
-
-    "tss-react": ["tss-react@4.9.21", "", { "dependencies": { "@emotion/cache": "*", "@emotion/serialize": "*", "@emotion/utils": "*" }, "peerDependencies": { "@emotion/react": "^11.4.1", "@emotion/server": "^11.4.0", "@mui/material": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^9.0.0", "@types/react": "^16.8.0 || ^17.0.2 || ^18.0.0 || ^19.0.0", "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/server", "@mui/material"] }, "sha512-3jAEzeU1i4ve3PiqEqjIgcHY2geIF8Cqo6w0SBqVPDwH2KeGGNVaWcKyFZjxL/xg2cIACg17PllggCU4AAHCdQ=="],
 
     "type-check": ["type-check@0.4.0", "", { "dependencies": { "prelude-ls": "^1.2.1" } }, "sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew=="],
 

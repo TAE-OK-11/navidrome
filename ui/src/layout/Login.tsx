@@ -10,12 +10,12 @@ import CardActions from '@mui/material/CardActions'
 import CircularProgress from '@mui/material/CircularProgress'
 import Link from '@mui/material/Link'
 import TextField from '@mui/material/TextField'
+import Box from '@mui/material/Box'
 import {
   ThemeProvider,
   StyledEngineProvider,
   createTheme,
 } from '@mui/material/styles'
-import makeStyles from '../themes/makeStyles'
 import { useLogin, useNotify, useTranslate } from 'react-admin'
 import Logo from '../icons/android-icon-192x192.png'
 
@@ -25,73 +25,52 @@ import config from '../config'
 import { clearQueue } from '../actions'
 import { INSIGHTS_DOC_URL } from '../consts'
 import modernizeTheme from '../themes/modernizeTheme'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    main: {
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100vh',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      background: `url(${config.loginBackgroundURL})`,
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-    },
-    card: {
-      minWidth: 300,
-      marginTop: '6em',
-      overflow: 'visible',
-    },
-    avatar: {
-      margin: '1em',
-      display: 'flex',
-      justifyContent: 'center',
-      marginTop: '-3em',
-    },
-    icon: {
-      backgroundColor: 'transparent',
-      width: '6.3em',
-      height: '6.3em',
-    },
-    systemName: {
-      marginTop: '1em',
-      display: 'flex',
-      justifyContent: 'center',
-      color: '#3f51b5', //theme.palette.grey[500]
-    },
-    welcome: {
-      marginTop: '1em',
-      padding: '0 1em 1em 1em',
-      display: 'flex',
-      justifyContent: 'center',
-      flexWrap: 'wrap',
-      color: '#3f51b5', //theme.palette.grey[500]
-    },
-    form: {
-      padding: '0 1em 1em 1em',
-    },
-    input: {
-      marginTop: '1em',
-    },
-    actions: {
-      padding: '0 1em 1em 1em',
-    },
-    button: {},
-    systemNameLink: {
-      textDecoration: 'none',
-    },
-    message: {
-      marginTop: '1em',
-      padding: '0 1em 1em 1em',
-      textAlign: 'center',
-      wordBreak: 'break-word',
-      fontSize: '0.875em',
-    },
-  }),
-  { name: 'NDLogin' },
-)
+const loginSlotSx = (slot, styles) => (theme) => ({
+  ...styles,
+  ...componentStyleOverride(theme, 'NDLogin', slot),
+})
+
+const mainSx = loginSlotSx('main', {
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: '100vh',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  background: `url(${config.loginBackgroundURL})`,
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+})
+
+const cardSx = loginSlotSx('card', {
+  minWidth: 300,
+  mt: '6em',
+  overflow: 'visible',
+})
+
+const avatarSx = loginSlotSx('avatar', {
+  m: '1em',
+  display: 'flex',
+  justifyContent: 'center',
+  mt: '-3em',
+})
+
+const iconSx = loginSlotSx('icon', {
+  backgroundColor: 'transparent',
+  width: '6.3em',
+  height: '6.3em',
+})
+
+const welcomeSx = loginSlotSx('welcome', {
+  mt: '1em',
+  p: '0 1em 1em',
+  display: 'flex',
+  justifyContent: 'center',
+  flexWrap: 'wrap',
+  color: '#3f51b5',
+})
 
 const renderInput = ({
   meta: { touched, error } = {},
@@ -116,7 +95,6 @@ const renderInput = ({
 
 const FormLogin = ({ loading, handleSubmit, validate }) => {
   const translate = useTranslate()
-  const classes = useStyles()
 
   return (
     <Form
@@ -124,31 +102,41 @@ const FormLogin = ({ loading, handleSubmit, validate }) => {
       validate={validate}
       render={({ handleSubmit }) => (
         <form onSubmit={handleSubmit} noValidate>
-          <div className={classes.main}>
-            <Card className={classes.card}>
-              <div className={classes.avatar}>
-                <img src={Logo} className={classes.icon} alt={'logo'} />
-              </div>
-              <div className={classes.systemName}>
-                <a
+          <Box sx={mainSx}>
+            <Card sx={cardSx}>
+              <Box sx={avatarSx}>
+                <Box component="img" src={Logo} sx={iconSx} alt={'logo'} />
+              </Box>
+              <Box
+                sx={loginSlotSx('systemName', {
+                  mt: '1em',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  color: '#3f51b5',
+                })}
+              >
+                <Box
+                  component="a"
                   href="https://www.navidrome.org"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={classes.systemNameLink}
+                  sx={loginSlotSx('systemNameLink', {
+                    textDecoration: 'none',
+                  })}
                 >
                   Navidrome
-                </a>
-              </div>
+                </Box>
+              </Box>
               {config.welcomeMessage && (
-                <div
-                  className={classes.welcome}
+                <Box
+                  sx={welcomeSx}
                   // Use dangerouslySetInnerHTML to allow admins to configure
                   // whatever content they want
                   dangerouslySetInnerHTML={{ __html: config.welcomeMessage }}
                 />
               )}
-              <div className={classes.form}>
-                <div className={classes.input}>
+              <Box sx={loginSlotSx('form', { p: '0 1em 1em' })}>
+                <Box sx={loginSlotSx('input', { mt: '1em' })}>
                   <Field
                     autoFocus
                     name="username"
@@ -157,8 +145,8 @@ const FormLogin = ({ loading, handleSubmit, validate }) => {
                     disabled={loading}
                     spellCheck={false}
                   />
-                </div>
-                <div className={classes.input}>
+                </Box>
+                <Box sx={loginSlotSx('input', { mt: '1em' })}>
                   <Field
                     name="password"
                     component={renderInput}
@@ -166,15 +154,15 @@ const FormLogin = ({ loading, handleSubmit, validate }) => {
                     type="password"
                     disabled={loading}
                   />
-                </div>
-              </div>
-              <CardActions className={classes.actions}>
+                </Box>
+              </Box>
+              <CardActions sx={loginSlotSx('actions', { p: '0 1em 1em' })}>
                 <Button
                   variant="contained"
                   type="submit"
                   color="primary"
                   disabled={loading}
-                  className={classes.button}
+                  sx={loginSlotSx('button', {})}
                   fullWidth
                 >
                   {loading && <CircularProgress size={25} thickness={2} />}
@@ -183,7 +171,7 @@ const FormLogin = ({ loading, handleSubmit, validate }) => {
               </CardActions>
             </Card>
             <Notification />
-          </div>
+          </Box>
         </form>
       )}
     />
@@ -192,7 +180,6 @@ const FormLogin = ({ loading, handleSubmit, validate }) => {
 
 const InsightsNotice = ({ url }) => {
   const translate = useTranslate()
-  const classes = useStyles()
 
   const anchorRegex = /\[(.+?)]/g
   const originalMsg = translate('ra.auth.insightsCollectionNote')
@@ -243,12 +230,23 @@ const InsightsNotice = ({ url }) => {
     )
   })
 
-  return <div className={classes.message}>{renderedLines}</div>
+  return (
+    <Box
+      sx={loginSlotSx('message', {
+        mt: '1em',
+        p: '0 1em 1em',
+        textAlign: 'center',
+        wordBreak: 'break-word',
+        fontSize: '0.875em',
+      })}
+    >
+      {renderedLines}
+    </Box>
+  )
 }
 
 const FormSignUp = ({ loading, handleSubmit, validate }) => {
   const translate = useTranslate()
-  const classes = useStyles()
 
   return (
     <Form
@@ -256,19 +254,15 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
       validate={validate}
       render={({ handleSubmit }) => (
         <form onSubmit={handleSubmit} noValidate>
-          <div className={classes.main}>
-            <Card className={classes.card}>
-              <div className={classes.avatar}>
-                <img src={Logo} className={classes.icon} alt={'logo'} />
-              </div>
-              <div className={classes.welcome}>
-                {translate('ra.auth.welcome1')}
-              </div>
-              <div className={classes.welcome}>
-                {translate('ra.auth.welcome2')}
-              </div>
-              <div className={classes.form}>
-                <div className={classes.input}>
+          <Box sx={mainSx}>
+            <Card sx={cardSx}>
+              <Box sx={avatarSx}>
+                <Box component="img" src={Logo} sx={iconSx} alt={'logo'} />
+              </Box>
+              <Box sx={welcomeSx}>{translate('ra.auth.welcome1')}</Box>
+              <Box sx={welcomeSx}>{translate('ra.auth.welcome2')}</Box>
+              <Box sx={loginSlotSx('form', { p: '0 1em 1em' })}>
+                <Box sx={loginSlotSx('input', { mt: '1em' })}>
                   <Field
                     autoFocus
                     name="username"
@@ -277,8 +271,8 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
                     disabled={loading}
                     spellCheck={false}
                   />
-                </div>
-                <div className={classes.input}>
+                </Box>
+                <Box sx={loginSlotSx('input', { mt: '1em' })}>
                   <Field
                     name="password"
                     component={renderInput}
@@ -286,8 +280,8 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
                     type="password"
                     disabled={loading}
                   />
-                </div>
-                <div className={classes.input}>
+                </Box>
+                <Box sx={loginSlotSx('input', { mt: '1em' })}>
                   <Field
                     name="confirmPassword"
                     component={renderInput}
@@ -295,15 +289,15 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
                     type="password"
                     disabled={loading}
                   />
-                </div>
-              </div>
-              <CardActions className={classes.actions}>
+                </Box>
+              </Box>
+              <CardActions sx={loginSlotSx('actions', { p: '0 1em 1em' })}>
                 <Button
                   variant="contained"
                   type="submit"
                   color="primary"
                   disabled={loading}
-                  className={classes.button}
+                  sx={loginSlotSx('button', {})}
                   fullWidth
                 >
                   {loading && <CircularProgress size={25} thickness={2} />}
@@ -313,7 +307,7 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
               <InsightsNotice url={INSIGHTS_DOC_URL} />
             </Card>
             <Notification />
-          </div>
+          </Box>
         </form>
       )}
     />
@@ -402,9 +396,8 @@ Login.propTypes = {
   previousRoute: PropTypes.string,
 }
 
-// We need to put the ThemeProvider decoration in another component
-// Because otherwise the useStyles() hook used in Login won't get
-// the right theme
+// Keep the login tree under the selected theme so its sx callbacks resolve
+// custom component overrides from the same theme as the rest of the app.
 const LoginWithTheme = (props) => {
   const theme = useCurrentTheme()
   return (

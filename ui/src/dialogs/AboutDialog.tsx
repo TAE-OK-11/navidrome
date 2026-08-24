@@ -16,8 +16,7 @@ import FileCopyIcon from '@mui/icons-material/FileCopy'
 import Button from '@mui/material/Button'
 import { humanize, underscore } from 'inflection'
 import { useGetOne, usePermissions, useTranslate, useNotify } from 'react-admin'
-import { Tabs, Tab } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Tabs, Tab } from '@mui/material'
 import config from '../config'
 import { DialogTitle } from './DialogTitle'
 import { DialogContent } from './DialogContent'
@@ -27,48 +26,20 @@ import { Typography } from '@mui/material'
 import TableHead from '@mui/material/TableHead'
 import { configToToml, separateAndSortConfigs } from './aboutUtils'
 
-const useStyles = makeStyles((theme) => ({
-  configNameColumn: {
-    maxWidth: '200px',
-    width: '200px',
-    wordWrap: 'break-word',
-    overflowWrap: 'break-word',
-  },
-  envVarColumn: {
-    maxWidth: '250px',
-    width: '250px',
-    fontFamily: 'monospace',
-    wordWrap: 'break-word',
-    overflowWrap: 'break-word',
-  },
-  copyButton: {
-    marginBottom: theme.spacing(2),
-    marginTop: theme.spacing(1),
-  },
-  devSectionHeader: {
-    '& td': {
-      paddingTop: theme.spacing(2),
-      paddingBottom: theme.spacing(2),
-      borderTop: `2px solid ${theme.palette.divider}`,
-      borderBottom: `1px solid ${theme.palette.divider}`,
-      textAlign: 'left',
-      fontWeight: 600,
-    },
-  },
-  configContainer: {
-    paddingTop: theme.spacing(1),
-  },
-  tableContainer: {
-    maxHeight: '60vh',
-    overflow: 'auto',
-  },
-  devFlagsTitle: {
-    fontWeight: 600,
-  },
-  expandableDialog: {
-    transition: 'max-width 300ms ease',
-  },
-}))
+const configNameColumnSx = {
+  maxWidth: 200,
+  width: 200,
+  wordWrap: 'break-word',
+  overflowWrap: 'break-word',
+}
+
+const envVarColumnSx = {
+  maxWidth: 250,
+  width: 250,
+  fontFamily: 'monospace',
+  wordWrap: 'break-word',
+  overflowWrap: 'break-word',
+}
 
 const links = {
   homepage: 'navidrome.org',
@@ -222,7 +193,6 @@ const AboutTabContent = ({
 }
 
 const ConfigTabContent = ({ configData }) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const notify = useNotify()
 
@@ -263,12 +233,12 @@ const ConfigTabContent = ({ configData }) => {
   }
 
   return (
-    <div className={classes.configContainer}>
+    <Box sx={{ pt: 1 }}>
       <Button
         variant="outlined"
         startIcon={<FileCopyIcon />}
         onClick={handleCopyToml}
-        className={classes.copyButton}
+        sx={{ mt: 1, mb: 2 }}
         disabled={
           !configData || !navigator.clipboard || !window.isSecureContext
         }
@@ -280,13 +250,13 @@ const ConfigTabContent = ({ configData }) => {
         variant="outlined"
         startIcon={<CloudDownloadIcon />}
         onClick={handleDownloadToml}
-        className={classes.copyButton}
+        sx={{ mt: 1, mb: 2 }}
         disabled={!configData}
         size="small"
       >
         {translate('about.config.downloadToml')}
       </Button>
-      <TableContainer className={classes.tableContainer}>
+      <TableContainer sx={{ maxHeight: '60vh', overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
@@ -294,7 +264,7 @@ const ConfigTabContent = ({ configData }) => {
                 align="left"
                 component="th"
                 scope="col"
-                className={classes.configNameColumn}
+                sx={configNameColumnSx}
               >
                 {translate('about.config.configName')}
               </TableCell>
@@ -313,11 +283,11 @@ const ConfigTabContent = ({ configData }) => {
                   align="left"
                   component="th"
                   scope="row"
-                  className={classes.configNameColumn}
+                  sx={configNameColumnSx}
                 >
                   {translate('about.config.configurationFile')}
                 </TableCell>
-                <TableCell align="left" className={classes.envVarColumn}>
+                <TableCell align="left" sx={envVarColumnSx}>
                   ND_CONFIGFILE
                 </TableCell>
                 <TableCell align="left">{configData.configFile}</TableCell>
@@ -329,23 +299,33 @@ const ConfigTabContent = ({ configData }) => {
                   align="left"
                   component="th"
                   scope="row"
-                  className={classes.configNameColumn}
+                  sx={configNameColumnSx}
                 >
                   {key}
                 </TableCell>
-                <TableCell align="left" className={classes.envVarColumn}>
+                <TableCell align="left" sx={envVarColumnSx}>
                   {envVar}
                 </TableCell>
                 <TableCell align="left">{String(value)}</TableCell>
               </TableRow>
             ))}
             {devConfigs.length > 0 && (
-              <TableRow className={classes.devSectionHeader}>
+              <TableRow
+                sx={(theme) => ({
+                  '& td': {
+                    py: 2,
+                    borderTop: `2px solid ${theme.palette.divider}`,
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    textAlign: 'left',
+                    fontWeight: 600,
+                  },
+                })}
+              >
                 <TableCell colSpan={3}>
                   <Typography
                     variant="subtitle1"
                     component="div"
-                    className={classes.devFlagsTitle}
+                    sx={{ fontWeight: 600 }}
                   >
                     🚧 {translate('about.config.devFlagsHeader')}
                   </Typography>
@@ -358,11 +338,11 @@ const ConfigTabContent = ({ configData }) => {
                   align="left"
                   component="th"
                   scope="row"
-                  className={classes.configNameColumn}
+                  sx={configNameColumnSx}
                 >
                   {key}
                 </TableCell>
-                <TableCell align="left" className={classes.envVarColumn}>
+                <TableCell align="left" sx={envVarColumnSx}>
                   {envVar}
                 </TableCell>
                 <TableCell align="left">{String(value)}</TableCell>
@@ -371,7 +351,7 @@ const ConfigTabContent = ({ configData }) => {
           </TableBody>
         </Table>
       </TableContainer>
-    </div>
+    </Box>
   )
 }
 
@@ -433,7 +413,6 @@ const TabContent = ({
 }
 
 const AboutDialog = ({ open, onClose }) => {
-  const classes = useStyles()
   const { permissions } = usePermissions()
   const { data: insightsData, isPending: loading } = useGetOne('insights', {
     id: 'insights_status',
@@ -473,7 +452,7 @@ const AboutDialog = ({ open, onClose }) => {
       open={open}
       fullWidth={true}
       maxWidth={expanded ? 'lg' : 'sm'}
-      className={classes.expandableDialog}
+      sx={{ transition: 'max-width 300ms ease' }}
     >
       <DialogTitle id="about-dialog-title" onClose={onClose}>
         Navidrome Music Server

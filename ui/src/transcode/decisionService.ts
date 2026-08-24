@@ -119,7 +119,7 @@ export function createDecisionService(
   async function resolveStreamUrl(songId: string): Promise<string> {
     const decision = await getDecision(songId)
     if (!decision?.transcodeParams) {
-      return baseUrl(subsonic.streamUrl(songId))
+      return baseUrl(subsonic.streamUrl(songId, undefined))
     }
     return buildStreamUrl(songId, decision.transcodeParams)
   }

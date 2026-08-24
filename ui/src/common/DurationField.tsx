@@ -12,7 +12,10 @@ export const DurationField = ({ source, ...rest }: DurationFieldProps) => {
   const record = useRecordContext<Record<string, unknown>>(rest)
   if (!record) return null
   try {
-    return <span>{formatDuration(record[source])}</span>
+    const duration = record[source]
+    return (
+      <span>{formatDuration(typeof duration === 'number' ? duration : 0)}</span>
+    )
   } catch (e) {
     // eslint-disable-next-line no-console
     console.log('Error in DurationField! Record:', record)

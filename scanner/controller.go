@@ -108,26 +108,29 @@ type controller struct {
 	changesDetected    bool
 }
 
-// getLastScanTime returns the most recent scan time across all libraries
-func (s *controller) getLastScanTime(ctx context.Context) (time.Time, error) {
-	libs, err := s.ds.Library(ctx).GetAll(model.QueryOptions{
-		Sort:  "last_scan_at",
-		Order: "desc",
-		Max:   1,
-	})
+// getLibrarySummary obtains the counters and most recent scan timestamp from a
+// single library query. Status polling previously loaded this data up to three
+// times per request.
+func (s *controller) getLibrarySummary(ctx context.Context) (time.Time, int64, int64, error) {
+	libs, err := s.ds.Library(ctx).GetAll()
 	if err != nil {
-		return time.Time{}, fmt.Errorf("getting libraries: %w", err)
+		return time.Time{}, 0, 0, fmt.Errorf("getting libraries: %w", err)
 	}
 
-	if len(libs) == 0 {
-		return time.Time{}, nil
+	var lastScan time.Time
+	var count, folderCount int64
+	for _, library := range libs {
+		if library.LastScanAt.After(lastScan) {
+			lastScan = library.LastScanAt
+		}
+		count += int64(library.TotalSongs)
+		folderCount += int64(library.TotalFolders)
 	}
-
-	return libs[0].LastScanAt, nil
+	return lastScan, count, folderCount, nil
 }
 
 // getScanInfo retrieves scan status from the database
-func (s *controller) getScanInfo(ctx context.Context) (scanType string, elapsed time.Duration, lastErr string) {
+func (s *controller) getScanInfo(ctx context.Context, lastScanTime time.Time) (scanType string, elapsed time.Duration, lastErr string) {
 	lastErr, _ = s.ds.Property(ctx).DefaultGet(consts.LastScanErrorKey, "")
 	scanType, _ = s.ds.Property(ctx).DefaultGet(consts.LastScanTypeKey, "")
 	startTimeStr, _ := s.ds.Property(ctx).DefaultGet(consts.LastScanStartTimeKey, "")
@@ -137,12 +140,8 @@ func (s *controller) getScanInfo(ctx context.Context) (scanType string, elapsed 
 		if err == nil {
 			if running.Load() {
 				elapsed = time.Since(startTime)
-			} else {
-				// If scan is not running, calculate elapsed time using the most recent scan time
-				lastScanTime, err := s.getLastScanTime(ctx)
-				if err == nil && !lastScanTime.IsZero() {
-					elapsed = lastScanTime.Sub(startTime)
-				}
+			} else if !lastScanTime.IsZero() {
+				elapsed = lastScanTime.Sub(startTime)
 			}
 		}
 	}
@@ -151,12 +150,12 @@ func (s *controller) getScanInfo(ctx context.Context) (scanType string, elapsed 
 }
 
 func (s *controller) Status(ctx context.Context) (*model.ScannerStatus, error) {
-	lastScanTime, err := s.getLastScanTime(ctx)
+	lastScanTime, count, folderCount, err := s.getLibrarySummary(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting last scan time: %w", err)
 	}
 
-	scanType, elapsed, lastErr := s.getScanInfo(ctx)
+	scanType, elapsed, lastErr := s.getScanInfo(ctx, lastScanTime)
 
 	if running.Load() {
 		status := &model.ScannerStatus{
@@ -171,10 +170,6 @@ func (s *controller) Status(ctx context.Context) (*model.ScannerStatus, error) {
 		return status, nil
 	}
 
-	count, folderCount, err := s.getCounters(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting library stats: %w", err)
-	}
 	return &model.ScannerStatus{
 		Scanning:    false,
 		LastScan:    lastScanTime,
@@ -187,16 +182,8 @@ func (s *controller) Status(ctx context.Context) (*model.ScannerStatus, error) {
 }
 
 func (s *controller) getCounters(ctx context.Context) (int64, int64, error) {
-	libs, err := s.ds.Library(ctx).GetAll()
-	if err != nil {
-		return 0, 0, fmt.Errorf("library count: %w", err)
-	}
-	var count, folderCount int64
-	for _, l := range libs {
-		count += int64(l.TotalSongs)
-		folderCount += int64(l.TotalFolders)
-	}
-	return count, folderCount, nil
+	_, count, folderCount, err := s.getLibrarySummary(ctx)
+	return count, folderCount, err
 }
 
 func (s *controller) ScanAll(requestCtx context.Context, fullScan bool) ([]string, error) {
@@ -218,6 +205,8 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	// inside the scanner (possibly in a subprocess), so mirror it here for the analysis gate. Must
 	// be read before the scan: ScanEnd clears the flag.
 	effectiveFullScan := EffectiveFullScan(ctx, s.ds, fullScan, targets)
+	scanStartedAt := time.Now()
+	scanType := scanTypeName(effectiveFullScan, len(targets) > 0)
 	if effectiveFullScan || s.includesUnscannedLibrary(ctx, targets) {
 		if err := db.MarkOptimizePending(ctx); err != nil {
 			log.Error(ctx, "Scanner: Error marking DB analysis pending", err)
@@ -234,7 +223,7 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	}()
 
 	// Wait for the scan to finish, sending progress events to all connected clients
-	scanWarnings, scanError := s.trackProgress(ctx, progress)
+	scanWarnings, scanError := s.trackProgress(ctx, progress, scanType, scanStartedAt)
 	for _, w := range scanWarnings {
 		log.Warn(ctx, fmt.Sprintf("Scan warning: %s", w))
 	}
@@ -261,15 +250,18 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 		s.metrics.WriteAfterScanMetrics(ctx, false)
 		return scanWarnings, err
 	} else {
-		scanType, elapsed, lastErr := s.getScanInfo(ctx)
 		s.metrics.WriteAfterScanMetrics(ctx, true)
+		lastErr := ""
+		if scanError != nil {
+			lastErr = scanError.Error()
+		}
 		s.sendMessage(ctx, &events.ScanStatus{
 			Scanning:    false,
 			Count:       count,
 			FolderCount: folderCount,
 			Error:       lastErr,
 			ScanType:    scanType,
-			ElapsedTime: elapsed,
+			ElapsedTime: time.Since(scanStartedAt),
 		})
 	}
 	return scanWarnings, scanError
@@ -344,7 +336,7 @@ func anyIncludedLibrary(ctx context.Context, ds model.DataStore, targets []model
 	})
 }
 
-func (s *controller) trackProgress(ctx context.Context, progress <-chan *ProgressInfo) ([]string, error) {
+func (s *controller) trackProgress(ctx context.Context, progress <-chan *ProgressInfo, scanType string, scanStartedAt time.Time) ([]string, error) {
 	s.count.Store(0)
 	s.folderCount.Store(0)
 	s.changesDetected = false
@@ -370,14 +362,12 @@ func (s *controller) trackProgress(ctx context.Context, progress <-chan *Progres
 		}
 
 		sendStatus := func() {
-			scanType, elapsed, lastErr := s.getScanInfo(ctx)
 			s.sendMessage(ctx, &events.ScanStatus{
 				Scanning:    true,
 				Count:       int64(s.count.Load()),
 				FolderCount: int64(s.folderCount.Load()),
-				Error:       lastErr,
 				ScanType:    scanType,
-				ElapsedTime: elapsed,
+				ElapsedTime: time.Since(scanStartedAt),
 			})
 		}
 		if s.limiter != nil && !p.ForceUpdate {

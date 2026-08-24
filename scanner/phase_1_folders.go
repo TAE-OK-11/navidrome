@@ -451,6 +451,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 		}
 
 		// Save all new/modified artists to DB. Their information will be incomplete, but they will be refreshed later
+		artistIDs := make([]string, 0, len(entry.artists))
 		for i := range entry.artists {
 			err = artistRepo.Put(&entry.artists[i], "name",
 				"mbz_artist_id", "sort_artist_name", "order_artist_name", "full_text", "search_normalized", "updated_at")
@@ -458,14 +459,14 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 				log.Error(p.ctx, "Scanner: Error persisting artist to DB", "folder", entry.path, "artist", entry.artists[i].Name, err)
 				return err
 			}
-			err = libraryRepo.AddArtist(entry.job.lib.ID, entry.artists[i].ID)
-			if err != nil {
-				log.Error(p.ctx, "Scanner: Error adding artist to library", "lib", entry.job.lib.ID, "artist", entry.artists[i].Name, err)
-				return err
-			}
+			artistIDs = append(artistIDs, entry.artists[i].ID)
 			if preCacheArtwork && entry.artists[i].Name != consts.UnknownArtist && entry.artists[i].Name != consts.VariousArtists {
 				artworkIDs = append(artworkIDs, entry.artists[i].CoverArtID())
 			}
+		}
+		if err = libraryRepo.AddArtist(entry.job.lib.ID, artistIDs...); err != nil {
+			log.Error(p.ctx, "Scanner: Error adding artists to library", "lib", entry.job.lib.ID, "count", len(artistIDs), err)
+			return err
 		}
 
 		// Save all new/modified albums to DB. Their information will be incomplete, but they will be refreshed later

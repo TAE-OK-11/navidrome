@@ -152,12 +152,25 @@ func (r *libraryRepository) StoreMusicFolder() error {
 	return err
 }
 
-func (r *libraryRepository) AddArtist(id int, artistID string) error {
-	sq := Insert("library_artist").Columns("library_id", "artist_id").Values(id, artistID).
-		Suffix(`on conflict(library_id, artist_id) do nothing`)
-	_, err := r.executeSQL(sq)
-	if err != nil {
-		return err
+func (r *libraryRepository) AddArtist(id int, artistIDs ...string) error {
+	const batchSize = 400 // 800 bind parameters, safe on conservative SQLite builds
+	for start := 0; start < len(artistIDs); start += batchSize {
+		end := min(start+batchSize, len(artistIDs))
+		sq := Insert("library_artist").Columns("library_id", "artist_id")
+		values := 0
+		for _, artistID := range artistIDs[start:end] {
+			if artistID != "" {
+				sq = sq.Values(id, artistID)
+				values++
+			}
+		}
+		if values == 0 {
+			continue
+		}
+		sq = sq.Suffix(`on conflict(library_id, artist_id) do nothing`)
+		if _, err := r.executeSQL(sq); err != nil {
+			return err
+		}
 	}
 	return nil
 }

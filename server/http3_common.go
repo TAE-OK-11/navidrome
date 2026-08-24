@@ -13,4 +13,5 @@ const (
 	serverH2SendPingTimeout        = 1 * time.Minute
 	serverH2PingTimeout            = 15 * time.Second
 	serverH2WriteByteTimeout       = 30 * time.Second
+	rustHTTP3CompressionHeader     = "X-Navidrome-H3-Compression"
 )

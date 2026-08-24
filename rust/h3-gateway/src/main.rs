@@ -1,18 +1,24 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::{FromRawFd, RawFd};
 use std::os::unix::net::UnixStream as StdUnixStream;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use bytes::Bytes;
+use async_compression::Level;
+use async_compression::tokio::bufread::{BrotliEncoder, GzipEncoder, ZstdEncoder};
+use bytes::{Bytes, BytesMut};
 use futures::{SinkExt, StreamExt, stream};
-use http::header::{CONNECTION, HOST, TE, TRAILER, TRANSFER_ENCODING, UPGRADE};
+use http::header::{
+    ACCEPT_ENCODING, CACHE_CONTROL, CONNECTION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_RANGE,
+    ETAG, HOST, RANGE, TE, TRAILER, TRANSFER_ENCODING, UPGRADE, VARY,
+};
 use http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri, Version};
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Empty, StreamBody};
@@ -22,6 +28,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use log::{info, warn};
 use serde::Deserialize;
 use socket2::{Domain, Protocol, Socket, Type};
+use tokio::io::{AsyncRead, AsyncReadExt, BufReader as TokioBufReader};
 use tokio::net::UdpSocket;
 use tokio::sync::{Semaphore, oneshot};
 use tokio_quiche::http3::driver::{
@@ -34,10 +41,12 @@ use tokio_quiche::quiche::h3::{self, NameValue};
 use tokio_quiche::settings::{CertificateKind, Hooks, QuicSettings, TlsCertificatePaths};
 use tokio_quiche::socket::QuicListener;
 use tokio_quiche::{ConnectionParams, ServerH3Driver, listen_with_capabilities};
+use tokio_util::io::StreamReader;
 
 const TOKEN_HEADER: &str = "x-navidrome-h3-token";
 const AUTHORITY_HEADER: &str = "x-navidrome-h3-authority";
 const REMOTE_ADDR_HEADER: &str = "x-navidrome-h3-remote-addr";
+const COMPRESSION_HEADER: &str = "x-navidrome-h3-compression";
 const MAX_UDP_PAYLOAD: usize = 1452;
 const CONTROL_STREAM_LIMIT: u64 = 8;
 const SEND_CAPACITY_FACTOR: f64 = 2.0;
@@ -47,6 +56,8 @@ const MAX_ADMISSION_PEERS: usize = 2_048;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+const BRIDGE_MAX_FRAME_SIZE: u32 = 64 * 1024;
+const API_COMPRESSION_MIN_SIZE: usize = 256;
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
@@ -139,6 +150,7 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
         .context("failed to adopt inherited HTTP/2 bridge")?;
     let mut h2 = http2::Builder::new(TokioExecutor::new());
     h2.adaptive_window(true);
+    h2.max_frame_size(BRIDGE_MAX_FRAME_SIZE);
     h2.max_header_list_size(64 * 1024);
     let (client, connection) = h2
         .handshake::<_, ProxyBody>(TokioIo::new(bridge))
@@ -576,6 +588,7 @@ async fn proxy_request_inner(
         return Ok(());
     }
 
+    let compression = decoded.compression;
     let body = request_body(recv, read_fin);
     let mut request = Request::builder()
         .method(decoded.method)
@@ -595,7 +608,7 @@ async fn proxy_request_inner(
             .await
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
-    forward_response(response, &mut send, &context.alt_svc).await
+    forward_response(response, &mut send, &context.alt_svc, compression).await
 }
 
 fn is_connect_request(headers: &[h3::Header]) -> bool {
@@ -608,6 +621,164 @@ struct DecodedRequest {
     method: Method,
     uri: Uri,
     headers: HeaderMap,
+    compression: Option<CompressionProfile>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompressionEncoding {
+    Brotli,
+    Zstd,
+    Gzip,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CompressionProfile {
+    encoding: CompressionEncoding,
+    level: i32,
+    identity_forbidden: bool,
+}
+
+impl CompressionEncoding {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Brotli => "br",
+            Self::Zstd => "zstd",
+            Self::Gzip => "gzip",
+        }
+    }
+
+    fn level(self) -> i32 {
+        match self {
+            Self::Brotli => 5,
+            Self::Zstd => 1,
+            Self::Gzip => 4,
+        }
+    }
+}
+
+#[derive(Default)]
+struct AcceptedEncodings {
+    brotli: Option<f32>,
+    zstd: Option<f32>,
+    gzip: Option<f32>,
+    identity: Option<f32>,
+    wildcard: Option<f32>,
+}
+
+impl AcceptedEncodings {
+    fn quality(&self, encoding: CompressionEncoding) -> f32 {
+        let explicit = match encoding {
+            CompressionEncoding::Brotli => self.brotli,
+            CompressionEncoding::Zstd => self.zstd,
+            CompressionEncoding::Gzip => self.gzip,
+        };
+        explicit.or(self.wildcard).unwrap_or(0.0)
+    }
+}
+
+fn select_request_compression(
+    method: &Method,
+    path: &str,
+    headers: &HeaderMap,
+) -> Option<CompressionProfile> {
+    if method == Method::HEAD
+        || headers.contains_key(RANGE)
+        || headers
+            .get(CONNECTION)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("upgrade"))
+    {
+        return None;
+    }
+    let path = path.split_once('?').map_or(path, |(path, _)| path);
+    let normalized = path.to_ascii_lowercase();
+    let normalized = normalized.strip_suffix(".view").unwrap_or(&normalized);
+    if !is_api_path(normalized) || is_media_path(normalized) || is_sensitive_auth_path(normalized) {
+        return None;
+    }
+    let accepted = parse_accept_encoding(headers.get(ACCEPT_ENCODING)?.to_str().ok()?);
+    let preferred = if normalized.contains("lyrics") {
+        CompressionEncoding::Brotli
+    } else {
+        CompressionEncoding::Zstd
+    };
+    let mut selected = preferred;
+    let mut best_quality = accepted.quality(preferred);
+    for encoding in [
+        CompressionEncoding::Zstd,
+        CompressionEncoding::Brotli,
+        CompressionEncoding::Gzip,
+    ] {
+        let quality = accepted.quality(encoding);
+        if quality > best_quality {
+            selected = encoding;
+            best_quality = quality;
+        }
+    }
+    if best_quality <= 0.0 {
+        return None;
+    }
+    Some(CompressionProfile {
+        encoding: selected,
+        level: selected.level(),
+        identity_forbidden: accepted.identity.is_some_and(|quality| quality <= 0.0),
+    })
+}
+
+fn parse_accept_encoding(value: &str) -> AcceptedEncodings {
+    let mut accepted = AcceptedEncodings::default();
+    for item in value.split(',') {
+        let mut parts = item.trim().split(';');
+        let token = parts.next().unwrap_or_default().trim();
+        let mut quality = 1.0;
+        for parameter in parts {
+            let Some((name, value)) = parameter.trim().split_once('=') else {
+                continue;
+            };
+            if name.trim().eq_ignore_ascii_case("q") {
+                quality = value
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|quality| (0.0..=1.0).contains(quality))
+                    .unwrap_or(0.0);
+            }
+        }
+        match token.to_ascii_lowercase().as_str() {
+            "br" => accepted.brotli = Some(quality),
+            "zstd" => accepted.zstd = Some(quality),
+            "gzip" => accepted.gzip = Some(quality),
+            "identity" => accepted.identity = Some(quality),
+            "*" => accepted.wildcard = Some(quality),
+            _ => {}
+        }
+    }
+    accepted
+}
+
+fn is_api_path(path: &str) -> bool {
+    path.starts_with("/api/")
+        || path.starts_with("/rest/")
+        || path.starts_with("/auth/")
+        || path.contains("/api/")
+        || path.contains("/rest/")
+        || path.contains("/auth/")
+}
+
+fn is_media_path(path: &str) -> bool {
+    path.ends_with("/rest/stream")
+        || path.ends_with("/rest/download")
+        || path.ends_with("/rest/gettranscodestream")
+        || path.ends_with("/rest/getcoverart")
+        || path.ends_with("/rest/getavatar")
+        || path.contains("/share/s/")
+        || path.contains("/share/d/")
+        || path.contains("/share/img/")
+}
+
+fn is_sensitive_auth_path(path: &str) -> bool {
+    let path = path.strip_suffix('/').unwrap_or(path);
+    path == "/auth" || path.ends_with("/auth") || path.contains("/auth/")
 }
 
 fn decode_request_headers(
@@ -619,8 +790,8 @@ fn decode_request_headers(
     let mut authority = None;
     let mut path = None;
     let mut regular_seen = false;
-    // Four required pseudo-headers are replaced by seven private-hop headers.
-    let mut output = HeaderMap::with_capacity(headers.len() + 3);
+    // Four required pseudo-headers are replaced by up to eight private-hop headers.
+    let mut output = HeaderMap::with_capacity(headers.len() + 4);
 
     for header in headers {
         let name = header.name();
@@ -650,6 +821,7 @@ fn decode_request_headers(
             || name == TOKEN_HEADER
             || name == AUTHORITY_HEADER
             || name == REMOTE_ADDR_HEADER
+            || name == COMPRESSION_HEADER
             || name.as_str().starts_with("x-forwarded-")
             || matches!(
                 name.as_str(),
@@ -683,6 +855,13 @@ fn decode_request_headers(
         .authority(authority_text)
         .path_and_query(path)
         .build()?;
+    let compression = select_request_compression(&method, path, &output);
+    if let Some(profile) = compression {
+        output.insert(
+            COMPRESSION_HEADER,
+            HeaderValue::from_static(profile.encoding.as_str()),
+        );
+    }
     output.insert(HOST, authority_header.clone());
     output.insert(AUTHORITY_HEADER, authority_header);
     output.insert(TOKEN_HEADER, bridge_headers.token.clone());
@@ -694,6 +873,7 @@ fn decode_request_headers(
         method,
         uri,
         headers: output,
+        compression,
     })
 }
 
@@ -740,8 +920,31 @@ async fn forward_response(
     response: hyper::Response<hyper::body::Incoming>,
     send: &mut OutboundFrameSender,
     alt_svc: &HeaderValue,
+    compression: Option<CompressionProfile>,
 ) -> Result<()> {
-    let (parts, mut body) = response.into_parts();
+    let (mut parts, mut body) = response.into_parts();
+    let mut prefix = VecDeque::new();
+    let mut compress = compression.filter(|_| response_supports_compression(&parts));
+    if let Some(profile) = compress
+        && let Some(length) = response_content_length(&parts.headers)
+        && length < API_COMPRESSION_MIN_SIZE
+        && !profile.identity_forbidden
+    {
+        compress = None;
+    } else if let Some(profile) = compress
+        && response_content_length(&parts.headers).is_none()
+    {
+        let (bytes, finished) = buffer_response_prefix(&mut body, API_COMPRESSION_MIN_SIZE).await?;
+        let buffered = bytes.iter().map(Bytes::len).sum::<usize>();
+        prefix = bytes;
+        if finished && buffered < API_COMPRESSION_MIN_SIZE && !profile.identity_forbidden {
+            compress = None;
+        }
+    }
+    if let Some(profile) = compress {
+        set_rust_compression_headers(&mut parts.headers, profile);
+    }
+
     let mut headers = Vec::with_capacity(parts.headers.len() + 2);
     headers.push(h3::Header::new(
         b":status",
@@ -759,6 +962,114 @@ async fn forward_response(
         headers.push(h3::Header::new(b"alt-svc", alt_svc.as_bytes()))
     }
     send.send(OutboundFrame::Headers(headers, None)).await?;
+    if let Some(profile) = compress {
+        forward_compressed_body(body, prefix, send, profile).await?;
+    } else {
+        forward_raw_body(&mut body, prefix, send).await?;
+    }
+    send.send(OutboundFrame::Body(Bytes::new(), true)).await?;
+    Ok(())
+}
+
+fn response_supports_compression(parts: &http::response::Parts) -> bool {
+    let status = parts.status;
+    if status.is_informational()
+        || status == StatusCode::NO_CONTENT
+        || status == StatusCode::NOT_MODIFIED
+        || status == StatusCode::PARTIAL_CONTENT
+    {
+        return false;
+    }
+    let headers = &parts.headers;
+    if headers.contains_key(CONTENT_RANGE) || headers.contains_key(CONTENT_ENCODING) {
+        return false;
+    }
+    if headers
+        .get(CACHE_CONTROL)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.to_ascii_lowercase().contains("no-transform"))
+    {
+        return false;
+    }
+    headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(is_compressible_content_type)
+}
+
+fn is_compressible_content_type(content_type: &str) -> bool {
+    let media_type = content_type
+        .split_once(';')
+        .map_or(content_type, |(media_type, _)| media_type)
+        .trim()
+        .to_ascii_lowercase();
+    if media_type.starts_with("text/") {
+        return media_type != "text/event-stream";
+    }
+    matches!(
+        media_type.as_str(),
+        "application/json"
+            | "application/xml"
+            | "application/javascript"
+            | "application/x-javascript"
+            | "application/manifest+json"
+            | "application/problem+json"
+            | "application/x-ndjson"
+            | "application/json-seq"
+            | "application/yaml"
+            | "application/x-yaml"
+            | "application/toml"
+            | "application/sql"
+            | "application/graphql-response+json"
+            | "application/x-www-form-urlencoded"
+            | "application/wasm"
+            | "application/vnd.apple.mpegurl"
+            | "application/x-mpegurl"
+            | "audio/mpegurl"
+            | "audio/x-mpegurl"
+            | "audio/vnd.apple.mpegurl"
+            | "image/svg+xml"
+    ) || media_type.ends_with("+json")
+        || media_type.ends_with("+xml")
+}
+
+fn response_content_length(headers: &HeaderMap) -> Option<usize> {
+    headers
+        .get(CONTENT_LENGTH)?
+        .to_str()
+        .ok()?
+        .parse::<usize>()
+        .ok()
+}
+
+async fn buffer_response_prefix(
+    body: &mut hyper::body::Incoming,
+    target: usize,
+) -> Result<(VecDeque<Bytes>, bool)> {
+    let mut buffered = VecDeque::new();
+    let mut size = 0;
+    while size < target {
+        let Some(frame) = body.frame().await else {
+            return Ok((buffered, true));
+        };
+        if let Ok(data) = frame?.into_data()
+            && !data.is_empty()
+        {
+            size += data.len();
+            buffered.push_back(data);
+        }
+    }
+    Ok((buffered, false))
+}
+
+async fn forward_raw_body(
+    body: &mut hyper::body::Incoming,
+    mut prefix: VecDeque<Bytes>,
+    send: &mut OutboundFrameSender,
+) -> Result<()> {
+    while let Some(data) = prefix.pop_front() {
+        send.send(OutboundFrame::Body(data, false)).await?;
+    }
     while let Some(frame) = body.frame().await {
         if let Ok(data) = frame?.into_data()
             && !data.is_empty()
@@ -766,8 +1077,94 @@ async fn forward_response(
             send.send(OutboundFrame::Body(data, false)).await?;
         }
     }
-    send.send(OutboundFrame::Body(Bytes::new(), true)).await?;
     Ok(())
+}
+
+fn response_data_stream(
+    body: hyper::body::Incoming,
+    prefix: VecDeque<Bytes>,
+) -> impl futures::Stream<Item = std::io::Result<Bytes>> + Send {
+    stream::unfold((body, prefix), |(mut body, mut prefix)| async move {
+        if let Some(data) = prefix.pop_front() {
+            return Some((Ok(data), (body, prefix)));
+        }
+        loop {
+            match body.frame().await {
+                Some(Ok(frame)) => {
+                    if let Ok(data) = frame.into_data()
+                        && !data.is_empty()
+                    {
+                        return Some((Ok(data), (body, prefix)));
+                    }
+                }
+                Some(Err(error)) => {
+                    return Some((Err(std::io::Error::other(error)), (body, prefix)));
+                }
+                None => return None,
+            }
+        }
+    })
+}
+
+async fn forward_compressed_body(
+    body: hyper::body::Incoming,
+    prefix: VecDeque<Bytes>,
+    send: &mut OutboundFrameSender,
+    profile: CompressionProfile,
+) -> Result<()> {
+    let reader = TokioBufReader::new(StreamReader::new(Box::pin(response_data_stream(
+        body, prefix,
+    ))));
+    let quality = Level::Precise(profile.level);
+    let mut encoder: Pin<Box<dyn AsyncRead + Send>> = match profile.encoding {
+        CompressionEncoding::Brotli => Box::pin(BrotliEncoder::with_quality(reader, quality)),
+        CompressionEncoding::Zstd => Box::pin(ZstdEncoder::with_quality(reader, quality)),
+        CompressionEncoding::Gzip => Box::pin(GzipEncoder::with_quality(reader, quality)),
+    };
+    loop {
+        let mut output = BytesMut::with_capacity(BRIDGE_MAX_FRAME_SIZE as usize);
+        let read = encoder.read_buf(&mut output).await?;
+        if read == 0 {
+            return Ok(());
+        }
+        send.send(OutboundFrame::Body(output.freeze(), false))
+            .await?;
+    }
+}
+
+fn set_rust_compression_headers(headers: &mut HeaderMap, profile: CompressionProfile) {
+    headers.insert(
+        CONTENT_ENCODING,
+        HeaderValue::from_static(profile.encoding.as_str()),
+    );
+    for name in ["content-length", "content-md5", "content-digest", "digest"] {
+        headers.remove(name);
+    }
+    if let Some(etag) = headers.get(ETAG).cloned() {
+        let value = etag.as_bytes();
+        if !value.starts_with(b"W/\"") {
+            if value.starts_with(b"\"") && value.ends_with(b"\"") {
+                let mut weak = Vec::with_capacity(value.len() + 2);
+                weak.extend_from_slice(b"W/");
+                weak.extend_from_slice(value);
+                if let Ok(weak) = HeaderValue::from_bytes(&weak) {
+                    headers.insert(ETAG, weak);
+                }
+            } else {
+                headers.remove(ETAG);
+            }
+        }
+    }
+    let has_vary = headers.get_all(VARY).iter().any(|value| {
+        value.to_str().ok().is_some_and(|value| {
+            value
+                .split(',')
+                .any(|part| part.trim().eq_ignore_ascii_case("accept-encoding"))
+        })
+    });
+    if !has_vary {
+        headers.append(VARY, HeaderValue::from_static("Accept-Encoding"));
+    }
 }
 
 fn forbidden_response_header(name: &HeaderName) -> bool {
@@ -869,6 +1266,7 @@ mod tests {
             h3::Header::new(b":scheme", b"https"),
             h3::Header::new(b":authority", b"music.example"),
             h3::Header::new(b":path", b"/rest/ping?x=1"),
+            h3::Header::new(b"accept-encoding", b"br, zstd, gzip"),
             h3::Header::new(b"x-forwarded-for", b"attacker"),
             h3::Header::new(b"x-real-ip", b"198.51.100.99"),
         ];
@@ -886,7 +1284,129 @@ mod tests {
         assert_eq!(decoded.headers["x-forwarded-for"], "192.0.2.10");
         assert_eq!(decoded.headers[TOKEN_HEADER], "test-token");
         assert_eq!(decoded.headers[REMOTE_ADDR_HEADER], "192.0.2.10:12345");
+        assert_eq!(decoded.headers[COMPRESSION_HEADER], "zstd");
+        assert_eq!(
+            decoded.compression,
+            Some(CompressionProfile {
+                encoding: CompressionEncoding::Zstd,
+                level: 1,
+                identity_forbidden: false,
+            })
+        );
         assert!(!decoded.headers.contains_key("x-real-ip"));
+    }
+
+    #[test]
+    fn compression_negotiation_matches_api_policy() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("br, zstd, gzip"));
+        assert_eq!(
+            select_request_compression(&Method::GET, "/api/album", &headers)
+                .unwrap()
+                .encoding,
+            CompressionEncoding::Zstd
+        );
+        assert_eq!(
+            select_request_compression(&Method::GET, "/rest/getLyrics.view", &headers)
+                .unwrap()
+                .encoding,
+            CompressionEncoding::Brotli
+        );
+
+        headers.insert(RANGE, HeaderValue::from_static("bytes=0-99"));
+        assert!(select_request_compression(&Method::GET, "/api/album", &headers).is_none());
+        headers.remove(RANGE);
+        assert!(select_request_compression(&Method::GET, "/rest/stream.view", &headers).is_none());
+        assert!(
+            select_request_compression(&Method::GET, "/rest/stream.view?id=track", &headers)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn compression_quality_and_identity_are_honored() {
+        let accepted = parse_accept_encoding("br;q=0.4, zstd;q=0.9, gzip;q=1, identity;q=0");
+        assert_eq!(accepted.quality(CompressionEncoding::Brotli), 0.4);
+        assert_eq!(accepted.quality(CompressionEncoding::Zstd), 0.9);
+        assert_eq!(accepted.quality(CompressionEncoding::Gzip), 1.0);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            ACCEPT_ENCODING,
+            HeaderValue::from_static("zstd, identity;q=0"),
+        );
+        assert!(
+            select_request_compression(&Method::GET, "/api/ping", &headers)
+                .unwrap()
+                .identity_forbidden
+        );
+    }
+
+    #[test]
+    fn rust_compression_headers_remove_stale_entity_metadata() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("1024"));
+        headers.insert(ETAG, HeaderValue::from_static("\"strong\""));
+        headers.insert("digest", HeaderValue::from_static("sha-256=test"));
+        set_rust_compression_headers(
+            &mut headers,
+            CompressionProfile {
+                encoding: CompressionEncoding::Zstd,
+                level: 1,
+                identity_forbidden: false,
+            },
+        );
+        assert_eq!(headers[CONTENT_ENCODING], "zstd");
+        assert_eq!(headers[ETAG], "W/\"strong\"");
+        assert!(!headers.contains_key(CONTENT_LENGTH));
+        assert!(!headers.contains_key("digest"));
+        assert_eq!(headers[VARY], "Accept-Encoding");
+    }
+
+    #[test]
+    fn rust_streaming_compression_round_trips_all_encodings() {
+        use async_compression::tokio::bufread::{BrotliDecoder, GzipDecoder, ZstdDecoder};
+        use std::io::Cursor;
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let input = Bytes::from(vec![b'a'; 64 * 1024]);
+            for encoding in [
+                CompressionEncoding::Brotli,
+                CompressionEncoding::Zstd,
+                CompressionEncoding::Gzip,
+            ] {
+                let source = TokioBufReader::new(Cursor::new(input.clone()));
+                let quality = Level::Precise(encoding.level());
+                let mut encoder: Pin<Box<dyn AsyncRead>> = match encoding {
+                    CompressionEncoding::Brotli => {
+                        Box::pin(BrotliEncoder::with_quality(source, quality))
+                    }
+                    CompressionEncoding::Zstd => {
+                        Box::pin(ZstdEncoder::with_quality(source, quality))
+                    }
+                    CompressionEncoding::Gzip => {
+                        Box::pin(GzipEncoder::with_quality(source, quality))
+                    }
+                };
+                let mut compressed = Vec::new();
+                encoder.read_to_end(&mut compressed).await.unwrap();
+                assert!(compressed.len() < input.len());
+
+                let compressed = TokioBufReader::new(Cursor::new(compressed));
+                let mut decoder: Pin<Box<dyn AsyncRead>> = match encoding {
+                    CompressionEncoding::Brotli => Box::pin(BrotliDecoder::new(compressed)),
+                    CompressionEncoding::Zstd => Box::pin(ZstdDecoder::new(compressed)),
+                    CompressionEncoding::Gzip => Box::pin(GzipDecoder::new(compressed)),
+                };
+                let mut decoded = Vec::new();
+                decoder.read_to_end(&mut decoded).await.unwrap();
+                assert_eq!(decoded.as_slice(), input.as_ref());
+            }
+        });
     }
 
     #[test]

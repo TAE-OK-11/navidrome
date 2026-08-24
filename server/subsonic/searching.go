@@ -8,9 +8,11 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/sanitize"
+	"github.com/navidrome/navidrome/adapters/rustsearch"
 	"github.com/navidrome/navidrome/core/publicurl"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -87,6 +89,20 @@ func logSearchFailure(ctx context.Context, message, query string, elapsed time.D
 func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderIds []int) (mediaFiles model.MediaFiles, albums model.Albums, artists model.Artists) {
 	start := time.Now()
 	q := sanitize.Accents(strings.ToLower(strings.TrimSuffix(sp.query, "*")))
+	if api.rustSearch != nil && rustSearchableQuery(q) {
+		api.rustSearch.RefreshIfStale(ctx, api.ds)
+		scope := musicFolderIds
+		if len(scope) == 0 {
+			scope = getUserAccessibleLibraries(ctx).IDs()
+		}
+		if mfs, als, as, ok := api.searchAllRust(ctx, q, scope, sp); ok {
+			if log.IsGreaterOrEqualTo(log.LevelDebug) {
+				log.Debug(ctx, "Search completed", "backend", "rust", "songs", len(mfs), "albums", len(als),
+					"artists", len(as), "query", sp.query, "elapsedTime", time.Since(start))
+			}
+			return mfs, als, as
+		}
+	}
 
 	// Build options with offset/size/filters packed in
 	songOpts := model.QueryOptions{Max: sp.songCount, Offset: sp.songOffset}
@@ -107,13 +123,116 @@ func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderI
 	err := g.Wait()
 	if err == nil {
 		if log.IsGreaterOrEqualTo(log.LevelDebug) {
-			log.Debug(ctx, "Search completed", "songs", len(mediaFiles), "albums", len(albums), "artists", len(artists),
+			log.Debug(ctx, "Search completed", "backend", "sqlite", "songs", len(mediaFiles), "albums", len(albums), "artists", len(artists),
 				"query", sp.query, "elapsedTime", time.Since(start))
 		}
 	} else {
 		log.Warn(ctx, "Search was interrupted", "query", sp.query, "elapsedTime", time.Since(start), err)
 	}
 	return mediaFiles, albums, artists
+}
+
+func rustSearchableQuery(query string) bool {
+	searchable := 0
+	for _, char := range query {
+		if unicode.IsLetter(char) || unicode.IsNumber(char) {
+			searchable++
+			if searchable >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (api *Router) searchAllRust(ctx context.Context, query string, libraryIDs []int, sp *searchParams) (model.MediaFiles, model.Albums, model.Artists, bool) {
+	songIDs, err := api.rustSearch.Search(query, "song", libraryIDs, sp.songOffset, sp.songCount)
+	if err != nil {
+		if !errors.Is(err, rustsearch.ErrNotReady) {
+			log.Warn(ctx, "Rust song search failed; using SQLite fallback", err)
+		}
+		return nil, nil, nil, false
+	}
+	albumIDs, err := api.rustSearch.Search(query, "album", libraryIDs, sp.albumOffset, sp.albumCount)
+	if err != nil {
+		log.Warn(ctx, "Rust album search failed; using SQLite fallback", err)
+		return nil, nil, nil, false
+	}
+	artistIDs, err := api.rustSearch.Search(query, "artist", libraryIDs, sp.artistOffset, sp.artistCount)
+	if err != nil {
+		log.Warn(ctx, "Rust artist search failed; using SQLite fallback", err)
+		return nil, nil, nil, false
+	}
+
+	mediaFiles, err := api.hydrateRustSongs(ctx, songIDs)
+	if err != nil {
+		log.Warn(ctx, "Hydrating Rust song results failed; using SQLite fallback", err)
+		return nil, nil, nil, false
+	}
+	albums, err := api.hydrateRustAlbums(ctx, albumIDs)
+	if err != nil {
+		log.Warn(ctx, "Hydrating Rust album results failed; using SQLite fallback", err)
+		return nil, nil, nil, false
+	}
+	artists, err := api.hydrateRustArtists(ctx, artistIDs)
+	if err != nil {
+		log.Warn(ctx, "Hydrating Rust artist results failed; using SQLite fallback", err)
+		return nil, nil, nil, false
+	}
+	return mediaFiles, albums, artists, true
+}
+
+func (api *Router) hydrateRustSongs(ctx context.Context, ids []string) (model.MediaFiles, error) {
+	if len(ids) == 0 {
+		return model.MediaFiles{}, nil
+	}
+	values, err := api.ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: And{
+		Eq{"media_file.id": ids}, Eq{"media_file.missing": false},
+	}})
+	if err != nil {
+		return nil, err
+	}
+	return orderRustResults(ids, values, func(value model.MediaFile) string { return value.ID }), nil
+}
+
+func (api *Router) hydrateRustAlbums(ctx context.Context, ids []string) (model.Albums, error) {
+	if len(ids) == 0 {
+		return model.Albums{}, nil
+	}
+	values, err := api.ds.Album(ctx).GetAll(model.QueryOptions{Filters: And{
+		Eq{"album.id": ids}, Eq{"album.missing": false},
+	}})
+	if err != nil {
+		return nil, err
+	}
+	return orderRustResults(ids, values, func(value model.Album) string { return value.ID }), nil
+}
+
+func (api *Router) hydrateRustArtists(ctx context.Context, ids []string) (model.Artists, error) {
+	if len(ids) == 0 {
+		return model.Artists{}, nil
+	}
+	values, err := api.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: And{
+		Eq{"artist.id": ids}, Eq{"artist.missing": false},
+	}})
+	if err != nil {
+		return nil, err
+	}
+	return orderRustResults(ids, values, func(value model.Artist) string { return value.ID }), nil
+}
+
+func orderRustResults[T any](ids []string, values []T, getID func(T) string) []T {
+	byID := make(map[string]T, len(values))
+	for _, value := range values {
+		byID[getID(value)] = value
+	}
+	ordered := make([]T, 0, len(values))
+	for _, id := range ids {
+		if value, ok := byID[id]; ok {
+			ordered = append(ordered, value)
+		}
+	}
+	return ordered
 }
 
 func (api *Router) Search2(r *http.Request) (*responses.Subsonic, error) {

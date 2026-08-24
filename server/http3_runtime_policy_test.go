@@ -3,6 +3,9 @@ package server
 import "testing"
 
 func TestHTTP3RuntimePolicyBounds(t *testing.T) {
+	if serverH3BridgeIdleTimeout != 0 {
+		t.Fatalf("inherited H3 bridge idle timeout=%s, want disabled for process lifetime", serverH3BridgeIdleTimeout)
+	}
 	if serverQUICHandshakeIdleTimeout <= 0 || serverQUICHandshakeIdleTimeout >= serverHTTP3IdleTimeout {
 		t.Fatalf("handshake timeout=%s must be positive and below idle timeout=%s", serverQUICHandshakeIdleTimeout, serverHTTP3IdleTimeout)
 	}

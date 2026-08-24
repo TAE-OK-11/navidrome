@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -34,13 +34,13 @@ struct InputFile {
 struct Response {
     protocol: u32,
     lofty: &'static str,
-    results: BTreeMap<String, Metadata>,
-    errors: BTreeMap<String, String>,
+    results: HashMap<String, Metadata>,
+    errors: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
 struct Metadata {
-    tags: BTreeMap<String, Vec<String>>,
+    tags: HashMap<String, Vec<String>>,
     duration_ns: u64,
     bit_rate: u32,
     bit_depth: u8,
@@ -87,8 +87,8 @@ fn run_worker() -> Result<()> {
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
                 lofty: env!("CARGO_PKG_VERSION"),
-                results: BTreeMap::new(),
-                errors: BTreeMap::from([("$request".to_owned(), error.to_string())]),
+                results: HashMap::new(),
+                errors: HashMap::from([("$request".to_owned(), error.to_string())]),
             },
         };
         serde_json::to_writer(&mut output, &response).context("encoding metadata response")?;
@@ -99,8 +99,9 @@ fn run_worker() -> Result<()> {
 }
 
 fn handle_request(request: Request) -> Response {
-    let mut results = BTreeMap::new();
-    let mut errors = BTreeMap::new();
+    let file_count = request.files.len();
+    let mut results = HashMap::with_capacity(file_count);
+    let mut errors = HashMap::new();
 
     if request.files.len() > MAX_BATCH_FILES {
         errors.insert(
@@ -149,7 +150,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
 
     Ok(Metadata {
-        tags: tags.into_iter().collect(),
+        tags,
         duration_ns: properties.duration().as_nanos().min(u128::from(u64::MAX)) as u64,
         bit_rate: properties.audio_bitrate().unwrap_or(0),
         bit_depth: properties.bit_depth().unwrap_or(0),

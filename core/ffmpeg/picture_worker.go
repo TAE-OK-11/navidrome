@@ -42,28 +42,37 @@ type pictureWorkerSlot struct {
 }
 
 type pictureWorkerPool struct {
-	slots chan *pictureWorkerSlot
+	limit chan struct{}
+	idle  chan *pictureWorkerSlot
 }
 
 var persistentPictureWorkers = newPictureWorkerPool()
 
 func newPictureWorkerPool() *pictureWorkerPool {
 	size := min(max(runtime.GOMAXPROCS(0), 1), maxPictureWorkers)
-	pool := &pictureWorkerPool{slots: make(chan *pictureWorkerSlot, size)}
-	for range size {
-		pool.slots <- &pictureWorkerSlot{}
+	return &pictureWorkerPool{
+		limit: make(chan struct{}, size),
+		idle:  make(chan *pictureWorkerSlot, size),
 	}
-	return pool
 }
 
 func (p *pictureWorkerPool) extract(ctx context.Context, binary, path string, maxBytes int64) ([]byte, error) {
-	var slot *pictureWorkerSlot
 	select {
-	case slot = <-p.slots:
+	case p.limit <- struct{}{}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	defer func() { p.slots <- slot }()
+	defer func() { <-p.limit }()
+
+	var slot *pictureWorkerSlot
+	select {
+	case slot = <-p.idle:
+	default:
+		slot = &pictureWorkerSlot{}
+	}
+	// Return the worker before releasing capacity, so the next admitted request
+	// observes the reusable process instead of spawning another one.
+	defer func() { p.idle <- slot }()
 
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -200,13 +209,12 @@ func (e *pictureExtractionError) Error() string {
 }
 
 func (p *pictureWorkerPool) closeIdle() {
-	slots := make([]*pictureWorkerSlot, 0, cap(p.slots))
-	for range cap(p.slots) {
-		slot := <-p.slots
-		slot.stop()
-		slots = append(slots, slot)
-	}
-	for _, slot := range slots {
-		p.slots <- slot
+	for {
+		select {
+		case slot := <-p.idle:
+			slot.stop()
+		default:
+			return
+		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -197,7 +196,7 @@ func (s *Stream) Seekable() bool    { return s.Seeker != nil }
 func (s *Stream) Duration() float32 { return s.mf.Duration }
 func (s *Stream) ContentType() string {
 	if s.contentType == "" {
-		s.contentType = mime.TypeByExtension("." + s.format)
+		s.contentType = model.ContentTypeForSuffix(s.format)
 	}
 	return s.contentType
 }

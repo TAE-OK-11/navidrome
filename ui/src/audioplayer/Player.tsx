@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInterval } from '../common'
 import { useDispatch, useSelector } from 'react-redux'
-import { useMediaQuery } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import {
   createTheme,
   ThemeProvider,
@@ -15,7 +15,6 @@ import ReactJkMusicPlayer from 'navidrome-music-player'
 import 'navidrome-music-player/assets/index.css'
 import useCurrentTheme from '../themes/useCurrentTheme'
 import config from '../config'
-import useStyle from './styles'
 import AudioTitle from './AudioTitle'
 import {
   clearQueue,
@@ -35,6 +34,7 @@ import keyHandlers from './keyHandlers'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { detectBrowserProfile, decisionService } from '../transcode'
 import modernizeTheme from '../themes/modernizeTheme'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const isMobileUserAgent =
   typeof navigator !== 'undefined' &&
@@ -140,11 +140,6 @@ const Player = () => {
 
   const visible = authenticated && playerQueue.length > 0
   const isRadio = playerCurrent?.isRadio || false
-  const classes = useStyle({
-    isRadio,
-    visible,
-    enableCoverAnimation: config.enableCoverAnimation,
-  })
   const showNotifications = useSelector(
     (state) => state.settings.notifications || false,
   )
@@ -491,22 +486,76 @@ const Player = () => {
     <StyledEngineProvider injectFirst>
       (
       <ThemeProvider theme={muiTheme}>
-        <ReactJkMusicPlayer
-          {...options}
-          className={classes.player}
-          onAudioListsChange={onAudioListsChange}
-          onAudioVolumeChange={onAudioVolumeChange}
-          onAudioProgress={onAudioProgress}
-          onAudioPlay={onAudioPlay}
-          onAudioPlayTrackChange={onAudioPlayTrackChange}
-          onAudioPause={onAudioPause}
-          onPlayModeChange={onPlayModeChange}
-          onAudioEnded={onAudioEnded}
-          onCoverClick={onCoverClick}
-          onAudioError={onAudioError}
-          onBeforeDestroy={onBeforeDestroy}
-          getAudioInstance={setAudioInstance}
-        />
+        <Box
+          sx={[
+            {
+              display: visible ? 'block' : 'none',
+              '@media screen and (max-width:810px)': {
+                '& .sound-operation': { display: 'none' },
+              },
+              '@media (prefers-reduced-motion)': {
+                '& .music-player-panel .panel-content div.img-rotate': {
+                  animation: 'none',
+                },
+              },
+              '& .progress-bar-content': {
+                display: 'flex',
+                flexDirection: 'column',
+              },
+              '& .play-mode-title': { pointerEvents: 'none' },
+              '& .music-player-panel .panel-content div.img-rotate': {
+                animationDuration: config.enableCoverAnimation
+                  ? undefined
+                  : '0s',
+                borderRadius: config.enableCoverAnimation ? undefined : 0,
+                backgroundSize: 'contain',
+                backgroundPosition: 'center',
+              },
+              '& .react-jinke-music-player-mobile .react-jinke-music-player-mobile-cover':
+                {
+                  borderRadius: config.enableCoverAnimation ? undefined : 0,
+                  width: config.enableCoverAnimation ? undefined : '85%',
+                  maxWidth: config.enableCoverAnimation ? undefined : 600,
+                  height: config.enableCoverAnimation ? undefined : 'auto',
+                  aspectRatio: '1/1',
+                  display: 'flex',
+                },
+              '& .react-jinke-music-player-mobile .react-jinke-music-player-mobile-cover img.cover':
+                {
+                  animationDuration: config.enableCoverAnimation
+                    ? undefined
+                    : '0s',
+                  objectFit: 'contain',
+                },
+              '& .react-jinke-music-player-mobile .react-jinke-music-player-mobile-singer':
+                { display: 'none' },
+              '& .react-jinke-music-player-mobile .react-jinke-music-player-mobile-switch':
+                { display: 'none' },
+              '& .music-player-panel .panel-content .progress-bar-content section.audio-main':
+                { display: isRadio ? 'none' : 'inline-flex' },
+              '& .react-jinke-music-player-mobile-progress': {
+                display: isRadio ? 'none' : 'flex',
+              },
+            },
+            (theme) => componentStyleOverride(theme, 'NDAudioPlayer', 'player'),
+          ]}
+        >
+          <ReactJkMusicPlayer
+            {...options}
+            onAudioListsChange={onAudioListsChange}
+            onAudioVolumeChange={onAudioVolumeChange}
+            onAudioProgress={onAudioProgress}
+            onAudioPlay={onAudioPlay}
+            onAudioPlayTrackChange={onAudioPlayTrackChange}
+            onAudioPause={onAudioPause}
+            onPlayModeChange={onPlayModeChange}
+            onAudioEnded={onAudioEnded}
+            onCoverClick={onCoverClick}
+            onAudioError={onAudioError}
+            onBeforeDestroy={onBeforeDestroy}
+            getAudioInstance={setAudioInstance}
+          />
+        </Box>
         <GlobalHotKeys handlers={handlers} keyMap={keyMap} allowChanges />
       </ThemeProvider>
       )

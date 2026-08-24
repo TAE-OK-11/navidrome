@@ -1,17 +1,17 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import { useMediaQuery } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import { Link } from 'react-router-dom'
-import clsx from 'clsx'
 import { QualityInfo } from '../common'
 import { decisionService } from '../transcode'
-import useStyle from './styles'
 import { useDrag } from 'react-dnd'
 import { DraggableTypes } from '../consts'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
+
+const audioOverride = (slot) => (theme) =>
+  componentStyleOverride(theme, 'NDAudioPlayer', slot)
 
 const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
-  const classes = useStyle()
-  const className = classes.audioTitle
   const isDesktop = useMediaQuery('(min-width:810px)')
 
   const song = audioInfo.song
@@ -55,13 +55,41 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
       : `/album/${song.albumId}/show`
 
   return (
-    <Link to={linkTo} className={className} ref={dragSongRef}>
+    <Box
+      component={Link}
+      to={linkTo}
+      ref={dragSongRef}
+      sx={[
+        { textDecoration: 'none', color: 'primary.dark' },
+        audioOverride('audioTitle'),
+      ]}
+    >
       <span>
-        <span className={clsx(classes.songTitle, 'songTitle')}>{title}</span>
+        <Box
+          component="span"
+          className="songTitle"
+          sx={[
+            {
+              fontWeight: 'bold',
+              '&:hover + .quality-info': { opacity: 1 },
+            },
+            audioOverride('songTitle'),
+          ]}
+        >
+          {title}
+        </Box>
         {isDesktop && (
           <QualityInfo
             record={qi}
-            className={classes.qualityInfo}
+            className="quality-info"
+            sx={[
+              {
+                mt: '-4px',
+                opacity: 0,
+                transition: 'all 500ms ease-out',
+              },
+              audioOverride('qualityInfo'),
+            ]}
             {...gainInfo}
             {...transcodeProps}
           />
@@ -69,22 +97,40 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
       </span>
       {isMobile ? (
         <>
-          <span className={classes.songInfo}>
+          <Box
+            component="span"
+            sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
+          >
             <span className={'songArtist'}>{song.artist}</span>
-          </span>
-          <span className={clsx(classes.songInfo, classes.songAlbum)}>
+          </Box>
+          <Box
+            component="span"
+            sx={[
+              {
+                display: 'block',
+                mt: '2px',
+                fontStyle: 'italic',
+                fontSize: 'smaller',
+              },
+              audioOverride('songInfo'),
+              audioOverride('songAlbum'),
+            ]}
+          >
             <span className={'songAlbum'}>{song.album}</span>
             {song.year ? ` - ${song.year}` : ''}
-          </span>
+          </Box>
         </>
       ) : (
-        <span className={classes.songInfo}>
+        <Box
+          component="span"
+          sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
+        >
           <span className={'songArtist'}>{song.artist}</span> -{' '}
           <span className={'songAlbum'}>{song.album}</span>
           {song.year ? ` - ${song.year}` : ''}
-        </span>
+        </Box>
       )}
-    </Link>
+    </Box>
   )
 })
 

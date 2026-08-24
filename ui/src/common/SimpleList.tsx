@@ -9,7 +9,6 @@ import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
 import Box from '@mui/material/Box'
-import { styled } from '@mui/material/styles'
 import { Link } from 'react-router-dom'
 import {
   sanitizeListRestProps,
@@ -17,11 +16,6 @@ import {
   useResourceContext,
 } from 'react-admin'
 import { linkToRecord } from '../utils/linkToRecord'
-
-const ListLink = styled(Link)({
-  textDecoration: 'none',
-  color: 'inherit',
-})
 
 const LinkOrNot = ({
   classes: classesOverride,
@@ -32,16 +26,23 @@ const LinkOrNot = ({
   children,
 }) => {
   return linkType === 'edit' || linkType === true ? (
-    <ListLink to={linkToRecord(basePath, id)} className={classesOverride?.link}>
-      {children}
-    </ListLink>
-  ) : linkType === 'show' ? (
-    <ListLink
-      to={`${linkToRecord(basePath, id)}/show`}
+    <Box
+      component={Link}
+      to={linkToRecord(basePath, id)}
       className={classesOverride?.link}
+      sx={{ textDecoration: 'none', color: 'inherit' }}
     >
       {children}
-    </ListLink>
+    </Box>
+  ) : linkType === 'show' ? (
+    <Box
+      component={Link}
+      to={`${linkToRecord(basePath, id)}/show`}
+      className={classesOverride?.link}
+      sx={{ textDecoration: 'none', color: 'inherit' }}
+    >
+      {children}
+    </Box>
   ) : typeof linkType === 'function' ? (
     <span onClick={() => linkType(id, basePath, record)}>{children}</span>
   ) : (

@@ -155,7 +155,6 @@ func (p *phaseFolders) producer() ppl.Producer[*folderEntry] {
 		group, groupCtx := errgroup.WithContext(p.ctx)
 		group.SetLimit(max(int(conf.Server.DevScannerThreads), 1))
 		for _, job := range p.jobs {
-			job := job
 			group.Go(func() error {
 				if utils.IsCtxDone(groupCtx) {
 					return nil

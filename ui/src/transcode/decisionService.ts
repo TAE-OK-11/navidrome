@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { jwtDecode } from 'jwt-decode'
 import subsonic from '../subsonic'
 import { baseUrl } from '../utils'

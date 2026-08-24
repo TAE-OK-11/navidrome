@@ -146,6 +146,21 @@ func extractImageWithMetadataWorker(ctx context.Context, path string) (io.ReadCl
 	if err != nil {
 		return nil, err
 	}
+	limit := embeddedImageReadLimit()
+	data, persistentErr := persistentPictureWorkers.extract(ctx, workerPath, path, limit)
+	if persistentErr == nil {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+	var extractionErr *pictureExtractionError
+	if errors.As(persistentErr, &extractionErr) {
+		return nil, persistentErr
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+
+	// Preserve compatibility with an administrator-provided older metadata
+	// binary that supports only the original one-shot picture command.
 	cmd := exec.CommandContext(ctx, workerPath, "--extract-picture", path) // #nosec -- resolved administrator-controlled binary
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -157,7 +172,6 @@ func extractImageWithMetadataWorker(ctx context.Context, path string) (io.ReadCl
 		return nil, fmt.Errorf("starting metadata worker: %w", err)
 	}
 
-	limit := embeddedImageReadLimit()
 	data, readErr := io.ReadAll(io.LimitReader(stdout, limit+1))
 	if int64(len(data)) > limit {
 		_ = cmd.Process.Kill()

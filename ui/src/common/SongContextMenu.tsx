@@ -9,11 +9,9 @@ import {
   useTranslate,
   useDataProvider,
 } from 'react-admin'
-import { IconButton, Menu, MenuItem } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, IconButton, Menu, MenuItem } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
-import clsx from 'clsx'
 import {
   playNext,
   addTracks,
@@ -29,12 +27,6 @@ import config from '../config'
 import { playSimilar } from './playbackActions'
 import { formatBytes } from '../utils'
 import { useRedirect } from 'react-admin'
-
-const useStyles = makeStyles({
-  noWrap: {
-    whiteSpace: 'nowrap',
-  },
-})
 
 const MoreButton = ({ record, onClick, info }) => {
   const handleClick = record.missing
@@ -65,9 +57,9 @@ export const SongContextMenu = ({
   showLove = true,
   onAddToPlaylist = () => {},
   className,
+  sx,
 }) => {
   const record = useRecordContext({ record: recordOverride })
-  const classes = useStyles()
   const dispatch = useDispatch()
   const translate = useTranslate()
   const notify = useNotify()
@@ -247,7 +239,11 @@ export const SongContextMenu = ({
   const present = !record.missing
 
   return (
-    <span className={clsx(classes.noWrap, className)}>
+    <Box
+      component="span"
+      className={`nd-song-context-menu${className ? ` ${className}` : ''}`}
+      sx={[{ whiteSpace: 'nowrap' }, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       <LoveButton
         record={record}
         resource={resource}
@@ -308,7 +304,7 @@ export const SongContextMenu = ({
           </MenuItem>
         ))}
       </Menu>
-    </span>
+    </Box>
   )
 }
 

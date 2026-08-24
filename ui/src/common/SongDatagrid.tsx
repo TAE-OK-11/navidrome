@@ -14,9 +14,8 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import { TableCell, TableRow, Typography, useMediaQuery } from '@mui/material'
+import { Box, TableCell, TableRow, Typography } from '@mui/material'
 import PropTypes from 'prop-types'
-import makeStyles from '../themes/makeStyles'
 import AlbumIcon from '@mui/icons-material/Album'
 import clsx from 'clsx'
 import { useDrag } from 'react-dnd'
@@ -28,66 +27,12 @@ import { AlbumContextMenu } from '../common'
 import { DraggableTypes } from '../consts'
 import { formatFullDate } from '../utils'
 
-const useStyles = makeStyles({
-  subtitle: {
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    verticalAlign: 'middle',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  discIcon: {
-    marginRight: '14px',
-  },
-  discCoverArt: {
-    width: '48px',
-    height: '48px',
-    marginRight: '14px',
-    objectFit: 'cover',
-    borderRadius: '4px',
-    flexShrink: 0,
-    cursor: 'pointer',
-  },
-  row: {
-    cursor: 'pointer',
-    transition: 'background-color 150ms ease, transform 150ms ease',
-    '&:hover': {
-      backgroundColor: 'rgba(127, 127, 127, 0.1)',
-      '& $contextMenu': {
-        visibility: 'visible',
-      },
-    },
-    '&:active': { transform: 'scale(0.998)' },
-  },
-  missingRow: {
-    cursor: 'inherit',
-    opacity: 0.3,
-  },
-  headerStyle: {
-    border: '1px solid rgba(127, 127, 127, 0.2)',
-    borderRadius: 16,
-    overflow: 'hidden',
-    '& thead': {
-      boxShadow: '0px 3px 8px rgba(0, 0, 0, 0.08)',
-      backgroundColor: 'rgba(127, 127, 127, 0.08)',
-    },
-    '& th': {
-      fontWeight: 'bold',
-      padding: '13px 15px',
-      letterSpacing: '0.02em',
-    },
-  },
-  contextMenu: {
-    visibility: (props) => (props.isDesktop ? 'hidden' : 'visible'),
-  },
-})
+const rowClass = 'nd-song-grid-row'
+const missingRowClass = 'nd-song-grid-row-missing'
 
 export const DiscSubtitleRow = forwardRef(
   ({ record, onClick, colSpan, contextAlwaysVisible }, ref) => {
     const translate = useTranslate()
-    const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
-    const classes = useStyles({ isDesktop })
     const [imageError, setImageError] = useState(false)
     const [isLightboxOpen, setLightboxOpen] = useState(false)
     const lightboxClosedAt = React.useRef(0)
@@ -140,20 +85,39 @@ export const DiscSubtitleRow = forwardRef(
         hover
         ref={ref}
         onClick={handlePlaySubset(record.discNumber)}
-        className={classes.row}
+        className={rowClass}
       >
         <TableCell colSpan={colSpan}>
-          <Typography variant="h6" className={classes.subtitle}>
+          <Typography
+            variant="h6"
+            sx={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              verticalAlign: 'middle',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
             {!imageError ? (
-              <img
+              <Box
+                component="img"
                 src={coverArtUrl}
-                className={classes.discCoverArt}
+                sx={{
+                  width: 48,
+                  height: 48,
+                  mr: '14px',
+                  objectFit: 'cover',
+                  borderRadius: 1,
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                }}
                 alt=""
                 onClick={handleOpenLightbox}
                 onError={() => setImageError(true)}
               />
             ) : (
-              <AlbumIcon className={classes.discIcon} fontSize={'small'} />
+              <AlbumIcon sx={{ mr: '14px' }} fontSize={'small'} />
             )}
             {subtitle}
           </Typography>
@@ -176,7 +140,7 @@ export const DiscSubtitleRow = forwardRef(
             record={{ id: record.albumId }}
             discNumber={record.discNumber}
             showLove={false}
-            className={classes.contextMenu}
+            sx={{ visibility: contextAlwaysVisible ? 'visible' : 'hidden' }}
             hideShare={true}
             hideInfo={true}
             visible={contextAlwaysVisible}
@@ -199,7 +163,6 @@ export const SongDatagridRow = ({
   ...rest
 }) => {
   const record = useRecordContext({ record: recordOverride })
-  const classes = useStyles()
   const fields = React.Children.toArray(children).filter((c) =>
     isValidElement(c),
   )
@@ -237,8 +200,8 @@ export const SongDatagridRow = ({
 
   const computedClasses = clsx(
     className,
-    classes.row,
-    record.missing && classes.missingRow,
+    rowClass,
+    record.missing && missingRowClass,
   )
   const childCount = fields.length
   return (
@@ -346,12 +309,43 @@ export const SongDatagrid = ({
   showDiscSubtitles,
   ...rest
 }) => {
-  const classes = useStyles()
+  const { sx, ...datagridProps } = rest
   return (
     <Datagrid
-      className={classes.headerStyle}
+      sx={[
+        {
+          border: '1px solid rgba(127, 127, 127, 0.2)',
+          borderRadius: 4,
+          overflow: 'hidden',
+          '& thead': {
+            boxShadow: '0px 3px 8px rgba(0, 0, 0, 0.08)',
+            backgroundColor: 'rgba(127, 127, 127, 0.08)',
+          },
+          '& th': {
+            fontWeight: 'bold',
+            padding: '13px 15px',
+            letterSpacing: '0.02em',
+          },
+          [`& .${rowClass}`]: {
+            cursor: 'pointer',
+            transition: 'background-color 150ms ease, transform 150ms ease',
+            '&:hover': {
+              backgroundColor: 'rgba(127, 127, 127, 0.1)',
+              '& .nd-song-context-menu, & .nd-rating-field': {
+                visibility: 'visible',
+              },
+            },
+            '&:active': { transform: 'scale(0.998)' },
+          },
+          [`& .${missingRowClass}`]: {
+            cursor: 'inherit',
+            opacity: 0.3,
+          },
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
       isRowSelectable={(r) => !r?.missing}
-      {...rest}
+      {...datagridProps}
       body={
         <SongDatagridBody
           contextAlwaysVisible={contextAlwaysVisible}

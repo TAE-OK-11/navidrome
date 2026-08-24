@@ -1,7 +1,6 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import { Typography, ImageListItemBar, useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Typography, ImageListItemBar, useMediaQuery } from '@mui/material'
 import { Link } from 'react-router-dom'
 import { useListContext, Loading } from 'react-admin'
 import { linkToRecord } from '../utils/linkToRecord'
@@ -16,136 +15,18 @@ import {
 } from '../common'
 import config from '../config'
 import { DraggableTypes } from '../consts'
-import clsx from 'clsx'
 import { AlbumDatesField } from './AlbumDatesField'
 import { withWidth } from '../themes/useWidth'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      margin: 'clamp(12px, 2vw, 24px)',
-      minWidth: 0,
-    },
-    grid: {
-      display: 'grid',
-      gap: 'clamp(12px, 1.8vw, 22px)',
-      minWidth: 0,
-      width: '100%',
-    },
-    gridListTile: {
-      minWidth: 0,
-      width: '100%',
-    },
-    tileBar: {
-      transition: 'all 150ms ease-out',
-      opacity: 0,
-      pointerEvents: 'none',
-      textAlign: 'left',
-      background:
-        'linear-gradient(to top, rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0) 100%)',
-      borderRadius: '0 0 12px 12px',
-    },
-    tileBarMobile: {
-      textAlign: 'left',
-      background:
-        'linear-gradient(to top, rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0) 100%)',
-      borderRadius: '0 0 12px 12px',
-    },
-    albumArtistName: {
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      textAlign: 'left',
-      fontSize: '1em',
-    },
-    albumName: {
-      marginTop: theme.spacing(1),
-      fontSize: '0.95rem',
-      fontWeight: 700,
-      lineHeight: 1.35,
-      color: theme.palette.text.primary,
-      overflow: 'hidden',
-      whiteSpace: 'nowrap',
-      textOverflow: 'ellipsis',
-    },
-    missingAlbum: {
-      opacity: 0.3,
-    },
-    albumVersion: {
-      fontSize: '12px',
-      color: theme.palette.text.secondary,
-      overflow: 'hidden',
-      whiteSpace: 'nowrap',
-      textOverflow: 'ellipsis',
-    },
-    albumSubtitle: {
-      fontSize: '12px',
-      color: theme.palette.text.secondary,
-      overflow: 'hidden',
-      whiteSpace: 'nowrap',
-      textOverflow: 'ellipsis',
-    },
-    link: {
-      position: 'relative',
-      display: 'block',
-      textDecoration: 'none',
-      overflow: 'hidden',
-      borderRadius: 12,
-      '&:hover $tileBar, &:focus-within $tileBar': {
-        opacity: 1,
-        pointerEvents: 'auto',
-      },
-    },
-    albumLink: {
-      position: 'relative',
-      display: 'block',
-      textDecoration: 'none',
-    },
-    albumContainer: {
-      minWidth: 0,
-      width: '100%',
-      padding: theme.spacing(1),
-      border: `1px solid ${theme.palette.divider}`,
-      borderRadius: 16,
-      backgroundColor: theme.palette.background.paper,
-      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.1)',
-      transition: 'transform 180ms ease, box-shadow 180ms ease',
-      '&:hover': {
-        transform: 'translateY(-3px)',
-        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
-      },
-    },
-    albumPlayButton: { color: 'white' },
-  }),
-  { name: 'NDAlbumGridView' },
-)
-
-const useCoverStyles = makeStyles((theme) => ({
-  coverContainer: {
-    width: '100%',
-    aspectRatio: '1 / 1',
-    overflow: 'hidden',
-    borderRadius: '12px',
-    backgroundColor: theme.palette.action.hover,
-  },
-  coverContent: {
-    width: '100%',
-    height: '100%',
-  },
-  cover: {
-    display: 'block',
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    transition: 'opacity 0.3s ease-in-out, transform 250ms ease',
-    '&:hover': {
-      transform: 'scale(1.025)',
-    },
-  },
-  coverLoading: {
-    opacity: 0,
-  },
-}))
+const albumTextSx = (slot) => (theme) => ({
+  fontSize: 12,
+  color: theme.palette.text.secondary,
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+  ...componentStyleOverride(theme, 'NDAlbumGridView', slot),
+})
 
 const getColsForWidth = (width) => {
   if (width === 'xs') return 2
@@ -156,7 +37,6 @@ const getColsForWidth = (width) => {
 }
 
 const Cover = ({ record }) => {
-  const classes = useCoverStyles()
   const [, dragAlbumRef] = useDrag(
     () => ({
       type: DraggableTypes.ALBUM,
@@ -170,43 +50,106 @@ const Cover = ({ record }) => {
   const { imgUrl, loading: imageLoading } = useImageUrl(url)
 
   return (
-    <div className={classes.coverContainer}>
-      <div ref={dragAlbumRef} className={classes.coverContent}>
-        <img
+    <Box
+      sx={(theme) => ({
+        width: '100%',
+        aspectRatio: '1 / 1',
+        overflow: 'hidden',
+        borderRadius: 3,
+        backgroundColor: theme.palette.action.hover,
+      })}
+    >
+      <Box ref={dragAlbumRef} sx={{ width: '100%', height: '100%' }}>
+        <Box
+          component="img"
           src={imgUrl || undefined}
           alt={record.name}
-          className={`${classes.cover} ${imageLoading ? classes.coverLoading : ''}`}
+          sx={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: imageLoading ? 0 : 1,
+            transition: 'opacity 0.3s ease-in-out, transform 250ms ease',
+            '&:hover': { transform: 'scale(1.025)' },
+          }}
         />
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }
 
 const AlbumGridTile = ({ showArtist, record, basePath, ...props }) => {
-  const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'), {
     noSsr: true,
   })
   if (!record) {
     return null
   }
-  const computedClasses = clsx(
-    classes.albumContainer,
-    record.missing && classes.missingAlbum,
-  )
   return (
-    <div className={computedClasses}>
-      <Link
-        className={classes.link}
+    <Box
+      sx={(theme) => ({
+        minWidth: 0,
+        width: '100%',
+        p: 1,
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: 4,
+        backgroundColor: theme.palette.background.paper,
+        boxShadow: '0 6px 20px rgba(0, 0, 0, 0.1)',
+        transition: 'transform 180ms ease, box-shadow 180ms ease',
+        opacity: record.missing ? 0.3 : 1,
+        '&:hover': {
+          transform: 'translateY(-3px)',
+          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
+        },
+        '& .nd-album-play-button': {
+          color: 'white',
+          ...componentStyleOverride(
+            theme,
+            'NDAlbumGridView',
+            'albumPlayButton',
+          ),
+        },
+        '& .nd-album-subtitle': albumTextSx('albumSubtitle')(theme),
+        ...componentStyleOverride(theme, 'NDAlbumGridView', 'albumContainer'),
+      })}
+    >
+      <Box
+        component={Link}
         to={linkToRecord(basePath, record.id, 'show')}
+        sx={{
+          position: 'relative',
+          display: 'block',
+          textDecoration: 'none',
+          overflow: 'hidden',
+          borderRadius: 3,
+          '&:hover .nd-album-tile-bar, &:focus-within .nd-album-tile-bar': {
+            opacity: 1,
+            pointerEvents: 'auto',
+          },
+        }}
       >
         <Cover record={record} />
         <ImageListItemBar
-          className={isDesktop ? classes.tileBar : classes.tileBarMobile}
+          className="nd-album-tile-bar"
+          sx={(theme) => ({
+            transition: isDesktop ? 'all 150ms ease-out' : undefined,
+            opacity: isDesktop ? 0 : undefined,
+            pointerEvents: isDesktop ? 'none' : undefined,
+            textAlign: 'left',
+            background:
+              'linear-gradient(to top, rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.4) 70%,rgba(0,0,0,0) 100%)',
+            borderRadius: '0 0 12px 12px',
+            ...componentStyleOverride(
+              theme,
+              'NDAlbumGridView',
+              isDesktop ? 'tileBar' : 'tileBarMobile',
+            ),
+          })}
           subtitle={
             !record.missing && (
               <PlayButton
-                className={classes.albumPlayButton}
+                className="nd-album-play-button"
                 record={record}
                 size="small"
               />
@@ -214,54 +157,87 @@ const AlbumGridTile = ({ showArtist, record, basePath, ...props }) => {
           }
           actionIcon={<AlbumContextMenu record={record} color={'white'} />}
         />
-      </Link>
-      <Link
-        className={classes.albumLink}
+      </Box>
+      <Box
+        component={Link}
         to={linkToRecord(basePath, record.id, 'show')}
+        sx={(theme) => ({
+          position: 'relative',
+          display: 'block',
+          textDecoration: 'none',
+          ...componentStyleOverride(theme, 'NDAlbumGridView', 'albumLink'),
+        })}
       >
         <span>
           <OverflowTooltip title={record.name}>
-            <Typography className={classes.albumName}>{record.name}</Typography>
+            <Typography
+              sx={(theme) => ({
+                mt: 1,
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                lineHeight: 1.35,
+                color: theme.palette.text.primary,
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                ...componentStyleOverride(
+                  theme,
+                  'NDAlbumGridView',
+                  'albumName',
+                ),
+              })}
+            >
+              {record.name}
+            </Typography>
           </OverflowTooltip>
           {record.tags && record.tags['albumversion'] && (
-            <Typography className={classes.albumVersion}>
+            <Typography sx={albumTextSx('albumVersion')}>
               {record.tags['albumversion']}
             </Typography>
           )}
         </span>
-      </Link>
+      </Box>
       {showArtist ? (
-        <ArtistLinkField record={record} className={classes.albumSubtitle} />
+        <ArtistLinkField record={record} className="nd-album-subtitle" />
       ) : (
-        <AlbumDatesField record={record} className={classes.albumSubtitle} />
+        <AlbumDatesField record={record} className="nd-album-subtitle" />
       )}
-    </div>
+    </Box>
   )
 }
 
 const LoadedAlbumGrid = ({ records, basePath = '/album', width }) => {
-  const classes = useStyles()
   const { filterValues } = useListContext()
   const isArtistView = !!(filterValues && filterValues.artist_id)
   return (
-    <div className={classes.root}>
-      <div
-        className={classes.grid}
-        style={{
+    <Box
+      sx={(theme) => ({
+        m: 'clamp(12px, 2vw, 24px)',
+        minWidth: 0,
+        ...componentStyleOverride(theme, 'NDAlbumGridView', 'root'),
+      })}
+    >
+      <Box
+        sx={(theme) => ({
+          display: 'grid',
+          gap: 'clamp(12px, 1.8vw, 22px)',
+          minWidth: 0,
+          width: '100%',
           gridTemplateColumns: `repeat(${getColsForWidth(width)}, minmax(0, 1fr))`,
-        }}
+          ...componentStyleOverride(theme, 'NDAlbumGridView', 'grid'),
+        })}
       >
         {records.map((record) => (
-          <div className={classes.gridListTile} key={record.id}>
+          <Box sx={{ minWidth: 0, width: '100%' }} key={record.id}>
             <AlbumGridTile
               record={record}
               basePath={basePath}
               showArtist={!isArtistView}
             />
-          </div>
+          </Box>
         ))}
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }
 

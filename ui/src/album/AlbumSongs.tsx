@@ -8,10 +8,8 @@ import {
   TextField,
   useListContext,
 } from 'react-admin'
-import clsx from 'clsx'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Card, useMediaQuery } from '@mui/material'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { playTracks } from '../actions'
 import {
@@ -32,60 +30,19 @@ import {
 import config from '../config'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { removeAlbumCommentsFromSongs } from './utils'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {},
-    main: {
-      display: 'flex',
-    },
-    content: {
-      marginTop: 0,
-      transition: theme.transitions.create('margin-top'),
-      position: 'relative',
-      flex: '1 1 auto',
-      [theme.breakpoints.down('sm')]: {
-        boxShadow: 'none',
-      },
-    },
-    bulkActionsDisplayed: {
-      marginTop: -theme.spacing(8),
-      transition: theme.transitions.create('margin-top'),
-    },
-    actions: {
-      zIndex: 2,
-      display: 'flex',
-      justifyContent: 'flex-end',
-      flexWrap: 'wrap',
-    },
-    noResults: { padding: 20 },
-    columnIcon: {
-      marginLeft: '3px',
-      marginTop: '-2px',
-      verticalAlign: 'text-top',
-    },
-    toolbar: {
-      justifyContent: 'flex-start',
-    },
-    row: {
-      '&:hover': {
-        '& $contextMenu': {
-          visibility: 'visible',
-        },
-        '& $ratingField': {
-          visibility: 'visible',
-        },
-      },
-    },
-    contextMenu: {
-      visibility: (props) => (props.isDesktop ? 'hidden' : 'visible'),
-    },
-    ratingField: {
-      visibility: 'hidden',
-    },
-  }),
-  { name: 'RaList' },
-)
+const contentSx = (bulkActionsDisplayed) => (theme) => ({
+  mt: bulkActionsDisplayed ? -8 : 0,
+  transition: theme.transitions.create('margin-top'),
+  position: 'relative',
+  flex: '1 1 auto',
+  [theme.breakpoints.down('sm')]: { boxShadow: 'none' },
+  ...componentStyleOverride(theme, 'RaList', 'content'),
+  ...(bulkActionsDisplayed
+    ? componentStyleOverride(theme, 'RaList', 'bulkActionsDisplayed')
+    : {}),
+})
 
 const AlbumSongs = (props) => {
   const records = props.data || []
@@ -94,7 +51,6 @@ const AlbumSongs = (props) => {
     records.map((record) => [record.id, record]),
   )
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
-  const classes = useStyles({ isDesktop })
   const dispatch = useDispatch()
   const version = useSelector(
     (state) => state.activity?.refresh?.lastReceived || 0,
@@ -146,11 +102,11 @@ const AlbumSongs = (props) => {
           resource={'song'}
           source="rating"
           sortable={false}
-          className={classes.ratingField}
+          sx={{ visibility: 'hidden' }}
         />
       ),
     }
-  }, [isDesktop, classes.ratingField])
+  }, [isDesktop])
 
   const columns = useSelectedFields({
     resource: 'albumSong',
@@ -176,17 +132,12 @@ const AlbumSongs = (props) => {
   return (
     <>
       <ListToolbar
-        classes={{ toolbar: classes.toolbar }}
+        sx={{ justifyContent: 'flex-start' }}
         actions={props.actions}
         {...props}
       />
-      <div className={classes.main}>
-        <Card
-          className={clsx(classes.content, {
-            [classes.bulkActionsDisplayed]: props.selectedIds.length > 0,
-          })}
-          key={version}
-        >
+      <Box sx={{ display: 'flex' }}>
+        <Card sx={contentSx(props.selectedIds.length > 0)} key={version}>
           <BulkActionsToolbar {...props} label={bulkActionsLabel}>
             <SongBulkActions />
           </BulkActionsToolbar>
@@ -196,25 +147,24 @@ const AlbumSongs = (props) => {
             hasBulkActions={true}
             showDiscSubtitles={true}
             contextAlwaysVisible={!isDesktop}
-            classes={{ row: classes.row }}
           >
             {columns}
             <SongContextMenu
               source={'starred'}
               sortable={false}
-              className={classes.contextMenu}
+              sx={{ visibility: isDesktop ? 'hidden' : 'visible' }}
               label={
                 config.enableFavourites && (
                   <FavoriteBorderIcon
                     fontSize={'small'}
-                    className={classes.columnIcon}
+                    sx={{ ml: '3px', mt: '-2px', verticalAlign: 'text-top' }}
                   />
                 )
               }
             />
           </SongDatagrid>
         </Card>
-      </div>
+      </Box>
       <ExpandInfoDialog content={<SongInfo />} />
     </>
   )

@@ -10,10 +10,8 @@ import {
   useListContext,
   FunctionField,
 } from 'react-admin'
-import clsx from 'clsx'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Card, useMediaQuery } from '@mui/material'
 import ReactDragListView from 'react-drag-listview'
 import {
   DurationField,
@@ -33,55 +31,19 @@ import { playTracks } from '../actions'
 import PlaylistSongBulkActions from './PlaylistSongBulkActions'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import config from '../config'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {},
-    main: {
-      display: 'flex',
-    },
-    content: {
-      marginTop: 0,
-      transition: theme.transitions.create('margin-top'),
-      position: 'relative',
-      flex: '1 1 auto',
-      [theme.breakpoints.down('sm')]: {
-        boxShadow: 'none',
-      },
-    },
-    bulkActionsDisplayed: {
-      marginTop: -theme.spacing(8),
-      transition: theme.transitions.create('margin-top'),
-    },
-    actions: {
-      zIndex: 2,
-      display: 'flex',
-      justifyContent: 'flex-end',
-      flexWrap: 'wrap',
-    },
-    noResults: { padding: 20 },
-    toolbar: {
-      justifyContent: 'flex-start',
-    },
-    row: {
-      '&:hover': {
-        '& $contextMenu': {
-          visibility: 'visible',
-        },
-        '& $ratingField': {
-          visibility: 'visible',
-        },
-      },
-    },
-    contextMenu: {
-      visibility: (props) => (props.isDesktop ? 'hidden' : 'visible'),
-    },
-    ratingField: {
-      visibility: 'hidden',
-    },
-  }),
-  { name: 'RaList' },
-)
+const contentSx = (bulkActionsDisplayed) => (theme) => ({
+  mt: bulkActionsDisplayed ? -8 : 0,
+  transition: theme.transitions.create('margin-top'),
+  position: 'relative',
+  flex: '1 1 auto',
+  [theme.breakpoints.down('sm')]: { boxShadow: 'none' },
+  ...componentStyleOverride(theme, 'RaList', 'content'),
+  ...(bulkActionsDisplayed
+    ? componentStyleOverride(theme, 'RaList', 'bulkActionsDisplayed')
+    : {}),
+})
 
 const ReorderableList = ({ readOnly, children, ...rest }) => {
   if (readOnly) {
@@ -102,7 +64,6 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
   const ids = data.map((record) => record.id)
   const dataById = Object.fromEntries(data.map((record) => [record.id, record]))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
-  const classes = useStyles({ isDesktop })
   const dispatch = useDispatch()
   const dataProvider = useDataProvider()
   const notify = useNotify()
@@ -159,9 +120,7 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
       album: isDesktop && <AlbumLinkField source="album" />,
       artist: isDesktop && <ArtistLinkField source="artist" />,
       albumArtist: isDesktop && <ArtistLinkField source="albumArtist" />,
-      duration: (
-        <DurationField source="duration" className={classes.draggable} />
-      ),
+      duration: <DurationField source="duration" />,
       year: isDesktop && (
         <FunctionField
           source="year"
@@ -184,11 +143,11 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
           source="rating"
           sortByOrder={'DESC'}
           resource={'song'}
-          className={classes.ratingField}
+          sx={{ visibility: 'hidden' }}
         />
       ),
     }
-  }, [isDesktop, classes.draggable, classes.ratingField])
+  }, [isDesktop])
 
   const columns = useSelectedFields({
     resource: 'playlistTrack',
@@ -208,17 +167,12 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
   return (
     <>
       <ListToolbar
-        classes={{ toolbar: classes.toolbar }}
+        sx={{ justifyContent: 'flex-start' }}
         filters={props.filters}
         actions={actions}
       />
-      <div className={classes.main}>
-        <Card
-          className={clsx(classes.content, {
-            [classes.bulkActionsDisplayed]: selectedIds.length > 0,
-          })}
-          key={version}
-        >
+      <Box sx={{ display: 'flex' }}>
+        <Card sx={contentSx(selectedIds.length > 0)} key={version}>
           <BulkActionsToolbar>
             <PlaylistSongBulkActions
               playlistId={playlistId}
@@ -236,18 +190,17 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
               {...listContext}
               hasBulkActions={!readOnly}
               contextAlwaysVisible={!isDesktop}
-              classes={{ row: classes.row }}
             >
               {columns}
               <SongContextMenu
                 onAddToPlaylist={onAddToPlaylist}
                 showLove={true}
-                className={classes.contextMenu}
+                sx={{ visibility: isDesktop ? 'hidden' : 'visible' }}
               />
             </SongDatagrid>
           </ReorderableList>
         </Card>
-      </div>
+      </Box>
       <ExpandInfoDialog content={<SongInfo />} />
       {React.cloneElement(props.pagination, listContext)}
     </>

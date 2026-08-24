@@ -56,6 +56,7 @@ const ContextMenu = ({
   record,
   color,
   className,
+  sx,
   songQueryParams,
   hideShare,
   hideInfo,
@@ -184,7 +185,11 @@ const ContextMenu = ({
   const present = !record.missing
 
   return (
-    <Box component="span" className={className} sx={{ whiteSpace: 'nowrap' }}>
+    <Box
+      component="span"
+      className={className}
+      sx={[{ whiteSpace: 'nowrap' }, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       <LoveButton
         record={record}
         resource={resource}

@@ -51,6 +51,26 @@ jobs:
           go generate ./...
           git diff --exit-code
 
+  rust:
+    name: Rust tests (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: metadata
+            directory: rust/metadata
+          - crate: h3-gateway
+            directory: rust/h3-gateway
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust 1.97
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Test
+        working-directory: ${{ matrix.directory }}
+        run: cargo +1.97.0 test --locked
+
   ui:
     name: UI tests and build
     runs-on: ubuntu-latest

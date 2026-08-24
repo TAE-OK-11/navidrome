@@ -4,7 +4,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, BoostQuery, Occur, Query, TermQuery};
+use tantivy::query::{BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, TermQuery};
 use tantivy::schema::{
     Field, INDEXED, IndexRecordOption, STORED, STRING, Schema, TantivyDocument, TextFieldIndexing,
     TextOptions, Value,
@@ -213,10 +213,24 @@ impl Engine {
             )),
             12.0,
         ));
-        let relevance: Box<dyn Query> = Box::new(BooleanQuery::new(vec![
-            (Occur::Should, exact_query),
-            (Occur::Should, text_query),
-        ]));
+        let mut relevance_clauses = vec![(Occur::Should, exact_query), (Occur::Should, text_query)];
+        // N-grams provide fast substring matching, while a bounded fuzzy prefix
+        // catches common Latin-script typos and transpositions. Keep it off the
+        // much larger Unicode term space and below the exact-match boost.
+        if normalized.is_ascii() && normalized.len() >= 3 {
+            relevance_clauses.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(FuzzyTermQuery::new_prefix(
+                        Term::from_field_text(self.fields.exact, &normalized),
+                        1,
+                        true,
+                    )),
+                    7.0,
+                )),
+            ));
+        }
+        let relevance: Box<dyn Query> = Box::new(BooleanQuery::new(relevance_clauses));
 
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![
             (
@@ -443,6 +457,20 @@ mod tests {
         let hits = engine.search("소년", "artist", &[1], 0, 10)?;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "1");
+        Ok(())
+    }
+
+    #[test]
+    fn tolerates_common_latin_transposition_without_beating_exact_match() -> Result<()> {
+        let mut engine = Engine::new()?;
+        engine.replace(vec![
+            document("artist:1", "1", "artist", 1, "Beatles Tribute"),
+            document("artist:2", "2", "artist", 1, "Beatles"),
+        ])?;
+        let typo_hits = engine.search("Beatels", "artist", &[1], 0, 10)?;
+        assert!(!typo_hits.is_empty());
+        let exact_hits = engine.search("Beatles", "artist", &[1], 0, 10)?;
+        assert_eq!(exact_hits.first().map(|hit| hit.id.as_str()), Some("2"));
         Ok(())
     }
 

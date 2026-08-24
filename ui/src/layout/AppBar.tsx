@@ -18,6 +18,7 @@ import NowPlayingPanel from './NowPlayingPanel'
 import UserMenu from './UserMenu'
 import Logout from './Logout'
 import config from '../config'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const menuItemSx = {
   color: 'text.secondary',
@@ -37,8 +38,20 @@ const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
 
   return (
     <>
-      <MenuItem ref={ref} onClick={handleOpen} sx={menuItemSx}>
-        <ListItemIcon sx={{ minWidth: 5 }}>
+      <MenuItem
+        ref={ref}
+        onClick={handleOpen}
+        sx={[
+          menuItemSx,
+          (theme) => componentStyleOverride(theme, 'NDAppBar', 'root'),
+        ]}
+      >
+        <ListItemIcon
+          sx={[
+            { minWidth: 5 },
+            (theme) => componentStyleOverride(theme, 'NDAppBar', 'icon'),
+          ]}
+        >
           <MdInfo title={label} size={24} />
         </ListItemIcon>
         {label}
@@ -72,7 +85,10 @@ const CustomUserMenu = (props) => {
     const link = id ? `/${resource.name}/${id}` : `/${resource.name}`
     return (
       <MenuItemLink
-        sx={menuItemSx}
+        sx={[
+          menuItemSx,
+          (theme) => componentStyleOverride(theme, 'NDAppBar', 'root'),
+        ]}
         key={resource.name}
         to={link}
         primaryText={label}

@@ -23,6 +23,7 @@ import {
 } from '../common/index'
 import ArtistActions from './ArtistActions'
 import { withWidth } from '../themes/useWidth'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const ShowArtistActions = styled(ArtistActions)(({ theme }) => ({
   width: '100%',
@@ -37,6 +38,7 @@ const ShowArtistActions = styled(ArtistActions)(({ theme }) => ({
     gap: '0.5em',
     justifyContent: 'space-around',
   },
+  ...componentStyleOverride(theme, 'NDArtistShow', 'actions'),
 }))
 
 const ArtistDetails = (props) => {
@@ -100,7 +102,13 @@ const ArtistShowLayout = (props) => {
       {record && <RaTitle title={<Title subTitle={record.name} />} />}
       {record && <ArtistDetails />}
       {record && (
-        <Box sx={{ p: { xs: '.5rem', sm: 0 }, pl: { sm: '.75rem' } }}>
+        <Box
+          sx={[
+            { p: { xs: '.5rem', sm: 0 }, pl: { sm: '.75rem' } },
+            (theme) =>
+              componentStyleOverride(theme, 'NDArtistShow', 'actionsContainer'),
+          ]}
+        >
           <ShowArtistActions record={record} />
         </Box>
       )}

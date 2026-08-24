@@ -11,6 +11,7 @@ import {
   useTranslate,
   useRedirect,
 } from 'react-admin'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const deleteButtonSx = (theme) => ({
   color: theme.palette.error.main,
@@ -56,7 +57,15 @@ const DeleteLibraryButton = ({
         onClick={handleDialogOpen}
         disabled={loading}
         className={clsx('ra-delete-button', className)}
-        sx={deleteButtonSx}
+        sx={[
+          deleteButtonSx,
+          (theme) =>
+            componentStyleOverride(
+              theme,
+              'RaDeleteWithConfirmButton',
+              'deleteButton',
+            ),
+        ]}
         {...props}
       >
         <DeleteIcon />

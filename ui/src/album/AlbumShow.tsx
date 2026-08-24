@@ -12,8 +12,12 @@ import AlbumSongs from './AlbumSongs'
 import AlbumDetails from './AlbumDetails'
 import AlbumActions from './AlbumActions'
 import { useResourceRefresh, useScrollRestoration, Title } from '../common'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const FullWidthAlbumActions = styled(AlbumActions)({ width: '100%' })
+const FullWidthAlbumActions = styled(AlbumActions)(({ theme }) => ({
+  width: '100%',
+  ...componentStyleOverride(theme, 'NDAlbumShow', 'albumActions'),
+}))
 
 const AlbumShowLayout = (props) => {
   const context = useShowContext(props)

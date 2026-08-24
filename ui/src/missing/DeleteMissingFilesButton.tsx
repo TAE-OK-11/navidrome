@@ -11,6 +11,7 @@ import {
   useRefresh,
   useUnselectAll,
 } from 'react-admin'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const deleteButtonSx = (theme) => ({
   color: theme.palette.error.main,
@@ -61,7 +62,15 @@ const DeleteMissingFilesButton = (props) => {
         }
         key="button"
         className={clsx('ra-delete-button', className)}
-        sx={deleteButtonSx}
+        sx={[
+          deleteButtonSx,
+          (theme) =>
+            componentStyleOverride(
+              theme,
+              'RaDeleteWithConfirmButton',
+              'deleteButton',
+            ),
+        ]}
       >
         <DeleteIcon />
       </Button>

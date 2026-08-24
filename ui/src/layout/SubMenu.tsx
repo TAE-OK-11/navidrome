@@ -10,6 +10,7 @@ import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
 import { useSidebarState, useTranslate } from 'react-admin'
 import { Box, IconButton, useMediaQuery } from '@mui/material'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 const SubMenu = ({
   handleToggle,
@@ -46,23 +47,37 @@ const SubMenu = ({
 
   const header = (
     <Box
-      sx={{
-        display: 'flex',
-        '&:hover .submenu-action': { opacity: 1 },
-      }}
+      sx={[
+        {
+          display: 'flex',
+          '&:hover .submenu-action': { opacity: 1 },
+        },
+        (theme) => componentStyleOverride(theme, 'NDSubMenu', 'headerWrapper'),
+      ]}
     >
       <ListItemButton
         dense={dense}
-        sx={{ width: '100%' }}
+        sx={[
+          { width: '100%' },
+          (theme) => componentStyleOverride(theme, 'NDSubMenu', 'menuHeader'),
+        ]}
         onClick={handleToggle}
       >
-        <ListItemIcon sx={{ minWidth: 5 }}>
+        <ListItemIcon
+          sx={[
+            { minWidth: 5 },
+            (theme) => componentStyleOverride(theme, 'NDSubMenu', 'icon'),
+          ]}
+        >
           {isOpen ? <ExpandMore /> : icon}
         </ListItemIcon>
         <Typography
           variant="inherit"
           color="textSecondary"
-          sx={{ flexGrow: 1 }}
+          sx={[
+            { flexGrow: 1 },
+            (theme) => componentStyleOverride(theme, 'NDSubMenu', 'headerText'),
+          ]}
         >
           {translate(name)}
         </Typography>
@@ -74,9 +89,11 @@ const SubMenu = ({
             className={
               isDesktop && !secondaryActionActive ? 'submenu-action' : undefined
             }
-            sx={
-              isDesktop && !secondaryActionActive ? { opacity: 0 } : undefined
-            }
+            sx={[
+              isDesktop && !secondaryActionActive && { opacity: 0 },
+              (theme) =>
+                componentStyleOverride(theme, 'NDSubMenu', 'actionIcon'),
+            ]}
             onClick={handleSecondaryClick}
           >
             {secondaryActionIcon}
@@ -86,7 +103,11 @@ const SubMenu = ({
           <IconButton
             size={'small'}
             className={isDesktop ? 'submenu-action' : undefined}
-            sx={isDesktop ? { opacity: 0 } : undefined}
+            sx={[
+              isDesktop && { opacity: 0 },
+              (theme) =>
+                componentStyleOverride(theme, 'NDSubMenu', 'actionIcon'),
+            ]}
             onClick={handleOnClick}
           >
             {actionIcon}
@@ -110,12 +131,21 @@ const SubMenu = ({
           dense={dense}
           component="div"
           disablePadding
-          sx={{
-            '& a': {
-              transition: 'padding-left 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms',
-              pl: sidebarIsOpen ? 4 : 2,
+          sx={[
+            {
+              '& a': {
+                transition:
+                  'padding-left 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms',
+                pl: sidebarIsOpen ? 4 : 2,
+              },
             },
-          }}
+            (theme) =>
+              componentStyleOverride(
+                theme,
+                'NDSubMenu',
+                sidebarIsOpen ? 'sidebarIsOpen' : 'sidebarIsClosed',
+              ),
+          ]}
         >
           {children}
         </List>

@@ -22,14 +22,13 @@ export const filterSongs = (data, ids) => {
   const filteredData = Object.fromEntries(
     entries.filter(([_, song]) => !song.missing),
   )
-  return !ids
-    ? filteredData
-    : ids.reduce((acc, id) => {
-        if (filteredData[id]) {
-          return { ...acc, [id]: filteredData[id] }
-        }
-        return acc
-      }, {})
+  if (!ids) return filteredData
+
+  const selectedData = {}
+  for (const id of ids) {
+    if (filteredData[id]) selectedData[id] = filteredData[id]
+  }
+  return selectedData
 }
 
 export const addTracks = (data, ids) => {

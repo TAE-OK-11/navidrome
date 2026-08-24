@@ -147,12 +147,13 @@ const ContextMenu = ({
     e.stopPropagation()
   }
 
-  let extractSongsData = function (response) {
-    const data = response.data.reduce(
-      (acc, cur) => ({ ...acc, [cur.id]: cur }),
-      {},
-    )
-    const ids = response.data.map((r) => r.id)
+  const extractSongsData = (response) => {
+    const data = {}
+    const ids = []
+    for (const song of response.data) {
+      data[song.id] = song
+      ids.push(song.id)
+    }
     return { data, ids }
   }
 
@@ -163,7 +164,7 @@ const ContextMenu = ({
       dataProvider
         .getList('song', songQueryParams)
         .then((response) => {
-          let { data, ids } = extractSongsData(response)
+          const { data, ids } = extractSongsData(response)
           options[key].action(data, ids)
         })
         .catch(() => {

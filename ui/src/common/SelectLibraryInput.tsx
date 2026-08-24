@@ -13,61 +13,18 @@ import {
 } from '@mui/material'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
-import makeStyles from '../themes/makeStyles'
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    width: '960px',
-    maxWidth: '100%',
-  },
-  headerContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    marginBottom: theme.spacing(1),
-    paddingLeft: theme.spacing(1),
-  },
-  masterCheckbox: {
-    padding: '7px',
-    marginLeft: '-9px',
-    marginRight: theme.spacing(1),
-  },
-  libraryList: {
-    height: '120px',
-    overflow: 'auto',
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.background.paper,
-  },
-  listItem: {
-    paddingTop: 0,
-    paddingBottom: 0,
-  },
-  emptyMessage: {
-    padding: theme.spacing(2),
-    textAlign: 'center',
-    color: theme.palette.text.secondary,
-  },
-}))
 
 const EmptyLibraryMessage = () => {
-  const classes = useStyles()
-
   return (
-    <div className={classes.emptyMessage}>
+    <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
       <Typography variant="body2">No libraries available</Typography>
-    </div>
+    </Box>
   )
 }
 
 const LibraryListItem = ({ library, isSelected, onToggle }) => {
-  const classes = useStyles()
-
   return (
-    <ListItemButton
-      className={classes.listItem}
-      onClick={() => onToggle(library)}
-      dense
-    >
+    <ListItemButton sx={{ py: 0 }} onClick={() => onToggle(library)} dense>
       <ListItemIcon>
         <Checkbox
           icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
@@ -87,7 +44,6 @@ export const SelectLibraryInput = ({
   value = [],
   isNewUser = false,
 }) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const [selectedLibraryIds, setSelectedLibraryIds] = useState([])
   const [hasInitialized, setHasInitialized] = useState(false)
@@ -189,22 +145,31 @@ export const SelectLibraryInput = ({
   const isIndeterminate = selectedCount > 0 && selectedCount < totalCount
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ width: 960, maxWidth: '100%' }}>
       {options.length > 1 && (
-        <Box className={classes.headerContainer}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, pl: 1 }}>
           <Checkbox
             checked={isAllSelected}
             indeterminate={isIndeterminate}
             onChange={handleMasterCheckboxChange}
             size="small"
-            className={classes.masterCheckbox}
+            sx={{ p: '7px', ml: '-9px', mr: 1 }}
           />
           <Typography variant="body2">
             {translate('resources.user.message.selectAllLibraries')}
           </Typography>
         </Box>
       )}
-      <List className={classes.libraryList}>
+      <List
+        sx={{
+          height: 120,
+          overflow: 'auto',
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          bgcolor: 'background.paper',
+        }}
+      >
         {options.length === 0 ? (
           <EmptyLibraryMessage />
         ) : (
@@ -218,7 +183,7 @@ export const SelectLibraryInput = ({
           ))
         )}
       </List>
-    </div>
+    </Box>
   )
 }
 

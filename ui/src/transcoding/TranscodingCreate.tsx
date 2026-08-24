@@ -22,7 +22,7 @@ const TranscodingTitle = () => {
 }
 
 const TranscodingCreate = (props) => (
-  <Create title={<TranscodingTitle />} {...props}>
+  <Create title={<TranscodingTitle />} redirect="list" {...props}>
     <SimpleForm>
       <TextInput source="name" validate={[required()]} />
       <TextInput source="targetFormat" validate={[required()]} />

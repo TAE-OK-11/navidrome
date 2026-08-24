@@ -21,7 +21,7 @@ const RadioTitle = () => {
 
 const RadioCreate = (props) => {
   return (
-    <Create title={<RadioTitle />} {...props}>
+    <Create title={<RadioTitle />} redirect="list" {...props}>
       <SimpleForm>
         <TextInput source="name" validate={[required()]} />
         <TextInput

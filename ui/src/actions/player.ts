@@ -33,7 +33,11 @@ export const filterSongs = (data, ids) => {
       if (!song.missing) filteredData[song.id] = song
     }
   } else {
-    for (const [id, song] of Object.entries(data || {})) {
+    const entries =
+      data && typeof data === 'object'
+        ? Object.entries(data as Record<string, { missing?: boolean }>)
+        : []
+    for (const [id, song] of entries) {
       // Preserve caller-provided keys such as the shuffled queue's `_id` keys.
       if (!song.missing) filteredData[id] = song
     }

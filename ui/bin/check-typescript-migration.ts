@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const sourceRoot = resolve(import.meta.dir, '../src')
-const maximumNoCheckFiles = 194
+const maximumNoCheckFiles = 193
 const entries = await readdir(sourceRoot, { recursive: true })
 const legacyJavaScript = entries.filter(
   (file) => file.endsWith('.js') || file.endsWith('.jsx'),

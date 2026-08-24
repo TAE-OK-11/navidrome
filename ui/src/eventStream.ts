@@ -6,6 +6,7 @@ import { REST_URL } from './consts'
 import { baseUrl } from './utils'
 
 const RECONNECT_DELAY = 5000
+const RECONNECT_JITTER = 1000
 
 let eventStream: EventSource | null = null
 let reconnectTimer: number | null = null
@@ -34,10 +35,11 @@ const throttledEventHandler = (
 
 const scheduleReconnect = (dispatchFn: Dispatch): void => {
   if (reconnectTimer !== null) return
+  const jitter = Math.floor((Math.random() * 2 - 1) * RECONNECT_JITTER)
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null
     void connect(dispatchFn)
-  }, RECONNECT_DELAY)
+  }, RECONNECT_DELAY + jitter)
 }
 
 const setupHandlers = (stream: EventSource, dispatchFn: Dispatch): void => {
@@ -48,6 +50,7 @@ const setupHandlers = (stream: EventSource, dispatchFn: Dispatch): void => {
     stream.addEventListener('nowPlayingCount', eventHandler(dispatchFn))
   }
   stream.addEventListener('keepAlive', eventHandler(dispatchFn))
+  stream.onopen = () => dispatchFn(streamReconnected())
   stream.onerror = (event) => {
     // eslint-disable-next-line no-console
     console.log('EventStream error', event)
@@ -64,7 +67,6 @@ const connect = async (
     const stream = await newEventStream()
     eventStream = stream
     setupHandlers(stream, dispatchFn)
-    dispatchFn(streamReconnected())
     return stream
   } catch (error) {
     // eslint-disable-next-line no-console
@@ -86,6 +88,7 @@ const startEventStreamLegacy = async (
       stream.addEventListener('nowPlayingCount', eventHandler(dispatchFn))
     }
     stream.addEventListener('keepAlive', eventHandler(dispatchFn))
+    stream.onopen = () => dispatchFn(streamReconnected())
     stream.onerror = (event) => {
       // eslint-disable-next-line no-console
       console.log('EventStream error', event)
@@ -102,6 +105,10 @@ const startEventStreamLegacy = async (
 const startEventStreamNew = async (
   dispatchFn: Dispatch,
 ): Promise<EventSource | undefined> => {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
   if (eventStream) {
     eventStream.close()
     eventStream = null

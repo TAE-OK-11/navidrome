@@ -1,9 +1,16 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
+
+type CacheEntry = {
+  blobUrl: string | null
+  error?: boolean
+  refCount: number
+}
+
+type QueuedFetch = () => void
 
 // Persists across component mount/unmount cycles so that
 // React Admin refreshes (which remount list items) don't re-fetch images.
-const cache = new Map()
+const cache = new Map<string, CacheEntry>()
 const MAX_CACHE_SIZE = 300
 
 // Limit concurrent fetches to leave browser connections free for API requests.
@@ -11,12 +18,11 @@ const MAX_CACHE_SIZE = 300
 // calls prevents image fetches from blocking pagination/data requests.
 const MAX_CONCURRENT = 4
 let activeFetches = 0
-const pendingQueue = []
+const pendingQueue: QueuedFetch[] = []
 
 const processQueue = () => {
   while (pendingQueue.length > 0 && activeFetches < MAX_CONCURRENT) {
-    const next = pendingQueue.shift()
-    next()
+    pendingQueue.shift()?.()
   }
 }
 
@@ -37,15 +43,15 @@ const evictIfNeeded = () => {
  * are canceled on unmount (e.g., during pagination). Uses a module-level cache
  * so remounting returns the cached blob URL instantly.
  */
-export const useImageUrl = (url) => {
+export const useImageUrl = (url?: string | null) => {
   const cached = url ? cache.get(url) : null
   const [imgUrl, setImgUrl] = useState(cached?.blobUrl || null)
   const [loading, setLoading] = useState(!!url && !cached)
   const [error, setError] = useState(cached?.error || false)
-  const abortedRef = useRef(false)
 
   useEffect(() => {
-    abortedRef.current = false
+    let cancelled = false
+    let retainedEntry: CacheEntry | undefined
 
     if (!url) {
       setImgUrl(null)
@@ -59,11 +65,12 @@ export const useImageUrl = (url) => {
     const entry = cache.get(url)
     if (entry) {
       entry.refCount++
+      retainedEntry = entry
       setImgUrl(entry.blobUrl)
       setLoading(false)
       setError(entry.error || false)
       return () => {
-        entry.refCount--
+        entry.refCount = Math.max(0, entry.refCount - 1)
       }
     }
 
@@ -84,10 +91,8 @@ export const useImageUrl = (url) => {
           return res.blob()
         })
         .then((blob) => {
-          activeFetches--
-          processQueue()
           // Guard against late resolution after abort
-          if (abortedRef.current) {
+          if (cancelled) {
             return
           }
           const objectUrl = URL.createObjectURL(blob)
@@ -96,25 +101,33 @@ export const useImageUrl = (url) => {
           const existing = cache.get(url)
           if (existing && existing.blobUrl) {
             existing.refCount++
+            retainedEntry = existing
             URL.revokeObjectURL(objectUrl)
             setImgUrl(existing.blobUrl)
           } else {
-            cache.set(url, { blobUrl: objectUrl, refCount: 1 })
+            const created = { blobUrl: objectUrl, refCount: 1 }
+            cache.set(url, created)
+            retainedEntry = created
             evictIfNeeded()
             setImgUrl(objectUrl)
           }
           setLoading(false)
         })
         .catch((err) => {
-          activeFetches--
-          processQueue()
-          if (err.name === 'AbortError') {
+          if (cancelled || (err as Error).name === 'AbortError') {
             return // Expected on unmount or URL change
           }
           // Cache the error so repeated mounts don't re-fetch broken URLs
-          cache.set(url, { blobUrl: null, error: true, refCount: 0 })
+          const failed = { blobUrl: null, error: true, refCount: 1 }
+          cache.set(url, failed)
+          retainedEntry = failed
+          evictIfNeeded()
           setError(true)
           setLoading(false)
+        })
+        .finally(() => {
+          activeFetches = Math.max(0, activeFetches - 1)
+          processQueue()
         })
     }
 
@@ -126,7 +139,7 @@ export const useImageUrl = (url) => {
     }
 
     return () => {
-      abortedRef.current = true
+      cancelled = true
       if (queued) {
         // Remove from queue if not yet started
         const idx = pendingQueue.indexOf(doFetch)
@@ -134,9 +147,8 @@ export const useImageUrl = (url) => {
       } else {
         controller.abort()
       }
-      const entry = cache.get(url)
-      if (entry) {
-        entry.refCount--
+      if (retainedEntry) {
+        retainedEntry.refCount = Math.max(0, retainedEntry.refCount - 1)
       }
     }
   }, [url])

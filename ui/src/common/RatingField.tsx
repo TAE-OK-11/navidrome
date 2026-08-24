@@ -13,6 +13,7 @@ export const RatingField = ({
   className,
   size = 'small',
   color = 'inherit',
+  sx,
   ...rest
 }) => {
   const record = useRecordContext(rest) || {}
@@ -50,6 +51,7 @@ export const RatingField = ({
           rating > 0
             ? { visibility: 'visible !important' }
             : { visibility: 'hidden' },
+          ...(Array.isArray(sx) ? sx : [sx]),
         ]}
         value={rating}
         size={size}

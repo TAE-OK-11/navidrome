@@ -1,7 +1,6 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import { Typography, Collapse } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Typography, Collapse } from '@mui/material'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardMedia from '@mui/material/CardMedia'
@@ -19,78 +18,8 @@ import AlbumInfo from '../album/AlbumInfo'
 import subsonic from '../subsonic'
 import { SafeHTML } from '../common/SafeHTML'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      display: 'flex',
-      padding: '1em',
-    },
-    details: {
-      display: 'flex',
-      flex: '1',
-      flexDirection: 'column',
-    },
-    biography: {
-      display: 'inline-block',
-      marginTop: '1em',
-      float: 'left',
-      wordBreak: 'break-word',
-      cursor: 'pointer',
-      minHeight: '4.5em',
-    },
-    content: {
-      flex: '1 0 auto',
-    },
-    cover: {
-      width: '12rem',
-      height: '12rem',
-      borderRadius: '6em',
-      cursor: 'pointer',
-      backgroundColor: 'transparent',
-      transition: 'opacity 0.3s ease-in-out',
-      objectFit: 'cover',
-    },
-    coverLoading: {
-      opacity: 0.5,
-    },
-    artistImage: {
-      maxHeight: '12rem',
-      minHeight: '12rem',
-      width: '12rem',
-      minWidth: '12rem',
-      backgroundColor: 'inherit',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: 'none',
-      position: 'relative',
-    },
-    artistDetail: {
-      flex: '1',
-      padding: '3%',
-      display: 'flex',
-      minHeight: '10rem',
-    },
-    button: {
-      marginLeft: '0.9em',
-    },
-    loveButton: {
-      top: theme.spacing(-0.2),
-      left: theme.spacing(0.5),
-    },
-    rating: {
-      marginTop: '5px',
-    },
-    artistName: {
-      wordBreak: 'break-word',
-    },
-  }),
-  { name: 'NDDesktopArtistDetails' },
-)
-
 const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
   const [expanded, setExpanded] = useState(false)
-  const classes = useStyles()
   const title = record.name
   const {
     imageLoading,
@@ -103,22 +32,41 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
   } = useImageLoadingState(record.id)
 
   return (
-    <div className={classes.root}>
-      <Card className={classes.artistDetail}>
-        <Card className={classes.artistImage}>
+    <Box sx={{ display: 'flex', p: '1em' }}>
+      <Card sx={{ flex: 1, p: '3%', display: 'flex', minHeight: '10rem' }}>
+        <Card
+          sx={{
+            maxHeight: '12rem',
+            minHeight: '12rem',
+            width: '12rem',
+            minWidth: '12rem',
+            bgcolor: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'none',
+            position: 'relative',
+          }}
+        >
           {artistInfo && (
             <CardMedia
               key={record.id}
               component="img"
               src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
-              className={`${classes.cover} ${imageLoading ? classes.coverLoading : ''}`}
+              sx={{
+                width: '12rem',
+                height: '12rem',
+                borderRadius: '6em',
+                cursor: imageError ? 'default' : 'pointer',
+                bgcolor: 'transparent',
+                transition: 'opacity 0.3s ease-in-out',
+                objectFit: 'cover',
+                opacity: imageLoading ? 0.5 : 1,
+              }}
               onClick={handleOpenLightbox}
               onLoad={handleImageLoad}
               onError={handleImageError}
               title={title}
-              style={{
-                cursor: imageError ? 'default' : 'pointer',
-              }}
             />
           )}
           <ImageUploadOverlay
@@ -127,16 +75,16 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
             hasUploadedImage={!!record.uploadedImage}
           />
         </Card>
-        <div className={classes.details}>
-          <CardContent className={classes.content}>
+        <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}>
+          <CardContent sx={{ flex: '1 0 auto' }}>
             <Typography
               component="h5"
               variant="h5"
-              className={classes.artistName}
+              sx={{ wordBreak: 'break-word' }}
             >
               {title}
               <LoveButton
-                className={classes.loveButton}
+                sx={{ top: -0.2, left: 0.5 }}
                 record={record}
                 resource={'artist'}
                 size={'default'}
@@ -150,7 +98,7 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
                   record={record}
                   resource={'artist'}
                   size={'small'}
-                  className={classes.rating}
+                  sx={{ mt: '5px' }}
                 />
               </div>
             )}
@@ -158,7 +106,14 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
               collapsedSize={'4.5em'}
               in={expanded}
               timeout={'auto'}
-              className={classes.biography}
+              sx={{
+                display: 'inline-block',
+                mt: '1em',
+                float: 'left',
+                wordBreak: 'break-word',
+                cursor: 'pointer',
+                minHeight: '4.5em',
+              }}
             >
               <Typography
                 variant={'body1'}
@@ -170,12 +125,12 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
               </Typography>
             </Collapse>
           </CardContent>
-          <Typography component={'div'} className={classes.button}>
+          <Typography component={'div'} sx={{ ml: '0.9em' }}>
             {config.enableExternalServices && (
               <ArtistExternalLinks artistInfo={artistInfo} record={record} />
             )}
           </Typography>
-        </div>
+        </Box>
         {isLightboxOpen && !imageError && (
           <Lightbox
             imagePadding={50}
@@ -187,7 +142,7 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
         )}
       </Card>
       <ExpandInfoDialog content={<AlbumInfo />} />
-    </div>
+    </Box>
   )
 }
 

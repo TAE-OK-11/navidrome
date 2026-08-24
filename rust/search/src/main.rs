@@ -33,6 +33,12 @@ struct SearchDocument {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
+    BeginReplace,
+    Append {
+        documents: Vec<SearchDocument>,
+    },
+    CommitReplace,
+    AbortReplace,
     Replace {
         documents: Vec<SearchDocument>,
     },
@@ -88,6 +94,7 @@ struct Engine {
     writer: IndexWriter,
     fields: Fields,
     indexed: u64,
+    replace_in_progress: bool,
 }
 
 impl Engine {
@@ -132,18 +139,61 @@ impl Engine {
                 secondary,
             },
             indexed: 0,
+            replace_in_progress: false,
         })
     }
 
     fn replace(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
         validate_document_batch(&documents)?;
+        self.begin_replace()?;
+        if let Err(error) = self.append(documents) {
+            self.abort_replace()?;
+            return Err(error);
+        }
+        self.commit_replace()
+    }
+
+    fn begin_replace(&mut self) -> Result<()> {
+        if self.replace_in_progress {
+            bail!("search index replacement is already in progress");
+        }
         self.writer.delete_all_documents()?;
-        self.indexed = 0;
+        self.replace_in_progress = true;
+        Ok(())
+    }
+
+    fn append(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
+        if !self.replace_in_progress {
+            bail!("begin_replace is required before append");
+        }
+        validate_document_batch(&documents)?;
         self.add_documents(documents)?;
-        self.commit()
+        Ok(())
+    }
+
+    fn commit_replace(&mut self) -> Result<()> {
+        if !self.replace_in_progress {
+            bail!("no search index replacement is in progress");
+        }
+        self.commit()?;
+        self.replace_in_progress = false;
+        Ok(())
+    }
+
+    fn abort_replace(&mut self) -> Result<()> {
+        if !self.replace_in_progress {
+            bail!("no search index replacement is in progress");
+        }
+        self.writer.rollback()?;
+        self.replace_in_progress = false;
+        self.indexed = self.reader.searcher().num_docs();
+        Ok(())
     }
 
     fn upsert(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
+        if self.replace_in_progress {
+            bail!("cannot upsert while replacing the search index");
+        }
         validate_document_batch(&documents)?;
         for document in &documents {
             self.writer
@@ -154,6 +204,9 @@ impl Engine {
     }
 
     fn delete(&mut self, keys: Vec<String>) -> Result<()> {
+        if self.replace_in_progress {
+            bail!("cannot delete while replacing the search index");
+        }
         if keys.len() > MAX_DOCUMENTS_PER_REQUEST {
             bail!("delete contains too many keys");
         }
@@ -178,7 +231,6 @@ impl Engine {
                 indexed.add_u64(self.fields.library_id, library_id);
             }
             self.writer.add_document(indexed)?;
-            self.indexed = self.indexed.saturating_add(1);
         }
         Ok(())
     }
@@ -390,6 +442,22 @@ fn main() -> Result<()> {
 
 fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
     let hits = match request {
+        Request::BeginReplace => {
+            engine.begin_replace()?;
+            Vec::new()
+        }
+        Request::Append { documents } => {
+            engine.append(documents)?;
+            Vec::new()
+        }
+        Request::CommitReplace => {
+            engine.commit_replace()?;
+            Vec::new()
+        }
+        Request::AbortReplace => {
+            engine.abort_replace()?;
+            Vec::new()
+        }
         Request::Replace { documents } => {
             engine.replace(documents)?;
             Vec::new()
@@ -483,6 +551,22 @@ mod tests {
         assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
         engine.delete(vec!["song:1".to_owned()])?;
         assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn chunked_replacement_is_atomic_for_searchers() -> Result<()> {
+        let mut engine = Engine::new()?;
+        engine.replace(vec![document("song:old", "old", "song", 1, "Old Song")])?;
+
+        engine.begin_replace()?;
+        engine.append(vec![document("song:new", "new", "song", 1, "New Song")])?;
+        assert_eq!(engine.search("Old", "song", &[1], 0, 10)?.len(), 1);
+        assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
+
+        engine.commit_replace()?;
+        assert!(engine.search("Old", "song", &[1], 0, 10)?.is_empty());
+        assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
         Ok(())
     }
 

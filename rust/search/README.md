@@ -9,7 +9,8 @@ The index combines exact-name ranking with Unicode 2–3 character n-grams. This
 makes short Korean, Japanese, and Chinese names searchable without scanning all
 rows, while retaining weighted primary and secondary fields for Latin text.
 
-The protocol supports complete replacement, incremental upserts/deletes, scoped
-queries, and stats. Until the Go synchronization layer has completed an initial
-snapshot, SQLite FTS5 remains the authoritative fallback.
-
+The protocol supports atomic chunked replacement, incremental upserts/deletes,
+scoped queries, and stats. A replacement keeps the previous reader visible until
+the final commit, so large libraries never expose a partial index. Until the Go
+synchronization layer has completed an initial snapshot, SQLite FTS5 remains the
+authoritative fallback.

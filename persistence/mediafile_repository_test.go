@@ -59,6 +59,60 @@ var _ = Describe("MediaRepository", func() {
 		Expect(mr.CountAll()).To(Equal(int64(13)))
 	})
 
+	It("persists participant and indexed-tag relationships in batches", func() {
+		repo := mr.(*mediaFileRepository)
+		genre := model.NewTag(model.TagGenre, "Batch Genre")
+		Expect(NewTagRepository(repo.ctx, repo.db).Add(1, genre)).To(Succeed())
+		first := mf(model.MediaFile{
+			ID: "batch-song-1", Path: "batch/song-1.flac", Title: "Batch One", ArtistID: artistKraftwerk.ID,
+			Artist: artistKraftwerk.Name,
+		})
+		second := mf(model.MediaFile{
+			ID: "batch-song-2", Path: "batch/song-2.flac", Title: "Batch Two", ArtistID: artistBeatles.ID,
+			Artist: artistBeatles.Name,
+		})
+		first.Tags = model.Tags{model.TagGenre: {genre.TagValue}}
+		second.Tags = model.Tags{model.TagGenre: {genre.TagValue}}
+		DeferCleanup(func() {
+			_ = repo.Delete(first.ID)
+			_ = repo.Delete(second.ID)
+		})
+
+		Expect(repo.PutAll(&first, &second)).To(Succeed())
+		var participantIDs []string
+		Expect(repo.queryAllSlice(
+			squirrel.Select("media_file_id").From("media_file_artists").
+				Where(squirrel.Eq{"media_file_id": []string{first.ID, second.ID}}),
+			&participantIDs,
+		)).To(Succeed())
+		Expect(participantIDs).To(ConsistOf(first.ID, second.ID))
+		var tagIDs []string
+		Expect(repo.queryAllSlice(
+			squirrel.Select("media_file_id").From("media_file_tags").
+				Where(squirrel.Eq{"media_file_id": []string{first.ID, second.ID}}),
+			&tagIDs,
+		)).To(Succeed())
+		Expect(tagIDs).To(ConsistOf(first.ID, second.ID))
+
+		first.Participants = nil
+		first.Tags = nil
+		Expect(repo.PutAll(&first, &second)).To(Succeed())
+		participantIDs = nil
+		Expect(repo.queryAllSlice(
+			squirrel.Select("media_file_id").From("media_file_artists").
+				Where(squirrel.Eq{"media_file_id": []string{first.ID, second.ID}}),
+			&participantIDs,
+		)).To(Succeed())
+		Expect(participantIDs).To(ConsistOf(second.ID))
+		tagIDs = nil
+		Expect(repo.queryAllSlice(
+			squirrel.Select("media_file_id").From("media_file_tags").
+				Where(squirrel.Eq{"media_file_id": []string{first.ID, second.ID}}),
+			&tagIDs,
+		)).To(Succeed())
+		Expect(tagIDs).To(ConsistOf(second.ID))
+	})
+
 	Describe("CountAll annotation-join gating", func() {
 		var adminRepo model.MediaFileRepository
 

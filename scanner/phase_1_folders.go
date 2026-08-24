@@ -63,6 +63,10 @@ type scanJob struct {
 	numFolders    atomic.Int64
 }
 
+type mediaFileBatchPutter interface {
+	PutAll(...*model.MediaFile) error
+}
+
 func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer, lib model.Library, fullScan bool, targetFolders []string) (*scanJob, error) {
 	// Get folder updates, optionally filtered to specific target folders
 	lastUpdates, err := ds.Folder(ctx).GetFolderUpdateInfo(lib, targetFolders...)
@@ -481,12 +485,25 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 			}
 		}
 
-		// Save all tracks to DB
-		for i := range entry.tracks {
-			err = mfRepo.Put(&entry.tracks[i])
-			if err != nil {
-				log.Error(p.ctx, "Scanner: Error persisting mediafile to DB", "folder", entry.path, "track", entry.tracks[i], err)
+		// Save all tracks to DB. The SQL repository collapses relationship-table
+		// rewrites into folder-sized batches; alternate stores retain the legacy
+		// per-track contract through this fallback.
+		if batchRepo, ok := mfRepo.(mediaFileBatchPutter); ok {
+			tracks := make([]*model.MediaFile, len(entry.tracks))
+			for i := range entry.tracks {
+				tracks[i] = &entry.tracks[i]
+			}
+			if err = batchRepo.PutAll(tracks...); err != nil {
+				log.Error(p.ctx, "Scanner: Error persisting mediafile batch to DB", "folder", entry.path, "tracks", len(tracks), err)
 				return err
+			}
+		} else {
+			for i := range entry.tracks {
+				err = mfRepo.Put(&entry.tracks[i])
+				if err != nil {
+					log.Error(p.ctx, "Scanner: Error persisting mediafile to DB", "folder", entry.path, "track", entry.tracks[i], err)
+					return err
+				}
 			}
 		}
 

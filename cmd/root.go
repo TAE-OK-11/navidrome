@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"net"
 	"os"
 	"os/signal"
@@ -13,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -81,14 +79,6 @@ func postRun() {
 // it will cancel the context and exit gracefully.
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		if err := hotcache.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			log.Warn("Could not stop original hot cache cleanly", err)
-		}
-	}()
-
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(startServer(ctx))
 	g.Go(startSignaller(ctx))

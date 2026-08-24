@@ -5,13 +5,11 @@ import { Divider, MenuList } from '@mui/material'
 import {
   useTranslate,
   MenuItemLink,
-  usePermissions,
   useResourceDefinitions,
   useSidebarState,
 } from 'react-admin'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import AlbumIcon from '@mui/icons-material/Album'
-import StorageIcon from '@mui/icons-material/Storage'
 import SubMenu from './SubMenu'
 import { humanize, pluralize } from 'inflection'
 import albumLists from '../album/albumLists'
@@ -37,7 +35,6 @@ const Menu = ({ dense = false }) => {
   const queue = useSelector((state) => state.player?.queue || [])
   const resourceDefinitions = useResourceDefinitions()
   const resources = Object.values(resourceDefinitions ?? {})
-  const { permissions } = usePermissions()
 
   const [state, setState] = useState({
     menuAlbumList: true,
@@ -131,18 +128,6 @@ const Menu = ({ dense = false }) => {
         </>
       ) : (
         resources.filter(subItems('playlist')).map(renderResourceMenuItemLink)
-      )}
-      {permissions === 'admin' && (
-        <>
-          <Divider />
-          <MenuItemLink
-            to="/admin/hot-cache"
-            primaryText={translate('hotCache.title')}
-            leftIcon={<StorageIcon />}
-            sidebarIsOpen={open}
-            dense={dense}
-          />
-        </>
       )}
     </MenuList>
   )

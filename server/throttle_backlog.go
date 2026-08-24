@@ -94,7 +94,7 @@ func (t *requestThrottle) handler(next http.Handler) http.Handler {
 			_, err = buf.body.WriteTo(w)
 		}
 		if err != nil {
-			if RecordExpectedTransportError(ctx, err, "") {
+			if IsExpectedTransportError(ctx, err) {
 				log.Debug(ctx, "Throttled response ended after client cancellation", "path", r.URL.Path, err)
 			} else {
 				log.Warn(ctx, "Error writing throttled response", "path", r.URL.Path, err)

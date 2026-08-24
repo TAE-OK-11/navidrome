@@ -1,6 +1,8 @@
+import { lazy } from 'react'
 import { VscExtensions } from 'react-icons/vsc'
-import PluginList from './PluginList'
-import PluginShow from './PluginShow'
+
+const PluginList = lazy(() => import('./PluginList'))
+const PluginShow = lazy(() => import('./PluginShow'))
 
 export default {
   icon: VscExtensions,

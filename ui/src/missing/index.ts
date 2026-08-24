@@ -1,5 +1,7 @@
+import { lazy } from 'react'
 import { GrDocumentMissing } from 'react-icons/gr'
-import MissingList from './MissingFilesList'
+
+const MissingList = lazy(() => import('./MissingFilesList'))
 export default {
   list: MissingList,
   icon: GrDocumentMissing,

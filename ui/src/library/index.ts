@@ -1,7 +1,9 @@
+import { lazy } from 'react'
 import { MdLibraryMusic } from 'react-icons/md'
-import LibraryList from './LibraryList'
-import LibraryEdit from './LibraryEdit'
-import LibraryCreate from './LibraryCreate'
+
+const LibraryList = lazy(() => import('./LibraryList'))
+const LibraryEdit = lazy(() => import('./LibraryEdit'))
+const LibraryCreate = lazy(() => import('./LibraryCreate'))
 
 export default {
   icon: MdLibraryMusic,

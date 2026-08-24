@@ -1,9 +1,11 @@
+import { lazy } from 'react'
 import { MdTransform } from 'react-icons/md'
-import TranscodingList from './TranscodingList'
-import TranscodingEdit from './TranscodingEdit'
-import TranscodingCreate from './TranscodingCreate'
-import TranscodingShow from './TranscodingShow'
 import config from '../config'
+
+const TranscodingList = lazy(() => import('./TranscodingList'))
+const TranscodingEdit = lazy(() => import('./TranscodingEdit'))
+const TranscodingCreate = lazy(() => import('./TranscodingCreate'))
+const TranscodingShow = lazy(() => import('./TranscodingShow'))
 
 export default {
   list: TranscodingList,

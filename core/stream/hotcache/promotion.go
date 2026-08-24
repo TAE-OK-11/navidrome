@@ -176,9 +176,14 @@ func (r *resolver) queuePromotion(identity streamIdentity, playedDuration time.D
 		r.markStaleLocked(cached)
 	}
 	if existing := r.promoting[key]; existing != nil {
+		cancelled := existing.cancelled.Load()
+		terminal := promotionTaskTerminal(existing)
 		r.mu.Unlock()
-		if existing.cancelled.Load() {
+		if cancelled {
 			return errors.New("hot-cache promotion cancellation is pending")
+		}
+		if terminal {
+			return errors.New("hot-cache promotion completion is pending")
 		}
 		return nil
 	}
@@ -215,6 +220,10 @@ func entryMatchesIdentity(cached *entry, identity streamIdentity) bool {
 		cached.meta.SourcePath == identity.sourcePath &&
 		cached.meta.SourceSize == identity.sourceSize &&
 		cached.meta.SourceModTime == identity.sourceModTime
+}
+
+func promotionTaskTerminal(task *promotionTask) bool {
+	return task.state == "completed" || task.state == "failed" || task.state == "cancelled"
 }
 
 func thresholdLabel(tracker *sessionTracker) string {
@@ -262,11 +271,11 @@ func (r *resolver) runPromotionTask(task *promotionTask) {
 	}
 
 	elapsed := time.Since(task.startedAt)
+	defer r.acknowledgePromotionTask(task)
 	r.mu.Lock()
 	if r.current == task {
 		r.current = nil
 	}
-	delete(r.promoting, task.key)
 	if err == nil {
 		task.state = "completed"
 		task.phase = "completed"
@@ -314,7 +323,6 @@ func (r *resolver) runPromotionTask(task *promotionTask) {
 
 func (r *resolver) finishCancelledTask(task *promotionTask, reason string) {
 	r.mu.Lock()
-	delete(r.promoting, task.key)
 	if r.current == task {
 		r.current = nil
 	}
@@ -324,6 +332,19 @@ func (r *resolver) finishCancelledTask(task *promotionTask, reason string) {
 	r.runtime.promotionCancelled.Add(1)
 	r.addEvent(Event{Type: "promotion_cancelled", Category: "promotion", MediaID: task.identity.mediaID,
 		Title: task.identity.title, SessionID: task.sessionID, Reason: reason, PlaybackSuccess: true, Resolved: true})
+	r.acknowledgePromotionTask(task)
+}
+
+// acknowledgePromotionTask is deliberately the final operation in promotion
+// processing. Keeping the task registered until metrics and events are
+// published makes an empty queue a reliable completion barrier for callers and
+// prevents a replacement from racing with terminal bookkeeping.
+func (r *resolver) acknowledgePromotionTask(task *promotionTask) {
+	r.mu.Lock()
+	if r.promoting[task.key] == task {
+		delete(r.promoting, task.key)
+	}
+	r.mu.Unlock()
 }
 
 func (r *resolver) waitRetry(task *promotionTask, delay time.Duration) bool {

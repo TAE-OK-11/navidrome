@@ -18,7 +18,6 @@ import {
   usePermissions,
 } from 'react-admin'
 import Switch from '@mui/material/Switch'
-import makeStyles from '../themes/makeStyles'
 import { useMediaQuery } from '@mui/material'
 import {
   CoverArtAvatar,
@@ -35,11 +34,9 @@ import config from '../config'
 import PlaylistListActions from './PlaylistListActions'
 import ChangePublicStatusButton from './ChangePublicStatusButton'
 
-const useStyles = makeStyles((theme) => ({
-  button: {
-    color: theme.palette.mode === 'dark' ? 'white' : undefined,
-  },
-}))
+const bulkButtonSx = {
+  color: (theme) => (theme.palette.mode === 'dark' ? 'white' : undefined),
+}
 
 const PlaylistFilter = (props) => {
   const { permissions } = usePermissions()
@@ -132,20 +129,11 @@ const ToggleAutoImport = ({ resource, source }) => {
 }
 
 const PlaylistListBulkActions = (props) => {
-  const classes = useStyles()
   return (
     <>
-      <ChangePublicStatusButton
-        public={true}
-        {...props}
-        className={classes.button}
-      />
-      <ChangePublicStatusButton
-        public={false}
-        {...props}
-        className={classes.button}
-      />
-      <BulkDeleteButton {...props} className={classes.button} />
+      <ChangePublicStatusButton public={true} {...props} sx={bulkButtonSx} />
+      <ChangePublicStatusButton public={false} {...props} sx={bulkButtonSx} />
+      <BulkDeleteButton {...props} sx={bulkButtonSx} />
     </>
   )
 }

@@ -5,8 +5,8 @@ import {
   CardMedia,
   Typography,
   useMediaQuery,
+  Box,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { useTranslate } from 'react-admin'
 import Lightbox from 'react-image-lightbox'
 import 'react-image-lightbox/style.css'
@@ -22,91 +22,14 @@ import {
 } from '../common'
 import config from '../config'
 import subsonic from '../subsonic'
+import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      [theme.breakpoints.down('sm')]: {
-        padding: '0.7em',
-        minWidth: '20em',
-      },
-      [theme.breakpoints.up('sm')]: {
-        padding: '1em',
-        minWidth: '32em',
-      },
-    },
-    cardContents: {
-      display: 'flex',
-    },
-    details: {
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    content: {
-      flex: '2 0 auto',
-    },
-    coverParent: {
-      [theme.breakpoints.down('sm')]: {
-        height: '8em',
-        width: '8em',
-        minWidth: '8em',
-      },
-      [theme.breakpoints.up('sm')]: {
-        height: '10em',
-        width: '10em',
-        minWidth: '10em',
-      },
-      [theme.breakpoints.up('lg')]: {
-        height: '15em',
-        width: '15em',
-        minWidth: '15em',
-      },
-      backgroundColor: 'transparent',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-    },
-    cover: {
-      objectFit: 'contain',
-      cursor: 'pointer',
-      display: 'block',
-      width: '100%',
-      height: '100%',
-      backgroundColor: 'transparent',
-      transition: 'opacity 0.3s ease-in-out',
-    },
-    coverLoading: {
-      opacity: 0.5,
-    },
-    title: {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      wordBreak: 'break-word',
-      minWidth: 0,
-    },
-    titleRow: {
-      display: 'flex',
-      alignItems: 'center',
-    },
-    loveButton: {
-      marginLeft: theme.spacing(0.5),
-      flexShrink: 0,
-    },
-    stats: {
-      marginTop: '1em',
-      marginBottom: '0.5em',
-    },
-  }),
-  {
-    name: 'NDPlaylistDetails',
-  },
-)
+const playlistOverride = (slot) => (theme) =>
+  componentStyleOverride(theme, 'NDPlaylistDetails', slot)
 
 const PlaylistDetails = (props) => {
   const { record = {} } = props
   const translate = useTranslate()
-  const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   const {
     imageLoading,
@@ -122,23 +45,67 @@ const PlaylistDetails = (props) => {
   const fullImageUrl = subsonic.getCoverArtUrl(record)
 
   return (
-    <Card className={classes.root}>
-      <div className={classes.cardContents}>
-        <div className={classes.coverParent}>
+    <Card
+      sx={[
+        (theme) => ({
+          [theme.breakpoints.down('sm')]: { p: '0.7em', minWidth: '20em' },
+          [theme.breakpoints.up('sm')]: { p: '1em', minWidth: '32em' },
+        }),
+        playlistOverride('root'),
+      ]}
+    >
+      <Box sx={[{ display: 'flex' }, playlistOverride('cardContents')]}>
+        <Box
+          sx={[
+            (theme) => ({
+              [theme.breakpoints.down('sm')]: {
+                height: '8em',
+                width: '8em',
+                minWidth: '8em',
+              },
+              [theme.breakpoints.up('sm')]: {
+                height: '10em',
+                width: '10em',
+                minWidth: '10em',
+              },
+              [theme.breakpoints.up('lg')]: {
+                height: '15em',
+                width: '15em',
+                minWidth: '15em',
+              },
+              bgcolor: 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+            }),
+            playlistOverride('coverParent'),
+          ]}
+        >
           <CardMedia
             key={record.id} // Force re-render when playlist changes
             component={'img'}
             src={imageUrl}
             width="400"
             height="400"
-            className={`${classes.cover} ${imageLoading ? classes.coverLoading : ''}`}
+            sx={[
+              {
+                objectFit: 'contain',
+                cursor: imageError ? 'default' : 'pointer',
+                display: 'block',
+                width: '100%',
+                height: '100%',
+                bgcolor: 'transparent',
+                transition: 'opacity 0.3s ease-in-out',
+                opacity: imageLoading ? 0.5 : 1,
+              },
+              playlistOverride('cover'),
+              imageLoading && playlistOverride('coverLoading'),
+            ]}
             onClick={handleOpenLightbox}
             onLoad={handleImageLoad}
             onError={handleImageError}
             title={record.name}
-            style={{
-              cursor: imageError ? 'default' : 'pointer',
-            }}
           />
           {isWritable(record.ownerId) && (
             <ImageUploadOverlay
@@ -147,28 +114,52 @@ const PlaylistDetails = (props) => {
               hasUploadedImage={!!record.uploadedImage}
             />
           )}
-        </div>
-        <div className={classes.details}>
-          <CardContent className={classes.content}>
-            <div className={classes.titleRow}>
+        </Box>
+        <Box
+          sx={[
+            { display: 'flex', flexDirection: 'column' },
+            playlistOverride('details'),
+          ]}
+        >
+          <CardContent sx={[{ flex: '2 0 auto' }, playlistOverride('content')]}>
+            <Box
+              sx={[
+                { display: 'flex', alignItems: 'center' },
+                playlistOverride('titleRow'),
+              ]}
+            >
               <OverflowTooltip title={record.name || ''}>
                 <Typography
                   variant={isDesktop ? 'h5' : 'h6'}
-                  className={classes.title}
+                  sx={[
+                    {
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      wordBreak: 'break-word',
+                      minWidth: 0,
+                    },
+                    playlistOverride('title'),
+                  ]}
                 >
                   {record.name || translate('ra.page.loading')}
                 </Typography>
               </OverflowTooltip>
               <LoveButton
-                className={classes.loveButton}
+                sx={[
+                  { ml: 0.5, flexShrink: 0 },
+                  playlistOverride('loveButton'),
+                ]}
                 record={record}
                 resource={'playlist'}
                 size={isDesktop ? 'default' : 'small'}
                 aria-label="love"
                 color="primary"
               />
-            </div>
-            <Typography component="p" className={classes.stats}>
+            </Box>
+            <Typography
+              component="p"
+              sx={[{ mt: '1em', mb: '0.5em' }, playlistOverride('stats')]}
+            >
               {record.songCount ? (
                 <span>
                   {record.songCount}{' '}
@@ -186,8 +177,8 @@ const PlaylistDetails = (props) => {
             </Typography>
             <CollapsibleComment record={record} />
           </CardContent>
-        </div>
-      </div>
+        </Box>
+      </Box>
       {isLightboxOpen && !imageError && (
         <Lightbox
           imagePadding={50}

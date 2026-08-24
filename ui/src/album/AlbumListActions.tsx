@@ -6,31 +6,22 @@ import {
   TopToolbar,
   useTranslate,
 } from 'react-admin'
-import { ButtonGroup, useMediaQuery, Typography } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, ButtonGroup, useMediaQuery, Typography } from '@mui/material'
 import ViewHeadlineIcon from '@mui/icons-material/ViewHeadline'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useDispatch, useSelector } from 'react-redux'
 import { albumViewGrid, albumViewTable } from '../actions'
 import { ToggleFieldsMenu } from '../common'
 
-const useStyles = makeStyles({
-  title: { margin: '1rem' },
-  buttonGroup: { width: '100%', justifyContent: 'center' },
-  leftButton: { paddingRight: '0.5rem' },
-  rightButton: { paddingLeft: '0.5rem' },
-})
-
 const AlbumViewToggler = React.forwardRef(
   ({ showTitle = true, disableElevation, fullWidth }, ref) => {
     const dispatch = useDispatch()
     const albumView = useSelector((state) => state.albumView)
-    const classes = useStyles()
     const translate = useTranslate()
     return (
-      <div ref={ref}>
+      <Box ref={ref}>
         {showTitle && (
-          <Typography className={classes.title}>
+          <Typography sx={{ m: '1rem' }}>
             {translate('ra.toggleFieldsMenu.layout')}
           </Typography>
         )}
@@ -38,11 +29,11 @@ const AlbumViewToggler = React.forwardRef(
           variant="text"
           color="primary"
           aria-label="text primary button group"
-          className={classes.buttonGroup}
+          sx={{ width: '100%', justifyContent: 'center' }}
         >
           <Button
             size="small"
-            className={classes.leftButton}
+            sx={{ pr: '0.5rem' }}
             label={translate('ra.toggleFieldsMenu.grid')}
             color={albumView.grid ? 'primary' : 'secondary'}
             onClick={() => dispatch(albumViewGrid())}
@@ -51,7 +42,7 @@ const AlbumViewToggler = React.forwardRef(
           </Button>
           <Button
             size="small"
-            className={classes.rightButton}
+            sx={{ pl: '0.5rem' }}
             label={translate('ra.toggleFieldsMenu.table')}
             color={albumView.grid ? 'secondary' : 'primary'}
             onClick={() => dispatch(albumViewTable())}
@@ -59,7 +50,7 @@ const AlbumViewToggler = React.forwardRef(
             <ViewHeadlineIcon fontSize="inherit" />
           </Button>
         </ButtonGroup>
-      </div>
+      </Box>
     )
   },
 )

@@ -5,7 +5,12 @@ import { Button, useTranslate, useUnselectAll } from 'react-admin'
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
 import { openAddToPlaylist } from '../actions'
 
-export const AddToPlaylistButton = ({ resource, selectedIds, className }) => {
+export const AddToPlaylistButton = ({
+  resource,
+  selectedIds,
+  className,
+  sx,
+}) => {
   const translate = useTranslate()
   const dispatch = useDispatch()
   const unselectAll = useUnselectAll()
@@ -25,6 +30,7 @@ export const AddToPlaylistButton = ({ resource, selectedIds, className }) => {
       aria-haspopup="true"
       onClick={handleClick}
       className={className}
+      sx={sx}
       label={translate('resources.song.actions.addToPlaylist')}
     >
       <PlaylistAddIcon />

@@ -43,6 +43,7 @@ env:
 jobs:
   build:
     name: Build JBS image
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:

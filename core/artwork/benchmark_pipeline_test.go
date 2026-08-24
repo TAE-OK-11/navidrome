@@ -47,4 +47,16 @@ func BenchmarkResizeFullPipeline(b *testing.B) {
 			}
 		})
 	}
+
+	jpegData := generateJPEG(b, 600, 600, 90)
+	b.Run("jpeg/600x600_passthrough_1200", func(b *testing.B) {
+		b.SetBytes(int64(len(jpegData)))
+		b.ReportAllocs()
+		for b.Loop() {
+			result, originalSize, err := resizeStaticImage(jpegData, 1200, false)
+			if err != nil || result != nil || originalSize != 600 {
+				b.Fatalf("result=%v originalSize=%d err=%v", result, originalSize, err)
+			}
+		}
+	})
 }

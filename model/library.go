@@ -50,7 +50,7 @@ type LibraryRepository interface {
 	Put(*Library) error
 	Delete(id int) error
 	StoreMusicFolder() error
-	AddArtist(id int, artistID string) error
+	AddArtist(id int, artistIDs ...string) error
 
 	// User-library association methods
 	GetUsersWithLibraryAccess(libraryID int) (Users, error)

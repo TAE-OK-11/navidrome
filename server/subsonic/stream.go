@@ -94,7 +94,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 		return nil, err
 	}
 
-	entity, err := model.GetEntityByID(ctx, api.ds, id)
+	entity, err := downloadArchiveEntityByID(ctx, api.ds, id)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +111,6 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	}
 
 	switch v := entity.(type) {
-	case *model.MediaFile:
-		return api.serveMediaDownload(ctx, w, r, v, id, format, maxBitRate)
 	case *model.Album:
 		setHeaders(v.Name)
 		return nil, writeArchive(func(out http.ResponseWriter) error {
@@ -131,6 +129,29 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 	default:
 		return nil, model.ErrNotFound
 	}
+}
+
+// downloadArchiveEntityByID continues resolution after mediaFileForStreaming
+// has already established that id is not a track. Keeping this separate from
+// model.GetEntityByID avoids repeating that media lookup and avoids probing the
+// radio table, whose entities cannot be downloaded as ZIP archives.
+func downloadArchiveEntityByID(ctx context.Context, ds model.DataStore, id string) (any, error) {
+	if album, err := ds.Album(ctx).Get(id); err == nil {
+		return album, nil
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return nil, err
+	}
+	if artist, err := ds.Artist(ctx).Get(id); err == nil {
+		return artist, nil
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return nil, err
+	}
+	if playlist, err := ds.Playlist(ctx).Get(id); err == nil {
+		return playlist, nil
+	} else if !errors.Is(err, model.ErrNotFound) {
+		return nil, err
+	}
+	return nil, model.ErrNotFound
 }
 
 func (api *Router) serveMediaDownload(ctx context.Context, w http.ResponseWriter, r *http.Request, mf *model.MediaFile, id, format string, maxBitRate int) (*responses.Subsonic, error) {

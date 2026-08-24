@@ -18,63 +18,6 @@ import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
 import PropTypes from 'prop-types'
 import { isWritable } from '../common'
-import makeStyles from '../themes/makeStyles'
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  searchField: {
-    marginBottom: theme.spacing(2),
-    width: '100%',
-    flexShrink: 0,
-  },
-  playlistList: {
-    flex: 1,
-    minHeight: 0,
-    overflow: 'auto',
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.background.paper,
-  },
-  listItem: {
-    paddingTop: 0,
-    paddingBottom: 0,
-  },
-  createIcon: {
-    fontSize: '1.25rem',
-    margin: '9px',
-  },
-  selectedPlaylistsContainer: {
-    marginTop: theme.spacing(2),
-    flexShrink: 0,
-    maxHeight: '30%',
-    overflow: 'auto',
-  },
-  selectedPlaylist: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    margin: theme.spacing(0.5),
-    padding: theme.spacing(0.5, 1),
-    backgroundColor: theme.palette.primary.main,
-    color: theme.palette.primary.contrastText,
-    borderRadius: theme.shape.borderRadius,
-    fontSize: '0.875rem',
-  },
-  removeButton: {
-    marginLeft: theme.spacing(0.5),
-    padding: 2,
-    color: 'inherit',
-  },
-  emptyMessage: {
-    padding: theme.spacing(2),
-    textAlign: 'center',
-    color: theme.palette.text.secondary,
-  },
-}))
 
 const PlaylistSearchField = ({
   searchText,
@@ -83,14 +26,13 @@ const PlaylistSearchField = ({
   onKeyDown,
   canCreateNew,
 }) => {
-  const classes = useStyles()
   const translate = useTranslate()
 
   return (
     <TextField
       autoFocus
       variant="outlined"
-      className={classes.searchField}
+      sx={{ mb: 2, width: '100%', flexShrink: 0 }}
       label={translate('resources.playlist.fields.name')}
       value={searchText}
       onChange={(e) => onSearchChange(e.target.value)}
@@ -118,11 +60,10 @@ const PlaylistSearchField = ({
 }
 
 const EmptyPlaylistMessage = ({ searchText, canCreateNew }) => {
-  const classes = useStyles()
   const translate = useTranslate()
 
   return (
-    <div className={classes.emptyMessage}>
+    <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
       <Typography variant="body2">
         {searchText
           ? translate('resources.playlist.message.noPlaylistsFound')
@@ -133,19 +74,13 @@ const EmptyPlaylistMessage = ({ searchText, canCreateNew }) => {
           {translate('resources.playlist.actions.pressEnterToCreate')}
         </Typography>
       )}
-    </div>
+    </Box>
   )
 }
 
 const PlaylistListItem = ({ playlist, isSelected, onToggle }) => {
-  const classes = useStyles()
-
   return (
-    <ListItemButton
-      className={classes.listItem}
-      onClick={() => onToggle(playlist)}
-      dense
-    >
+    <ListItemButton sx={{ py: 0 }} onClick={() => onToggle(playlist)} dense>
       <ListItemIcon>
         <Checkbox
           icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
@@ -161,13 +96,12 @@ const PlaylistListItem = ({ playlist, isSelected, onToggle }) => {
 }
 
 const CreatePlaylistItem = ({ searchText, onCreateNew }) => {
-  const classes = useStyles()
   const translate = useTranslate()
 
   return (
-    <ListItemButton className={classes.listItem} onClick={onCreateNew} dense>
+    <ListItemButton sx={{ py: 0 }} onClick={onCreateNew} dense>
       <ListItemIcon>
-        <AddIcon className={classes.createIcon} />
+        <AddIcon sx={{ fontSize: '1.25rem', m: '9px' }} />
       </ListItemIcon>
       <ListItemText
         primary={translate('resources.playlist.actions.addNewPlaylist', {
@@ -186,13 +120,21 @@ const PlaylistList = ({
   canCreateNew,
   onCreateNew,
 }) => {
-  const classes = useStyles()
-
   const isPlaylistSelected = (playlist) =>
     selectedPlaylists.some((p) => p.id === playlist.id)
 
   return (
-    <List className={classes.playlistList}>
+    <List
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        overflow: 'auto',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        bgcolor: 'background.paper',
+      }}
+    >
       {filteredOptions.length === 0 ? (
         <EmptyPlaylistMessage
           searchText={searchText}
@@ -216,34 +158,43 @@ const PlaylistList = ({
 }
 
 const SelectedPlaylistChip = ({ playlist, onRemove }) => {
-  const classes = useStyles()
   const translate = useTranslate()
 
   return (
-    <span className={classes.selectedPlaylist}>
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        m: 0.5,
+        py: 0.5,
+        px: 1,
+        bgcolor: 'primary.main',
+        color: 'primary.contrastText',
+        borderRadius: 1,
+        fontSize: '0.875rem',
+      }}
+    >
       {playlist.name}
       <IconButton
-        className={classes.removeButton}
+        sx={{ ml: 0.5, p: '2px', color: 'inherit' }}
         size="small"
         onClick={() => onRemove(playlist)}
         title={translate('resources.playlist.actions.removeFromSelection')}
       >
         {'×'}
       </IconButton>
-    </span>
+    </Box>
   )
 }
 
 const SelectedPlaylistsDisplay = ({ selectedPlaylists, onRemoveSelected }) => {
-  const classes = useStyles()
-  const translate = useTranslate()
-
   if (selectedPlaylists.length === 0) {
     return null
   }
 
   return (
-    <Box className={classes.selectedPlaylistsContainer}>
+    <Box sx={{ mt: 2, flexShrink: 0, maxHeight: '30%', overflow: 'auto' }}>
       <Box>
         {selectedPlaylists.map((playlist, index) => (
           <SelectedPlaylistChip
@@ -258,7 +209,6 @@ const SelectedPlaylistsDisplay = ({ selectedPlaylists, onRemoveSelected }) => {
 }
 
 export const SelectPlaylistInput = ({ onChange }) => {
-  const classes = useStyles()
   const [searchText, setSearchText] = useState('')
   const [selectedPlaylists, setSelectedPlaylists] = useState([])
 
@@ -324,7 +274,14 @@ export const SelectPlaylistInput = ({ onChange }) => {
   )
 
   return (
-    <div className={classes.root}>
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <PlaylistSearchField
         searchText={searchText}
         onSearchChange={setSearchText}
@@ -346,7 +303,7 @@ export const SelectPlaylistInput = ({ onChange }) => {
         selectedPlaylists={selectedPlaylists}
         onRemoveSelected={handleRemoveSelected}
       />
-    </div>
+    </Box>
   )
 }
 

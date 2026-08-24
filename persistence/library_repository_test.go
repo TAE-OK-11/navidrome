@@ -272,6 +272,30 @@ var _ = Describe("LibraryRepository", func() {
 		})
 	})
 
+	Describe("AddArtist", func() {
+		It("adds a batch while ignoring empty and duplicate artist IDs", func() {
+			artistRepo := NewArtistRepository(ctx, conn)
+			artists := []model.Artist{
+				{ID: "batch-artist-one", Name: "Batch Artist One"},
+				{ID: "batch-artist-two", Name: "Batch Artist Two"},
+			}
+			for i := range artists {
+				Expect(artistRepo.Put(&artists[i])).To(Succeed())
+			}
+			DeferCleanup(func() {
+				_, _ = conn.NewQuery("DELETE FROM artist WHERE id IN ({:one}, {:two})").
+					Bind(dbx.Params{"one": artists[0].ID, "two": artists[1].ID}).Execute()
+			})
+
+			Expect(repo.AddArtist(1, artists[0].ID, "", artists[1].ID, artists[0].ID)).To(Succeed())
+			var count int
+			Expect(conn.NewQuery("SELECT count(*) FROM library_artist WHERE library_id = 1 AND artist_id IN ({:one}, {:two})").
+				Bind(dbx.Params{"one": artists[0].ID, "two": artists[1].ID}).Row(&count)).To(Succeed())
+			Expect(count).To(Equal(2))
+			Expect(repo.AddArtist(1)).To(Succeed())
+		})
+	})
+
 	Describe("Delete", func() {
 		var adminRepo model.LibraryRepository
 		var artistRepo model.ArtistRepository

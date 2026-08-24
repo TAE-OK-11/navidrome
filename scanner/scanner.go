@@ -124,13 +124,7 @@ func (s *scannerImpl) scanFolders(ctx context.Context, fullScan bool, targets []
 	}
 
 	// Store scan type and start time
-	scanType := "quick"
-	if state.fullScan {
-		scanType = "full"
-	}
-	if state.isSelectiveScan() {
-		scanType += "-selective"
-	}
+	scanType := scanTypeName(state.fullScan, state.isSelectiveScan())
 	_ = s.ds.Property(ctx).Put(consts.LastScanTypeKey, scanType)
 	_ = s.ds.Property(ctx).Put(consts.LastScanStartTimeKey, startTime.Format(time.RFC3339))
 
@@ -203,6 +197,17 @@ func (s *scannerImpl) scanFolders(ctx context.Context, fullScan bool, targets []
 	} else {
 		log.Info(ctx, "Scanner: Finished scanning all libraries", "duration", time.Since(startTime))
 	}
+}
+
+func scanTypeName(fullScan, selective bool) string {
+	scanType := "quick"
+	if fullScan {
+		scanType = "full"
+	}
+	if selective {
+		scanType += "-selective"
+	}
+	return scanType
 }
 
 // prepareLibrariesForScan initializes the scan for all libraries in the state.

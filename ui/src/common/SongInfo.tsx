@@ -23,27 +23,15 @@ import {
   SizeField,
 } from './index'
 import { MultiLineTextField } from './MultiLineTextField'
-import makeStyles from '../themes/makeStyles'
 import config from '../config'
 import { AlbumLinkField } from '../song/AlbumLinkField'
 import { Tab, Tabs } from '@mui/material'
 
-const useStyles = makeStyles({
-  gain: {
-    '&:after': {
-      content: (props) => (props.gain ? " ' db'" : ''),
-    },
-  },
-  tableCell: {
-    width: '17.5%',
-  },
-  value: {
-    whiteSpace: 'pre-line',
-  },
-})
+const tableCellSx = { width: '17.5%' }
+const valueSx = { whiteSpace: 'pre-line' }
+const gainSx = { '&:after': { content: '" db"' } }
 
 export const SongInfo = (props) => {
-  const classes = useStyles({ gain: config.enableReplayGain })
   const translate = useTranslate()
   const record = useRecordContext(props)
   const [tab, setTab] = useState(0)
@@ -111,12 +99,8 @@ export const SongInfo = (props) => {
   }
 
   if (config.enableReplayGain) {
-    data.albumGain = (
-      <NumberField source="rgAlbumGain" className={classes.gain} />
-    )
-    data.trackGain = (
-      <NumberField source="rgTrackGain" className={classes.gain} />
-    )
+    data.albumGain = <NumberField source="rgAlbumGain" sx={gainSx} />
+    data.trackGain = <NumberField source="rgTrackGain" sx={gainSx} />
   }
 
   const tags = Object.entries(record.tags ?? {}).filter(
@@ -149,36 +133,33 @@ export const SongInfo = (props) => {
             {Object.keys(data).map((key) => {
               return (
                 <TableRow key={`${record.id}-${key}`}>
-                  <TableCell scope="row" className={classes.tableCell}>
+                  <TableCell scope="row" sx={tableCellSx}>
                     {translate(`resources.song.fields.${key}`, {
                       _: humanize(underscore(key)),
                     })}
                     :
                   </TableCell>
-                  <TableCell align="left" className={classes.value}>
+                  <TableCell align="left" sx={valueSx}>
                     {data[key]}
                   </TableCell>
                 </TableRow>
               )
             })}
-            <ParticipantsInfo classes={classes} record={record} />
+            <ParticipantsInfo tableCellSx={tableCellSx} record={record} />
             {tags.length > 0 && (
               <TableRow key={`${record.id}-separator`}>
-                <TableCell
-                  scope="row"
-                  className={classes.tableCell}
-                ></TableCell>
-                <TableCell align="left" className={classes.value}>
+                <TableCell scope="row" sx={tableCellSx}></TableCell>
+                <TableCell align="left" sx={valueSx}>
                   <h4>{translate(`resources.song.fields.tags`)}</h4>
                 </TableCell>
               </TableRow>
             )}
             {tags.map(([name, values]) => (
               <TableRow key={`${record.id}-tag-${name}`}>
-                <TableCell scope="row" className={classes.tableCell}>
+                <TableCell scope="row" sx={tableCellSx}>
                   {name}:
                 </TableCell>
-                <TableCell align="left" className={classes.value}>
+                <TableCell align="left" sx={valueSx}>
                   {values.join(' • ')}
                 </TableCell>
               </TableRow>
@@ -195,17 +176,17 @@ export const SongInfo = (props) => {
           <Table size="small" aria-label="song raw tags">
             <TableBody>
               <TableRow key={`${record.id}-raw-path`}>
-                <TableCell scope="row" className={classes.tableCell}>
+                <TableCell scope="row" sx={tableCellSx}>
                   {translate(`resources.song.fields.path`)}:
                 </TableCell>
                 <TableCell align="left">{data.path}</TableCell>
               </TableRow>
               {Object.entries(record.rawTags).map(([key, value]) => (
                 <TableRow key={`${record.id}-raw-${key}`}>
-                  <TableCell scope="row" className={classes.tableCell}>
+                  <TableCell scope="row" sx={tableCellSx}>
                     {key}:
                   </TableCell>
-                  <TableCell align="left" className={classes.value}>
+                  <TableCell align="left" sx={valueSx}>
                     {value.join(' • ')}
                   </TableCell>
                 </TableRow>

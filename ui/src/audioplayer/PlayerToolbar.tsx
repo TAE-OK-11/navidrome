@@ -4,57 +4,52 @@ import { useDispatch } from 'react-redux'
 import { useGetOne } from 'react-admin'
 import { GlobalHotKeys } from 'react-hotkeys'
 import IconButton from '@mui/material/IconButton'
-import { useMediaQuery } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import { RiSaveLine } from 'react-icons/ri'
 import { LoveButton, useToggleLove } from '../common'
 import { openSaveQueueDialog } from '../actions'
 import { keyMap } from '../hotkeys'
-import makeStyles from '../themes/makeStyles'
 
-const useStyles = makeStyles((theme) => ({
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    flexGrow: 1,
-    justifyContent: 'flex-end',
-    gap: '0.5rem',
-    listStyle: 'none',
-    padding: 0,
-    margin: 0,
-  },
-  mobileListItem: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    listStyle: 'none',
-    padding: theme.spacing(0.5),
-    margin: 0,
-    height: 24,
-  },
-  button: {
-    width: '2.5rem',
-    height: '2.5rem',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-  },
-  mobileButton: {
-    width: 24,
-    height: 24,
-    padding: 0,
-    margin: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '18px',
-  },
-  mobileIcon: {
-    fontSize: '18px',
-    display: 'flex',
-    alignItems: 'center',
-  },
-}))
+const desktopItemSx = {
+  display: 'flex',
+  alignItems: 'center',
+  flexGrow: 1,
+  justifyContent: 'flex-end',
+  gap: '0.5rem',
+  listStyle: 'none',
+  p: 0,
+  m: 0,
+}
+
+const mobileItemSx = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  listStyle: 'none',
+  p: 0.5,
+  m: 0,
+  height: 24,
+}
+
+const desktopButtonSx = {
+  width: '2.5rem',
+  height: '2.5rem',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  p: 0,
+}
+
+const mobileButtonSx = {
+  width: 24,
+  height: 24,
+  p: 0,
+  m: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 18,
+}
 
 const PlayerToolbar = ({ id, isRadio }) => {
   const dispatch = useDispatch()
@@ -65,7 +60,6 @@ const PlayerToolbar = ({ id, isRadio }) => {
   )
   const [toggleLove, toggling] = useToggleLove('song', data)
   const isDesktop = useMediaQuery('(min-width:810px)')
-  const classes = useStyles()
 
   const handlers = {
     TOGGLE_LOVE: useCallback(() => toggleLove(), [toggleLove]),
@@ -79,8 +73,7 @@ const PlayerToolbar = ({ id, isRadio }) => {
     [dispatch],
   )
 
-  const buttonClass = isDesktop ? classes.button : classes.mobileButton
-  const listItemClass = isDesktop ? classes.toolbar : classes.mobileListItem
+  const buttonSx = isDesktop ? desktopButtonSx : mobileButtonSx
 
   const saveQueueButton = (
     <IconButton
@@ -88,9 +81,11 @@ const PlayerToolbar = ({ id, isRadio }) => {
       onClick={handleSaveQueue}
       disabled={isRadio}
       data-testid="save-queue-button"
-      className={buttonClass}
+      sx={buttonSx}
     >
-      <RiSaveLine className={!isDesktop ? classes.mobileIcon : undefined} />
+      <RiSaveLine
+        style={!isDesktop ? { fontSize: 18, display: 'flex' } : undefined}
+      />
     </IconButton>
   )
 
@@ -100,7 +95,7 @@ const PlayerToolbar = ({ id, isRadio }) => {
       resource={'song'}
       size={isDesktop ? undefined : 'inherit'}
       disabled={isPending || toggling || !id || isRadio}
-      className={buttonClass}
+      sx={buttonSx}
     />
   )
 
@@ -108,14 +103,18 @@ const PlayerToolbar = ({ id, isRadio }) => {
     <>
       <GlobalHotKeys keyMap={keyMap} handlers={handlers} allowChanges />
       {isDesktop ? (
-        <li className={`${listItemClass} item`}>
+        <Box component="li" className="toolbar item" sx={desktopItemSx}>
           {saveQueueButton}
           {loveButton}
-        </li>
+        </Box>
       ) : (
         <>
-          <li className={`${listItemClass} item`}>{saveQueueButton}</li>
-          <li className={`${listItemClass} item`}>{loveButton}</li>
+          <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
+            {saveQueueButton}
+          </Box>
+          <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
+            {loveButton}
+          </Box>
         </>
       )}
     </>

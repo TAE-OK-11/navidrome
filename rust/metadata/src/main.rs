@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -34,13 +34,13 @@ struct InputFile {
 struct Response {
     protocol: u32,
     lofty: &'static str,
-    results: BTreeMap<String, Metadata>,
-    errors: BTreeMap<String, String>,
+    results: HashMap<String, Metadata>,
+    errors: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
 struct Metadata {
-    tags: BTreeMap<String, Vec<String>>,
+    tags: HashMap<String, Vec<String>>,
     duration_ns: u64,
     bit_rate: u32,
     bit_depth: u8,
@@ -50,25 +50,105 @@ struct Metadata {
     has_picture: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct PictureRequest {
+    path: PathBuf,
+    max_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct PictureResponse {
+    ok: bool,
+    size: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
 fn main() -> Result<()> {
     let mut args = std::env::args_os().skip(1);
     if let Some(command) = args.next() {
-        if command != "--extract-picture" {
-            bail!("unsupported command {:?}", command);
+        if command == "--picture-worker" {
+            if args.next().is_some() {
+                bail!("--picture-worker accepts no arguments");
+            }
+            return run_picture_worker();
         }
-        let path = args
-            .next()
-            .map(PathBuf::from)
-            .context("--extract-picture requires a file path")?;
-        if args.next().is_some() {
-            bail!("--extract-picture accepts exactly one file path");
+        if command == "--extract-picture" {
+            let path = args
+                .next()
+                .map(PathBuf::from)
+                .context("--extract-picture requires a file path")?;
+            if args.next().is_some() {
+                bail!("--extract-picture accepts exactly one file path");
+            }
+            let (tagged, _, _) = read_file(&path)?;
+            let picture = picture_data(&tagged, &path)?;
+            io::stdout().lock().write_all(picture)?;
+            return Ok(());
         }
-        let picture = extract_picture(&path)?;
-        io::stdout().lock().write_all(&picture)?;
-        return Ok(());
+        bail!("unsupported command {:?}", command);
     }
 
     run_worker()
+}
+
+fn run_picture_worker() -> Result<()> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
+
+    for line in BufReader::with_capacity(16 * 1024, stdin.lock()).lines() {
+        let line = line.context("reading picture request")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        match serde_json::from_str::<PictureRequest>(&line) {
+            Ok(request) => match read_file(&request.path).and_then(|(tagged, _, _)| {
+                let picture = picture_data(&tagged, &request.path)?;
+                if picture.len() as u64 > request.max_bytes {
+                    bail!(
+                        "embedded artwork exceeds maximum size of {} bytes",
+                        request.max_bytes
+                    );
+                }
+                write_picture_response(&mut output, picture)
+            }) {
+                Ok(()) => {}
+                Err(error) => write_picture_error(&mut output, format!("{error:#}"))?,
+            },
+            Err(error) => write_picture_error(&mut output, error.to_string())?,
+        }
+        output.flush()?;
+    }
+    Ok(())
+}
+
+fn write_picture_response(output: &mut impl Write, picture: &[u8]) -> Result<()> {
+    serde_json::to_writer(
+        &mut *output,
+        &PictureResponse {
+            ok: true,
+            size: picture.len(),
+            error: None,
+        },
+    )?;
+    output.write_all(b"\n")?;
+    output.write_all(picture)?;
+    Ok(())
+}
+
+fn write_picture_error(output: &mut impl Write, error: String) -> Result<()> {
+    serde_json::to_writer(
+        &mut *output,
+        &PictureResponse {
+            ok: false,
+            size: 0,
+            error: Some(error),
+        },
+    )?;
+    output.write_all(b"\n")?;
+    Ok(())
 }
 
 fn run_worker() -> Result<()> {
@@ -87,8 +167,8 @@ fn run_worker() -> Result<()> {
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
                 lofty: env!("CARGO_PKG_VERSION"),
-                results: BTreeMap::new(),
-                errors: BTreeMap::from([("$request".to_owned(), error.to_string())]),
+                results: HashMap::new(),
+                errors: HashMap::from([("$request".to_owned(), error.to_string())]),
             },
         };
         serde_json::to_writer(&mut output, &response).context("encoding metadata response")?;
@@ -99,8 +179,9 @@ fn run_worker() -> Result<()> {
 }
 
 fn handle_request(request: Request) -> Response {
-    let mut results = BTreeMap::new();
-    let mut errors = BTreeMap::new();
+    let file_count = request.files.len();
+    let mut results = HashMap::with_capacity(file_count);
+    let mut errors = HashMap::new();
 
     if request.files.len() > MAX_BATCH_FILES {
         errors.insert(
@@ -149,7 +230,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
 
     Ok(Metadata {
-        tags: tags.into_iter().collect(),
+        tags,
         duration_ns: properties.duration().as_nanos().min(u128::from(u64::MAX)) as u64,
         bit_rate: properties.audio_bitrate().unwrap_or(0),
         bit_depth: properties.bit_depth().unwrap_or(0),
@@ -219,8 +300,7 @@ fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>)
     Ok((tagged, codec, raw_vorbis))
 }
 
-fn extract_picture(path: &Path) -> Result<Vec<u8>> {
-    let (tagged, _, _) = read_file(path)?;
+fn picture_data<'a>(tagged: &'a TaggedFile, path: &Path) -> Result<&'a [u8]> {
     let pictures = tagged
         .tags()
         .iter()
@@ -231,7 +311,7 @@ fn extract_picture(path: &Path) -> Result<Vec<u8>> {
     if picture.data().is_empty() {
         bail!("embedded picture is empty in {}", path.display());
     }
-    Ok(picture.data().to_vec())
+    Ok(picture.data())
 }
 
 fn preferred_picture<'a>(pictures: &[&'a Picture]) -> Option<&'a Picture> {

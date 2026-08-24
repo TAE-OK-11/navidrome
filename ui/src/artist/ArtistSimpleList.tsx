@@ -7,26 +7,10 @@ import ListItemAvatar from '@mui/material/ListItemAvatar'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
-import makeStyles from '../themes/makeStyles'
+import Box from '@mui/material/Box'
 import { sanitizeListRestProps, useListContext } from 'react-admin'
 import { ArtistContextMenu, CoverArtAvatar, RatingField } from '../common'
 import config from '../config'
-
-const useStyles = makeStyles(
-  {
-    listItem: {
-      padding: '10px',
-    },
-    title: {
-      paddingRight: '10px',
-      width: '80%',
-    },
-    rightIcon: {
-      top: '26px',
-    },
-  },
-  { name: 'RaArtistSimpleList' },
-)
 
 const ArtistSimpleList = ({
   linkType,
@@ -35,7 +19,6 @@ const ArtistSimpleList = ({
   hasBulkActions = false,
   ...rest
 }) => {
-  const classes = useStyles({ classes: classesOverride })
   const { data = [], isPending, total = 0 } = useListContext()
   return (
     (isPending || total > 0) && (
@@ -44,7 +27,10 @@ const ArtistSimpleList = ({
           (record) =>
             record && (
               <span key={record.id} onClick={() => linkType(record.id)}>
-                <ListItemButton className={classes.listItem}>
+                <ListItemButton
+                  className={classesOverride?.listItem}
+                  sx={{ p: '10px' }}
+                >
                   <ListItemAvatar>
                     <CoverArtAvatar record={record} />
                   </ListItemAvatar>
@@ -52,7 +38,12 @@ const ArtistSimpleList = ({
                     style={{ marginLeft: '8px' }}
                     primary={
                       <>
-                        <div className={classes.title}>{record.name}</div>
+                        <Box
+                          className={classesOverride?.title}
+                          sx={{ pr: '10px', width: '80%' }}
+                        >
+                          {record.name}
+                        </Box>
                         {config.enableStarRating && (
                           <RatingField
                             record={record}
@@ -64,7 +55,10 @@ const ArtistSimpleList = ({
                       </>
                     }
                   />
-                  <ListItemSecondaryAction className={classes.rightIcon}>
+                  <ListItemSecondaryAction
+                    className={classesOverride?.rightIcon}
+                    sx={{ top: 26 }}
+                  >
                     <ListItemIcon>
                       <ArtistContextMenu record={record} />
                     </ListItemIcon>

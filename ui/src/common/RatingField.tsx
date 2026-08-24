@@ -2,25 +2,10 @@
 import React, { useCallback } from 'react'
 import PropTypes from 'prop-types'
 import Rating from '@mui/material/Rating'
-import makeStyles from '../themes/makeStyles'
 import { isDateSet } from '../utils/validations'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
-import clsx from 'clsx'
 import { useRating } from './useRating'
 import { useRecordContext } from 'react-admin'
-
-const useStyles = makeStyles({
-  rating: {
-    color: (props) => props.color,
-    visibility: (props) => (props.visible === false ? 'hidden' : 'inherit'),
-  },
-  show: {
-    visibility: 'visible !important',
-  },
-  hide: {
-    visibility: 'hidden',
-  },
-})
 
 export const RatingField = ({
   resource,
@@ -28,11 +13,11 @@ export const RatingField = ({
   className,
   size = 'small',
   color = 'inherit',
+  sx,
   ...rest
 }) => {
   const record = useRecordContext(rest) || {}
   const [rate, rating, loading] = useRating(resource, record)
-  const classes = useStyles({ color, visible })
 
   const stopPropagation = (e) => {
     e.stopPropagation()
@@ -57,11 +42,17 @@ export const RatingField = ({
     >
       <Rating
         name={record.mediaFileId || record.id}
-        className={clsx(
-          className,
-          classes.rating,
-          rating > 0 ? classes.show : classes.hide,
-        )}
+        className={className}
+        sx={[
+          {
+            color,
+            visibility: visible === false ? 'hidden' : 'inherit',
+          },
+          rating > 0
+            ? { visibility: 'visible !important' }
+            : { visibility: 'hidden' },
+          ...(Array.isArray(sx) ? sx : [sx]),
+        ]}
         value={rating}
         size={size}
         disabled={record?.missing || loading}

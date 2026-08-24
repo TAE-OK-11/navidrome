@@ -1,7 +1,6 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import { Typography, Collapse } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Typography, Collapse } from '@mui/material'
 import Card from '@mui/material/Card'
 import CardMedia from '@mui/material/CardMedia'
 import config from '../config'
@@ -15,84 +14,9 @@ import Lightbox from 'react-image-lightbox'
 import subsonic from '../subsonic'
 import { SafeHTML } from '../common/SafeHTML'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    root: {
-      display: 'flex',
-      background: ({ img }) => `url(${img})`,
-    },
-    bgContainer: {
-      display: 'flex',
-      height: '15rem',
-      width: '100vw',
-      padding: 'unset',
-      backdropFilter: 'blur(1px)',
-      backgroundPosition: '50% 30%',
-      background: `linear-gradient(to bottom, rgba(52 52 52 / 72%), rgba(21 21 21))`,
-    },
-    link: {
-      margin: '1px',
-    },
-    details: {
-      display: 'flex',
-      alignItems: 'flex-start',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      marginLeft: '0.5rem',
-    },
-    biography: {
-      display: 'flex',
-      marginLeft: '3%',
-      marginRight: '3%',
-      marginTop: '-2em',
-      zIndex: '1',
-      '& p': {
-        whiteSpace: ({ expanded }) => (expanded ? 'unset' : 'nowrap'),
-        overflow: 'hidden',
-        width: '95vw',
-        textOverflow: 'ellipsis',
-      },
-    },
-    cover: {
-      width: 151,
-      boxShadow: '0px 0px 6px 0px #565656',
-      borderRadius: '5px',
-      backgroundColor: 'transparent',
-      transition: 'opacity 0.3s ease-in-out',
-      objectFit: 'cover',
-    },
-    coverLoading: {
-      opacity: 0.5,
-    },
-    artistImage: {
-      marginLeft: '1em',
-      maxHeight: '7rem',
-      backgroundColor: 'inherit',
-      marginTop: '4rem',
-      width: '7rem',
-      minWidth: '7rem',
-      display: 'flex',
-      borderRadius: '5em',
-      position: 'relative',
-    },
-    loveButton: {
-      top: theme.spacing(-0.2),
-      left: theme.spacing(0.5),
-    },
-    rating: {
-      marginTop: '5px',
-    },
-    artistName: {
-      wordBreak: 'break-word',
-    },
-  }),
-  { name: 'NDMobileArtistDetails' },
-)
-
 const MobileArtistDetails = ({ artistInfo, biography, record }) => {
   const img = subsonic.getCoverArtUrl(record, 800)
   const [expanded, setExpanded] = useState(false)
-  const classes = useStyles({ img, expanded })
   const title = record.name
   const {
     imageLoading,
@@ -106,22 +30,51 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
 
   return (
     <>
-      <div className={classes.root}>
-        <div className={classes.bgContainer}>
-          <Card className={classes.artistImage}>
+      <Box sx={{ display: 'flex', background: `url(${img})` }}>
+        <Box
+          sx={{
+            display: 'flex',
+            height: '15rem',
+            width: '100vw',
+            p: 'unset',
+            backdropFilter: 'blur(1px)',
+            backgroundPosition: '50% 30%',
+            background:
+              'linear-gradient(to bottom, rgba(52 52 52 / 72%), rgba(21 21 21))',
+          }}
+        >
+          <Card
+            sx={{
+              ml: '1em',
+              maxHeight: '7rem',
+              bgcolor: 'inherit',
+              mt: '4rem',
+              width: '7rem',
+              minWidth: '7rem',
+              display: 'flex',
+              borderRadius: '5em',
+              position: 'relative',
+            }}
+          >
             {artistInfo && (
               <CardMedia
                 key={record.id}
                 component="img"
                 src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
-                className={`${classes.cover} ${imageLoading ? classes.coverLoading : ''}`}
+                sx={{
+                  width: 151,
+                  boxShadow: '0px 0px 6px 0px #565656',
+                  borderRadius: '5px',
+                  bgcolor: 'transparent',
+                  transition: 'opacity 0.3s ease-in-out',
+                  objectFit: 'cover',
+                  opacity: imageLoading ? 0.5 : 1,
+                  cursor: imageError ? 'default' : 'pointer',
+                }}
                 onClick={handleOpenLightbox}
                 onLoad={handleImageLoad}
                 onError={handleImageError}
                 title={title}
-                style={{
-                  cursor: imageError ? 'default' : 'pointer',
-                }}
               />
             )}
             <ImageUploadOverlay
@@ -130,15 +83,23 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
               hasUploadedImage={!!record.uploadedImage}
             />
           </Card>
-          <div className={classes.details}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              ml: '0.5rem',
+            }}
+          >
             <Typography
               component="h5"
               variant="h5"
-              className={classes.artistName}
+              sx={{ wordBreak: 'break-word' }}
             >
               {title}
               <LoveButton
-                className={classes.loveButton}
+                sx={{ top: -0.2, left: 0.5 }}
                 record={record}
                 resource={'artist'}
                 size={'small'}
@@ -151,13 +112,26 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
                 record={record}
                 resource={'artist'}
                 size={'small'}
-                className={classes.rating}
+                sx={{ mt: '5px' }}
               />
             )}
-          </div>
-        </div>
-      </div>
-      <div className={classes.biography}>
+          </Box>
+        </Box>
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          mx: '3%',
+          mt: '-2em',
+          zIndex: 1,
+          '& p': {
+            whiteSpace: expanded ? 'unset' : 'nowrap',
+            overflow: 'hidden',
+            width: '95vw',
+            textOverflow: 'ellipsis',
+          },
+        }}
+      >
         <Collapse collapsedSize={'1.5em'} in={expanded} timeout={'auto'}>
           <Typography variant={'body1'} onClick={() => setExpanded(!expanded)}>
             <span>
@@ -165,7 +139,7 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
             </span>
           </Typography>
         </Collapse>
-      </div>
+      </Box>
       {isLightboxOpen && !imageError && (
         <Lightbox
           imagePadding={50}

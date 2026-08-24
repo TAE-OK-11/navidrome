@@ -9,30 +9,23 @@ import {
   useResourceContext,
 } from 'react-admin'
 import Switch from '@mui/material/Switch'
-import makeStyles from '../themes/makeStyles'
 import { Tooltip, FormControlLabel } from '@mui/material'
 import PropTypes from 'prop-types'
 
-const useStyles = makeStyles((theme) => ({
-  enabledSwitch: {
-    '& .MuiSwitch-colorSecondary.Mui-checked': {
-      color: theme.palette.success?.main || theme.palette.primary.main,
-    },
+const enabledSwitchSx = (theme) => {
+  const color = theme.palette.success?.main || theme.palette.primary.main
+  return {
+    '& .MuiSwitch-colorSecondary.Mui-checked': { color },
     '& .MuiSwitch-colorSecondary.Mui-checked + .MuiSwitch-track': {
-      backgroundColor:
-        theme.palette.success?.main || theme.palette.primary.main,
+      backgroundColor: color,
     },
-  },
-  errorSwitch: {
-    '& .MuiSwitch-thumb': {
-      backgroundColor: theme.palette.warning.main,
-    },
-    '& .MuiSwitch-track': {
-      backgroundColor: theme.palette.warning.light,
-      opacity: 0.7,
-    },
-  },
-}))
+  }
+}
+
+const errorSwitchSx = {
+  '& .MuiSwitch-thumb': { bgcolor: 'warning.main' },
+  '& .MuiSwitch-track': { bgcolor: 'warning.light', opacity: 0.7 },
+}
 
 /**
  * Shared toggle switch for enabling/disabling plugins.
@@ -53,7 +46,6 @@ const ToggleEnabledSwitch = ({
   const notify = useNotify()
   const refresh = useRefresh()
   const translate = useTranslate()
-  const classes = useStyles()
 
   const [toggleEnabled, { isPending }] = useUpdate(
     resource,
@@ -157,7 +149,7 @@ const ToggleEnabledSwitch = ({
       checked={record?.enabled ?? false}
       onClick={handleClick}
       disabled={isDisabled}
-      className={isDisabled ? classes.errorSwitch : classes.enabledSwitch}
+      sx={isDisabled ? errorSwitchSx : enabledSwitchSx}
       size={size}
       color="primary"
     />

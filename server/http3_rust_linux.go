@@ -107,7 +107,7 @@ func newRustHTTP3Runtime(
 	protocols.SetUnencryptedHTTP2(true)
 	internalServer := &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
-		IdleTimeout:       serverHTTP3IdleTimeout,
+		IdleTimeout:       serverH3BridgeIdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,
 		HTTP2: &http.HTTP2Config{

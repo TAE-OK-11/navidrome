@@ -4,30 +4,12 @@ import PropTypes from 'prop-types'
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
-import { Typography } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, Typography } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import Checkbox from '@mui/material/Checkbox'
 import { useDispatch, useSelector } from 'react-redux'
 import { useTranslate } from 'react-admin'
 import { setToggleableFields } from '../actions'
-
-const useStyles = makeStyles({
-  menuIcon: {
-    position: 'relative',
-    top: '-0.5em',
-  },
-  menu: {
-    width: '24ch',
-  },
-  columns: {
-    maxHeight: '21rem',
-    overflow: 'auto',
-  },
-  title: {
-    margin: '1rem',
-  },
-})
 
 export const ToggleFieldsMenu = ({
   resource,
@@ -43,7 +25,6 @@ export const ToggleFieldsMenu = ({
   const omittedColumns =
     useSelector((state) => state.settings.omittedFields[resource]) || []
 
-  const classes = useStyles()
   const open = Boolean(anchorEl)
 
   const handleOpen = (event) => {
@@ -65,7 +46,7 @@ export const ToggleFieldsMenu = ({
   }
 
   return (
-    <div className={classes.menuIcon}>
+    <Box sx={{ position: 'relative', top: '-0.5em' }}>
       <IconButton
         aria-label="more"
         aria-controls="long-menu"
@@ -81,30 +62,30 @@ export const ToggleFieldsMenu = ({
         keepMounted
         open={open}
         onClose={handleClose}
-        classes={{
-          paper: classes.menu,
+        slotProps={{
+          paper: { sx: { width: '24ch' } },
         }}
       >
         {TopBarComponent && <TopBarComponent />}
         {!hideColumns && toggleableColumns ? (
-          <div>
-            <Typography className={classes.title}>
+          <Box>
+            <Typography sx={{ m: '1rem' }}>
               {translate('ra.toggleFieldsMenu.columnsToDisplay')}
             </Typography>
-            <div className={classes.columns}>
+            <Box sx={{ maxHeight: '21rem', overflow: 'auto' }}>
               {Object.entries(toggleableColumns).map(([key, val]) =>
                 !omittedColumns.includes(key) ? (
                   <MenuItem key={key} onClick={() => handleClick(key)}>
-                    <Checkbox checked={val} />
+                    <Checkbox checked={Boolean(val)} />
                     {translate(`resources.${resource}.fields.${key}`)}
                   </MenuItem>
                 ) : null,
               )}
-            </div>
-          </div>
+            </Box>
+          </Box>
         ) : null}
       </Menu>
-    </div>
+    </Box>
   )
 }
 

@@ -1,6 +1,7 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useState, useEffect } from 'react'
-import { useMediaQuery } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
+import { styled } from '@mui/material/styles'
 import {
   useShowController,
   ShowContextProvider,
@@ -21,39 +22,22 @@ import {
   Title,
 } from '../common/index'
 import ArtistActions from './ArtistActions'
-import makeStyles from '../themes/makeStyles'
 import { withWidth } from '../themes/useWidth'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    actions: {
-      width: '100%',
-      justifyContent: 'flex-start',
-      display: 'flex',
-      paddingTop: '0.25em',
-      paddingBottom: '0.25em',
-      paddingLeft: '1em',
-      paddingRight: '1em',
-      flexWrap: 'wrap',
-      overflowX: 'auto',
-      [theme.breakpoints.down('sm')]: {
-        paddingLeft: '0.5em',
-        paddingRight: '0.5em',
-        gap: '0.5em',
-        justifyContent: 'space-around',
-      },
-    },
-    actionsContainer: {
-      paddingLeft: '.75rem',
-      [theme.breakpoints.down('sm')]: {
-        padding: '.5rem',
-      },
-    },
-  }),
-  {
-    name: 'NDArtistShow',
+const ShowArtistActions = styled(ArtistActions)(({ theme }) => ({
+  width: '100%',
+  justifyContent: 'flex-start',
+  display: 'flex',
+  padding: '0.25em 1em',
+  flexWrap: 'wrap',
+  overflowX: 'auto',
+  [theme.breakpoints.down('sm')]: {
+    paddingLeft: '0.5em',
+    paddingRight: '0.5em',
+    gap: '0.5em',
+    justifyContent: 'space-around',
   },
-)
+}))
 
 const ArtistDetails = (props) => {
   const record = useRecordContext(props)
@@ -90,7 +74,6 @@ const ArtistShowLayout = (props) => {
   const record = useRecordContext()
   const { width } = props
   const [, perPageOptions] = useAlbumsPerPage(width)
-  const classes = useStyles()
   useResourceRefresh('artist', 'album')
   useScrollRestoration(!!record?.id)
 
@@ -117,9 +100,9 @@ const ArtistShowLayout = (props) => {
       {record && <RaTitle title={<Title subTitle={record.name} />} />}
       {record && <ArtistDetails />}
       {record && (
-        <div className={classes.actionsContainer}>
-          <ArtistActions record={record} className={classes.actions} />
-        </div>
+        <Box sx={{ p: { xs: '.5rem', sm: 0 }, pl: { sm: '.75rem' } }}>
+          <ShowArtistActions record={record} />
+        </Box>
       )}
       {record && (
         <ReferenceManyField

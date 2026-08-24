@@ -14,62 +14,11 @@ import {
   Paper,
   Popper,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { ExpandMore, ExpandLess, LibraryMusic } from '@mui/icons-material'
 import { setSelectedLibraries, setUserLibraries } from '../actions'
 import { useRefreshOnEvents } from './useRefreshOnEvents'
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    marginTop: theme.spacing(3),
-    marginBottom: theme.spacing(3),
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
-    display: 'flex',
-    justifyContent: 'center',
-  },
-  chip: {
-    borderRadius: theme.spacing(1),
-    height: theme.spacing(4.8),
-    fontSize: '1rem',
-    fontWeight: 'normal',
-    minWidth: '210px',
-    justifyContent: 'flex-start',
-    paddingLeft: theme.spacing(1),
-    paddingRight: theme.spacing(1),
-    marginTop: theme.spacing(0.1),
-    '& .MuiChip-label': {
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(1),
-    },
-    '& .MuiChip-icon': {
-      fontSize: '1.2rem',
-      marginLeft: theme.spacing(0.5),
-    },
-  },
-  popper: {
-    zIndex: 1300,
-  },
-  paper: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(1),
-    minWidth: 300,
-    maxWidth: 400,
-  },
-  headerContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    marginBottom: 0,
-  },
-  masterCheckbox: {
-    padding: '7px',
-    marginLeft: '-9px',
-    marginRight: 0,
-  },
-}))
-
 const LibrarySelector = () => {
-  const classes = useStyles()
   const dispatch = useDispatch()
   const dataProvider = useDataProvider()
   const translate = useTranslate()
@@ -163,7 +112,7 @@ const LibrarySelector = () => {
         })
 
   return (
-    <Box className={classes.root}>
+    <Box sx={{ my: 3, px: 2, display: 'flex', justifyContent: 'center' }}>
       <Chip
         icon={<LibraryMusic />}
         label={displayText}
@@ -171,24 +120,35 @@ const LibrarySelector = () => {
         onDelete={open ? handleToggle : undefined}
         deleteIcon={open ? <ExpandLess /> : <ExpandMore />}
         variant="outlined"
-        className={classes.chip}
+        sx={{
+          borderRadius: 1,
+          height: 38.4,
+          fontSize: '1rem',
+          fontWeight: 'normal',
+          minWidth: 210,
+          justifyContent: 'flex-start',
+          px: 1,
+          mt: 0.1,
+          '& .MuiChip-label': { pl: 2, pr: 1 },
+          '& .MuiChip-icon': { fontSize: '1.2rem', ml: 0.5 },
+        }}
       />
 
       <Popper
         open={open}
         anchorEl={anchorEl}
         placement="bottom-start"
-        className={classes.popper}
+        sx={{ zIndex: 1300 }}
       >
         <ClickAwayListener onClickAway={handleClose}>
-          <Paper className={classes.paper}>
-            <Box className={classes.headerContainer}>
+          <Paper sx={{ p: 2, mt: 1, minWidth: 300, maxWidth: 400 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0 }}>
               <Checkbox
                 checked={isAllSelected}
                 indeterminate={isIndeterminate}
                 onChange={handleMasterCheckboxChange}
                 size="small"
-                className={classes.masterCheckbox}
+                sx={{ p: '7px', ml: '-9px', mr: 0 }}
               />
               <Typography>
                 {translate('menu.librarySelector.selectLibraries')}:

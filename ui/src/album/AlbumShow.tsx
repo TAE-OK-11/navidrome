@@ -7,27 +7,17 @@ import {
   useShowController,
   Title as RaTitle,
 } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
+import { styled } from '@mui/material/styles'
 import AlbumSongs from './AlbumSongs'
 import AlbumDetails from './AlbumDetails'
 import AlbumActions from './AlbumActions'
 import { useResourceRefresh, useScrollRestoration, Title } from '../common'
 
-const useStyles = makeStyles(
-  (theme) => ({
-    albumActions: {
-      width: '100%',
-    },
-  }),
-  {
-    name: 'NDAlbumShow',
-  },
-)
+const FullWidthAlbumActions = styled(AlbumActions)({ width: '100%' })
 
 const AlbumShowLayout = (props) => {
   const context = useShowContext(props)
   const { record } = context
-  const classes = useStyles()
   useResourceRefresh('album', 'song')
   useScrollRestoration(!!record?.id)
 
@@ -49,9 +39,7 @@ const AlbumShowLayout = (props) => {
             resource={'song'}
             exporter={false}
             album={record}
-            actions={
-              <AlbumActions className={classes.albumActions} record={record} />
-            }
+            actions={<FullWidthAlbumActions record={record} />}
           />
         </ReferenceManyField>
       )}

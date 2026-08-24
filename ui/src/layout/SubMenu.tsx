@@ -8,45 +8,8 @@ import ListItemIcon from '@mui/material/ListItemIcon'
 import Typography from '@mui/material/Typography'
 import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
-import makeStyles from '../themes/makeStyles'
 import { useSidebarState, useTranslate } from 'react-admin'
-import { IconButton, useMediaQuery } from '@mui/material'
-
-const useStyles = makeStyles(
-  (theme) => ({
-    icon: { minWidth: theme.spacing(5) },
-    sidebarIsOpen: {
-      '& a': {
-        transition: 'padding-left 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms',
-        paddingLeft: theme.spacing(4),
-      },
-    },
-    sidebarIsClosed: {
-      '& a': {
-        transition: 'padding-left 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms',
-        paddingLeft: theme.spacing(2),
-      },
-    },
-    actionIcon: {
-      opacity: 0,
-    },
-    menuHeader: {
-      width: '100%',
-    },
-    headerText: {
-      flexGrow: 1,
-    },
-    headerWrapper: {
-      display: 'flex',
-      '&:hover $actionIcon': {
-        opacity: 1,
-      },
-    },
-  }),
-  {
-    name: 'NDSubMenu',
-  },
-)
+import { Box, IconButton, useMediaQuery } from '@mui/material'
 
 const SubMenu = ({
   handleToggle,
@@ -64,7 +27,6 @@ const SubMenu = ({
   secondaryActionActive,
 }) => {
   const translate = useTranslate()
-  const classes = useStyles()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'))
   const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))
   const [, setSidebarOpen] = useSidebarState()
@@ -83,19 +45,24 @@ const SubMenu = ({
   }
 
   const header = (
-    <div className={classes.headerWrapper}>
+    <Box
+      sx={{
+        display: 'flex',
+        '&:hover .submenu-action': { opacity: 1 },
+      }}
+    >
       <ListItemButton
         dense={dense}
-        className={classes.menuHeader}
+        sx={{ width: '100%' }}
         onClick={handleToggle}
       >
-        <ListItemIcon className={classes.icon}>
+        <ListItemIcon sx={{ minWidth: 5 }}>
           {isOpen ? <ExpandMore /> : icon}
         </ListItemIcon>
         <Typography
           variant="inherit"
           color="textSecondary"
-          className={classes.headerText}
+          sx={{ flexGrow: 1 }}
         >
           {translate(name)}
         </Typography>
@@ -105,7 +72,10 @@ const SubMenu = ({
             title={secondaryActionTitle}
             aria-label={secondaryActionTitle}
             className={
-              isDesktop && !secondaryActionActive ? classes.actionIcon : null
+              isDesktop && !secondaryActionActive ? 'submenu-action' : undefined
+            }
+            sx={
+              isDesktop && !secondaryActionActive ? { opacity: 0 } : undefined
             }
             onClick={handleSecondaryClick}
           >
@@ -115,14 +85,15 @@ const SubMenu = ({
         {onAction && sidebarIsOpen && (
           <IconButton
             size={'small'}
-            className={isDesktop ? classes.actionIcon : null}
+            className={isDesktop ? 'submenu-action' : undefined}
+            sx={isDesktop ? { opacity: 0 } : undefined}
             onClick={handleOnClick}
           >
             {actionIcon}
           </IconButton>
         )}
       </ListItemButton>
-    </div>
+    </Box>
   )
 
   return (
@@ -139,9 +110,12 @@ const SubMenu = ({
           dense={dense}
           component="div"
           disablePadding
-          className={
-            sidebarIsOpen ? classes.sidebarIsOpen : classes.sidebarIsClosed
-          }
+          sx={{
+            '& a': {
+              transition: 'padding-left 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms',
+              pl: sidebarIsOpen ? 4 : 2,
+            },
+          }}
         >
           {children}
         </List>

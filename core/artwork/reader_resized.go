@@ -136,7 +136,7 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 		return bytes.NewReader(data), 0, nil
 	}
 
-	return resizeStaticImage(data, a.size, a.square)
+	return resizeStaticImageWithConfig(data, config, a.size, a.square)
 }
 
 // toFastScaleType converts images whose concrete type has no optimized scaler
@@ -163,22 +163,26 @@ func resizeStaticImage(data []byte, size int, square bool) (io.Reader, int, erro
 	if err := ValidateImageConfig(config); err != nil {
 		return nil, 0, err
 	}
+	return resizeStaticImageWithConfig(data, config, size, square)
+}
+
+func resizeStaticImageWithConfig(data []byte, config image.Config, size int, square bool) (io.Reader, int, error) {
+	originalSize := max(config.Width, config.Height)
+	if size > originalSize {
+		size = originalSize
+	}
+	// Avoid decoding every pixel merely to discover that the original can be
+	// returned unchanged. This is common when clients request large covers.
+	if originalSize <= size && !square {
+		return nil, originalSize, nil
+	}
+
 	original, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, err
 	}
 
 	bounds := original.Bounds()
-	originalSize := max(bounds.Max.X, bounds.Max.Y)
-
-	// Clamp size to original dimensions - upscaling wastes resources and adds no information
-	if size > originalSize {
-		size = originalSize
-	}
-
-	if originalSize <= size && !square {
-		return nil, originalSize, nil
-	}
 
 	// Calculate aspect-fit dimensions
 	srcW, srcH := bounds.Dx(), bounds.Dy()

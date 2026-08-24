@@ -3,42 +3,15 @@ import ReactJkMusicPlayer from 'navidrome-music-player'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import config, { shareInfo } from '../config'
 import { shareCoverUrl, shareDownloadUrl, shareStreamUrl } from '../utils'
-
-import makeStyles from '../themes/makeStyles'
+import Box from '@mui/material/Box'
 
 // How long the download button stays inert after a click. The browser needs a
 // moment to show its own download UI; until then the page looks unresponsive.
 export const DOWNLOAD_FEEDBACK_MS = 5000
 
-const useStyle = makeStyles({
-  player: {
-    '& .group .next-audio': {
-      pointerEvents: (props) => props.single && 'none',
-      opacity: (props) => props.single && 0.65,
-    },
-    '& .group.audio-download': {
-      pointerEvents: (props) => props.downloading && 'none',
-      opacity: (props) => props.downloading && 0.65,
-    },
-    '@media (min-width: 768px)': {
-      '& .react-jinke-music-player-mobile > div': {
-        width: 768,
-        margin: 'auto',
-      },
-      '& .react-jinke-music-player-mobile-cover': {
-        width: 'auto !important',
-      },
-    },
-  },
-})
-
 const SharePlayer = () => {
   const [downloading, setDownloading] = useState(false)
   const timer = useRef(null)
-  const classes = useStyle({
-    single: shareInfo?.tracks.length === 1,
-    downloading,
-  })
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
@@ -85,11 +58,29 @@ const SharePlayer = () => {
     sortableOptions: { delay: 200, delayOnTouchOnly: true },
   }
   return (
-    <ReactJkMusicPlayer
-      {...options}
-      className={classes.player}
-      customDownloader={customDownloader}
-    />
+    <Box
+      sx={{
+        '& .group .next-audio': {
+          pointerEvents: shareInfo?.tracks.length === 1 ? 'none' : undefined,
+          opacity: shareInfo?.tracks.length === 1 ? 0.65 : undefined,
+        },
+        '& .group.audio-download': {
+          pointerEvents: downloading ? 'none' : undefined,
+          opacity: downloading ? 0.65 : undefined,
+        },
+        '@media (min-width: 768px)': {
+          '& .react-jinke-music-player-mobile > div': {
+            width: 768,
+            margin: 'auto',
+          },
+          '& .react-jinke-music-player-mobile-cover': {
+            width: 'auto !important',
+          },
+        },
+      }}
+    >
+      <ReactJkMusicPlayer {...options} customDownloader={customDownloader} />
+    </Box>
   )
 }
 

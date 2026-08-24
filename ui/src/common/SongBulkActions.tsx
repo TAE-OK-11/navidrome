@@ -6,18 +6,14 @@ import { RiPlayList2Fill, RiPlayListAddFill } from 'react-icons/ri'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { BatchPlayButton } from './index'
 import { AddToPlaylistButton } from './AddToPlaylistButton'
-import makeStyles from '../themes/makeStyles'
 import { BatchShareButton } from './BatchShareButton'
 import config from '../config'
 
-const useStyles = makeStyles((theme) => ({
-  button: {
-    color: theme.palette.mode === 'dark' ? 'white' : undefined,
-  },
-}))
+const buttonSx = {
+  color: (theme) => (theme.palette.mode === 'dark' ? 'white' : undefined),
+}
 
 export const SongBulkActions = (props) => {
-  const classes = useStyles()
   const unselectAll = useUnselectAll()
   useEffect(() => {
     unselectAll(props.resource)
@@ -29,26 +25,24 @@ export const SongBulkActions = (props) => {
         action={playTracks}
         label={'resources.song.actions.playNow'}
         icon={<PlayArrowIcon />}
-        className={classes.button}
+        sx={buttonSx}
       />
       <BatchPlayButton
         {...props}
         action={playNext}
         label={'resources.song.actions.playNext'}
         icon={<RiPlayList2Fill />}
-        className={classes.button}
+        sx={buttonSx}
       />
       <BatchPlayButton
         {...props}
         action={addTracks}
         label={'resources.song.actions.addToQueue'}
         icon={<RiPlayListAddFill />}
-        className={classes.button}
+        sx={buttonSx}
       />
-      {config.enableSharing && (
-        <BatchShareButton {...props} className={classes.button} />
-      )}
-      <AddToPlaylistButton {...props} className={classes.button} />
+      {config.enableSharing && <BatchShareButton {...props} sx={buttonSx} />}
+      <AddToPlaylistButton {...props} sx={buttonSx} />
     </Fragment>
   )
 }

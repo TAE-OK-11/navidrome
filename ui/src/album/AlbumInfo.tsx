@@ -16,7 +16,6 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
 import {
   ArtistLinkField,
   MultiLineTextField,
@@ -24,17 +23,7 @@ import {
   RangeField,
 } from '../common'
 
-const useStyles = makeStyles({
-  tableCell: {
-    width: '17.5%',
-  },
-  value: {
-    whiteSpace: 'pre-line',
-  },
-})
-
 const AlbumInfo = (props) => {
-  const classes = useStyles()
   const translate = useTranslate()
   const record = useRecordContext(props)
   const data = {
@@ -123,23 +112,19 @@ const AlbumInfo = (props) => {
           {Object.keys(data).map((key) => {
             return (
               <TableRow key={`${record.id}-${key}`}>
-                <TableCell
-                  component="th"
-                  scope="row"
-                  className={classes.tableCell}
-                >
+                <TableCell component="th" scope="row" sx={{ width: '17.5%' }}>
                   {translate(`resources.album.fields.${key}`, {
                     _: humanize(underscore(key)),
                   })}
                   :
                 </TableCell>
-                <TableCell align="left" className={classes.value}>
+                <TableCell align="left" sx={{ whiteSpace: 'pre-line' }}>
                   {data[key]}
                 </TableCell>
               </TableRow>
             )
           })}
-          <ParticipantsInfo record={record} classes={classes} />
+          <ParticipantsInfo record={record} tableCellSx={{ width: '17.5%' }} />
         </TableBody>
       </Table>
     </TableContainer>

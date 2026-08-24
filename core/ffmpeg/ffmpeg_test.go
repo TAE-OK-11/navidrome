@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -44,6 +45,42 @@ var _ = Describe("ffmpeg", func() {
 	})
 
 	Describe("ExtractImage", func() {
+		It("reuses a persistent native picture worker", func() {
+			if runtime.GOOS == "windows" {
+				Skip("POSIX helper script")
+			}
+			dir := GinkgoT().TempDir()
+			starts := filepath.Join(dir, "starts")
+			worker := filepath.Join(dir, "navidrome-metadata")
+			script := fmt.Sprintf(`#!/bin/sh
+if [ "$1" != "--picture-worker" ]; then
+  exit 2
+fi
+printf x >> %q
+while IFS= read -r request; do
+  printf '{"ok":true,"size":21}\n'
+  printf native-original-cover
+done
+`, starts)
+			Expect(os.WriteFile(worker, []byte(script), 0600)).To(Succeed())
+			Expect(os.Chmod(worker, 0700)).To(Succeed()) //nolint:gosec // Executable test helper.
+			Expect(os.Setenv(metadataworker.EnvPath, worker)).To(Succeed())
+			DeferCleanup(os.Unsetenv, metadataworker.EnvPath)
+			DeferCleanup(persistentPictureWorkers.closeIdle)
+
+			mediaFile := filepath.Join(dir, "track.m4a")
+			Expect(os.WriteFile(mediaFile, []byte("audio"), 0600)).To(Succeed())
+			for range 2 {
+				reader, err := (&ffmpeg{}).ExtractImage(GinkgoT().Context(), mediaFile)
+				Expect(err).NotTo(HaveOccurred())
+				data, err := io.ReadAll(reader)
+				Expect(reader.Close()).To(Succeed())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(data).To(Equal([]byte("native-original-cover")))
+			}
+			Expect(os.ReadFile(starts)).To(Equal([]byte("x")))
+		})
+
 		It("prefers the native metadata worker so image-only ffmpeg muxers are not required", func() {
 			if runtime.GOOS == "windows" {
 				Skip("POSIX helper script")

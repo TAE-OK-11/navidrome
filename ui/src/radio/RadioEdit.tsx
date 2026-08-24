@@ -8,38 +8,12 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import { CardMedia } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, CardMedia } from '@mui/material'
 import { urlValidate } from '../utils/validations'
 import { Title, ImageUploadOverlay, useImageLoadingState } from '../common'
 import subsonic from '../subsonic'
 import config from '../config'
 import { RADIO_PLACEHOLDER_IMAGE } from '../consts'
-
-const useStyles = makeStyles({
-  coverParent: {
-    display: 'inline-flex',
-    position: 'relative',
-    width: '8rem',
-    height: '8rem',
-    marginBottom: '1em',
-  },
-  cover: {
-    width: '8rem',
-    height: '8rem',
-    objectFit: 'cover',
-    cursor: 'pointer',
-    transition: 'opacity 0.3s ease-in-out',
-  },
-  coverLoading: {
-    opacity: 0.5,
-  },
-  placeholder: {
-    width: '8rem',
-    height: '8rem',
-    objectFit: 'contain',
-  },
-})
 
 const RadioTitle = ({ record: recordOverride }) => {
   const record = useRecordContext({ record: recordOverride })
@@ -77,28 +51,43 @@ const RadioEdit = (props) => {
 
 const RadioCoverArt = ({ record: recordOverride }) => {
   const record = useRecordContext({ record: recordOverride })
-  const classes = useStyles()
   const { imageLoading, handleImageLoad, handleImageError } =
     useImageLoadingState(record?.id)
 
   if (!record) return null
 
   return (
-    <div className={classes.coverParent}>
+    <Box
+      sx={{
+        display: 'inline-flex',
+        position: 'relative',
+        width: '8rem',
+        height: '8rem',
+        mb: '1em',
+      }}
+    >
       {record.uploadedImage ? (
         <CardMedia
           component="img"
           src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize, true)}
-          className={`${classes.cover} ${imageLoading ? classes.coverLoading : ''}`}
+          sx={{
+            width: '8rem',
+            height: '8rem',
+            objectFit: 'cover',
+            cursor: 'pointer',
+            transition: 'opacity 0.3s ease-in-out',
+            opacity: imageLoading ? 0.5 : 1,
+          }}
           onLoad={handleImageLoad}
           onError={handleImageError}
           title={record.name}
           alt={record.name}
         />
       ) : (
-        <img
+        <Box
+          component="img"
           src={RADIO_PLACEHOLDER_IMAGE}
-          className={classes.placeholder}
+          sx={{ width: '8rem', height: '8rem', objectFit: 'contain' }}
           alt={record.name}
         />
       )}
@@ -107,7 +96,7 @@ const RadioCoverArt = ({ record: recordOverride }) => {
         entityId={record.id}
         hasUploadedImage={!!record.uploadedImage}
       />
-    </div>
+    </Box>
   )
 }
 

@@ -9,8 +9,7 @@ import {
   useDataProvider,
   useNotify,
 } from 'react-admin'
-import { useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, useMediaQuery } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ShuffleIcon from '@mui/icons-material/Shuffle'
 import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
@@ -33,14 +32,9 @@ import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
 
-const useStyles = makeStyles({
-  toolbar: { display: 'flex', justifyContent: 'space-between', width: '100%' },
-})
-
 const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
-  const classes = useStyles()
   const dataProvider = useDataProvider()
   const notify = useNotify()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
@@ -115,8 +109,10 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
 
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
-      <div className={classes.toolbar}>
-        <div>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
+      >
+        <Box>
           <Button
             onClick={handlePlay}
             label={translate('resources.album.actions.playAll')}
@@ -163,9 +159,9 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
           >
             <QueueMusicIcon />
           </Button>
-        </div>
-        <div>{isNotSmall && <ToggleFieldsMenu resource="playlistTrack" />}</div>
-      </div>
+        </Box>
+        <Box>{isNotSmall && <ToggleFieldsMenu resource="playlistTrack" />}</Box>
+      </Box>
     </TopToolbar>
   )
 }

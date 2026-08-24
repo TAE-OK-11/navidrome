@@ -6,7 +6,7 @@ import { useTranslate } from 'react-admin'
 import en from '../i18n/en.json'
 import { ArtistLinkField } from './index'
 
-export const ParticipantsInfo = ({ classes, record }) => {
+export const ParticipantsInfo = ({ classes, tableCellSx, record }) => {
   const translate = useTranslate()
   const existingRoles = en?.resources?.artist?.roles ?? {}
 
@@ -29,7 +29,11 @@ export const ParticipantsInfo = ({ classes, record }) => {
     <>
       {roles.length > 0 && (
         <TableRow key={`${record.id}-separator`}>
-          <TableCell scope="row" className={classes.tableCell}></TableCell>
+          <TableCell
+            scope="row"
+            className={classes?.tableCell}
+            sx={tableCellSx}
+          ></TableCell>
           <TableCell align="left">
             <h4>{translate(`resources.song.fields.participants`)}</h4>
           </TableCell>
@@ -37,7 +41,11 @@ export const ParticipantsInfo = ({ classes, record }) => {
       )}
       {roles.map(([role, count]) => (
         <TableRow key={`${record.id}-${role}`}>
-          <TableCell scope="row" className={classes.tableCell}>
+          <TableCell
+            scope="row"
+            className={classes?.tableCell}
+            sx={tableCellSx}
+          >
             {role in existingRoles
               ? translate(`resources.artist.roles.${role}`, {
                   smart_count: count,

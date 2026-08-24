@@ -13,7 +13,17 @@ import SyncIcon from '@mui/icons-material/Sync'
 import CachedIcon from '@mui/icons-material/Cached'
 import subsonic from '../subsonic'
 
-const LibraryScanButton = ({ fullScan, selectedIds, className }) => {
+type LibraryScanButtonProps = {
+  fullScan: boolean
+  selectedIds?: Array<string | number>
+  className?: string
+}
+
+const LibraryScanButton = ({
+  fullScan,
+  selectedIds,
+  className,
+}: LibraryScanButtonProps) => {
   const [loading, setLoading] = useState(false)
   const notify = useNotify()
   const refresh = useRefresh()

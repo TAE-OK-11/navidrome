@@ -46,4 +46,4 @@ export const MultiLineTextField = memo(
 
 MultiLineTextField.displayName = 'MultiLineTextField'
 
-MultiLineTextField.defaultProps = { addLabel: true }
+Object.assign(MultiLineTextField, { defaultProps: { addLabel: true } })

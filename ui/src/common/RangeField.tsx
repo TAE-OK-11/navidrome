@@ -3,8 +3,17 @@ import PropTypes from 'prop-types'
 import { useRecordContext } from 'react-admin'
 import { formatRange } from './formatRange'
 
-export const RangeField = ({ className, source, ...rest }) => {
-  const record = useRecordContext(rest)
+type RangeFieldProps = {
+  className?: string
+  source: string
+  record?: Record<string, string | number | null | undefined>
+  label?: string
+}
+
+export const RangeField = ({ className, source, ...rest }: RangeFieldProps) => {
+  const record =
+    useRecordContext<Record<string, string | number | null | undefined>>(rest)
+  if (!record) return null
   return <span className={className}>{formatRange(record, source)}</span>
 }
 

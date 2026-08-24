@@ -21,6 +21,6 @@ const sanitizeFieldRestProps = ({
   textAlign,
   translateChoice,
   ...props
-}) => props
+}: Record<string, unknown>) => props
 
 export default sanitizeFieldRestProps

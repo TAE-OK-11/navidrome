@@ -1,37 +1,49 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import PropTypes from 'prop-types'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { IconButton } from '@mui/material'
+import type { IconButtonProps } from '@mui/material'
 import { useDispatch } from 'react-redux'
 import { useDataProvider, useRecordContext } from 'react-admin'
 import { playTracks } from '../actions'
+
+type PlayRecord = {
+  id: string | number
+  discNumber?: number
+  [key: string]: unknown
+}
+
+type PlayButtonProps = {
+  record?: PlayRecord
+  size?: IconButtonProps['size']
+  className?: string
+}
 
 export const PlayButton = ({
   record: recordOverride,
   size = 'small',
   className,
-}) => {
-  const record = useRecordContext({ record: recordOverride })
-  const extractSongsData = (response) => {
-    const data = {}
-    const ids = []
+}: PlayButtonProps) => {
+  const record = useRecordContext<PlayRecord>({ record: recordOverride })
+  const extractSongsData = (response: { data: PlayRecord[] }) => {
+    const data: Record<string, PlayRecord> = {}
+    const ids: Array<string | number> = []
     for (const song of response.data) {
-      data[song.id] = song
+      data[String(song.id)] = song
       ids.push(song.id)
     }
     return { data, ids }
   }
   const dataProvider = useDataProvider()
   const dispatch = useDispatch()
-  const playAlbum = (record) => {
+  const playAlbum = (album: PlayRecord) => {
     dataProvider
       .getList('song', {
         pagination: { page: 1, perPage: -1 },
         sort: { field: 'album', order: 'ASC' },
         filter: {
-          album_id: record.id,
-          disc_number: record.discNumber,
+          album_id: album.id,
+          disc_number: album.discNumber,
         },
       })
       .then((response) => {
@@ -45,7 +57,7 @@ export const PlayButton = ({
       onClick={(e) => {
         e.stopPropagation()
         e.preventDefault()
-        playAlbum(record)
+        if (record) playAlbum(record)
       }}
       aria-label="play"
       className={className}

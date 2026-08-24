@@ -17,6 +17,31 @@ import {
 } from 'react-admin'
 import { linkToRecord } from '../utils/linkToRecord'
 
+type SimpleRecord = { id: string | number; [key: string]: unknown }
+type SimpleRenderer = (
+  record: SimpleRecord,
+  id: string | number,
+) => React.ReactNode
+type SimpleListProps = {
+  basePath?: string
+  className?: string
+  classes?: { link?: string; tertiary?: string }
+  hasBulkActions?: boolean
+  leftAvatar?: SimpleRenderer
+  leftIcon?: SimpleRenderer
+  linkType?:
+    | 'edit'
+    | 'show'
+    | boolean
+    | ((id: string | number, basePath: string, record: SimpleRecord) => void)
+  primaryText: SimpleRenderer
+  rightAvatar?: SimpleRenderer
+  rightIcon?: SimpleRenderer
+  secondaryText?: SimpleRenderer
+  tertiaryText?: SimpleRenderer
+  [key: string]: unknown
+}
+
 const LinkOrNot = ({
   classes: classesOverride,
   linkType,
@@ -64,7 +89,7 @@ export const SimpleList = ({
   secondaryText,
   tertiaryText,
   ...rest
-}) => {
+}: SimpleListProps) => {
   const { data = [], isPending, total = 0 } = useListContext()
   const resource = useResourceContext()
   const resolvedBasePath = basePath || `/${resource}`

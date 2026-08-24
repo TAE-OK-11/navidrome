@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Button, useDataProvider, useNotify, useTranslate } from 'react-admin'
 import { useDispatch } from 'react-redux'
@@ -6,7 +5,11 @@ import ShuffleIcon from '@mui/icons-material/Shuffle'
 import { playTracks } from '../actions'
 import PropTypes from 'prop-types'
 
-export const ShuffleAllButton = ({ filters = {} }) => {
+type ShuffleAllButtonProps = {
+  filters?: Record<string, unknown>
+}
+
+export const ShuffleAllButton = ({ filters = {} }: ShuffleAllButtonProps) => {
   const translate = useTranslate()
   const dataProvider = useDataProvider()
   const dispatch = useDispatch()
@@ -21,9 +24,9 @@ export const ShuffleAllButton = ({ filters = {} }) => {
         filter: filters,
       })
       .then((res) => {
-        const data = {}
+        const data: Record<string, (typeof res.data)[number]> = {}
         res.data.forEach((song) => {
-          data[song.id] = song
+          data[String(song.id)] = song
         })
         dispatch(playTracks(data))
       })

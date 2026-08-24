@@ -34,10 +34,10 @@ const PlaylistCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props} onSuccess={onSuccess}>
-      <SimpleForm redirect="list" variant={'outlined'}>
+      <SimpleForm redirect="list">
         <TextInput source="name" validate={required()} />
         <TextInput multiline source="comment" />
-        <BooleanInput source="public" initialValue={true} />
+        <BooleanInput source="public" defaultValue={true} />
       </SimpleForm>
     </Create>
   )

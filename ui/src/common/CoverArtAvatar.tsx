@@ -1,15 +1,29 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useRecordContext } from 'react-admin'
 import { Avatar } from '@mui/material'
+import type { AvatarProps } from '@mui/material'
 import config from '../config'
 import subsonic from '../subsonic'
 import { useImageUrl } from './useImageUrl'
 
+type CoverArtRecord = {
+  id: string | number
+  name?: string
+  [key: string]: unknown
+}
+
+type CoverArtAvatarProps = {
+  record?: CoverArtRecord
+  variant?: AvatarProps['variant']
+  label?: string
+  sortable?: boolean
+  source?: string
+}
+
 export const CoverArtAvatar = ({
   record: recordProp,
   variant = 'circular',
-}) => {
-  const recordContext = useRecordContext()
+}: CoverArtAvatarProps) => {
+  const recordContext = useRecordContext<CoverArtRecord>()
   const record = recordProp || recordContext
   const square = variant !== 'circular'
   const url = record

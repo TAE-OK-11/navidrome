@@ -1,4 +1,5 @@
 import { fetchUtils } from 'react-admin'
+import type { Options } from 'react-admin'
 import { v4 as uuidv4 } from 'uuid'
 import { baseUrl } from '../utils'
 import config from '../config'
@@ -9,11 +10,8 @@ export const clientUniqueIdHeader = 'X-ND-Client-Unique-Id'
 export const clientUniqueId = uuidv4()
 
 type NavidromeToken = { uid: string }
-type HttpClientOptions = RequestInit & {
-  headers?: Headers
-}
 
-const httpClient = (url: string, options: HttpClientOptions = {}) => {
+const httpClient = (url: string, options: Options = {}) => {
   url = baseUrl(url)
   const headers =
     options.headers instanceof Headers

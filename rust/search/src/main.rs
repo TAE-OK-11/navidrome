@@ -9,7 +9,7 @@ use tantivy::schema::{
     Field, INDEXED, IndexRecordOption, STORED, STRING, Schema, TantivyDocument, TextFieldIndexing,
     TextOptions, Value,
 };
-use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer, Tokenizer};
+use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, Term, doc};
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -254,12 +254,9 @@ impl Engine {
             let document: TantivyDocument = searcher.doc(address)?;
             let id = document
                 .get_first(self.fields.id)
-                .and_then(Value::as_str)
+                .and_then(|value| value.as_str().map(str::to_owned))
                 .context("search result is missing id")?;
-            hits.push(Hit {
-                id: id.to_owned(),
-                score,
-            });
+            hits.push(Hit { id, score });
         }
         Ok(hits)
     }

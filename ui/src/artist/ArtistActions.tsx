@@ -3,7 +3,6 @@ import React from 'react'
 import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import { useMediaQuery, CircularProgress } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import {
   Button,
   TopToolbar,
@@ -28,34 +27,26 @@ import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from '../common/artist'
 
-const useStyles = makeStyles((theme) => ({
-  toolbar: {
+const toolbarSx = {
+  minHeight: 'auto',
+  p: '0 !important',
+  background: 'transparent',
+  boxShadow: 'none',
+  '& .MuiToolbar-root': {
     minHeight: 'auto',
-    padding: '0 !important',
+    p: '0 !important',
     background: 'transparent',
-    boxShadow: 'none',
-    '& .MuiToolbar-root': {
-      minHeight: 'auto',
-      padding: '0 !important',
-      background: 'transparent',
-    },
   },
-  button: {
-    [theme.breakpoints.down('sm')]: {
-      minWidth: 'auto',
-      padding: '8px 12px',
-      fontSize: '0.75rem',
-      '& .MuiButton-startIcon': {
-        marginRight: '4px',
-      },
-    },
+}
+
+const buttonSx = (theme) => ({
+  [theme.breakpoints.down('sm')]: {
+    minWidth: 'auto',
+    p: '8px 12px',
+    fontSize: '0.75rem',
+    '& .MuiButton-startIcon': { mr: '4px' },
   },
-  radioIcon: {
-    [theme.breakpoints.down('sm')]: {
-      fontSize: '1.5rem',
-    },
-  },
-}))
+})
 
 const LoadingButton = ({ loading, icon, ...rest }) => (
   <Button {...rest}>
@@ -68,7 +59,6 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
   const translate = useTranslate()
   const dataProvider = useDataProvider()
   const notify = useNotify()
-  const classes = useStyles()
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const [loadingAction, setLoadingAction] = React.useState(null)
   const isLoading = !!loadingAction
@@ -125,13 +115,14 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
 
   return (
     <TopToolbar
-      className={`${className} ${classes.toolbar}`}
+      className={className}
+      sx={toolbarSx}
       {...sanitizeListRestProps(rest)}
     >
       <LoadingButton
         onClick={handlePlay}
         label={translate('resources.artist.actions.topSongs')}
-        className={classes.button}
+        sx={buttonSx}
         size={isMobile ? 'small' : 'medium'}
         disabled={isLoading}
         loading={loadingAction === 'play'}
@@ -140,7 +131,7 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
       <LoadingButton
         onClick={handleShuffle}
         label={translate('resources.artist.actions.shuffle')}
-        className={classes.button}
+        sx={buttonSx}
         size={isMobile ? 'small' : 'medium'}
         disabled={isLoading}
         loading={loadingAction === 'shuffle'}
@@ -149,17 +140,19 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
       <LoadingButton
         onClick={handleRadio}
         label={translate('resources.artist.actions.radio')}
-        className={classes.button}
+        sx={buttonSx}
         size={isMobile ? 'small' : 'medium'}
         disabled={isLoading}
         loading={loadingAction === 'radio'}
-        icon={<IoIosRadio className={classes.radioIcon} />}
+        icon={
+          <IoIosRadio style={isMobile ? { fontSize: '1.5rem' } : undefined} />
+        }
       />
       {config.enableSharing && hasAlbumArtistContent && (
         <LoadingButton
           onClick={handleShare}
           label={translate('ra.action.share')}
-          className={classes.button}
+          sx={buttonSx}
           size={isMobile ? 'small' : 'medium'}
           icon={<ShareIcon />}
         />
@@ -170,7 +163,7 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
           label={`${translate('ra.action.download')} (${formatBytes(
             albumArtistSize,
           )})`}
-          className={classes.button}
+          sx={buttonSx}
           size={isMobile ? 'small' : 'medium'}
           icon={<CloudDownloadOutlinedIcon />}
         />

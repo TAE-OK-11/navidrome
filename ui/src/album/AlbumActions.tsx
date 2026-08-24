@@ -10,8 +10,7 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import { useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
+import { Box, useMediaQuery } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ShuffleIcon from '@mui/icons-material/Shuffle'
 import CloudDownloadOutlinedIcon from '@mui/icons-material/CloudDownloadOutlined'
@@ -32,10 +31,6 @@ import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
 
-const useStyles = makeStyles({
-  toolbar: { display: 'flex', justifyContent: 'space-between', width: '100%' },
-})
-
 const AlbumButton = ({ children, ...rest }) => {
   const record = useRecordContext(rest) || {}
   return (
@@ -48,7 +43,6 @@ const AlbumButton = ({ children, ...rest }) => {
 const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
-  const classes = useStyles()
   const { data: records = [] } = useListContext()
   const ids = records.map((song) => song.id)
   const data = Object.fromEntries(records.map((song) => [song.id, song]))
@@ -86,8 +80,10 @@ const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
 
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
-      <div className={classes.toolbar}>
-        <div>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
+      >
+        <Box>
           <AlbumButton
             onClick={handlePlay}
             label={translate('resources.album.actions.playAll')}
@@ -137,9 +133,9 @@ const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
               <CloudDownloadOutlinedIcon />
             </AlbumButton>
           )}
-        </div>
-        <div>{isNotSmall && <ToggleFieldsMenu resource="albumSong" />}</div>
-      </div>
+        </Box>
+        <Box>{isNotSmall && <ToggleFieldsMenu resource="albumSong" />}</Box>
+      </Box>
     </TopToolbar>
   )
 }

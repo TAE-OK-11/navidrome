@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Avatar, useMediaQuery } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import React, { cloneElement } from 'react'
 import {
   CreateButton,
@@ -31,19 +30,6 @@ import { setTrack } from '../actions'
 import { songFromRadio } from './helper'
 import { RADIO_PLACEHOLDER_IMAGE } from '../consts'
 import { useDispatch } from 'react-redux'
-
-const useStyles = makeStyles({
-  row: {
-    '&:hover': {
-      '& $contextMenu': {
-        visibility: 'visible',
-      },
-    },
-  },
-  contextMenu: {
-    visibility: 'hidden',
-  },
-})
 
 const RadioFilter = (props) => (
   <Filter {...props} variant={'outlined'}>
@@ -84,8 +70,6 @@ const RadioListActions = ({
   )
 }
 
-const avatarStyle = { width: 40, height: 40 }
-
 const CoverArtField = ({ record: recordOverride }) => {
   const record = useRecordContext({ record: recordOverride })
   const directUrl = record?.uploadedImage
@@ -95,13 +79,17 @@ const CoverArtField = ({ record: recordOverride }) => {
   if (!record) return null
   const src = imgUrl || RADIO_PLACEHOLDER_IMAGE
   return (
-    <Avatar src={src} variant="rounded" style={avatarStyle} alt={record.name} />
+    <Avatar
+      src={src}
+      variant="rounded"
+      sx={{ width: 40, height: 40 }}
+      alt={record.name}
+    />
   )
 }
 CoverArtField.defaultProps = { label: '' }
 
 const RadioList = ({ permissions, ...props }) => {
-  const classes = useStyles()
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const dispatch = useDispatch()
   const isAdmin = permissions === 'admin'
@@ -165,7 +153,7 @@ const RadioList = ({ permissions, ...props }) => {
           secondaryText={(r) => r.homePageUrl}
         />
       ) : (
-        <Datagrid rowClick={handleRowClick} classes={{ row: classes.row }}>
+        <Datagrid rowClick={handleRowClick}>
           {columns}
           {isAdmin && <EditButton />}
         </Datagrid>

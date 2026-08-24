@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
-import makeStyles from '../themes/makeStyles'
 import {
   TextInput,
   BooleanInput,
@@ -27,13 +26,6 @@ import DeleteUserButton from './DeleteUserButton'
 import { LibrarySelectionField } from './LibrarySelectionField'
 import { validateUserForm } from './userValidation'
 
-const useStyles = makeStyles({
-  toolbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-  },
-})
-
 const UserTitle = ({ record: recordOverride }) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
@@ -42,7 +34,7 @@ const UserTitle = ({ record: recordOverride }) => {
 }
 
 const UserToolbar = ({ showDelete, ...props }) => (
-  <Toolbar {...props} classes={useStyles()}>
+  <Toolbar {...props} sx={{ display: 'flex', justifyContent: 'space-between' }}>
     <SaveButton disabled={props.pristine} />
     {showDelete && <DeleteUserButton />}
   </Toolbar>
@@ -162,7 +154,7 @@ const UserEdit = (props) => {
                   <Typography
                     variant="body2"
                     color="textSecondary"
-                    style={{ marginTop: 16, marginBottom: 16 }}
+                    sx={{ my: 2 }}
                   >
                     {translate('resources.user.message.adminAutoLibraries')}
                   </Typography>

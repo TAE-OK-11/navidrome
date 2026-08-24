@@ -11,24 +11,11 @@ import {
   useRefresh,
   useTranslate,
 } from 'react-admin'
-import makeStyles from '../themes/makeStyles'
 import { useMediaQuery, Tooltip, Chip, Typography, Box } from '@mui/material'
 import { MdError, MdRefresh } from 'react-icons/md'
 import { List, DateField, SimpleList, useResourceRefresh } from '../common'
 import { httpClient } from '../dataProvider'
 import ToggleEnabledSwitch from './ToggleEnabledSwitch'
-
-const useStyles = makeStyles((theme) => ({
-  errorIcon: {
-    color: theme.palette.error.main,
-    marginRight: theme.spacing(0.5),
-    verticalAlign: 'middle',
-  },
-  errorChip: {
-    backgroundColor: theme.palette.error.light,
-    color: theme.palette.error.contrastText,
-  },
-}))
 
 const useManifest = () => {
   const record = useRecordContext()
@@ -45,7 +32,6 @@ const useManifest = () => {
 const EnabledOrErrorField = () => {
   const record = useRecordContext()
   const translate = useTranslate()
-  const classes = useStyles()
   const manifest = useManifest()
 
   if (record.lastError) {
@@ -53,9 +39,14 @@ const EnabledOrErrorField = () => {
       <Tooltip title={record.lastError}>
         <Chip
           size="small"
-          icon={<MdError className={classes.errorIcon} />}
+          icon={
+            <Box
+              component={MdError}
+              sx={{ color: 'error.main', mr: 0.5, verticalAlign: 'middle' }}
+            />
+          }
           label={translate('resources.plugin.fields.hasError')}
-          className={classes.errorChip}
+          sx={{ bgcolor: 'error.light', color: 'error.contrastText' }}
         />
       </Tooltip>
     )

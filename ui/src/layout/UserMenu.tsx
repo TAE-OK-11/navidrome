@@ -19,34 +19,13 @@ import {
   CardContent,
   Divider,
   Typography,
+  Box,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import AccountCircle from '@mui/icons-material/AccountCircle'
 import config from '../config'
 import authProvider from '../authProvider'
 import { startEventStream } from '../eventStream'
 import { useDispatch } from 'react-redux'
-
-const useStyles = makeStyles((theme) => ({
-  user: {},
-  button: {
-    color: 'inherit',
-  },
-  avatar: {
-    width: theme.spacing(4),
-    height: theme.spacing(4),
-  },
-  username: {
-    maxWidth: '11em',
-    marginTop: '-0.7em',
-    marginBottom: '-1em',
-  },
-  usernameWrap: {
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-}))
 
 const UserMenu = ({
   children,
@@ -57,7 +36,6 @@ const UserMenu = ({
   const [anchorEl, setAnchorEl] = useState(null)
   const translate = useTranslate()
   const { data: identity, isPending } = useGetIdentity()
-  const classes = useStyles(props)
   const dispatch = useDispatch()
 
   useEffect(() => {
@@ -77,10 +55,10 @@ const UserMenu = ({
   const handleClose = () => setAnchorEl(null)
 
   return (
-    <div className={classes.user}>
+    <Box>
       <Tooltip title={label && translate(label, { _: label })}>
         <IconButton
-          className={classes.button}
+          sx={{ color: 'inherit' }}
           aria-label={label && translate(label, { _: label })}
           aria-controls={open ? 'menu-appbar' : undefined}
           aria-haspopup="true"
@@ -89,7 +67,7 @@ const UserMenu = ({
         >
           {loaded && identity?.avatar ? (
             <Avatar
-              className={classes.avatar}
+              sx={{ width: 4, height: 4 }}
               src={identity.avatar}
               alt={identity.fullName || ''}
             />
@@ -114,8 +92,17 @@ const UserMenu = ({
       >
         <MenuList>
           {loaded && (
-            <Card elevation={0} className={classes.username}>
-              <CardContent className={classes.usernameWrap}>
+            <Card
+              elevation={0}
+              sx={{ maxWidth: '11em', mt: '-0.7em', mb: '-1em' }}
+            >
+              <CardContent
+                sx={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
                 <Typography variant="button">{identity.fullName}</Typography>
               </CardContent>
             </Card>
@@ -130,7 +117,7 @@ const UserMenu = ({
           )}
         </MenuList>
       </Popover>
-    </div>
+    </Box>
   )
 }
 

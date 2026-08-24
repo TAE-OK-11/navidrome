@@ -6,50 +6,12 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction'
 import ListItemText from '@mui/material/ListItemText'
-import makeStyles from '../themes/makeStyles'
+import Box from '@mui/material/Box'
 import { sanitizeListRestProps, useListContext } from 'react-admin'
 import { DurationField, SongContextMenu, RatingField } from './index'
 import { setTrack } from '../actions'
 import { useDispatch } from 'react-redux'
 import config from '../config'
-
-const useStyles = makeStyles(
-  {
-    link: {
-      textDecoration: 'none',
-      color: 'inherit',
-    },
-    listItem: {
-      padding: '10px',
-    },
-    title: {
-      paddingRight: '10px',
-      width: '80%',
-    },
-    secondary: {
-      marginTop: '-3px',
-      width: '96%',
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-    },
-    artist: {
-      paddingRight: '30px',
-    },
-    timeStamp: {
-      float: 'right',
-      color: '#fff',
-      fontWeight: '200',
-      opacity: 0.6,
-      fontSize: '12px',
-      padding: '2px',
-    },
-    rightIcon: {
-      top: '26px',
-    },
-  },
-  { name: 'RaSongSimpleList' },
-)
 
 export const SongSimpleList = ({
   className,
@@ -58,7 +20,6 @@ export const SongSimpleList = ({
   ...rest
 }) => {
   const dispatch = useDispatch()
-  const classes = useStyles({ classes: classesOverride })
   const { data = [], isPending, total = 0 } = useListContext()
   return (
     (isPending || total > 0) && (
@@ -67,24 +28,57 @@ export const SongSimpleList = ({
           (record) =>
             record && (
               <span key={record.id} onClick={() => dispatch(setTrack(record))}>
-                <ListItemButton className={classes.listItem}>
+                <ListItemButton
+                  className={classesOverride?.listItem}
+                  sx={{ p: '10px' }}
+                >
                   <ListItemText
                     primary={
-                      <div className={classes.title}>{record.title}</div>
+                      <Box
+                        className={classesOverride?.title}
+                        sx={{ pr: '10px', width: '80%' }}
+                      >
+                        {record.title}
+                      </Box>
                     }
                     secondary={
                       <>
-                        <span className={classes.secondary}>
-                          <span className={classes.artist}>
+                        <Box
+                          component="span"
+                          className={classesOverride?.secondary}
+                          sx={{
+                            mt: '-3px',
+                            width: '96%',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <Box
+                            component="span"
+                            className={classesOverride?.artist}
+                            sx={{ pr: '30px' }}
+                          >
                             {record.artist}
-                          </span>
-                          <span className={classes.timeStamp}>
+                          </Box>
+                          <Box
+                            component="span"
+                            className={classesOverride?.timeStamp}
+                            sx={{
+                              float: 'right',
+                              color: '#fff',
+                              fontWeight: 200,
+                              opacity: 0.6,
+                              fontSize: 12,
+                              p: '2px',
+                            }}
+                          >
                             <DurationField
                               record={record}
                               source={'duration'}
                             />
-                          </span>
-                        </span>
+                          </Box>
+                        </Box>
                         {config.enableStarRating && (
                           <RatingField
                             record={record}
@@ -96,7 +90,10 @@ export const SongSimpleList = ({
                       </>
                     }
                   />
-                  <ListItemSecondaryAction className={classes.rightIcon}>
+                  <ListItemSecondaryAction
+                    className={classesOverride?.rightIcon}
+                    sx={{ top: 26 }}
+                  >
                     <ListItemIcon>
                       <SongContextMenu record={record} visible={true} />
                     </ListItemIcon>

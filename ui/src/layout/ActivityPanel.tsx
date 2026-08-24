@@ -14,7 +14,6 @@ import {
   Box,
   Typography,
 } from '@mui/material'
-import makeStyles from '../themes/makeStyles'
 import { FiActivity } from 'react-icons/fi'
 import { BiError, BiMessageError } from 'react-icons/bi'
 import { VscSync } from 'react-icons/vsc'
@@ -26,62 +25,26 @@ import { useScanElapsedTime } from './useScanElapsedTime'
 import { formatDuration, formatShortDuration } from '../utils'
 import config from '../config'
 
-const useStyles = makeStyles((theme) => ({
-  wrapper: {
-    position: 'relative',
-    color: (props) =>
-      props.serverDown
-        ? theme.palette.error.main
-        : props.hasWarning
-          ? theme.palette.warning.main
-          : null,
-  },
-  progress: {
-    color: theme.palette.primary.light,
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    zIndex: 1,
-  },
-  button: {
-    color: 'inherit',
-    zIndex: 2,
-  },
-  counterStatus: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    alignItems: 'center',
-    columnGap: theme.spacing(2),
-    width: '100%',
-  },
-  error: {
-    color: theme.palette.error.main,
-  },
-  card: {
-    width: 'clamp(17rem, 78vw, 20rem)',
-    maxWidth: 'calc(100vw - 24px)',
-  },
-  cardContent: {
-    padding: theme.spacing(1.5, 2),
-    '&:last-child': {
-      paddingBottom: theme.spacing(1.5),
-    },
-  },
-  statusLabel: {
-    minWidth: 0,
-    overflowWrap: 'anywhere',
-  },
-  statusValue: {
-    textAlign: 'right',
-    whiteSpace: 'nowrap',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  actions: {
-    minHeight: 0,
-    padding: theme.spacing(0.5, 1),
-    justifyContent: 'flex-end',
-  },
-}))
+const counterStatusSx = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  alignItems: 'center',
+  columnGap: 2,
+  width: '100%',
+}
+
+const cardContentSx = {
+  py: 1.5,
+  px: 2,
+  '&:last-child': { pb: 1.5 },
+}
+
+const statusLabelSx = { minWidth: 0, overflowWrap: 'anywhere' }
+const statusValueSx = {
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  fontVariantNumeric: 'tabular-nums',
+}
 
 const getUptime = (serverStart) =>
   formatDuration((Date.now() - serverStart.startTime) / 1000)
@@ -106,7 +69,6 @@ const ActivityPanel = () => {
   // Determine icon state: error (server down), warning (scan error), or normal
   const serverDown = !up
   const hasWarning = Boolean(scanStatus.error)
-  const classes = useStyles({ serverDown, hasWarning })
   const translate = useTranslate()
   const notify = useNotify()
   const [anchorEl, setAnchorEl] = useState(null)
@@ -150,10 +112,19 @@ const ActivityPanel = () => {
   })()
 
   return (
-    <div className={classes.wrapper}>
+    <Box
+      sx={{
+        position: 'relative',
+        color: serverDown
+          ? 'error.main'
+          : hasWarning
+            ? 'warning.main'
+            : undefined,
+      }}
+    >
       <Tooltip title={tooltipTitle}>
         <IconButton
-          className={classes.button}
+          sx={{ color: 'inherit', zIndex: 2 }}
           onClick={handleMenuOpen}
           size="large"
         >
@@ -167,7 +138,16 @@ const ActivityPanel = () => {
         </IconButton>
       </Tooltip>
       {scanStatus.scanning && (
-        <CircularProgress size={24} className={classes.progress} />
+        <CircularProgress
+          size={24}
+          sx={{
+            color: 'primary.light',
+            position: 'absolute',
+            top: 10,
+            left: 10,
+            zIndex: 1,
+          }}
+        />
       )}
       <Popover
         id="panel-activity"
@@ -191,63 +171,58 @@ const ActivityPanel = () => {
           },
         }}
       >
-        <Card className={classes.card}>
-          <CardContent className={classes.cardContent}>
-            <Box className={classes.counterStatus}>
-              <Box component="span" className={classes.statusLabel}>
+        <Card
+          sx={{
+            width: 'clamp(17rem, 78vw, 20rem)',
+            maxWidth: 'calc(100vw - 24px)',
+          }}
+        >
+          <CardContent sx={cardContentSx}>
+            <Box sx={counterStatusSx}>
+              <Box component="span" sx={statusLabelSx}>
                 {translate('activity.serverUptime')}:
               </Box>
               <Box
                 component="span"
-                className={`${classes.statusValue} ${!up ? classes.error : ''}`}
+                sx={[statusValueSx, !up && { color: 'error.main' }]}
               >
                 {up ? <Uptime /> : translate('activity.serverDown')}
               </Box>
             </Box>
           </CardContent>
           <Divider />
-          <CardContent className={classes.cardContent}>
-            <Box className={classes.counterStatus}>
-              <Box component="span" className={classes.statusLabel}>
+          <CardContent sx={cardContentSx}>
+            <Box sx={counterStatusSx}>
+              <Box component="span" sx={statusLabelSx}>
                 {translate('activity.totalScanned')}:
               </Box>
-              <Box component="span" className={classes.statusValue}>
+              <Box component="span" sx={statusValueSx}>
                 {scanStatus.folderCount || '-'}
               </Box>
             </Box>
 
-            <Box
-              className={classes.counterStatus}
-              sx={{
-                mt: 1,
-              }}
-            >
-              <Box component="span" className={classes.statusLabel}>
+            <Box sx={[counterStatusSx, { mt: 1 }]}>
+              <Box component="span" sx={statusLabelSx}>
                 {translate('activity.scanType')}:
               </Box>
-              <Box component="span" className={classes.statusValue}>
+              <Box component="span" sx={statusValueSx}>
                 {lastScanType || '-'}
               </Box>
             </Box>
 
-            <Box
-              className={classes.counterStatus}
-              sx={{
-                mt: 1,
-              }}
-            >
-              <Box component="span" className={classes.statusLabel}>
+            <Box sx={[counterStatusSx, { mt: 1 }]}>
+              <Box component="span" sx={statusLabelSx}>
                 {translate('activity.elapsedTime')}:
               </Box>
-              <Box component="span" className={classes.statusValue}>
+              <Box component="span" sx={statusValueSx}>
                 {formatShortDuration(elapsed)}
               </Box>
             </Box>
 
             {scanStatus.error && (
               <Box
-                className={classes.error}
                 sx={{
+                  color: 'error.main',
                   display: 'flex',
                   flexDirection: 'column',
                   mt: 2,
@@ -261,7 +236,9 @@ const ActivityPanel = () => {
             )}
           </CardContent>
           <Divider />
-          <CardActions className={classes.actions}>
+          <CardActions
+            sx={{ minHeight: 0, py: 0.5, px: 1, justifyContent: 'flex-end' }}
+          >
             <Tooltip title={translate('activity.quickScan')}>
               <IconButton
                 onClick={triggerScan(false)}
@@ -283,7 +260,7 @@ const ActivityPanel = () => {
           </CardActions>
         </Card>
       </Popover>
-    </div>
+    </Box>
   )
 }
 

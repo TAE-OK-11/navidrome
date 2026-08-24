@@ -1,23 +1,30 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { forwardRef } from 'react'
 import { MenuItemLink, useTranslate } from 'react-admin'
+import type { MenuItemLinkProps } from 'react-admin'
 import { MdTune } from 'react-icons/md'
 
-const PersonalMenu = forwardRef(({ onClick, sidebarIsOpen, dense }, ref) => {
-  const translate = useTranslate()
-  return (
-    <MenuItemLink
-      ref={ref}
-      to="/personal"
-      primaryText={translate('menu.personal.name')}
-      leftIcon={<MdTune size={24} />}
-      onClick={onClick}
-      sx={{ color: 'text.secondary' }}
-      sidebarIsOpen={sidebarIsOpen}
-      dense={dense}
-    />
-  )
-})
+type PersonalMenuProps = Pick<
+  MenuItemLinkProps,
+  'onClick' | 'sidebarIsOpen' | 'dense'
+>
+
+const PersonalMenu = forwardRef<HTMLLIElement, PersonalMenuProps>(
+  ({ onClick, sidebarIsOpen, dense }, ref) => {
+    const translate = useTranslate()
+    return (
+      <MenuItemLink
+        ref={ref}
+        to="/personal"
+        primaryText={translate('menu.personal.name')}
+        leftIcon={<MdTune size={24} />}
+        onClick={onClick}
+        sx={{ color: 'text.secondary' }}
+        sidebarIsOpen={sidebarIsOpen}
+        dense={dense}
+      />
+    )
+  },
+)
 
 PersonalMenu.displayName = 'PersonalMenu'
 

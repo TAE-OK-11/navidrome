@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Datagrid, TextField } from 'react-admin'
 import { useMediaQuery } from '@mui/material'

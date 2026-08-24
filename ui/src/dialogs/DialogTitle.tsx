@@ -1,5 +1,5 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import MuiDialogTitle from '@mui/material/DialogTitle'
+import type { DialogTitleProps as MuiDialogTitleProps } from '@mui/material/DialogTitle'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import CloseIcon from '@mui/icons-material/Close'
@@ -18,7 +18,15 @@ const CloseButton = styled(IconButton)(({ theme }) => ({
   color: theme.palette.grey[500],
 }))
 
-export const DialogTitle = ({ children, onClose, ...other }) => {
+type DialogTitleProps = MuiDialogTitleProps & {
+  onClose?: () => void
+}
+
+export const DialogTitle = ({
+  children,
+  onClose,
+  ...other
+}: DialogTitleProps) => {
   return (
     <StyledDialogTitle component="div" {...other}>
       <Typography variant="h5" component="span">

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useRecordContext, useTranslate } from 'react-admin'
 import { IconButton, Tooltip, Link } from '@mui/material'
@@ -7,13 +6,27 @@ import MusicBrainz from '../icons/MusicBrainz'
 import { intersperse } from '../utils'
 import config from '../config'
 
-const AlbumExternalLinks = (props) => {
+type AlbumExternalRecord = {
+  id: string | number
+  albumArtist: string
+  name: string
+  mbzAlbumId?: string
+}
+
+type AlbumExternalLinksProps = {
+  className?: string
+  record?: AlbumExternalRecord
+}
+
+const AlbumExternalLinks = (props: AlbumExternalLinksProps) => {
   const { className } = props
   const translate = useTranslate()
-  const record = useRecordContext(props)
-  let links = []
+  const record = useRecordContext<AlbumExternalRecord>(props)
+  const links: React.ReactNode[] = []
 
-  const addLink = (url, title, icon) => {
+  if (!record) return null
+
+  const addLink = (url: string, title: string, icon: React.ReactNode) => {
     const translatedTitle = translate(title)
     const link = (
       <Link href={url} target="_blank" rel="noopener noreferrer">

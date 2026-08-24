@@ -227,7 +227,7 @@ export const SchemaConfigEditor = ({
   )
 
   return (
-    <Box ref={containerRef} sx={rootSx}>
+    <Box ref={containerRef} className="NDSchemaConfigEditor-root" sx={rootSx}>
       <SchemaErrorBoundary fallback={renderError}>
         <JsonForms
           schema={normalizedSchema}

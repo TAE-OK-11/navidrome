@@ -1,13 +1,13 @@
-import ShareList from './ShareList'
-import { ShareEdit } from './ShareEdit'
+import { lazy } from 'react'
 import ShareIcon from '@mui/icons-material/Share'
 import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined'
 import DynamicMenuIcon from '../layout/DynamicMenuIcon'
-import React from 'react'
 
 export default {
-  list: ShareList,
-  edit: ShareEdit,
+  list: lazy(() => import('./ShareList')),
+  edit: lazy(() =>
+    import('./ShareEdit').then((module) => ({ default: module.ShareEdit })),
+  ),
   icon: (
     <DynamicMenuIcon
       path={'share'}

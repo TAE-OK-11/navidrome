@@ -9,6 +9,16 @@ type CollapsibleCommentProps = {
   }
 }
 
+const commentSx = {
+  display: 'inline-block',
+  mt: '1em',
+  float: 'left',
+  wordBreak: 'break-word',
+  cursor: 'inherit',
+} as const
+
+const clickableCommentSx = { ...commentSx, cursor: 'pointer' } as const
+
 export const CollapsibleComment = ({ record }: CollapsibleCommentProps) => {
   const [expanded, setExpanded] = useState(false)
 
@@ -38,13 +48,7 @@ export const CollapsibleComment = ({ record }: CollapsibleCommentProps) => {
       collapsedSize={'2em'}
       in={expanded}
       timeout={'auto'}
-      sx={{
-        display: 'inline-block',
-        mt: '1em',
-        float: 'left',
-        wordBreak: 'break-word',
-        cursor: lines.length > 1 ? 'pointer' : 'inherit',
-      }}
+      sx={lines.length > 1 ? clickableCommentSx : commentSx}
     >
       <Typography variant={'h6'} onClick={handleExpandClick}>
         {formatted}

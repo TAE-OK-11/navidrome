@@ -1,7 +1,7 @@
+import { lazy } from 'react'
 import AlbumList from './AlbumList'
-import AlbumShow from './AlbumShow'
 
 export default {
   list: AlbumList,
-  show: AlbumShow,
+  show: lazy(() => import('./AlbumShow')),
 }

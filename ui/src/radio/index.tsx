@@ -1,13 +1,10 @@
-import RadioCreate from './RadioCreate'
-import RadioEdit from './RadioEdit'
-import RadioList from './RadioList'
+import { lazy } from 'react'
 import DynamicMenuIcon from '../layout/DynamicMenuIcon'
 import RadioIcon from '@mui/icons-material/Radio'
 import RadioOutlinedIcon from '@mui/icons-material/RadioOutlined'
-import React from 'react'
 
 const all = {
-  list: RadioList,
+  list: lazy(() => import('./RadioList')),
   icon: (
     <DynamicMenuIcon
       path={'radio'}
@@ -19,8 +16,8 @@ const all = {
 
 const admin = {
   ...all,
-  create: RadioCreate,
-  edit: RadioEdit,
+  create: lazy(() => import('./RadioCreate')),
+  edit: lazy(() => import('./RadioEdit')),
 }
 
 export default { all, admin }

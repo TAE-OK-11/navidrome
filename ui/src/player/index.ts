@@ -1,6 +1,8 @@
+import { lazy } from 'react'
 import { BsFillMusicPlayerFill } from 'react-icons/bs'
-import PlayerList from './PlayerList'
-import PlayerEdit from './PlayerEdit'
+
+const PlayerList = lazy(() => import('./PlayerList'))
+const PlayerEdit = lazy(() => import('./PlayerEdit'))
 
 export default {
   list: PlayerList,

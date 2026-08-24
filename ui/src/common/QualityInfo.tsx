@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import Chip from '@mui/material/Chip'
 import config from '../config'
 import { calculateGain } from '../utils/calculateReplayGain'
@@ -6,6 +5,7 @@ import { useRecordContext } from 'react-admin'
 
 const llFormats = new Set(config.losslessFormats.split(','))
 const placeholder = 'N/A'
+const chipSx = { transform: 'scale(0.8)' } as const
 
 type QualityRecord = {
   suffix?: string
@@ -65,24 +65,21 @@ export const QualityInfo = ({
     info = `${sourceSuffix} → ${targetInfo}`
   }
 
-  const extra = useMemo(() => {
-    if (gainMode !== 'none') {
-      const gainValue = calculateGain(
-        { gainMode, preAmp },
-        { rgAlbumGain, rgAlbumPeak, rgTrackGain, rgTrackPeak },
-      )
-      // convert normalized gain (after peak) back to dB
-      const toDb = (Math.log10(gainValue) * 20).toFixed(2)
-      return ` (${toDb} dB)`
-    }
-
-    return ''
-  }, [gainMode, preAmp, rgAlbumGain, rgAlbumPeak, rgTrackGain, rgTrackPeak])
+  let extra = ''
+  if (gainMode !== 'none') {
+    const gainValue = calculateGain(
+      { gainMode, preAmp },
+      { rgAlbumGain, rgAlbumPeak, rgTrackGain, rgTrackPeak },
+    )
+    // convert normalized gain (after peak) back to dB
+    const toDb = (Math.log10(gainValue) * 20).toFixed(2)
+    extra = ` (${toDb} dB)`
+  }
 
   return (
     <Chip
       className={className}
-      sx={{ transform: 'scale(0.8)' }}
+      sx={chipSx}
       variant="outlined"
       size={size}
       label={`${info}${extra}`}

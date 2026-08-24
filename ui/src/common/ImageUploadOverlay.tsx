@@ -1,9 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Box, IconButton, Tooltip } from '@mui/material'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { useTranslate, useNotify, useRefresh } from 'react-admin'
 import { useCallback, useRef } from 'react'
+import type { ChangeEvent, MouseEvent } from 'react'
 import config from '../config'
 import { REST_URL } from '../consts'
 import { httpClient } from '../dataProvider'
@@ -33,22 +33,30 @@ const overlayButtonSx = {
 } as const
 
 const overlayIconSx = { fontSize: '1.2rem' } as const
+const hiddenInputStyle = { display: 'none' } as const
+
+type ImageUploadOverlayProps = {
+  entityType: string
+  entityId?: string | number
+  hasUploadedImage?: boolean
+  onImageChange?: () => void
+}
 
 export const ImageUploadOverlay = ({
   entityType,
   entityId,
   hasUploadedImage,
   onImageChange,
-}) => {
+}: ImageUploadOverlayProps) => {
   const translate = useTranslate()
   const notify = useNotify()
   const refresh = useRefresh()
-  const fileInputRef = useRef(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canEdit =
     config.enableArtworkUpload || localStorage.getItem('role') === 'admin'
 
-  const handleUploadClick = useCallback((e) => {
+  const handleUploadClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (fileInputRef.current) {
       fileInputRef.current.click()
@@ -56,8 +64,8 @@ export const ImageUploadOverlay = ({
   }, [])
 
   const handleFileChange = useCallback(
-    async (e) => {
-      const file = e.target.files[0]
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
       if (!file || !entityId) return
 
       const formData = new FormData()
@@ -82,7 +90,7 @@ export const ImageUploadOverlay = ({
   )
 
   const handleRemoveCover = useCallback(
-    async (e) => {
+    async (e: MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation()
       if (!entityId) return
 
@@ -128,7 +136,7 @@ export const ImageUploadOverlay = ({
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        style={{ display: 'none' }}
+        style={hiddenInputStyle}
         onChange={handleFileChange}
       />
     </Box>

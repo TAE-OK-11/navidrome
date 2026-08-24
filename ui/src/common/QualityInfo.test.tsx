@@ -47,6 +47,15 @@ describe('<QualityInfo />', () => {
     )
     expect(screen.getByText('N/A (-5.00 dB)')).toBeInTheDocument()
   })
+  it('uses zero preamp when gain mode is enabled without a preamp value', () => {
+    render(
+      <QualityInfo
+        gainMode="album"
+        record={{ rgAlbumGain: -5, rgAlbumPeak: 1 }}
+      />,
+    )
+    expect(screen.getByText('N/A (-5.00 dB)')).toBeInTheDocument()
+  })
   it('renders track gain info, no peak limit capping, preAmp', () => {
     render(
       <QualityInfo

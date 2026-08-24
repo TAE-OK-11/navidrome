@@ -1,13 +1,11 @@
-import React from 'react'
-import ArtistList from './ArtistList'
-import ArtistShow from './ArtistShow'
+import { lazy } from 'react'
 import DynamicMenuIcon from '../layout/DynamicMenuIcon'
 import MicNoneOutlinedIcon from '@mui/icons-material/MicNoneOutlined'
 import MicIcon from '@mui/icons-material/Mic'
 
 export default {
-  list: ArtistList,
-  show: ArtistShow,
+  list: lazy(() => import('./ArtistList')),
+  show: lazy(() => import('./ArtistShow')),
   icon: (
     <DynamicMenuIcon
       path={'artist'}

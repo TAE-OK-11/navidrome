@@ -126,6 +126,17 @@ describe('App startup', () => {
     )
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
 
+    window.location.hash = '#/artist'
+    await waitFor(
+      () =>
+        expect(
+          fetchSpy.mock.calls.some(([input]) =>
+            String(input).includes('/api/artist?'),
+          ),
+        ).toBe(true),
+      { timeout: 10_000 },
+    )
+
     window.location.hash = '#/personal'
     expect(
       await screen.findAllByText('Default View', {}, { timeout: 10_000 }),

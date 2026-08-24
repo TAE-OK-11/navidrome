@@ -89,6 +89,10 @@ func compressMiddleware() func(http.Handler) http.Handler {
 }
 
 func shouldBypassCompressionRequest(r *http.Request) bool {
+	if r.Header.Get(rustHTTP3CompressionHeader) != "" {
+		r.Header.Del(rustHTTP3CompressionHeader)
+		return true
+	}
 	if r.Method == http.MethodHead || r.Header.Get("Range") != "" || isMediaResponsePath(r.URL.Path) || isSensitiveAuthResponsePath(r.URL.Path) {
 		return true
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,7 +16,6 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/ffmpeg"
-	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -31,15 +29,11 @@ type MediaStreamer interface {
 
 type TranscodingCache cache.FileCache
 
-func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCache, resolver hotcache.Resolver) MediaStreamer {
-	if !hotcache.IsEnabled(resolver) {
-		resolver = nil
-	}
+func NewMediaStreamer(ds model.DataStore, t ffmpeg.FFmpeg, cache TranscodingCache) MediaStreamer {
 	return &mediaStreamer{
 		ds:         ds,
 		transcoder: t,
 		cache:      cache,
-		resolver:   resolver,
 		limiter:    NewTranscodeLimiter(conf.Server.Transcoding.MaxConcurrent, conf.Server.Transcoding.MaxConcurrentPerUser),
 		profiles:   newTranscodingProfileCache(),
 	}
@@ -49,7 +43,6 @@ type mediaStreamer struct {
 	ds         model.DataStore
 	transcoder ffmpeg.FFmpeg
 	cache      cache.FileCache
-	resolver   hotcache.Resolver
 	limiter    TranscodeLimiter
 	profiles   *transcodingProfileCache
 }
@@ -119,18 +112,9 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 				"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
 				"selectedBitrate", bitRate, "selectedFormat", format)
 		}
-		var f hotcache.File
-		var err error
-		if ms.resolver == nil {
-			f, err = os.Open(filePath)
-		} else {
-			f, err = ms.resolver.Open(ctx, mf)
-		}
+		f, err := os.Open(filePath)
 		if err != nil {
 			return nil, err
-		}
-		if ms.resolver != nil {
-			cached = hotcache.IsHit(f)
 		}
 		s.ReadCloser = f
 		s.Seeker = f
@@ -181,7 +165,6 @@ type Stream struct {
 	format      string
 	name        string
 	contentType string
-	playback    bool
 	io.ReadCloser
 	io.Seeker
 }
@@ -197,7 +180,7 @@ func (s *Stream) Seekable() bool    { return s.Seeker != nil }
 func (s *Stream) Duration() float32 { return s.mf.Duration }
 func (s *Stream) ContentType() string {
 	if s.contentType == "" {
-		s.contentType = mime.TypeByExtension("." + s.format)
+		s.contentType = model.ContentTypeForSuffix(s.format)
 	}
 	return s.contentType
 }
@@ -212,11 +195,6 @@ func (s *Stream) EstimatedContentLength() int {
 	return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
 }
 
-// TrackPlayback marks this stream as an actual player request. Downloads and
-// archive reads still contribute request statistics but cannot trigger source
-// promotion or create play sessions.
-func (s *Stream) TrackPlayback() { s.playback = true }
-
 // Serve writes the stream to the HTTP response. For seekable streams it uses http.ServeContent
 // (supporting range requests). For non-seekable streams it writes directly and logs any errors.
 // Returns the number of bytes written and an error only when io.Copy fails with 0 bytes written
@@ -224,21 +202,6 @@ func (s *Stream) TrackPlayback() { s.playback = true }
 // Empty output (0 bytes, no error) is logged but not treated as an error.
 func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request) (int64, error) {
 	if s.Seekable() {
-		writer := w
-		var observed *observedResponseWriter
-		if _, ok := s.ReadCloser.(interface {
-			ObservePlayback(context.Context, hotcache.PlaybackObservation)
-		}); ok {
-			observed = newObservedResponseWriter(w)
-			writer = observed
-		}
-		observation := hotcache.PlaybackObservation{
-			Playback: s.playback, RangeHeader: r.Header.Get("Range"), Method: r.Method,
-			RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(),
-		}
-		if observed != nil {
-			hotcache.BeginPlayback(s.ReadCloser, observation)
-		}
 		content := io.ReadSeeker(s)
 		// Preserve file-backed readers so net/http can use sendfile for direct
 		// play and completed transcoding-cache hits.
@@ -248,14 +211,10 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}); ok {
 			content = source
 		}
-		started := time.Now()
-		if observed != nil {
-			defer s.finishPlaybackObservation(ctx, r, observed, observation, started)
-		}
 		if ctype := s.ContentType(); ctype != "" {
-			writer.Header().Set("Content-Type", ctype)
+			w.Header().Set("Content-Type", ctype)
 		}
-		http.ServeContent(writer, r, s.Name(), s.ModTime(), content)
+		http.ServeContent(w, r, s.Name(), s.ModTime(), content)
 		return -1, nil
 	}
 
@@ -297,29 +256,6 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 	return c, nil
-}
-
-func (s *Stream) finishPlaybackObservation(ctx context.Context, r *http.Request, observed *observedResponseWriter,
-	observation hotcache.PlaybackObservation, started time.Time,
-) {
-	cancelled := r.Context().Err() != nil || expectedClientDisconnect(observed.writeErr)
-	observation.Elapsed = time.Since(started)
-	observation.TTFB = observed.ttfb()
-	observation.Cancelled = cancelled
-	observation.BytesExpected = observed.bytes
-	observation.Sendfile = observed.readerFromUsed && observed.readerFromFast
-	hotcache.ObservePlayback(s.ReadCloser, ctx, observation)
-	if observed.writeErr != nil {
-		if cancelled {
-			hotcache.RecordTransportEvent(true, "expected_broken_pipe", "client_cancelled", s.mf.ID, observed.writeErr.Error())
-			log.Debug(ctx, "Direct stream ended after client cancellation", "mediaID", s.mf.ID, observed.writeErr)
-		} else {
-			hotcache.RecordTransportEvent(false, "unexpected_broken_pipe", "transport_error", s.mf.ID, observed.writeErr.Error())
-			log.Warn(ctx, "Unexpected direct stream transport error", "mediaID", s.mf.ID, observed.writeErr)
-		}
-	} else if cancelled {
-		hotcache.RecordTransportEvent(true, "client_cancelled", "context_cancelled", s.mf.ID, "request context cancelled")
-	}
 }
 
 // NewStream creates a non-seekable Stream from the given components.

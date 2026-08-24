@@ -8,13 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -41,7 +39,7 @@ var _ = Describe("MediaStreamer", func() {
 		})
 		testCache = stream.NewTranscodingCache()
 		Eventually(func() bool { return testCache.Available(context.TODO()) }).Should(BeTrue())
-		streamer = stream.NewMediaStreamer(ds, ffmpeg, testCache, hotcache.New(hotcache.Options{}))
+		streamer = stream.NewMediaStreamer(ds, ffmpeg, testCache)
 	})
 	AfterEach(func() {
 		_ = os.RemoveAll(conf.Server.CacheFolder.String())
@@ -81,34 +79,6 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(resp.Header().Get("Content-Range")).To(Equal("bytes 1-4/" + fmt.Sprint(len(expected))))
 			Expect(resp.Body.Bytes()).To(Equal(expected[1:5]))
 		})
-		It("preserves range requests after an original hot-cache promotion", func() {
-			musicDir := GinkgoT().TempDir()
-			cachePath := filepath.Join(GinkgoT().TempDir(), "hot-music")
-			contents := []byte("0123456789abcdefghijklmnopqrstuvwxyz")
-			Expect(os.WriteFile(filepath.Join(musicDir, "hot.flac"), contents, 0o600)).To(Succeed())
-			hotFile := &model.MediaFile{ID: "hot", LibraryPath: musicDir, Path: "hot.flac", Suffix: "flac"}
-			resolver := hotcache.New(hotcache.Options{Enabled: true, Path: cachePath, MaxSize: 1 << 20, PromoteOnPlay: true})
-			DeferCleanup(func() { _ = resolver.(hotcache.Manager).Shutdown(context.Background()) })
-			hotStreamer := stream.NewMediaStreamer(ds, ffmpeg, testCache, resolver)
-
-			first, err := hotStreamer.NewStream(ctx, hotFile, stream.Request{Format: "raw"})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(first.Close()).To(Succeed())
-			Expect(resolver.(hotcache.Manager).Promote(ctx, hotFile)).To(Succeed())
-			Eventually(func() uint64 { return resolver.Stats().Promotions }).Should(Equal(uint64(1)))
-
-			second, err := hotStreamer.NewStream(ctx, hotFile, stream.Request{Format: "raw"})
-			Expect(err).ToNot(HaveOccurred())
-			DeferCleanup(second.Close)
-			req := httptest.NewRequest(http.MethodGet, "/stream", nil)
-			req.Header.Set("Range", "bytes=7-19")
-			resp := httptest.NewRecorder()
-			_, err = second.Serve(ctx, resp, req)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(resp.Code).To(Equal(http.StatusPartialContent))
-			Expect(resp.Body.Bytes()).To(Equal(contents[7:20]))
-			Expect(resolver.Stats().Hits).To(Equal(uint64(1)))
-		})
 		It("returns a NON seekable stream if transcode is required", func() {
 			s, err := streamer.NewStream(ctx, mf, stream.Request{Format: "mp3", BitRate: 64})
 			Expect(err).To(BeNil())
@@ -140,7 +110,7 @@ var _ = Describe("MediaStreamer", func() {
 			conf.Server.Transcoding.MaxConcurrentPerUser = 0
 			tightCache := stream.NewTranscodingCache()
 			Eventually(func() bool { return tightCache.Available(context.TODO()) }).Should(BeTrue())
-			tightStreamer := stream.NewMediaStreamer(ds, blockingFFmpeg, tightCache, hotcache.New(hotcache.Options{}))
+			tightStreamer := stream.NewMediaStreamer(ds, blockingFFmpeg, tightCache)
 
 			userCtx := request.WithUsername(ctx, "alice")
 			s1, err := tightStreamer.NewStream(userCtx, mf, stream.Request{Format: "mp3", BitRate: 64})
@@ -157,7 +127,7 @@ var _ = Describe("MediaStreamer", func() {
 			conf.Server.Transcoding.MaxConcurrentPerUser = 0
 			tightCache := stream.NewTranscodingCache()
 			Eventually(func() bool { return tightCache.Available(context.TODO()) }).Should(BeTrue())
-			tightStreamer := stream.NewMediaStreamer(ds, ffmpeg, tightCache, hotcache.New(hotcache.Options{}))
+			tightStreamer := stream.NewMediaStreamer(ds, ffmpeg, tightCache)
 
 			userCtx := request.WithUsername(ctx, "alice")
 			s1, err := tightStreamer.NewStream(userCtx, mf, stream.Request{Format: "mp3", BitRate: 64})
@@ -177,7 +147,7 @@ var _ = Describe("MediaStreamer", func() {
 			conf.Server.Transcoding.MaxConcurrentPerUser = 0
 			tightCache := stream.NewTranscodingCache()
 			Eventually(func() bool { return tightCache.Available(context.TODO()) }).Should(BeTrue())
-			tightStreamer := stream.NewMediaStreamer(ds, ffmpeg, tightCache, hotcache.New(hotcache.Options{}))
+			tightStreamer := stream.NewMediaStreamer(ds, ffmpeg, tightCache)
 
 			userCtx := request.WithUsername(ctx, "alice")
 			// First, saturate the single transcode slot.

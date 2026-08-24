@@ -31,6 +31,30 @@ func TestDynamicAPIUsesZstdWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestRustHTTP3CompressionMarkerBypassesGoAndIsStripped(t *testing.T) {
+	body := strings.Repeat(`{"ok":true}`, 40)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(rustHTTP3CompressionHeader); got != "" {
+			t.Fatalf("private compression marker reached handler: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ping/details", nil)
+	req.Header.Set("Accept-Encoding", "zstd")
+	req.Header.Set(rustHTTP3CompressionHeader, "zstd")
+	rec := httptest.NewRecorder()
+	compressMiddleware()(handler).ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Fatalf("Content-Encoding = %q, want Rust bridge to handle compression", got)
+	}
+	if rec.Body.String() != body {
+		t.Fatal("raw bridge body mismatch")
+	}
+}
+
 func TestModuleJavaScriptUsesBrotliLikeWebUI(t *testing.T) {
 	body := strings.Repeat("export const x = 1;\n", 80)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

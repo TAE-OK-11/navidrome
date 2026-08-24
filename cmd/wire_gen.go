@@ -24,7 +24,6 @@ import (
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/core/sonic"
 	"github.com/navidrome/navidrome/core/stream"
-	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/persistence"
@@ -100,8 +99,7 @@ func CreateSubsonicAPIRouter(ctx context.Context) *subsonic.Router {
 	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
 	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
 	transcodingCache := stream.GetTranscodingCache()
-	resolver := hotcache.GetResolver()
-	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache, resolver)
+	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
 	share := core.NewShare(dataStore)
 	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
 	players := core.NewPlayers(dataStore)
@@ -131,8 +129,7 @@ func CreatePublicRouter() *public.Router {
 	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
 	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
 	transcodingCache := stream.GetTranscodingCache()
-	resolver := hotcache.GetResolver()
-	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache, resolver)
+	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
 	share := core.NewShare(dataStore)
 	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
 	router := public.New(dataStore, artworkArtwork, mediaStreamer, share, archiver)

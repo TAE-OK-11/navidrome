@@ -9,7 +9,6 @@ import (
 
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/auth"
-	"github.com/navidrome/navidrome/core/stream/hotcache"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server"
@@ -48,12 +47,7 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, context.Canceled):
 		return
 	case errors.Is(err, model.ErrNotFound):
-		stale := hotcache.RecordArtworkError("artwork_not_found", id, err.Error(), true)
-		if stale {
-			log.Debug(r, "Stale client coverArt request", "id", id, err)
-		} else {
-			log.Warn(r, "Repeated coverArt lookup failure", "id", id, err)
-		}
+		log.Debug(r, "Artwork not found", "id", id, err)
 		http.Error(w, "Artwork not found", http.StatusNotFound)
 		return
 	case errors.Is(err, artwork.ErrUnavailable):
@@ -72,7 +66,7 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	}
 	cnt, err := io.Copy(w, imgReader)
 	if err != nil {
-		if !server.RecordExpectedTransportError(ctx, err, id) {
+		if !server.IsExpectedTransportError(ctx, err) {
 			log.Warn(ctx, "Error sending image", "count", cnt, err)
 		}
 	}

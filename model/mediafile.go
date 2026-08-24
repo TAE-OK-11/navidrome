@@ -123,7 +123,30 @@ func appendSuffix(base, suffix string) string {
 }
 
 func (mf MediaFile) ContentType() string {
-	return mime.TypeByExtension("." + mf.Suffix)
+	return ContentTypeForSuffix(mf.Suffix)
+}
+
+// ContentTypeForSuffix avoids constructing an extension and consulting the
+// global MIME registry for the built-in audio formats used on hot API and
+// streaming paths. Unknown and non-canonical suffixes retain the platform MIME
+// registry fallback.
+func ContentTypeForSuffix(suffix string) string {
+	switch suffix {
+	case "flac":
+		return "audio/flac"
+	case "m4a":
+		return "audio/mp4"
+	case "mp3":
+		return "audio/mpeg"
+	case "oga", "ogg", "opus":
+		return "audio/ogg"
+	case "wav":
+		return "audio/wav"
+	case "webm":
+		return "video/webm"
+	default:
+		return mime.TypeByExtension("." + suffix)
+	}
 }
 
 func (mf MediaFile) CoverArtID() ArtworkID {

@@ -34,7 +34,7 @@ const PlaylistCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props} onSuccess={onSuccess}>
-      <SimpleForm redirect="list">
+      <SimpleForm>
         <TextInput source="name" validate={required()} />
         <TextInput multiline source="comment" />
         <BooleanInput source="public" defaultValue={true} />

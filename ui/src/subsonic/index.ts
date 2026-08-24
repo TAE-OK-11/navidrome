@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { baseUrl } from '../utils'
 import {
   httpClient,
@@ -6,7 +5,24 @@ import {
   clientUniqueIdHeader,
 } from '../dataProvider'
 
-const url = (command, id, options) => {
+type QueryPrimitive = string | number | boolean
+type QueryValue = QueryPrimitive | null | undefined | QueryPrimitive[]
+type QueryOptions = Record<string, QueryValue>
+
+type CoverArtRecord = {
+  id: string | number
+  updatedAt?: QueryPrimitive
+  album?: unknown
+  albumArtist?: unknown
+  sync?: unknown
+  streamUrl?: unknown
+}
+
+const url = (
+  command: string,
+  id?: string | number | null,
+  options?: QueryOptions | null,
+): string => {
   const username = localStorage.getItem('username')
   const token = localStorage.getItem('subsonic-token')
   const salt = localStorage.getItem('subsonic-salt')
@@ -21,19 +37,18 @@ const url = (command, id, options) => {
   params.append('f', 'json')
   params.append('v', '1.8.0')
   params.append('c', 'NavidromeUI')
-  id && params.append('id', id)
+  if (id != null && id !== '') params.append('id', String(id))
   if (options) {
-    if (options.ts) {
-      options['_'] = new Date().getTime()
-      delete options.ts
-    }
-    Object.keys(options).forEach((k) => {
-      const value = options[k]
+    Object.entries(options).forEach(([key, optionValue]) => {
+      if (key === 'ts') {
+        if (optionValue) params.append('_', String(Date.now()))
+        return
+      }
       // Handle array parameters by appending each value separately
-      if (Array.isArray(value)) {
-        value.forEach((v) => params.append(k, v))
-      } else {
-        params.append(k, value)
+      if (Array.isArray(optionValue)) {
+        optionValue.forEach((value) => params.append(key, String(value)))
+      } else if (optionValue != null) {
+        params.append(key, String(optionValue))
       }
     })
   }
@@ -42,13 +57,21 @@ const url = (command, id, options) => {
 
 const ping = () => httpClient(url('ping'))
 
-const reportPlaybackUrl = (mediaId, positionMs, state) =>
+const reportPlaybackUrl = (
+  mediaId: string,
+  positionMs: number,
+  state: string,
+): string =>
   url('reportPlayback', null, { mediaId, mediaType: 'song', positionMs, state })
 
-const reportPlayback = (mediaId, positionMs, state) =>
+const reportPlayback = (mediaId: string, positionMs: number, state: string) =>
   httpClient(reportPlaybackUrl(mediaId, positionMs, state))
 
-const reportPlaybackKeepalive = (mediaId, positionMs, state) => {
+const reportPlaybackKeepalive = (
+  mediaId: string,
+  positionMs: number,
+  state: string,
+): void => {
   const u = reportPlaybackUrl(mediaId, positionMs, state)
   if (u) {
     fetch(baseUrl(u), {
@@ -58,22 +81,24 @@ const reportPlaybackKeepalive = (mediaId, positionMs, state) => {
   }
 }
 
-const star = (id) => httpClient(url('star', id))
+const star = (id: string) => httpClient(url('star', id))
 
-const unstar = (id) => httpClient(url('unstar', id))
+const unstar = (id: string) => httpClient(url('unstar', id))
 
-const setRating = (id, rating) => httpClient(url('setRating', id, { rating }))
+const setRating = (id: string, rating: number) =>
+  httpClient(url('setRating', id, { rating }))
 
-const download = (id, format = 'raw', bitrate = '0') =>
+const download = (id: string, format = 'raw', bitrate = '0'): string =>
   (window.location.href = baseUrl(url('download', id, { format, bitrate })))
 
-const startScan = (options) => httpClient(url('startScan', null, options))
+const startScan = (options: QueryOptions) =>
+  httpClient(url('startScan', null, options))
 
 const getScanStatus = () => httpClient(url('getScanStatus'))
 
 const getNowPlaying = () => httpClient(url('getNowPlaying'))
 
-const getAvatarUrl = (username, size) =>
+const getAvatarUrl = (username: string, size?: number): string =>
   baseUrl(
     url('getAvatar', null, {
       username,
@@ -81,8 +106,12 @@ const getAvatarUrl = (username, size) =>
     }),
   )
 
-const getCoverArtUrl = (record, size, square) => {
-  const options = {
+const getCoverArtUrl = (
+  record: CoverArtRecord,
+  size?: number,
+  square?: boolean,
+): string => {
+  const options: QueryOptions = {
     ...(record.updatedAt && { _: record.updatedAt }),
     ...(size && { size }),
     ...(square && { square }),
@@ -104,8 +133,13 @@ const getCoverArtUrl = (record, size, square) => {
   }
 }
 
-const getDiscCoverArtUrl = (albumId, discNumber, updatedAt, size) => {
-  const options = {
+const getDiscCoverArtUrl = (
+  albumId: string,
+  discNumber: number,
+  updatedAt?: QueryPrimitive,
+  size?: number,
+): string => {
+  const options: QueryOptions = {
     ...(updatedAt && { _: updatedAt }),
     ...(size && { size }),
   }
@@ -114,23 +148,23 @@ const getDiscCoverArtUrl = (albumId, discNumber, updatedAt, size) => {
   )
 }
 
-const getArtistInfo = (id) => {
+const getArtistInfo = (id: string) => {
   return httpClient(url('getArtistInfo', id))
 }
 
-const getAlbumInfo = (id) => {
+const getAlbumInfo = (id: string) => {
   return httpClient(url('getAlbumInfo', id))
 }
 
-const getSimilarSongs2 = (id, count = 100) => {
+const getSimilarSongs2 = (id: string, count = 100) => {
   return httpClient(url('getSimilarSongs2', id, { count }))
 }
 
-const getTopSongs = (artist, count = 50) => {
+const getTopSongs = (artist: string, count = 50) => {
   return httpClient(url('getTopSongs', null, { artist, count }))
 }
 
-const streamUrl = (id, options) => {
+const streamUrl = (id: string, options?: QueryOptions): string => {
   return baseUrl(
     url('stream', id, {
       ts: true,

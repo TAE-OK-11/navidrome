@@ -122,7 +122,7 @@ func (m *MockLibraryRepo) StoreMusicFolder() error {
 	return nil
 }
 
-func (m *MockLibraryRepo) AddArtist(id int, artistID string) error {
+func (m *MockLibraryRepo) AddArtist(id int, artistIDs ...string) error {
 	if m.Err != nil {
 		return m.Err
 	}

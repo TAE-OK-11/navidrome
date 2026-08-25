@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,34 +15,77 @@ import (
 	"github.com/navidrome/navidrome/core/publicurl"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
-const genreResponseCacheTTL = 45 * time.Second
+const (
+	genreResponseCacheTTL   = 45 * time.Second
+	genreResponseCacheLimit = 128
+)
 
-type genreResponseCache struct {
-	mu      sync.Mutex
+type genreResponseCacheEntry struct {
 	expires time.Time
 	value   *responses.Genres
 }
 
-func (c *genreResponseCache) get(now time.Time) (*responses.Genres, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.value == nil || now.After(c.expires) {
-		return nil, false
-	}
-	return c.value, true
+type genreResponseCache struct {
+	mu      sync.Mutex
+	entries map[string]genreResponseCacheEntry
 }
 
-func (c *genreResponseCache) put(now time.Time, value *responses.Genres) {
+func (c *genreResponseCache) get(key string, now time.Time) (*responses.Genres, bool) {
 	c.mu.Lock()
-	c.value = value
-	c.expires = now.Add(genreResponseCacheTTL)
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok || !now.Before(entry.expires) {
+		delete(c.entries, key)
+		return nil, false
+	}
+	return entry.value, true
+}
+
+func (c *genreResponseCache) put(key string, now time.Time, value *responses.Genres) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]genreResponseCacheEntry)
+	}
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
+		for existingKey, entry := range c.entries {
+			if !now.Before(entry.expires) {
+				delete(c.entries, existingKey)
+			}
+		}
+		if len(c.entries) >= genreResponseCacheLimit {
+			for existingKey := range c.entries {
+				delete(c.entries, existingKey)
+				break
+			}
+		}
+	}
+	c.entries[key] = genreResponseCacheEntry{value: value, expires: now.Add(genreResponseCacheTTL)}
+}
+
+func genreResponseCacheKey(user model.User) string {
+	if user.IsAdmin {
+		return "admin"
+	}
+	ids := make([]int, len(user.Libraries))
+	for i, library := range user.Libraries {
+		ids[i] = library.ID
+	}
+	slices.Sort(ids)
+	var key strings.Builder
+	key.Grow(len(ids) * 4)
+	for _, id := range ids {
+		key.WriteString(strconv.Itoa(id))
+		key.WriteByte(',')
+	}
+	return key.String()
 }
 
 func (api *Router) GetMusicFolders(r *http.Request) (*responses.Subsonic, error) {
@@ -287,10 +333,15 @@ func (api *Router) GetSong(r *http.Request) (*responses.Subsonic, error) {
 
 func (api *Router) GetGenres(r *http.Request) (*responses.Subsonic, error) {
 	now := time.Now()
-	if genres, ok := api.genreCache.get(now); ok {
-		response := newResponse()
-		response.Genres = genres
-		return response, nil
+	user, cacheable := request.UserFrom(r.Context())
+	cacheKey := ""
+	if cacheable {
+		cacheKey = genreResponseCacheKey(user)
+		if genres, ok := api.genreCache.get(cacheKey, now); ok {
+			response := newResponse()
+			response.Genres = genres
+			return response, nil
+		}
 	}
 
 	ctx := r.Context()
@@ -307,7 +358,9 @@ func (api *Router) GetGenres(r *http.Request) (*responses.Subsonic, error) {
 
 	response := newResponse()
 	response.Genres = toGenres(genres)
-	api.genreCache.put(now, response.Genres)
+	if cacheable {
+		api.genreCache.put(cacheKey, now, response.Genres)
+	}
 	return response, nil
 }
 

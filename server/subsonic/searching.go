@@ -146,37 +146,41 @@ func rustSearchableQuery(query string) bool {
 }
 
 func (api *Router) searchAllRust(ctx context.Context, query string, libraryIDs []int, sp *searchParams) (model.MediaFiles, model.Albums, model.Artists, bool) {
-	songIDs, err := api.rustSearch.Search(query, "song", libraryIDs, sp.songOffset, sp.songCount)
+	results, err := api.rustSearch.SearchAll(
+		query,
+		libraryIDs,
+		rustsearch.SearchLimits{Offset: sp.songOffset, Limit: sp.songCount},
+		rustsearch.SearchLimits{Offset: sp.albumOffset, Limit: sp.albumCount},
+		rustsearch.SearchLimits{Offset: sp.artistOffset, Limit: sp.artistCount},
+	)
 	if err != nil {
 		if !errors.Is(err, rustsearch.ErrNotReady) {
-			log.Warn(ctx, "Rust song search failed; using SQLite fallback", err)
+			log.Warn(ctx, "Rust grouped search failed; using SQLite fallback", err)
 		}
 		return nil, nil, nil, false
 	}
-	albumIDs, err := api.rustSearch.Search(query, "album", libraryIDs, sp.albumOffset, sp.albumCount)
-	if err != nil {
-		log.Warn(ctx, "Rust album search failed; using SQLite fallback", err)
-		return nil, nil, nil, false
-	}
-	artistIDs, err := api.rustSearch.Search(query, "artist", libraryIDs, sp.artistOffset, sp.artistCount)
-	if err != nil {
-		log.Warn(ctx, "Rust artist search failed; using SQLite fallback", err)
-		return nil, nil, nil, false
-	}
 
-	mediaFiles, err := api.hydrateRustSongs(ctx, songIDs)
-	if err != nil {
-		log.Warn(ctx, "Hydrating Rust song results failed; using SQLite fallback", err)
-		return nil, nil, nil, false
-	}
-	albums, err := api.hydrateRustAlbums(ctx, albumIDs)
-	if err != nil {
-		log.Warn(ctx, "Hydrating Rust album results failed; using SQLite fallback", err)
-		return nil, nil, nil, false
-	}
-	artists, err := api.hydrateRustArtists(ctx, artistIDs)
-	if err != nil {
-		log.Warn(ctx, "Hydrating Rust artist results failed; using SQLite fallback", err)
+	var mediaFiles model.MediaFiles
+	var albums model.Albums
+	var artists model.Artists
+	g, hydrateCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var hydrateErr error
+		mediaFiles, hydrateErr = api.hydrateRustSongs(hydrateCtx, results.SongIDs)
+		return hydrateErr
+	})
+	g.Go(func() error {
+		var hydrateErr error
+		albums, hydrateErr = api.hydrateRustAlbums(hydrateCtx, results.AlbumIDs)
+		return hydrateErr
+	})
+	g.Go(func() error {
+		var hydrateErr error
+		artists, hydrateErr = api.hydrateRustArtists(hydrateCtx, results.ArtistIDs)
+		return hydrateErr
+	})
+	if err := g.Wait(); err != nil {
+		log.Warn(ctx, "Hydrating grouped Rust search results failed; using SQLite fallback", err)
 		return nil, nil, nil, false
 	}
 	return mediaFiles, albums, artists, true

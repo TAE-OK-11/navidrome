@@ -33,3 +33,28 @@ func TestSearchIndexStaleRestartsAnUnavailableWorker(t *testing.T) {
 		t.Fatal("unavailable search worker must rebuild even when generation is current")
 	}
 }
+
+func TestDecodeSearchGroups(t *testing.T) {
+	t.Parallel()
+
+	results, err := decodeSearchGroups([]searchGroup{
+		{Kind: "song", Hits: []hit{{ID: "song-2"}, {ID: "song-1"}}},
+		{Kind: "album", Hits: []hit{{ID: "album-1"}}},
+		{Kind: "artist", Hits: []hit{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results.SongIDs) != 2 || results.SongIDs[0] != "song-2" || results.SongIDs[1] != "song-1" {
+		t.Fatalf("song IDs = %#v", results.SongIDs)
+	}
+	if len(results.AlbumIDs) != 1 || results.AlbumIDs[0] != "album-1" {
+		t.Fatalf("album IDs = %#v", results.AlbumIDs)
+	}
+	if results.ArtistIDs == nil || len(results.ArtistIDs) != 0 {
+		t.Fatalf("artist IDs = %#v, want a present empty result", results.ArtistIDs)
+	}
+	if _, err := decodeSearchGroups([]searchGroup{{Kind: "song"}}); err == nil {
+		t.Fatal("missing groups should fail")
+	}
+}

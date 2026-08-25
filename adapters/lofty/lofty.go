@@ -7,6 +7,7 @@ package lofty
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,6 +79,10 @@ type extractor struct {
 }
 
 func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
+	return e.ParseContext(context.Background(), files...)
+}
+
+func (e *extractor) ParseContext(ctx context.Context, files ...string) (map[string]metadata.Info, error) {
 	if len(files) == 0 {
 		return map[string]metadata.Info{}, nil
 	}
@@ -90,7 +95,7 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 	pool := e.workerPool()
 	taskCount := metadataTaskCount(len(req.Files), cap(pool))
 	if taskCount == 1 {
-		resp, err := e.roundTrip(pool, req)
+		resp, err := e.roundTrip(ctx, pool, req)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +117,7 @@ func (e *extractor) Parse(files ...string) (map[string]metadata.Info, error) {
 		end := min(start+chunkSize, len(req.Files))
 		task := request{Files: req.Files[start:end]}
 		go func() {
-			resp, err := e.roundTrip(pool, task)
+			resp, err := e.roundTrip(ctx, pool, task)
 			results <- taskResult{response: resp, err: err}
 		}()
 	}
@@ -152,8 +157,13 @@ func metadataTaskCount(fileCount, poolSize int) int {
 
 // roundTrip reserves one persistent worker for one ordered request/response.
 // A failed worker is replaced once before the request is returned to the scanner.
-func (e *extractor) roundTrip(pool chan *workerSlot, req request) (response, error) {
-	slot := <-pool
+func (e *extractor) roundTrip(ctx context.Context, pool chan *workerSlot, req request) (response, error) {
+	var slot *workerSlot
+	select {
+	case slot = <-pool:
+	case <-ctx.Done():
+		return response{}, ctx.Err()
+	}
 	defer func() { pool <- slot }()
 
 	var lastErr error
@@ -162,7 +172,19 @@ func (e *extractor) roundTrip(pool chan *workerSlot, req request) (response, err
 		if err != nil {
 			return response{}, err
 		}
+		cancelDone := make(chan struct{})
+		stopCancel := context.AfterFunc(ctx, func() {
+			w.kill()
+			close(cancelDone)
+		})
 		resp, err := w.roundTrip(req)
+		if !stopCancel() {
+			<-cancelDone
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			slot.stopWorker()
+			return response{}, ctxErr
+		}
 		if err == nil {
 			return resp, nil
 		}
@@ -289,10 +311,14 @@ func (w *worker) roundTrip(req request) (response, error) {
 
 func (w *worker) close() {
 	_ = w.stdin.Close()
+	w.kill()
+	_ = w.cmd.Wait()
+}
+
+func (w *worker) kill() {
 	if w.cmd.Process != nil {
 		_ = w.cmd.Process.Kill()
 	}
-	_ = w.cmd.Wait()
 }
 
 func convertResponse(resp response) (map[string]metadata.Info, error) {

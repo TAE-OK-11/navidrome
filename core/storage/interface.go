@@ -17,6 +17,12 @@ type MusicFS interface {
 	ReadTags(path ...string) (map[string]metadata.Info, error)
 }
 
+// ContextMusicFS is implemented by storage backends whose metadata reader can
+// abort in-flight native or remote work when a scan is cancelled.
+type ContextMusicFS interface {
+	ReadTagsContext(context.Context, ...string) (map[string]metadata.Info, error)
+}
+
 // SymlinkResolverFS is an optional interface for MusicFS implementations backed by a real
 // filesystem. ResolveSymlink resolves the whole symlink chain of the named entry at the OS
 // level and returns the final target's path — including targets outside the FS root, which

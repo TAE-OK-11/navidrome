@@ -1,10 +1,23 @@
 package lofty
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestRoundTripHonorsCancellationWhileWaitingForWorker(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	pool := make(chan *workerSlot)
+	_, err := (&extractor{}).roundTrip(ctx, pool, request{})
+	if err != context.Canceled {
+		t.Fatalf("roundTrip() error = %v, want context.Canceled", err)
+	}
+}
 
 func TestBuildRequestKeepsFilesInsideLibrary(t *testing.T) {
 	t.Parallel()

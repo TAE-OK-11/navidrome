@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +27,8 @@ const (
 	protocolVersion        = 1
 	indexBatchSize         = 1000
 	freshnessCheckInterval = 10 * time.Second
+	searchRequestTimeout   = 5 * time.Second
+	indexRequestTimeout    = 30 * time.Second
 )
 
 var ErrNotReady = errors.New("Rust search index is not ready")
@@ -98,7 +99,7 @@ type worker struct {
 }
 
 type Engine struct {
-	mu         sync.Mutex
+	gate       chan struct{}
 	worker     *worker
 	ready      atomic.Bool
 	building   atomic.Bool
@@ -112,18 +113,20 @@ func Available() bool {
 }
 
 func New() *Engine {
-	return &Engine{}
+	e := &Engine{gate: make(chan struct{}, 1)}
+	e.gate <- struct{}{}
+	return e
 }
 
 func (e *Engine) Ready() bool {
 	return e != nil && e.ready.Load()
 }
 
-func (e *Engine) Search(query, kind string, libraryIDs []int, offset, limit int) ([]string, error) {
+func (e *Engine) Search(ctx context.Context, query, kind string, libraryIDs []int, offset, limit int) ([]string, error) {
 	if !e.Ready() {
 		return nil, ErrNotReady
 	}
-	resp, err := e.roundTrip(request{
+	resp, err := e.roundTrip(ctx, request{
 		Op:         "search",
 		Query:      query,
 		Kind:       kind,
@@ -141,11 +144,11 @@ func (e *Engine) Search(query, kind string, libraryIDs []int, offset, limit int)
 	return ids, nil
 }
 
-func (e *Engine) SearchAll(query string, libraryIDs []int, songs, albums, artists SearchLimits) (SearchResults, error) {
+func (e *Engine) SearchAll(ctx context.Context, query string, libraryIDs []int, songs, albums, artists SearchLimits) (SearchResults, error) {
 	if !e.Ready() {
 		return SearchResults{}, ErrNotReady
 	}
-	resp, err := e.roundTrip(request{
+	resp, err := e.roundTrip(ctx, request{
 		Op:         "search_all",
 		Query:      query,
 		LibraryIDs: libraryScope(libraryIDs),
@@ -236,13 +239,15 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 	if err != nil {
 		return fmt.Errorf("loading libraries for Rust search: %w", err)
 	}
-	if _, err = e.roundTrip(request{Op: "begin_replace"}); err != nil {
+	if _, err = e.roundTrip(ctx, request{Op: "begin_replace"}); err != nil {
 		return err
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			if _, abortErr := e.roundTrip(request{Op: "abort_replace"}); abortErr == nil && wasReady {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			defer cancel()
+			if _, abortErr := e.roundTrip(cleanupCtx, request{Op: "abort_replace"}); abortErr == nil && wasReady {
 				e.ready.Store(true)
 			}
 		}
@@ -253,7 +258,7 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 		if len(batch) == 0 {
 			return nil
 		}
-		_, err := e.roundTrip(request{Op: "append", Documents: batch})
+		_, err := e.roundTrip(ctx, request{Op: "append", Documents: batch})
 		batch = make([]document, 0, indexBatchSize)
 		return err
 	}
@@ -277,7 +282,7 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 	if err := flush(); err != nil {
 		return err
 	}
-	resp, err := e.roundTrip(request{Op: "commit_replace"})
+	resp, err := e.roundTrip(ctx, request{Op: "commit_replace"})
 	if err != nil {
 		return err
 	}
@@ -387,26 +392,67 @@ func searchIndexStale(ready bool, generation int64, libraries model.Libraries) b
 	return !ready || scanGeneration(libraries) > generation
 }
 
-func (e *Engine) roundTrip(req request) (response, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
+	timeout := searchRequestTimeout
+	switch req.Op {
+	case "begin_replace", "append", "commit_replace", "abort_replace":
+		timeout = indexRequestTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return response{}, err
+	}
+	select {
+	case <-e.gate:
+	case <-ctx.Done():
+		return response{}, ctx.Err()
+	}
+	defer func() { e.gate <- struct{}{} }()
 
 	w, err := e.ensureWorker()
 	if err != nil {
 		return response{}, err
 	}
+	cancelDone := make(chan struct{})
+	stopCancel := context.AfterFunc(ctx, func() {
+		w.kill()
+		close(cancelDone)
+	})
+	finishCancellation := func() {
+		if !stopCancel() {
+			<-cancelDone
+		}
+	}
 	if err := w.encoder.Encode(req); err != nil {
+		finishCancellation()
 		e.stopWorker()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return response{}, ctxErr
+		}
 		return response{}, fmt.Errorf("writing Rust search request: %w", err)
 	}
 	if err := w.writer.Flush(); err != nil {
+		finishCancellation()
 		e.stopWorker()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return response{}, ctxErr
+		}
 		return response{}, fmt.Errorf("flushing Rust search request: %w", err)
 	}
 	var resp response
 	if err := w.decoder.Decode(&resp); err != nil {
+		finishCancellation()
 		e.stopWorker()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return response{}, ctxErr
+		}
 		return response{}, fmt.Errorf("reading Rust search response: %w", err)
+	}
+	finishCancellation()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		e.stopWorker()
+		return response{}, ctxErr
 	}
 	if resp.Protocol != protocolVersion {
 		e.stopWorker()
@@ -461,4 +507,10 @@ func (e *Engine) stopWorker() {
 	}
 	_ = e.worker.cmd.Wait()
 	e.worker = nil
+}
+
+func (w *worker) kill() {
+	if w != nil && w.cmd.Process != nil {
+		_ = w.cmd.Process.Kill()
+	}
 }

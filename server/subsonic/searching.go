@@ -147,6 +147,7 @@ func rustSearchableQuery(query string) bool {
 
 func (api *Router) searchAllRust(ctx context.Context, query string, libraryIDs []int, sp *searchParams) (model.MediaFiles, model.Albums, model.Artists, bool) {
 	results, err := api.rustSearch.SearchAll(
+		ctx,
 		query,
 		libraryIDs,
 		rustsearch.SearchLimits{Offset: sp.songOffset, Limit: sp.songCount},

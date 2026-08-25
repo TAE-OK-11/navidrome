@@ -12,7 +12,7 @@
     "type-check": "bun node_modules/typescript/bin/tsc --noEmit -p tsconfig.app.json && bun node_modules/typescript/bin/tsc --noEmit -p tsconfig.node.json",
     "check:typescript-migration": "bun bin/check-typescript-migration.ts",
     "check:mui9": "bun bin/check-mui9-compat.ts",
-    "lint": "bun node_modules/eslint/bin/eslint.js . --ext ts,tsx,js,jsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "bun node_modules/eslint/bin/eslint.js . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "prettier": "bun node_modules/prettier/bin/prettier.cjs --write ./src",
     "check-formatting": "bun node_modules/prettier/bin/prettier.cjs -c ./src",
     "postinstall": "bun bin/update-workbox.ts"

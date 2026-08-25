@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -79,8 +80,9 @@ func postRun() {
 // it will cancel the context and exit gracefully.
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
+	subsonicRouter := CreateSubsonicAPIRouter(ctx)
 	g, ctx := errgroup.WithContext(ctx)
-	g.Go(startServer(ctx))
+	g.Go(startServer(ctx, subsonicRouter))
 	g.Go(startSignaller(ctx))
 	if schedulerRequired() {
 		g.Go(startScheduler(ctx))
@@ -98,7 +100,7 @@ func runNavidrome(ctx context.Context) {
 		g.Go(scheduleDBAnalyzer(ctx))
 	}
 	if conf.Server.Plugins.Enabled {
-		g.Go(startPluginManager(ctx))
+		g.Go(startPluginManager(ctx, subsonicRouter))
 	}
 	g.Go(runInitialScan(ctx))
 	if conf.Server.Scanner.Enabled {
@@ -133,11 +135,11 @@ func mainContext(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 // startServer starts the Navidrome web server, adding all the necessary routers.
-func startServer(ctx context.Context) func() error {
+func startServer(ctx context.Context, subsonicRouter http.Handler) func() error {
 	return func() error {
 		a := CreateServer()
 		a.MountRouter("Native API", consts.URLPathNativeAPI, CreateNativeAPIRouter(ctx))
-		a.MountRouter("Subsonic API", consts.URLPathSubsonicAPI, CreateSubsonicAPIRouter(ctx))
+		a.MountRouter("Subsonic API", consts.URLPathSubsonicAPI, subsonicRouter)
 		a.MountRouter("Public Endpoints", consts.URLPathPublic, CreatePublicRouter())
 		if conf.Server.LastFM.Enabled {
 			a.MountRouter("LastFM Auth", consts.URLPathNativeAPI+"/lastfm", CreateLastFMRouter())
@@ -380,13 +382,14 @@ func startPlaybackServer(ctx context.Context) func() error {
 }
 
 // startPluginManager starts the plugin manager, if configured.
-func startPluginManager(ctx context.Context) func() error {
+func startPluginManager(ctx context.Context, subsonicRouter http.Handler) func() error {
 	return func() error {
 		if !conf.Server.Plugins.Enabled {
 			log.Debug("Plugin system is DISABLED")
 			return nil
 		}
-		manager := GetPluginManager(ctx)
+		manager := getPluginManager()
+		manager.SetSubsonicRouter(subsonicRouter)
 		log.Info(ctx, "Starting plugin manager")
 		return manager.Start(ctx)
 	}

@@ -20,11 +20,12 @@ const SPECIAL_DIRECTORIES: &[&str] = &[
     "lost+found",
 ];
 const AUDIO_EXTENSIONS: &[&str] = &[
-    "aac", "aif", "aiff", "ape", "dsf", "flac", "m4a", "m4b", "mp3", "mp4", "mpc", "oga", "ogg",
-    "opus", "wav", "webm", "wma",
+    "aac", "aif", "aiff", "alac", "ape", "dsf", "flac", "m4a", "m4b", "mp3", "mp4", "mpc", "oga",
+    "ogg", "opus", "wav", "webm", "wma",
 ];
 const IMAGE_EXTENSIONS: &[&str] = &[
-    "avif", "bmp", "gif", "heic", "heif", "jfif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+    "avif", "bmp", "gif", "heic", "heif", "jfif", "jpeg", "jpg", "jxl", "png", "tif", "tiff",
+    "webp",
 ];
 const PLAYLIST_EXTENSIONS: &[&str] = &["m3u", "m3u8", "nsp"];
 
@@ -405,8 +406,11 @@ mod tests {
         fs::create_dir_all(root.join("Linked Source")).unwrap();
         fs::write(root.join("Artist/Album/.ndignore"), b"ignored/\n").unwrap();
         fs::write(root.join("Artist/Album/song.flac"), b"audio").unwrap();
+        fs::write(root.join("Artist/Album/lossless.alac"), b"audio").unwrap();
         fs::write(root.join("Artist/Album/cover.jpg"), b"image").unwrap();
+        fs::write(root.join("Artist/Album/cover.jxl"), b"image").unwrap();
         fs::write(root.join("Artist/Album/list.m3u8"), b"playlist").unwrap();
+        fs::write(root.join("Artist/Album/not-supported.pls"), b"playlist").unwrap();
         fs::write(root.join("Artist/Album/ignored/skip.mp3"), b"ignored").unwrap();
         fs::write(root.join("Artist/.Hidden Album/hidden.mp3"), b"hidden").unwrap();
         fs::write(root.join("Linked Source/linked.opus"), b"linked").unwrap();
@@ -435,11 +439,13 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         let album = folders.get("Artist/Album").unwrap();
         assert!(album.audio_files.contains_key("song.flac"));
+        assert!(album.audio_files.contains_key("lossless.alac"));
         #[cfg(unix)]
         assert!(!album.audio_files.contains_key("linked.flac"));
         #[cfg(unix)]
         assert!(!folders.contains_key("Artist/Linked Album"));
         assert!(album.image_files.contains_key("cover.jpg"));
+        assert!(album.image_files.contains_key("cover.jxl"));
         assert_eq!(album.num_playlists, 1);
         assert!(!folders.contains_key("Artist/Album/ignored"));
         assert!(!folders.contains_key("Artist/.Hidden Album"));

@@ -105,6 +105,31 @@ var _ = Describe("Players", func() {
 			Expect(repo.getCalls).To(Equal(1))
 		})
 
+		It("does not wait for periodic cached player persistence", func() {
+			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", UserId: "userid", UserAgent: "chrome"}
+			repo.add(plr)
+			impl := players.(*players)
+			impl.limiter.Interval = time.Nanosecond
+
+			_, _, err := players.Register(ctx, "123", "client", "chrome", "1.2.3.4")
+			Expect(err).ToNot(HaveOccurred())
+			time.Sleep(time.Millisecond)
+
+			repo.putStarted = make(chan struct{}, 1)
+			repo.putRelease = make(chan struct{})
+			repo.putDone = make(chan struct{}, 1)
+			returned := make(chan error, 1)
+			go func() {
+				_, _, registerErr := players.Register(ctx, "123", "client", "chrome", "1.2.3.4")
+				returned <- registerErr
+			}()
+
+			Eventually(repo.putStarted).Should(Receive())
+			Eventually(returned).Should(Receive(BeNil()))
+			close(repo.putRelease)
+			Eventually(repo.putDone).Should(Receive())
+		})
+
 		It("reuses cached players by user, client, and user agent when no ID is provided", func() {
 			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", UserId: "userid", UserAgent: "chrome", LastSeen: time.Time{}}
 			repo.add(plr)
@@ -153,6 +178,9 @@ type mockPlayerRepository struct {
 	data           map[string]model.Player
 	getCalls       int
 	findMatchCalls int
+	putStarted     chan struct{}
+	putRelease     chan struct{}
+	putDone        chan struct{}
 }
 
 func (m *mockPlayerRepository) add(p *model.Player) {
@@ -181,6 +209,13 @@ func (m *mockPlayerRepository) FindMatch(userId, client, userAgent string) (*mod
 }
 
 func (m *mockPlayerRepository) Put(p *model.Player) error {
+	if m.putStarted != nil {
+		m.putStarted <- struct{}{}
+		<-m.putRelease
+	}
 	m.lastSaved = p
+	if m.putDone != nil {
+		m.putDone <- struct{}{}
+	}
 	return nil
 }

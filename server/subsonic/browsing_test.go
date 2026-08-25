@@ -66,7 +66,7 @@ var _ = Describe("Browsing", func() {
 			Expect(genreRepo.Put(&model.Genre{ID: "1", Name: "Rock"})).To(Succeed())
 
 			r := httptest.NewRequest("GET", "/rest/getGenres", nil)
-			r = r.WithContext(ctx)
+			r = r.WithContext(contextWithUser(ctx, "user-id", 1))
 
 			first, err := api.GetGenres(r)
 			Expect(err).ToNot(HaveOccurred())
@@ -78,6 +78,34 @@ var _ = Describe("Browsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(second.Genres.Genre).To(HaveLen(1))
 			Expect(second.Genres).To(Equal(first.Genres))
+		})
+
+		It("separates genre responses by library scope", func() {
+			genreRepo := ds.Genre(ctx).(*tests.MockedGenreRepo)
+			Expect(genreRepo.Put(&model.Genre{ID: "1", Name: "Rock"})).To(Succeed())
+
+			firstRequest := httptest.NewRequest("GET", "/rest/getGenres", nil)
+			firstRequest = firstRequest.WithContext(contextWithUser(ctx, "first", 1))
+			first, err := api.GetGenres(firstRequest)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(first.Genres.Genre).To(HaveLen(1))
+
+			Expect(genreRepo.Put(&model.Genre{ID: "2", Name: "Jazz"})).To(Succeed())
+			secondRequest := httptest.NewRequest("GET", "/rest/getGenres", nil)
+			secondRequest = secondRequest.WithContext(contextWithUser(ctx, "second", 2))
+			second, err := api.GetGenres(secondRequest)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(second.Genres.Genre).To(HaveLen(2))
+
+			firstAgain, err := api.GetGenres(firstRequest)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(firstAgain.Genres).To(Equal(first.Genres))
+		})
+
+		It("uses a stable key for equivalent library order", func() {
+			first := model.User{Libraries: model.Libraries{{ID: 2}, {ID: 1}}}
+			second := model.User{Libraries: model.Libraries{{ID: 1}, {ID: 2}}}
+			Expect(genreResponseCacheKey(first)).To(Equal(genreResponseCacheKey(second)))
 		})
 	})
 

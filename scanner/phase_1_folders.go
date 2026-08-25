@@ -57,6 +57,7 @@ func createPhaseFolders(ctx context.Context, state *scanState, ds model.DataStor
 type scanJob struct {
 	lib           model.Library
 	fs            storage.MusicFS
+	localRoot     string
 	cw            artwork.CacheWarmer
 	lastUpdates   map[string]model.FolderUpdateInfo // Holds last update info for all (DB) folders in this library
 	targetFolders []string                          // Specific folders to scan (including all descendants)
@@ -90,10 +91,15 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 	// This is important when resuming an interrupted quick scan as a full scan:
 	// the DB may have FullScanInProgress=false, but we need it true for isOutdated() to work correctly.
 	lib.FullScanInProgress = lib.FullScanInProgress || fullScan
+	localRoot := ""
+	if localFS, ok := fsys.(storage.LocalPathFS); ok {
+		localRoot = localFS.RootPath()
+	}
 
 	return &scanJob{
 		lib:           lib,
 		fs:            fsys,
+		localRoot:     localRoot,
 		cw:            cw,
 		lastUpdates:   lastUpdates,
 		targetFolders: targetFolders,

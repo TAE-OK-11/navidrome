@@ -64,6 +64,10 @@ type localFS struct {
 	root      string
 }
 
+func (lfs *localFS) RootPath() string {
+	return lfs.root
+}
+
 // ResolveSymlink implements storage.SymlinkResolverFS. It resolves the whole chain at the
 // OS level, so links whose targets live outside the library folder (not reachable through
 // the fs.FS abstraction) still resolve to their final target.

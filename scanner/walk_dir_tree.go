@@ -21,6 +21,52 @@ import (
 // If no targetFolders are provided, it starts from the root folder (".").
 // It returns a channel of folderEntry pointers representing each folder found.
 func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-chan *folderEntry, error) {
+	if job.localRoot != "" {
+		results := make(chan *folderEntry)
+		go func() {
+			defer close(results)
+			folders, warnings, err := collectRustFolders(ctx, job, targetFolders)
+			if err == nil {
+				for _, warning := range warnings {
+					log.Warn(ctx, "Rust scanner traversal warning", "warning", warning)
+				}
+				for _, source := range folders {
+					entry, convertErr := folderEntryFromRust(job, source)
+					if convertErr != nil {
+						log.Warn(ctx, "Rust scanner returned invalid folder; falling back to Go", convertErr)
+						err = convertErr
+						break
+					}
+					select {
+					case results <- entry:
+					case <-ctx.Done():
+						return
+					}
+				}
+				if err == nil {
+					return
+				}
+			}
+			log.Warn(ctx, "Rust filesystem traversal unavailable; falling back to Go", "error", err)
+			fallback, fallbackErr := walkDirTreeGo(ctx, job, targetFolders...)
+			if fallbackErr != nil {
+				log.Error(ctx, "Scanner: Go filesystem traversal fallback failed", fallbackErr)
+				return
+			}
+			for entry := range fallback {
+				select {
+				case results <- entry:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return results, nil
+	}
+	return walkDirTreeGo(ctx, job, targetFolders...)
+}
+
+func walkDirTreeGo(ctx context.Context, job *scanJob, targetFolders ...string) (<-chan *folderEntry, error) {
 	results := make(chan *folderEntry)
 	folders := targetFolders
 	if len(targetFolders) == 0 {

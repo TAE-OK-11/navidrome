@@ -19,14 +19,7 @@ const SPECIAL_DIRECTORIES: &[&str] = &[
     ".streams",
     "lost+found",
 ];
-const AUDIO_EXTENSIONS: &[&str] = &[
-    "aac", "aif", "aiff", "alac", "ape", "dsf", "flac", "m4a", "m4b", "mp3", "mp4", "mpc", "oga",
-    "ogg", "opus", "wav", "webm", "wma",
-];
-const IMAGE_EXTENSIONS: &[&str] = &[
-    "avif", "bmp", "gif", "heic", "heif", "jfif", "jpeg", "jpg", "jxl", "png", "tif", "tiff",
-    "webp",
-];
+include!(concat!(env!("OUT_DIR"), "/media_extensions.rs"));
 const PLAYLIST_EXTENSIONS: &[&str] = &["m3u", "m3u8", "nsp"];
 
 #[derive(Debug, Deserialize)]

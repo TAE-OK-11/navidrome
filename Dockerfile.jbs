@@ -1121,7 +1121,8 @@ ARG RUST_TARGET_CPU
 
 WORKDIR /build
 
-COPY --link --from=source /src/rust/scanner/Cargo.toml /src/rust/scanner/Cargo.lock ./
+COPY --link --from=source /src/rust/scanner/Cargo.toml /src/rust/scanner/Cargo.lock /src/rust/scanner/build.rs ./
+COPY --link --from=source /src/resources/mime_types.yaml /resources/mime_types.yaml
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \

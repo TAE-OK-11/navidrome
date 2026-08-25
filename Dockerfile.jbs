@@ -1092,7 +1092,22 @@ COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo
 COPY --link --from=source /src/rust/metadata/src ./src
 COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo test --locked --release && CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo build --locked --release && install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && /out/navidrome-metadata --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && test -s /tmp/embedded-cover.bin && test -x /out/navidrome-metadata
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/metadata-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
+    cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/metadata-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
+    cargo run --locked --release -- --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && \
+    test -s /tmp/embedded-cover.bin && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release && \
+    install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && \
+    test -x /out/navidrome-metadata
 
 # =========================================================
 # Rust filesystem scanner
@@ -1159,8 +1174,11 @@ COPY --link --from=source /src/rust/search/src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    CARGO_TARGET_DIR=/tmp/search-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
     cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \
     install -D -m 755 target/release/navidrome-search /out/navidrome-search && \
     test -x /out/navidrome-search
@@ -1205,8 +1223,11 @@ COPY --link --from=source /src/rust/h3-gateway/src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    CARGO_TARGET_DIR=/tmp/h3-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
     cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \
     install -D -m 755 target/release/navidrome-h3 /out/navidrome-h3 && \
     test -x /out/navidrome-h3

@@ -336,21 +336,18 @@ func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http
 			usr, ok := request.UserFrom(ctx)
 			if ok {
 				userAccessLimiter.Do(usr.ID, func() {
-					updateBase := context.WithoutCancel(ctx)
-					go func(userID, username string) {
-						start := time.Now()
-						updateCtx, cancel := context.WithTimeout(updateBase, time.Second)
-						defer cancel()
+					start := time.Now()
+					updateCtx, cancel := context.WithTimeout(ctx, time.Second)
+					defer cancel()
 
-						err := ds.User(updateCtx).UpdateLastAccessAt(userID)
-						if err != nil {
-							log.Warn(updateCtx, "Could not update user's lastAccessAt", "username", username,
-								"elapsed", time.Since(start), err)
-						} else {
-							log.Trace(updateCtx, "Update user's lastAccessAt", "username", username,
-								"elapsed", time.Since(start))
-						}
-					}(usr.ID, usr.UserName)
+					err := ds.User(updateCtx).UpdateLastAccessAt(usr.ID)
+					if err != nil {
+						log.Warn(updateCtx, "Could not update user's lastAccessAt", "username", usr.UserName,
+							"elapsed", time.Since(start), err)
+					} else {
+						log.Trace(updateCtx, "Update user's lastAccessAt", "username", usr.UserName,
+							"elapsed", time.Since(start))
+					}
 				})
 			}
 			next.ServeHTTP(w, r)

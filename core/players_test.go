@@ -13,8 +13,8 @@ import (
 )
 
 var _ = Describe("Players", func() {
-	var players Players
 	var playersImpl *players
+	var players Players
 	var repo *mockPlayerRepository
 	ctx := log.NewContext(context.TODO())
 	ctx = request.WithUser(ctx, model.User{ID: "userid", UserName: "johndoe"})

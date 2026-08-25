@@ -70,8 +70,8 @@ func (p *players) register(ctx context.Context, playerID, client, userAgent, ip 
 	if playerID != "" {
 		if useCache {
 			if plr, trc, ok := p.cache.getByID(playerID, client); ok {
-				err = p.updatePlayer(ctx, plr, client, userAgent, ip, username)
-				return plr, trc, err
+				p.updateCachedPlayer(ctx, plr, client, userAgent, ip, username)
+				return plr, trc, nil
 			}
 		}
 
@@ -86,8 +86,8 @@ func (p *players) register(ctx context.Context, playerID, client, userAgent, ip 
 	if err != nil || playerID == "" {
 		if useCache {
 			if plr, trc, ok := p.cache.getByMatch(matchKey); ok {
-				err = p.updatePlayer(ctx, plr, client, userAgent, ip, username)
-				return plr, trc, err
+				p.updateCachedPlayer(ctx, plr, client, userAgent, ip, username)
+				return plr, trc, nil
 			}
 		}
 
@@ -127,10 +127,7 @@ func newPlayer(userID, client string) *model.Player {
 }
 
 func (p *players) updatePlayer(ctx context.Context, plr *model.Player, client, userAgent, ip, username string) error {
-	plr.Name = fmt.Sprintf("%s [%s]", client, userAgent)
-	plr.UserAgent = userAgent
-	plr.IP = ip
-	plr.LastSeen = time.Now()
+	observePlayer(plr, client, userAgent, ip)
 	var err error
 	p.limiter.Do(plr.ID, func() {
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
@@ -142,6 +139,30 @@ func (p *players) updatePlayer(ctx context.Context, plr *model.Player, client, u
 		}
 	})
 	return err
+}
+
+func (p *players) updateCachedPlayer(ctx context.Context, plr *model.Player, client, userAgent, ip, username string) {
+	observePlayer(plr, client, userAgent, ip)
+	p.limiter.Do(plr.ID, func() {
+		updateBase := context.WithoutCancel(ctx)
+		snapshot := *plr
+		go func() {
+			updateCtx, cancel := context.WithTimeout(updateBase, time.Second)
+			defer cancel()
+
+			if err := p.ds.Player(updateCtx).Put(&snapshot); err != nil {
+				log.Warn(updateCtx, "Could not save cached player", "id", snapshot.ID, "client", client,
+					"username", username, "type", userAgent, err)
+			}
+		}()
+	})
+}
+
+func observePlayer(plr *model.Player, client, userAgent, ip string) {
+	plr.Name = fmt.Sprintf("%s [%s]", client, userAgent)
+	plr.UserAgent = userAgent
+	plr.IP = ip
+	plr.LastSeen = time.Now()
 }
 
 func (p *players) Get(ctx context.Context, playerId string) (*model.Player, error) {

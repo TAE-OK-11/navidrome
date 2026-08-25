@@ -14,6 +14,7 @@ import (
 
 var _ = Describe("Players", func() {
 	var players Players
+	var playersImpl *players
 	var repo *mockPlayerRepository
 	ctx := log.NewContext(context.TODO())
 	ctx = request.WithUser(ctx, model.User{ID: "userid", UserName: "johndoe"})
@@ -23,7 +24,8 @@ var _ = Describe("Players", func() {
 	BeforeEach(func() {
 		repo = &mockPlayerRepository{}
 		ds := &tests.MockDataStore{MockedPlayer: repo, MockedTranscoding: &tests.MockTranscodingRepo{}}
-		players = NewPlayers(ds)
+		playersImpl = NewPlayers(ds).(*players)
+		players = playersImpl
 		beforeRegister = time.Now()
 	})
 
@@ -108,8 +110,7 @@ var _ = Describe("Players", func() {
 		It("does not wait for periodic cached player persistence", func() {
 			plr := &model.Player{ID: "123", Name: "A Player", Client: "client", UserId: "userid", UserAgent: "chrome"}
 			repo.add(plr)
-			impl := players.(*players)
-			impl.limiter.Interval = time.Nanosecond
+			playersImpl.limiter.Interval = time.Nanosecond
 
 			_, _, err := players.Register(ctx, "123", "client", "chrome", "1.2.3.4")
 			Expect(err).ToNot(HaveOccurred())

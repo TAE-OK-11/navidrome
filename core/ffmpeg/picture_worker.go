@@ -80,9 +80,15 @@ func (p *pictureWorkerPool) extract(ctx context.Context, binary, path string, ma
 		if err != nil {
 			return nil, err
 		}
-		stopCancel := context.AfterFunc(ctx, worker.kill)
+		cancelDone := make(chan struct{})
+		stopCancel := context.AfterFunc(ctx, func() {
+			worker.kill()
+			close(cancelDone)
+		})
 		data, err := worker.roundTrip(path, maxBytes)
-		stopCancel()
+		if !stopCancel() {
+			<-cancelDone
+		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			slot.stop()
 			return nil, ctxErr

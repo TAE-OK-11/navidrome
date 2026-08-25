@@ -16,6 +16,8 @@ use lofty::picture::{Picture, PictureType};
 use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
+mod image_worker;
+
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_BATCH_FILES: usize = 4096;
 
@@ -67,6 +69,12 @@ struct PictureResponse {
 fn main() -> Result<()> {
     let mut args = std::env::args_os().skip(1);
     if let Some(command) = args.next() {
+        if command == "--image-worker" {
+            if args.next().is_some() {
+                bail!("--image-worker accepts no arguments");
+            }
+            return image_worker::run();
+        }
         if command == "--picture-worker" {
             if args.next().is_some() {
                 bail!("--picture-worker accepts no arguments");

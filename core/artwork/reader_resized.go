@@ -109,11 +109,15 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 }
 
 func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader) (io.Reader, int, error) {
-	data, err := io.ReadAll(reader)
+	maxBytes := maxImageReadBytes()
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading image data: %w", err)
 	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if int64(len(data)) > maxBytes {
+		return nil, 0, fmt.Errorf("image exceeds maximum size of %d bytes", maxBytes)
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -136,7 +140,7 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 		return bytes.NewReader(data), 0, nil
 	}
 
-	return resizeStaticImageWithConfig(data, config, a.size, a.square)
+	return resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)
 }
 
 // toFastScaleType converts images whose concrete type has no optimized scaler
@@ -156,17 +160,17 @@ func toFastScaleType(img image.Image) image.Image {
 }
 
 func resizeStaticImage(data []byte, size int, square bool) (io.Reader, int, error) {
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, err
 	}
 	if err := ValidateImageConfig(config); err != nil {
 		return nil, 0, err
 	}
-	return resizeStaticImageWithConfig(data, config, size, square)
+	return resizeStaticImageWithConfigContext(context.Background(), data, config, format, size, square)
 }
 
-func resizeStaticImageWithConfig(data []byte, config image.Config, size int, square bool) (io.Reader, int, error) {
+func resizeStaticImageWithConfigContext(ctx context.Context, data []byte, config image.Config, format string, size int, square bool) (io.Reader, int, error) {
 	originalSize := max(config.Width, config.Height)
 	if size > originalSize {
 		size = originalSize
@@ -175,6 +179,27 @@ func resizeStaticImageWithConfig(data []byte, config image.Config, size int, squ
 	// returned unchanged. This is common when clients request large covers.
 	if originalSize <= size && !square {
 		return nil, originalSize, nil
+	}
+
+	outputFormat := "jpeg"
+	if conf.Server.EnableWebPEncoding {
+		outputFormat = "webp"
+	} else if format == "png" || square {
+		outputFormat = "png"
+	}
+	if resized, err := persistentImageWorkers.resize(
+		ctx,
+		data,
+		size,
+		conf.Server.CoverArtQuality,
+		square,
+		outputFormat,
+	); err == nil {
+		return bytes.NewReader(resized), originalSize, nil
+	} else if ctx.Err() != nil {
+		return nil, originalSize, ctx.Err()
+	} else {
+		log.Debug(ctx, "Rust artwork resize unavailable; falling back to Go", "error", err)
 	}
 
 	original, format, err := image.Decode(bytes.NewReader(data))

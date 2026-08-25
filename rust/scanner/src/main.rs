@@ -402,18 +402,27 @@ mod tests {
         let root = temporary_music_root();
         fs::create_dir_all(root.join("Artist/Album/ignored")).unwrap();
         fs::create_dir_all(root.join("Artist/.Hidden Album")).unwrap();
+        fs::create_dir_all(root.join("Linked Source")).unwrap();
         fs::write(root.join("Artist/Album/.ndignore"), b"ignored/\n").unwrap();
         fs::write(root.join("Artist/Album/song.flac"), b"audio").unwrap();
         fs::write(root.join("Artist/Album/cover.jpg"), b"image").unwrap();
         fs::write(root.join("Artist/Album/list.m3u8"), b"playlist").unwrap();
         fs::write(root.join("Artist/Album/ignored/skip.mp3"), b"ignored").unwrap();
         fs::write(root.join("Artist/.Hidden Album/hidden.mp3"), b"hidden").unwrap();
+        fs::write(root.join("Linked Source/linked.opus"), b"linked").unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(
-            root.join("Artist/Album/song.flac"),
-            root.join("Artist/Album/linked.flac"),
-        )
-        .unwrap();
+        {
+            std::os::unix::fs::symlink(
+                root.join("Artist/Album/song.flac"),
+                root.join("Artist/Album/linked.flac"),
+            )
+            .unwrap();
+            std::os::unix::fs::symlink(
+                root.join("Linked Source"),
+                root.join("Artist/Linked Album"),
+            )
+            .unwrap();
+        }
 
         let (folders, warnings) = collect_scan(ScanRequest {
             root: root.clone(),
@@ -428,10 +437,34 @@ mod tests {
         assert!(album.audio_files.contains_key("song.flac"));
         #[cfg(unix)]
         assert!(!album.audio_files.contains_key("linked.flac"));
+        #[cfg(unix)]
+        assert!(!folders.contains_key("Artist/Linked Album"));
         assert!(album.image_files.contains_key("cover.jpg"));
         assert_eq!(album.num_playlists, 1);
         assert!(!folders.contains_key("Artist/Album/ignored"));
         assert!(!folders.contains_key("Artist/.Hidden Album"));
+
+        #[cfg(unix)]
+        {
+            let (linked_folders, linked_warnings) = collect_scan(ScanRequest {
+                root: root.clone(),
+                targets: vec!["Artist".to_owned()],
+                follow_symlinks: true,
+                ignore_dot_folders: true,
+            })
+            .unwrap();
+            assert!(linked_warnings.is_empty(), "{linked_warnings:?}");
+            assert!(
+                linked_folders["Artist/Album"]
+                    .audio_files
+                    .contains_key("linked.flac")
+            );
+            assert!(
+                linked_folders["Artist/Linked Album"]
+                    .audio_files
+                    .contains_key("linked.opus")
+            );
+        }
 
         fs::remove_dir_all(root).unwrap();
     }

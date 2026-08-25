@@ -12,8 +12,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+type playersImplForTest = players
+
 var _ = Describe("Players", func() {
-	var playersImpl *players
+	var playersImpl *playersImplForTest
 	var players Players
 	var repo *mockPlayerRepository
 	ctx := log.NewContext(context.TODO())
@@ -24,7 +26,7 @@ var _ = Describe("Players", func() {
 	BeforeEach(func() {
 		repo = &mockPlayerRepository{}
 		ds := &tests.MockDataStore{MockedPlayer: repo, MockedTranscoding: &tests.MockTranscodingRepo{}}
-		playersImpl = NewPlayers(ds).(*players)
+		playersImpl = NewPlayers(ds).(*playersImplForTest)
 		players = playersImpl
 		beforeRegister = time.Now()
 	})

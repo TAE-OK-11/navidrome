@@ -204,6 +204,35 @@ func (r *mediaFileRepository) Exists(id string) (bool, error) {
 }
 
 func (r *mediaFileRepository) Put(m *model.MediaFile) error {
+	if err := r.putMediaFile(m); err != nil {
+		return err
+	}
+	if err := r.updateParticipants(m.ID, m.Participants); err != nil {
+		return err
+	}
+	return r.updateTags(m.ID, m.Tags)
+}
+
+// PutAll persists scanner batches while collapsing relationship-table rewrites
+// into one delete and one insert per table. SQLite remains the single writer and
+// the caller's folder transaction remains the atomic consistency boundary.
+func (r *mediaFileRepository) PutAll(mediaFiles ...*model.MediaFile) error {
+	participantUpdates := make([]participantUpdate, 0, len(mediaFiles))
+	tagUpdates := make([]tagUpdate, 0, len(mediaFiles))
+	for _, mediaFile := range mediaFiles {
+		if err := r.putMediaFile(mediaFile); err != nil {
+			return err
+		}
+		participantUpdates = append(participantUpdates, participantUpdate{itemID: mediaFile.ID, participants: mediaFile.Participants})
+		tagUpdates = append(tagUpdates, tagUpdate{itemID: mediaFile.ID, tags: mediaFile.Tags})
+	}
+	if err := r.updateParticipantsBatch(participantUpdates); err != nil {
+		return err
+	}
+	return r.updateTagsBatch(tagUpdates)
+}
+
+func (r *mediaFileRepository) putMediaFile(m *model.MediaFile) error {
 	if m.CreatedAt.IsZero() {
 		m.CreatedAt = time.Now()
 	}
@@ -212,10 +241,7 @@ func (r *mediaFileRepository) Put(m *model.MediaFile) error {
 		return err
 	}
 	m.ID = id
-	if err := r.updateParticipants(m.ID, m.Participants); err != nil {
-		return err
-	}
-	return r.updateTags(m.ID, m.Tags)
+	return nil
 }
 
 func (r *mediaFileRepository) UpdateProbeData(id string, data string) error {

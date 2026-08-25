@@ -19,9 +19,15 @@ type participant struct {
 
 // flatParticipant represents a flattened participant structure for SQL processing
 type flatParticipant struct {
+	ItemID   string `json:"item_id"`
 	ArtistID string `json:"artist_id"`
 	Role     string `json:"role"`
 	SubRole  string `json:"sub_role,omitempty"`
+}
+
+type participantUpdate struct {
+	itemID       string
+	participants model.Participants
 }
 
 const (
@@ -135,27 +141,42 @@ func participantsFromDB(dbParticipants map[model.Role][]participant) model.Parti
 }
 
 func (r sqlRepository) updateParticipants(itemID string, participants model.Participants) error {
+	return r.updateParticipantsBatch([]participantUpdate{{itemID: itemID, participants: participants}})
+}
+
+func (r sqlRepository) updateParticipantsBatch(updates []participantUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	itemIDs := make([]string, 0, len(updates))
+	flatParticipants := make([]flatParticipant, 0)
+	for _, update := range updates {
+		itemIDs = append(itemIDs, update.itemID)
+		for role, artists := range update.participants {
+			for _, artist := range artists {
+				flatParticipants = append(flatParticipants, flatParticipant{
+					ItemID: update.itemID, ArtistID: artist.ID, Role: role.String(), SubRole: artist.SubRole,
+				})
+			}
+		}
+	}
+	itemIDsJSON, err := json.Marshal(itemIDs)
+	if err != nil {
+		return fmt.Errorf("marshaling participant item ids: %w", err)
+	}
 	// Delete all existing participant entries for this item.
 	// This ensures stale role associations are removed when an artist's role changes
 	// (e.g., an artist was both albumartist and composer, but is now only composer).
-	sqd := Delete(r.tableName + "_artists").Where(Eq{r.tableName + "_id": itemID})
-	_, err := r.executeSQL(sqd)
+	itemIDColumn := r.tableName + "_id"
+	sqd := Delete(r.tableName + "_artists").Where(Expr(
+		itemIDColumn+" IN (SELECT value FROM json_each(?))", string(itemIDsJSON),
+	))
+	_, err = r.executeSQL(sqd)
 	if err != nil {
 		return err
 	}
-	if len(participants) == 0 {
+	if len(flatParticipants) == 0 {
 		return nil
-	}
-
-	var flatParticipants []flatParticipant
-	for role, artists := range participants {
-		for _, artist := range artists {
-			flatParticipants = append(flatParticipants, flatParticipant{
-				ArtistID: artist.ID,
-				Role:     role.String(),
-				SubRole:  artist.SubRole,
-			})
-		}
 	}
 
 	participantsJSON, err := json.Marshal(flatParticipants)
@@ -167,7 +188,7 @@ func (r sqlRepository) updateParticipants(itemID string, participants model.Part
 	// to automatically filter out non-existent artist IDs
 	query := fmt.Sprintf(`
 		INSERT INTO %[1]s_artists (%[1]s_id, artist_id, role, sub_role)
-		SELECT ?, 
+		SELECT json_extract(value, '$.item_id') as item_id,
 		       json_extract(value, '$.artist_id') as artist_id,
 		       json_extract(value, '$.role') as role,
 		       COALESCE(json_extract(value, '$.sub_role'), '') as sub_role
@@ -179,7 +200,7 @@ func (r sqlRepository) updateParticipants(itemID string, participants model.Part
 		ON CONFLICT (artist_id, %[1]s_id, role, sub_role) DO NOTHING   -- Ignore duplicates
 	`, r.tableName)
 
-	_, err = r.executeSQL(Expr(query, itemID, string(participantsJSON)))
+	_, err = r.executeSQL(Expr(query, string(participantsJSON)))
 	return err
 }
 

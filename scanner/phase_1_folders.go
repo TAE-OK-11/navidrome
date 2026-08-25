@@ -28,6 +28,7 @@ import (
 	"github.com/navidrome/navidrome/utils"
 	"github.com/navidrome/navidrome/utils/pl"
 	"github.com/navidrome/navidrome/utils/slice"
+	"golang.org/x/sync/errgroup"
 )
 
 func createPhaseFolders(ctx context.Context, state *scanState, ds model.DataStore, cw artwork.CacheWarmer) *phaseFolders {
@@ -61,6 +62,10 @@ type scanJob struct {
 	targetFolders []string                          // Specific folders to scan (including all descendants)
 	lock          sync.Mutex
 	numFolders    atomic.Int64
+}
+
+type mediaFileBatchPutter interface {
+	PutAll(...*model.MediaFile) error
 }
 
 func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer, lib model.Library, fullScan bool, targetFolders []string) (*scanJob, error) {
@@ -146,52 +151,53 @@ func (p *phaseFolders) producer() ppl.Producer[*folderEntry] {
 			return fmt.Errorf("getting album PID conf: %w", err)
 		}
 
-		// TODO Parallelize multiple job when we have multiple libraries
-		var total int64
-		var totalChanged int64
+		var totalChanged atomic.Int64
+		group, groupCtx := errgroup.WithContext(p.ctx)
+		group.SetLimit(max(int(conf.Server.DevScannerThreads), 1))
 		for _, job := range p.jobs {
-			if utils.IsCtxDone(p.ctx) {
-				break
-			}
-
-			outputChan, err := walkDirTree(p.ctx, job, job.targetFolders...)
-			if err != nil {
-				log.Warn(p.ctx, "Scanner: Error scanning library", "lib", job.lib.Name, err)
-			}
-			for folder := range pl.ReadOrDone(p.ctx, outputChan) {
-				job.numFolders.Add(1)
-				p.state.sendProgress(&ProgressInfo{
-					LibID:     job.lib.ID,
-					FileCount: uint32(len(folder.audioFiles)),
-					Path:      folder.path,
-					Phase:     "1",
-				})
-
-				// Log folder info
-				log.Trace(p.ctx, "Scanner: Checking folder state", " folder", folder.path, "_updTime", folder.updTime,
-					"_modTime", folder.modTime, "_lastScanStartedAt", folder.job.lib.LastScanStartedAt,
-					"numAudioFiles", len(folder.audioFiles), "numImageFiles", len(folder.imageFiles),
-					"numPlaylists", folder.numPlaylists, "numSubfolders", folder.numSubFolders)
-
-				// Check if folder is outdated
-				if folder.isOutdated() {
-					if !p.state.fullScan {
-						if folder.hasNoFiles() && folder.isNew() {
-							log.Trace(p.ctx, "Scanner: Skipping new folder with no files", "folder", folder.path, "lib", job.lib.Name)
-							continue
-						}
-						log.Debug(p.ctx, "Scanner: Detected changes in folder", "folder", folder.path, "lastUpdate", folder.modTime, "lib", job.lib.Name)
-					}
-					totalChanged++
-					folder.elapsed.Stop()
-					put(folder)
-				} else {
-					log.Trace(p.ctx, "Scanner: Skipping up-to-date folder", "folder", folder.path, "lastUpdate", folder.modTime, "lib", job.lib.Name)
+			group.Go(func() error {
+				if utils.IsCtxDone(groupCtx) {
+					return nil
 				}
-			}
+				outputChan, walkErr := walkDirTree(groupCtx, job, job.targetFolders...)
+				if walkErr != nil {
+					log.Warn(p.ctx, "Scanner: Error scanning library", "lib", job.lib.Name, walkErr)
+				}
+				for folder := range pl.ReadOrDone(groupCtx, outputChan) {
+					job.numFolders.Add(1)
+					p.state.sendProgress(&ProgressInfo{
+						LibID: job.lib.ID, FileCount: uint32(len(folder.audioFiles)), Path: folder.path, Phase: "1",
+					})
+					log.Trace(p.ctx, "Scanner: Checking folder state", " folder", folder.path, "_updTime", folder.updTime,
+						"_modTime", folder.modTime, "_lastScanStartedAt", folder.job.lib.LastScanStartedAt,
+						"numAudioFiles", len(folder.audioFiles), "numImageFiles", len(folder.imageFiles),
+						"numPlaylists", folder.numPlaylists, "numSubfolders", folder.numSubFolders)
+					if folder.isOutdated() {
+						if !p.state.fullScan {
+							if folder.hasNoFiles() && folder.isNew() {
+								log.Trace(p.ctx, "Scanner: Skipping new folder with no files", "folder", folder.path, "lib", job.lib.Name)
+								continue
+							}
+							log.Debug(p.ctx, "Scanner: Detected changes in folder", "folder", folder.path, "lastUpdate", folder.modTime, "lib", job.lib.Name)
+						}
+						totalChanged.Add(1)
+						folder.elapsed.Stop()
+						put(folder)
+					} else {
+						log.Trace(p.ctx, "Scanner: Skipping up-to-date folder", "folder", folder.path, "lastUpdate", folder.modTime, "lib", job.lib.Name)
+					}
+				}
+				return nil
+			})
+		}
+		if err := group.Wait(); err != nil {
+			return err
+		}
+		var total int64
+		for _, job := range p.jobs {
 			total += job.numFolders.Load()
 		}
-		log.Debug(p.ctx, "Scanner: Finished loading all folders", "numFolders", total, "numChanged", totalChanged)
+		log.Debug(p.ctx, "Scanner: Finished loading all folders", "numFolders", total, "numChanged", totalChanged.Load())
 		return nil
 	}, ppl.Name("traverse filesystem"))
 }
@@ -481,12 +487,25 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 			}
 		}
 
-		// Save all tracks to DB
-		for i := range entry.tracks {
-			err = mfRepo.Put(&entry.tracks[i])
-			if err != nil {
-				log.Error(p.ctx, "Scanner: Error persisting mediafile to DB", "folder", entry.path, "track", entry.tracks[i], err)
+		// Save all tracks to DB. The SQL repository collapses relationship-table
+		// rewrites into folder-sized batches; alternate stores retain the legacy
+		// per-track contract through this fallback.
+		if batchRepo, ok := mfRepo.(mediaFileBatchPutter); ok {
+			tracks := make([]*model.MediaFile, len(entry.tracks))
+			for i := range entry.tracks {
+				tracks[i] = &entry.tracks[i]
+			}
+			if err = batchRepo.PutAll(tracks...); err != nil {
+				log.Error(p.ctx, "Scanner: Error persisting mediafile batch to DB", "folder", entry.path, "tracks", len(tracks), err)
 				return err
+			}
+		} else {
+			for i := range entry.tracks {
+				err = mfRepo.Put(&entry.tracks[i])
+				if err != nil {
+					log.Error(p.ctx, "Scanner: Error persisting mediafile to DB", "folder", entry.path, "track", entry.tracks[i], err)
+					return err
+				}
 			}
 		}
 

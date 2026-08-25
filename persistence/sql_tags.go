@@ -52,32 +52,61 @@ func marshalTags(tags model.Tags) string {
 // them is an index-backed semi-join instead of a per-row json_tree(tags) scan. Genre only for now.
 var indexedTagNames = []model.TagName{model.TagGenre}
 
+type tagUpdate struct {
+	itemID string
+	tags   model.Tags
+}
+
+type flatTag struct {
+	ItemID string `json:"item_id"`
+	TagID  string `json:"tag_id"`
+}
+
 // updateTags rewrites this item's <table>_tags rows from its in-memory tags, mirroring
 // updateParticipants (delete-then-insert in the same Put; JOIN to tag skips not-yet-saved ids).
 func (r sqlRepository) updateTags(itemID string, tags model.Tags) error {
-	del := Delete(r.tableName + "_tags").Where(Eq{r.tableName + "_id": itemID})
+	return r.updateTagsBatch([]tagUpdate{{itemID: itemID, tags: tags}})
+}
+
+func (r sqlRepository) updateTagsBatch(updates []tagUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	itemIDs := make([]string, 0, len(updates))
+	flatTags := make([]flatTag, 0)
+	for _, update := range updates {
+		itemIDs = append(itemIDs, update.itemID)
+		for _, name := range indexedTagNames {
+			for _, value := range update.tags.Values(name) {
+				flatTags = append(flatTags, flatTag{ItemID: update.itemID, TagID: model.NewTag(name, value).ID})
+			}
+		}
+	}
+	itemIDsJSON, err := json.Marshal(itemIDs)
+	if err != nil {
+		return fmt.Errorf("marshaling tag item ids: %w", err)
+	}
+	itemIDColumn := r.tableName + "_id"
+	del := Delete(r.tableName + "_tags").Where(Expr(
+		itemIDColumn+" IN (SELECT value FROM json_each(?))", string(itemIDsJSON),
+	))
 	if _, err := r.executeSQL(del); err != nil {
 		return err
 	}
-	var tagIDs []string
-	for _, name := range indexedTagNames {
-		for _, value := range tags.Values(name) {
-			tagIDs = append(tagIDs, model.NewTag(name, value).ID)
-		}
-	}
-	if len(tagIDs) == 0 {
+	if len(flatTags) == 0 {
 		return nil
 	}
-	idsJSON, err := json.Marshal(tagIDs)
+	tagsJSON, err := json.Marshal(flatTags)
 	if err != nil {
-		return fmt.Errorf("marshaling tag ids: %w", err)
+		return fmt.Errorf("marshaling indexed tags: %w", err)
 	}
 	query := fmt.Sprintf(`
 		INSERT INTO %[1]s_tags (%[1]s_id, tag_id)
-		SELECT ?, value FROM json_each(?)
-		JOIN tag ON tag.id = value
+		SELECT json_extract(value, '$.item_id'), json_extract(value, '$.tag_id')
+		FROM json_each(?)
+		JOIN tag ON tag.id = json_extract(value, '$.tag_id')
 		ON CONFLICT (%[1]s_id, tag_id) DO NOTHING`, r.tableName)
-	_, err = r.executeSQL(Expr(query, itemID, string(idsJSON)))
+	_, err = r.executeSQL(Expr(query, string(tagsJSON)))
 	return err
 }
 

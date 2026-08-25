@@ -1095,6 +1095,43 @@ COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/e
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo test --locked --release && CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" cargo build --locked --release && install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && /out/navidrome-metadata --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && test -s /tmp/embedded-cover.bin && test -x /out/navidrome-metadata
 
 # =========================================================
+# Rust filesystem scanner
+# Native traversal + ignore policy + file classification
+# =========================================================
+
+FROM ${RUST_IMAGE} AS scanner-builder
+
+ARG NAVIDROME_BUILD_CORES
+ARG RUST_TARGET_CPU
+
+WORKDIR /build
+
+COPY --link --from=source /src/rust/scanner/Cargo.toml /src/rust/scanner/Cargo.lock ./
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    mkdir src && \
+    printf 'fn main() {}\n' > src/main.rs && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release && \
+    rm -rf src target/release/deps/navidrome_scanner-* target/release/navidrome-scanner
+
+COPY --link --from=source /src/rust/scanner/src ./src
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/scanner-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
+    cargo test --locked --release && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release && \
+    install -D -m 755 target/release/navidrome-scanner /out/navidrome-scanner && \
+    test -x /out/navidrome-scanner
+
+# =========================================================
 # Rust Tantivy search worker
 # Unicode n-gram search + relevance ranking
 # =========================================================
@@ -1457,6 +1494,7 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
 COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
+COPY --link --chown=1000:1000 --chmod=750 --from=scanner-builder /out/navidrome-scanner /app/navidrome-scanner
 COPY --link --chown=1000:1000 --chmod=750 --from=search-builder /out/navidrome-search /app/navidrome-search
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 

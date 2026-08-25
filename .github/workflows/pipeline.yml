@@ -65,6 +65,8 @@ jobs:
             directory: rust/h3-gateway
           - crate: search
             directory: rust/search
+          - crate: scanner
+            directory: rust/scanner
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust 1.97

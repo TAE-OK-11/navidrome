@@ -1,0 +1,379 @@
+use std::collections::{BTreeMap, HashSet};
+use std::fs;
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result, bail};
+use ignore::{DirEntry, WalkBuilder};
+use serde::{Deserialize, Serialize};
+
+const MAX_TARGETS: usize = 4096;
+const IGNORE_FILE: &str = ".ndignore";
+const SPECIAL_DIRECTORIES: &[&str] = &[
+    "$RECYCLE.BIN",
+    "#snapshot",
+    "@Recycle",
+    "@Recently-Snapshot",
+    ".git",
+    ".streams",
+    "lost+found",
+];
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "aac", "aif", "aiff", "ape", "dsf", "flac", "m4a", "m4b", "mp3", "mp4", "mpc", "oga", "ogg",
+    "opus", "wav", "webm", "wma",
+];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "avif", "bmp", "gif", "heic", "heif", "jfif", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+];
+const PLAYLIST_EXTENSIONS: &[&str] = &["m3u", "m3u8", "nsp"];
+
+#[derive(Debug, Deserialize)]
+struct ScanRequest {
+    root: PathBuf,
+    targets: Vec<String>,
+    follow_symlinks: bool,
+    ignore_dot_folders: bool,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct Folder {
+    path: String,
+    mod_time_ns: i64,
+    images_updated_at_ns: i64,
+    num_playlists: usize,
+    num_subfolders: usize,
+    audio_files: BTreeMap<String, FileEntry>,
+    image_files: BTreeMap<String, FileEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FileEntry {
+    name: String,
+    size: u64,
+    mod_time_ns: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum Event<'a> {
+    Folder { folder: &'a Folder },
+    Warning { message: &'a str },
+    Done { folders: usize, files: usize },
+}
+
+fn main() -> Result<()> {
+    let mut line = String::with_capacity(4096);
+    BufReader::with_capacity(64 * 1024, io::stdin().lock())
+        .read_line(&mut line)
+        .context("reading scan request")?;
+    if line.trim().is_empty() {
+        bail!("scan request is empty");
+    }
+    let request: ScanRequest = serde_json::from_str(&line).context("decoding scan request")?;
+    validate_request(&request)?;
+    run_scan(request)
+}
+
+fn validate_request(request: &ScanRequest) -> Result<()> {
+    if request.targets.len() > MAX_TARGETS {
+        bail!(
+            "scan request has {} targets; maximum is {MAX_TARGETS}",
+            request.targets.len()
+        );
+    }
+    if !request.root.is_absolute() {
+        bail!("music root must be absolute");
+    }
+    for target in &request.targets {
+        let path = Path::new(target);
+        if path.is_absolute()
+            || path.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            bail!("scan target escapes music root: {target:?}");
+        }
+    }
+    Ok(())
+}
+
+fn run_scan(request: ScanRequest) -> Result<()> {
+    let root = request
+        .root
+        .canonicalize()
+        .with_context(|| format!("resolving music root {}", request.root.display()))?;
+    let targets = if request.targets.is_empty() {
+        vec![".".to_owned()]
+    } else {
+        request.targets
+    };
+    let mut folders = BTreeMap::<String, Folder>::new();
+    let mut warnings = Vec::<String>::new();
+
+    for target in targets {
+        let target_path = root.join(Path::new(&target));
+        if !target_path.exists() {
+            warnings.push(format!("scan target does not exist: {target}"));
+            continue;
+        }
+
+        let mut builder = WalkBuilder::new(&target_path);
+        builder
+            .standard_filters(false)
+            .add_custom_ignore_filename(IGNORE_FILE)
+            .follow_links(request.follow_symlinks)
+            .sort_by_file_name(|left, right| left.cmp(right));
+        let ignore_dot_folders = request.ignore_dot_folders;
+        builder.filter_entry(move |entry| allow_entry(entry, ignore_dot_folders));
+
+        for result in builder.build() {
+            let entry = match result {
+                Ok(entry) => entry,
+                Err(error) => {
+                    warnings.push(format!("filesystem traversal warning: {error}"));
+                    continue;
+                }
+            };
+            if let Err(error) = collect_entry(&root, &entry, &mut folders) {
+                warnings.push(format!("{}: {error:#}", entry.path().display()));
+            }
+        }
+    }
+
+    let folder_paths: HashSet<String> = folders.keys().cloned().collect();
+    let paths: Vec<String> = folders.keys().cloned().collect();
+    for path in &paths {
+        if path == "." {
+            continue;
+        }
+        let parent = parent_path(path);
+        if folder_paths.contains(&parent)
+            && let Some(folder) = folders.get_mut(&parent)
+        {
+            folder.num_subfolders += 1;
+        }
+    }
+
+    let file_count = folders
+        .values()
+        .map(|folder| folder.audio_files.len() + folder.image_files.len() + folder.num_playlists)
+        .sum();
+    let mut ordered: Vec<&Folder> = folders.values().collect();
+    ordered.sort_by(|left, right| {
+        path_depth(&right.path)
+            .cmp(&path_depth(&left.path))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+
+    let stdout = io::stdout();
+    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
+    for warning in &warnings {
+        write_event(&mut output, &Event::Warning { message: warning })?;
+    }
+    for folder in ordered {
+        write_event(&mut output, &Event::Folder { folder })?;
+    }
+    write_event(
+        &mut output,
+        &Event::Done {
+            folders: folders.len(),
+            files: file_count,
+        },
+    )?;
+    output.flush().context("flushing scan response")
+}
+
+fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool) -> bool {
+    if entry.depth() == 0 {
+        return !directory_has_empty_ignore(entry.path());
+    }
+    let Some(name) = entry.file_name().to_str() else {
+        return false;
+    };
+    let is_dir = entry.file_type().is_some_and(|kind| kind.is_dir());
+    if is_dir
+        && SPECIAL_DIRECTORIES
+            .iter()
+            .any(|ignored| ignored.eq_ignore_ascii_case(name))
+    {
+        return false;
+    }
+    if is_dot_entry(name) && (!is_dir || ignore_dot_folders) {
+        return false;
+    }
+    if is_dir && directory_has_empty_ignore(entry.path()) {
+        return false;
+    }
+    true
+}
+
+fn directory_has_empty_ignore(path: &Path) -> bool {
+    let ignore_path = path.join(IGNORE_FILE);
+    let Ok(contents) = fs::read_to_string(ignore_path) else {
+        return false;
+    };
+    !contents
+        .lines()
+        .map(str::trim)
+        .any(|line| !line.is_empty() && !line.starts_with('#'))
+}
+
+fn is_dot_entry(name: &str) -> bool {
+    name != "." && name.starts_with('.') && !name.starts_with("..")
+}
+
+fn collect_entry(
+    root: &Path,
+    entry: &DirEntry,
+    folders: &mut BTreeMap<String, Folder>,
+) -> Result<()> {
+    let relative = entry
+        .path()
+        .strip_prefix(root)
+        .context("entry is outside music root")?;
+    let relative_path = normalize_relative(relative);
+    let file_type = entry.file_type().context("entry has no file type")?;
+    let metadata = fs::metadata(entry.path()).context("reading metadata")?;
+    let mod_time_ns = system_time_ns(metadata.modified().unwrap_or(UNIX_EPOCH));
+
+    if file_type.is_dir() {
+        let folder = folders.entry(relative_path.clone()).or_default();
+        folder.path = relative_path;
+        folder.mod_time_ns = folder.mod_time_ns.max(mod_time_ns);
+        return Ok(());
+    }
+
+    let parent = normalize_relative(relative.parent().unwrap_or(Path::new(".")));
+    let Some(folder) = folders.get_mut(&parent) else {
+        return Ok(());
+    };
+    let source_name = entry.file_name().to_string_lossy().into_owned();
+    if source_name == IGNORE_FILE {
+        return Ok(());
+    }
+    let classification_name = if entry.path_is_symlink() {
+        entry
+            .path()
+            .canonicalize()
+            .ok()
+            .and_then(|path| path.file_name().map(|name| name.to_owned()))
+            .unwrap_or_else(|| entry.file_name().to_owned())
+    } else {
+        entry.file_name().to_owned()
+    };
+    let extension = Path::new(&classification_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    let file = FileEntry {
+        name: source_name.clone(),
+        size: metadata.len(),
+        mod_time_ns,
+    };
+    folder.mod_time_ns = folder.mod_time_ns.max(mod_time_ns);
+    match extension.as_str() {
+        extension if AUDIO_EXTENSIONS.contains(&extension) => {
+            folder.audio_files.insert(source_name, file);
+        }
+        extension if IMAGE_EXTENSIONS.contains(&extension) => {
+            folder.images_updated_at_ns = folder.images_updated_at_ns.max(mod_time_ns);
+            folder.image_files.insert(source_name, file);
+        }
+        extension if PLAYLIST_EXTENSIONS.contains(&extension) => {
+            folder.num_playlists += 1;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn normalize_relative(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('\\', "/");
+    if value.is_empty() {
+        ".".to_owned()
+    } else {
+        value
+    }
+}
+
+fn parent_path(path: &str) -> String {
+    Path::new(path)
+        .parent()
+        .map(normalize_relative)
+        .unwrap_or_else(|| ".".to_owned())
+}
+
+fn path_depth(path: &str) -> usize {
+    if path == "." {
+        0
+    } else {
+        Path::new(path).components().count()
+    }
+}
+
+fn system_time_ns(value: SystemTime) -> i64 {
+    match value.duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos().min(i64::MAX as u128) as i64,
+        Err(error) => -(error.duration().as_nanos().min(i64::MAX as u128) as i64),
+    }
+}
+
+fn write_event(output: &mut impl Write, event: &Event<'_>) -> Result<()> {
+    serde_json::to_writer(&mut *output, event)?;
+    output.write_all(b"\n")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_relative_targets() {
+        let root = if cfg!(windows) {
+            PathBuf::from(r"C:\music")
+        } else {
+            PathBuf::from("/music")
+        };
+        assert!(
+            validate_request(&ScanRequest {
+                root: root.clone(),
+                targets: vec!["Artist/Album".to_owned()],
+                follow_symlinks: false,
+                ignore_dot_folders: true,
+            })
+            .is_ok()
+        );
+        assert!(
+            validate_request(&ScanRequest {
+                root,
+                targets: vec!["../outside".to_owned()],
+                follow_symlinks: false,
+                ignore_dot_folders: true,
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn dot_policy_matches_scanner_semantics() {
+        assert!(is_dot_entry(".hidden"));
+        assert!(!is_dot_entry("..Album"));
+        assert!(!is_dot_entry("regular"));
+    }
+
+    #[test]
+    fn normalizes_root_and_nested_paths() {
+        assert_eq!(normalize_relative(Path::new("")), ".");
+        assert_eq!(
+            normalize_relative(Path::new("Artist/Album")),
+            "Artist/Album"
+        );
+        assert_eq!(parent_path("Artist/Album"), "Artist");
+    }
+}

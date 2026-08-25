@@ -25,6 +25,13 @@ type SymlinkResolverFS interface {
 	ResolveSymlink(name string) (string, error)
 }
 
+// LocalPathFS exposes the absolute root of an OS-backed music filesystem to
+// native workers. Remote and virtual storage implementations intentionally do
+// not implement it and continue through the portable fs.FS path.
+type LocalPathFS interface {
+	RootPath() string
+}
+
 // Watcher is a storage with the ability watch the FS and notify changes
 type Watcher interface {
 	// Start starts a watcher on the whole FS and returns a channel to send detected changes.

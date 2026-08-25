@@ -13,14 +13,14 @@ export default [
       'node_modules/**',
       'build/**',
       'coverage/**',
-      'prettier.config.js',
+      'prettier.config.ts',
       'vite.config.ts',
       'public/3rdparty/workbox/**',
     ],
   },
   js.configs.recommended,
   {
-    files: ['**/*.{js,jsx,ts,tsx}'],
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -47,7 +47,7 @@ export default [
       'import/resolver': {
         node: {
           paths: ['src'],
-          extensions: ['.js', '.jsx', '.ts', '.tsx'],
+          extensions: ['.ts', '.tsx'],
         },
       },
     },

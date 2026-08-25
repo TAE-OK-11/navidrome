@@ -49,22 +49,12 @@ enum Request {
     },
     CommitReplace,
     AbortReplace,
-    Replace {
-        documents: Vec<SearchDocument>,
-    },
-    Upsert {
-        documents: Vec<SearchDocument>,
-    },
-    Delete {
-        keys: Vec<String>,
-    },
     SearchAll {
         query: String,
         #[serde(default)]
         library_ids: Vec<u64>,
         searches: Vec<SearchSpec>,
     },
-    Stats,
 }
 
 #[derive(Debug, Serialize)]
@@ -201,33 +191,6 @@ impl Engine {
         self.replace_in_progress = false;
         self.indexed = self.reader.searcher().num_docs();
         Ok(())
-    }
-
-    fn upsert(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot upsert while replacing the search index");
-        }
-        validate_document_batch(&documents)?;
-        for document in &documents {
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &document.key));
-        }
-        self.add_documents(documents)?;
-        self.commit()
-    }
-
-    fn delete(&mut self, keys: Vec<String>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot delete while replacing the search index");
-        }
-        if keys.len() > MAX_DOCUMENTS_PER_REQUEST {
-            bail!("delete contains too many keys");
-        }
-        for key in keys {
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &key));
-        }
-        self.commit()
     }
 
     fn add_documents(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
@@ -468,15 +431,6 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
         Request::AbortReplace => {
             engine.abort_replace()?;
         }
-        Request::Replace { documents } => {
-            engine.replace(documents)?;
-        }
-        Request::Upsert { documents } => {
-            engine.upsert(documents)?;
-        }
-        Request::Delete { keys } => {
-            engine.delete(keys)?;
-        }
         Request::SearchAll {
             query,
             library_ids,
@@ -502,7 +456,6 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                 });
             }
         }
-        Request::Stats => {}
     }
     Ok(Response {
         protocol: PROTOCOL_VERSION,
@@ -564,18 +517,6 @@ mod tests {
         assert!(!typo_hits.is_empty());
         let exact_hits = engine.search("Beatles", "artist", &[1], 0, 10)?;
         assert_eq!(exact_hits.first().map(|hit| hit.id.as_str()), Some("2"));
-        Ok(())
-    }
-
-    #[test]
-    fn upsert_and_delete_are_visible_immediately() -> Result<()> {
-        let mut engine = Engine::new()?;
-        engine.replace(vec![document("song:1", "1", "song", 1, "Old Name")])?;
-        engine.upsert(vec![document("song:1", "1", "song", 1, "New Name")])?;
-        assert!(engine.search("Old", "song", &[1], 0, 10)?.is_empty());
-        assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
-        engine.delete(vec!["song:1".to_owned()])?;
-        assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
         Ok(())
     }
 

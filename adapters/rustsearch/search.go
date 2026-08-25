@@ -45,7 +45,6 @@ type document struct {
 type request struct {
 	Op         string       `json:"op"`
 	Documents  []document   `json:"documents,omitempty"`
-	Keys       []string     `json:"keys,omitempty"`
 	Query      string       `json:"query,omitempty"`
 	LibraryIDs []uint64     `json:"library_ids,omitempty"`
 	Searches   []searchSpec `json:"searches,omitempty"`

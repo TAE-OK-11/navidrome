@@ -334,11 +334,17 @@ func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (ma
 	if err == nil || len(paths) <= 1 {
 		return allInfo, err
 	}
+	if ctxErr := p.ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 
 	log.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files individually", "folder", entry.path, "files", len(paths), err)
 	result := make(map[string]metadata.Info, len(paths))
 	var failures []error
 	for _, filePath := range paths {
+		if ctxErr := p.ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		info, fileErr := readTags(filePath)
 		if fileErr != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", filePath, fileErr))

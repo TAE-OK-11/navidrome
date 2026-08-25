@@ -25,6 +25,7 @@ import (
 
 const (
 	protocolVersion        = 1
+	MaxResults             = 500
 	indexBatchSize         = 1000
 	freshnessCheckInterval = 10 * time.Second
 	searchRequestTimeout   = 5 * time.Second

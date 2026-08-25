@@ -1,6 +1,11 @@
 package subsonic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/navidrome/navidrome/adapters/rustsearch"
+)
 
 func TestOrderRustResultsPreservesRelevanceAndDropsMissing(t *testing.T) {
 	t.Parallel()
@@ -29,5 +34,46 @@ func TestRustSearchableQueryKeepsBroadQueriesOnSQLite(t *testing.T) {
 		if !rustSearchableQuery(query) {
 			t.Fatalf("rustSearchableQuery(%q) = false", query)
 		}
+	}
+}
+
+func TestRustSearchPageSupported(t *testing.T) {
+	t.Parallel()
+
+	params := &searchParams{songCount: 20, albumCount: 20, artistCount: 20}
+	if !rustSearchPageSupported(params) {
+		t.Fatal("first search page should use Rust")
+	}
+	params.songOffset = rustsearch.MaxResults - params.songCount
+	if !rustSearchPageSupported(params) {
+		t.Fatal("last complete Rust result window should be supported")
+	}
+	params.songOffset++
+	if rustSearchPageSupported(params) {
+		t.Fatal("page beyond the Rust result window should use SQLite")
+	}
+}
+
+func TestGetSearchParamsBoundsWork(t *testing.T) {
+	t.Parallel()
+
+	router := &Router{}
+	request := newGetRequest(
+		"query=test",
+		"songCount=-1",
+		"albumCount=999999",
+		"artistOffset=-10",
+	)
+	params, err := router.getSearchParams(request)
+	if err != nil {
+		t.Fatalf("getSearchParams() error = %v", err)
+	}
+	if params.songCount != 0 || params.albumCount != rustsearch.MaxResults || params.artistOffset != 0 {
+		t.Fatalf("getSearchParams() = %#v", params)
+	}
+
+	tooLong := newGetRequest("query=" + strings.Repeat("한", maxSearchQueryRunes+1))
+	if _, err := router.getSearchParams(tooLong); err == nil {
+		t.Fatal("getSearchParams() accepted an oversized query")
 	}
 }

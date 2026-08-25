@@ -57,6 +57,8 @@ const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
 const BRIDGE_MAX_FRAME_SIZE: u32 = 64 * 1024;
+const BRIDGE_STREAM_WINDOW: u32 = 512 * 1024;
+const BRIDGE_CONNECTION_WINDOW: u32 = 4 * 1024 * 1024;
 const API_COMPRESSION_MIN_SIZE: usize = 256;
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
@@ -149,7 +151,11 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     let bridge = tokio::net::UnixStream::from_std(bridge)
         .context("failed to adopt inherited HTTP/2 bridge")?;
     let mut h2 = http2::Builder::new(TokioExecutor::new());
-    h2.adaptive_window(true);
+    // The bridge is an in-process AF_UNIX socket with effectively zero BDP.
+    // Fixed, bounded windows avoid Hyper's 64KiB adaptive bootstrap and its
+    // BDP PING loop while matching the Go bridge server's flow-control policy.
+    h2.initial_stream_window_size(BRIDGE_STREAM_WINDOW);
+    h2.initial_connection_window_size(BRIDGE_CONNECTION_WINDOW);
     h2.max_frame_size(BRIDGE_MAX_FRAME_SIZE);
     h2.max_header_list_size(64 * 1024);
     let (client, connection) = h2
@@ -1256,6 +1262,13 @@ mod tests {
         assert_eq!(normalize_congestion_control("CUBIC").unwrap(), "cubic");
         assert_eq!(normalize_congestion_control("reno").unwrap(), "reno");
         assert!(normalize_congestion_control("bbr3").is_err());
+    }
+
+    #[test]
+    fn bridge_windows_are_bounded_and_cover_multiple_frames() {
+        assert!(BRIDGE_STREAM_WINDOW >= BRIDGE_MAX_FRAME_SIZE * 8);
+        assert!(BRIDGE_CONNECTION_WINDOW >= BRIDGE_STREAM_WINDOW * 8);
+        assert!(BRIDGE_CONNECTION_WINDOW <= 8 * 1024 * 1024);
     }
 
     #[test]

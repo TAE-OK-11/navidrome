@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -74,7 +75,19 @@ func (lfs *localFS) ResolveSymlink(name string) (string, error) {
 }
 
 func (lfs *localFS) ReadTags(path ...string) (map[string]metadata.Info, error) {
-	res, err := lfs.extractor.Parse(path...)
+	return lfs.readTags(lfs.extractor.Parse(path...))
+}
+
+func (lfs *localFS) ReadTagsContext(ctx context.Context, path ...string) (map[string]metadata.Info, error) {
+	if extractor, ok := lfs.extractor.(interface {
+		ParseContext(context.Context, ...string) (map[string]metadata.Info, error)
+	}); ok {
+		return lfs.readTags(extractor.ParseContext(ctx, path...))
+	}
+	return lfs.ReadTags(path...)
+}
+
+func (lfs *localFS) readTags(res map[string]metadata.Info, err error) (map[string]metadata.Info, error) {
 	if err != nil {
 		return nil, err
 	}

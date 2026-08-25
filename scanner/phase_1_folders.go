@@ -324,16 +324,28 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 }
 
 func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (map[string]metadata.Info, error) {
-	allInfo, err := entry.job.fs.ReadTags(paths...)
+	readTags := func(paths ...string) (map[string]metadata.Info, error) {
+		if reader, ok := entry.job.fs.(storage.ContextMusicFS); ok {
+			return reader.ReadTagsContext(p.ctx, paths...)
+		}
+		return entry.job.fs.ReadTags(paths...)
+	}
+	allInfo, err := readTags(paths...)
 	if err == nil || len(paths) <= 1 {
 		return allInfo, err
+	}
+	if ctxErr := p.ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 
 	log.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files individually", "folder", entry.path, "files", len(paths), err)
 	result := make(map[string]metadata.Info, len(paths))
 	var failures []error
 	for _, filePath := range paths {
-		info, fileErr := entry.job.fs.ReadTags(filePath)
+		if ctxErr := p.ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		info, fileErr := readTags(filePath)
 		if fileErr != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", filePath, fileErr))
 			log.Warn(p.ctx, "Scanner: Skipping unreadable metadata file", "folder", entry.path, "file", filePath, fileErr)

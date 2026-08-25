@@ -159,7 +159,8 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
             .follow_links(request.follow_symlinks)
             .sort_by_file_name(|left, right| left.cmp(right));
         let ignore_dot_folders = request.ignore_dot_folders;
-        builder.filter_entry(move |entry| allow_entry(entry, ignore_dot_folders));
+        let follow_symlinks = request.follow_symlinks;
+        builder.filter_entry(move |entry| allow_entry(entry, ignore_dot_folders, follow_symlinks));
 
         for result in builder.build() {
             let entry = match result {
@@ -192,13 +193,16 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
     Ok((folders, warnings))
 }
 
-fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool) -> bool {
+fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool, follow_symlinks: bool) -> bool {
     if entry.depth() == 0 {
         return !directory_has_empty_ignore(entry.path());
     }
     let Some(name) = entry.file_name().to_str() else {
         return false;
     };
+    if entry.path_is_symlink() && !follow_symlinks {
+        return false;
+    }
     let is_dir = entry.file_type().is_some_and(|kind| kind.is_dir());
     if is_dir
         && SPECIAL_DIRECTORIES
@@ -404,6 +408,12 @@ mod tests {
         fs::write(root.join("Artist/Album/list.m3u8"), b"playlist").unwrap();
         fs::write(root.join("Artist/Album/ignored/skip.mp3"), b"ignored").unwrap();
         fs::write(root.join("Artist/.Hidden Album/hidden.mp3"), b"hidden").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            root.join("Artist/Album/song.flac"),
+            root.join("Artist/Album/linked.flac"),
+        )
+        .unwrap();
 
         let (folders, warnings) = collect_scan(ScanRequest {
             root: root.clone(),
@@ -416,6 +426,8 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         let album = folders.get("Artist/Album").unwrap();
         assert!(album.audio_files.contains_key("song.flac"));
+        #[cfg(unix)]
+        assert!(!album.audio_files.contains_key("linked.flac"));
         assert!(album.image_files.contains_key("cover.jpg"));
         assert_eq!(album.num_playlists, 1);
         assert!(!folders.contains_key("Artist/Album/ignored"));

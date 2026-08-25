@@ -1141,6 +1141,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     RUSTFLAGS="-C target-cpu=x86-64" \
     cargo test --locked --release && \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/scanner-test \
+    RUSTFLAGS="-C target-cpu=x86-64" \
+    cargo build --locked --release && \
+    install -D -m 755 /tmp/scanner-test/release/navidrome-scanner /out/navidrome-scanner-portable && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
     RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \
     install -D -m 755 target/release/navidrome-scanner /out/navidrome-scanner && \
@@ -1325,6 +1330,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 COPY --link --from=source /src ./
 COPY --link --from=jsbuilder /src/ui/build ./ui/build/
 COPY --link --from=h3-builder /out/navidrome-h3 /tmp/navidrome-h3
+COPY --link --from=scanner-builder /out/navidrome-scanner-portable /tmp/navidrome-scanner
 
 RUN test -s ./ui/build/index.html && \
     test -n "$(find ./ui/build -type f -name '*.br' -print -quit)" && \
@@ -1379,7 +1385,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     }; \
     train compression ./server '^BenchmarkCompressionLargeSingleWrite$' "${GO_PGO_BENCHTIME}"; \
     train api ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${GO_PGO_BENCHTIME}"; \
-    train scanner ./scanner '^BenchmarkScan$' "${GO_PGO_BENCHTIME}"; \
+    ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
+      train scanner ./scanner '^BenchmarkScan$' "${GO_PGO_BENCHTIME}"; \
     train streaming ./core/stream '^BenchmarkLegacyStreamDecision$' 250ms; \
     go tool pprof \
       -proto \

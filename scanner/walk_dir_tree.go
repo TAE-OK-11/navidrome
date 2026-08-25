@@ -37,7 +37,11 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 						err = convertErr
 						break
 					}
-					results <- entry
+					select {
+					case results <- entry:
+					case <-ctx.Done():
+						return
+					}
 				}
 				if err == nil {
 					return
@@ -50,7 +54,11 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 				return
 			}
 			for entry := range fallback {
-				results <- entry
+				select {
+				case results <- entry:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}()
 		return results, nil

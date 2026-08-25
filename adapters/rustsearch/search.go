@@ -42,14 +42,21 @@ type document struct {
 }
 
 type request struct {
-	Op         string     `json:"op"`
-	Documents  []document `json:"documents,omitempty"`
-	Keys       []string   `json:"keys,omitempty"`
-	Query      string     `json:"query,omitempty"`
-	Kind       string     `json:"kind,omitempty"`
-	LibraryIDs []uint64   `json:"library_ids,omitempty"`
-	Offset     int        `json:"offset,omitempty"`
-	Limit      int        `json:"limit,omitempty"`
+	Op         string       `json:"op"`
+	Documents  []document   `json:"documents,omitempty"`
+	Keys       []string     `json:"keys,omitempty"`
+	Query      string       `json:"query,omitempty"`
+	Kind       string       `json:"kind,omitempty"`
+	LibraryIDs []uint64     `json:"library_ids,omitempty"`
+	Offset     int          `json:"offset,omitempty"`
+	Limit      int          `json:"limit,omitempty"`
+	Searches   []searchSpec `json:"searches,omitempty"`
+}
+
+type searchSpec struct {
+	Kind   string `json:"kind"`
+	Offset int    `json:"offset,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 }
 
 type hit struct {
@@ -57,12 +64,29 @@ type hit struct {
 	Score float32 `json:"score"`
 }
 
+type searchGroup struct {
+	Kind string `json:"kind"`
+	Hits []hit  `json:"hits"`
+}
+
 type response struct {
-	Protocol int    `json:"protocol"`
-	OK       bool   `json:"ok"`
-	Hits     []hit  `json:"hits"`
-	Indexed  uint64 `json:"indexed"`
-	Error    string `json:"error"`
+	Protocol int           `json:"protocol"`
+	OK       bool          `json:"ok"`
+	Hits     []hit         `json:"hits"`
+	Groups   []searchGroup `json:"groups"`
+	Indexed  uint64        `json:"indexed"`
+	Error    string        `json:"error"`
+}
+
+type SearchLimits struct {
+	Offset int
+	Limit  int
+}
+
+type SearchResults struct {
+	SongIDs   []string
+	AlbumIDs  []string
+	ArtistIDs []string
 }
 
 type worker struct {
@@ -99,17 +123,11 @@ func (e *Engine) Search(query, kind string, libraryIDs []int, offset, limit int)
 	if !e.Ready() {
 		return nil, ErrNotReady
 	}
-	scope := make([]uint64, 0, len(libraryIDs))
-	for _, id := range libraryIDs {
-		if id > 0 {
-			scope = append(scope, uint64(id))
-		}
-	}
 	resp, err := e.roundTrip(request{
 		Op:         "search",
 		Query:      query,
 		Kind:       kind,
-		LibraryIDs: scope,
+		LibraryIDs: libraryScope(libraryIDs),
 		Offset:     offset,
 		Limit:      limit,
 	})
@@ -121,6 +139,62 @@ func (e *Engine) Search(query, kind string, libraryIDs []int, offset, limit int)
 		ids[i] = hit.ID
 	}
 	return ids, nil
+}
+
+func (e *Engine) SearchAll(query string, libraryIDs []int, songs, albums, artists SearchLimits) (SearchResults, error) {
+	if !e.Ready() {
+		return SearchResults{}, ErrNotReady
+	}
+	resp, err := e.roundTrip(request{
+		Op:         "search_all",
+		Query:      query,
+		LibraryIDs: libraryScope(libraryIDs),
+		Searches: []searchSpec{
+			{Kind: "song", Offset: songs.Offset, Limit: songs.Limit},
+			{Kind: "album", Offset: albums.Offset, Limit: albums.Limit},
+			{Kind: "artist", Offset: artists.Offset, Limit: artists.Limit},
+		},
+	})
+	if err != nil {
+		return SearchResults{}, err
+	}
+	return decodeSearchGroups(resp.Groups)
+}
+
+func decodeSearchGroups(groups []searchGroup) (SearchResults, error) {
+	var results SearchResults
+	seen := 0
+	for _, group := range groups {
+		ids := make([]string, len(group.Hits))
+		for i, hit := range group.Hits {
+			ids[i] = hit.ID
+		}
+		switch group.Kind {
+		case "song":
+			results.SongIDs = ids
+			seen |= 1
+		case "album":
+			results.AlbumIDs = ids
+			seen |= 2
+		case "artist":
+			results.ArtistIDs = ids
+			seen |= 4
+		}
+	}
+	if seen != 7 {
+		return SearchResults{}, errors.New("Rust search_all response is missing a result group")
+	}
+	return results, nil
+}
+
+func libraryScope(libraryIDs []int) []uint64 {
+	scope := make([]uint64, 0, len(libraryIDs))
+	for _, id := range libraryIDs {
+		if id > 0 {
+			scope = append(scope, uint64(id))
+		}
+	}
+	return scope
 }
 
 // RefreshIfStale checks scan generations at a bounded cadence. Searches keep

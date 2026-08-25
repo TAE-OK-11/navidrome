@@ -15,6 +15,7 @@ use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, Term, doc};
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_DOCUMENTS_PER_REQUEST: usize = 250_000;
 const MAX_RESULTS: usize = 500;
+const MAX_SEARCH_GROUPS: usize = 8;
 const WRITER_MEMORY_BYTES: usize = 32 * 1024 * 1024;
 const NGRAM_TOKENIZER: &str = "navidrome_ngram";
 
@@ -28,6 +29,15 @@ struct SearchDocument {
     primary: String,
     #[serde(default)]
     secondary: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchSpec {
+    kind: String,
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    limit: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +68,12 @@ enum Request {
         #[serde(default)]
         limit: usize,
     },
+    SearchAll {
+        query: String,
+        #[serde(default)]
+        library_ids: Vec<u64>,
+        searches: Vec<SearchSpec>,
+    },
     Stats,
 }
 
@@ -68,11 +84,19 @@ struct Hit {
 }
 
 #[derive(Debug, Serialize)]
+struct SearchGroup {
+    kind: String,
+    hits: Vec<Hit>,
+}
+
+#[derive(Debug, Serialize)]
 struct Response {
     protocol: u32,
     ok: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     hits: Vec<Hit>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    groups: Vec<SearchGroup>,
     indexed: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -423,6 +447,7 @@ fn main() -> Result<()> {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
                 hits: Vec::new(),
+                groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(format!("{error:#}")),
             }),
@@ -430,6 +455,7 @@ fn main() -> Result<()> {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
                 hits: Vec::new(),
+                groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(error.to_string()),
             },
@@ -442,6 +468,7 @@ fn main() -> Result<()> {
 }
 
 fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
+    let mut groups = Vec::new();
     let hits = match request {
         Request::BeginReplace => {
             engine.begin_replace()?;
@@ -478,12 +505,39 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
             offset,
             limit,
         } => engine.search(&query, &kind, &library_ids, offset, limit)?,
+        Request::SearchAll {
+            query,
+            library_ids,
+            searches,
+        } => {
+            if searches.len() > MAX_SEARCH_GROUPS {
+                bail!("search_all contains too many groups");
+            }
+            let mut kinds = HashSet::with_capacity(searches.len());
+            for search in searches {
+                if search.kind.is_empty() || !kinds.insert(search.kind.clone()) {
+                    bail!("search_all groups require unique non-empty kinds");
+                }
+                groups.push(SearchGroup {
+                    hits: engine.search(
+                        &query,
+                        &search.kind,
+                        &library_ids,
+                        search.offset,
+                        search.limit,
+                    )?,
+                    kind: search.kind,
+                });
+            }
+            Vec::new()
+        }
         Request::Stats => Vec::new(),
     };
     Ok(Response {
         protocol: PROTOCOL_VERSION,
         ok: true,
         hits,
+        groups,
         indexed: engine.indexed,
         error: None,
     })
@@ -574,5 +628,46 @@ mod tests {
     #[test]
     fn normalization_preserves_unicode_words() {
         assert_eq!(normalize("  AC/DC — 소년! "), "ac dc 소년");
+    }
+
+    #[test]
+    fn search_all_returns_scoped_groups_in_one_response() -> Result<()> {
+        let mut engine = Engine::new()?;
+        engine.replace(vec![
+            document("song:1", "song-1", "song", 1, "Blue Monday"),
+            document("album:1", "album-1", "album", 1, "Blue Monday"),
+            document("artist:1", "artist-1", "artist", 2, "Blue Monday"),
+        ])?;
+
+        let response = handle_request(
+            &mut engine,
+            Request::SearchAll {
+                query: "Blue".to_owned(),
+                library_ids: vec![1],
+                searches: vec![
+                    SearchSpec {
+                        kind: "song".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                    SearchSpec {
+                        kind: "album".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                    SearchSpec {
+                        kind: "artist".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                ],
+            },
+        )?;
+
+        assert_eq!(response.groups.len(), 3);
+        assert_eq!(response.groups[0].hits[0].id, "song-1");
+        assert_eq!(response.groups[1].hits[0].id, "album-1");
+        assert!(response.groups[2].hits.is_empty());
+        Ok(())
     }
 }

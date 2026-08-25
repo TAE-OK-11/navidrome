@@ -16,6 +16,7 @@ const PROTOCOL_VERSION: u32 = 1;
 const MAX_DOCUMENTS_PER_REQUEST: usize = 250_000;
 const MAX_RESULTS: usize = 500;
 const MAX_SEARCH_GROUPS: usize = 8;
+const MAX_QUERY_CHARS: usize = 256;
 const WRITER_MEMORY_BYTES: usize = 32 * 1024 * 1024;
 const NGRAM_TOKENIZER: &str = "navidrome_ngram";
 
@@ -436,6 +437,9 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
             library_ids,
             searches,
         } => {
+            if query.chars().count() > MAX_QUERY_CHARS {
+                bail!("search query exceeds {MAX_QUERY_CHARS} characters");
+            }
             if searches.len() > MAX_SEARCH_GROUPS {
                 bail!("search_all contains too many groups");
             }
@@ -579,6 +583,18 @@ mod tests {
         assert_eq!(response.groups[0].hits[0].id, "song-1");
         assert_eq!(response.groups[1].hits[0].id, "album-1");
         assert!(response.groups[2].hits.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_oversized_search_queries() -> Result<()> {
+        let mut engine = Engine::new()?;
+        let request = Request::SearchAll {
+            query: "a".repeat(MAX_QUERY_CHARS + 1),
+            library_ids: Vec::new(),
+            searches: Vec::new(),
+        };
+        assert!(handle_request(&mut engine, request).is_err());
         Ok(())
     }
 }

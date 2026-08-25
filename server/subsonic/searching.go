@@ -3,12 +3,14 @@ package subsonic
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/sanitize"
@@ -31,17 +33,26 @@ type searchParams struct {
 	songOffset   int
 }
 
+const maxSearchQueryRunes = 256
+
 func (api *Router) getSearchParams(r *http.Request) (*searchParams, error) {
 	p := req.Params(r)
 	sp := &searchParams{}
 	sp.query = p.StringOr("query", `""`)
-	sp.artistCount = p.IntOr("artistCount", 20)
-	sp.artistOffset = p.IntOr("artistOffset", 0)
-	sp.albumCount = p.IntOr("albumCount", 20)
-	sp.albumOffset = p.IntOr("albumOffset", 0)
-	sp.songCount = p.IntOr("songCount", 20)
-	sp.songOffset = p.IntOr("songOffset", 0)
+	if utf8.RuneCountInString(sp.query) > maxSearchQueryRunes {
+		return nil, fmt.Errorf("search query exceeds %d characters", maxSearchQueryRunes)
+	}
+	sp.artistCount = normalizeSearchCount(p.IntOr("artistCount", 20))
+	sp.artistOffset = max(p.IntOr("artistOffset", 0), 0)
+	sp.albumCount = normalizeSearchCount(p.IntOr("albumCount", 20))
+	sp.albumOffset = max(p.IntOr("albumOffset", 0), 0)
+	sp.songCount = normalizeSearchCount(p.IntOr("songCount", 20))
+	sp.songOffset = max(p.IntOr("songOffset", 0), 0)
 	return sp, nil
+}
+
+func normalizeSearchCount(count int) int {
+	return min(max(count, 0), rustsearch.MaxResults)
 }
 
 type searchFunc[T any] func(q string, options ...model.QueryOptions) (T, error)
@@ -89,7 +100,7 @@ func logSearchFailure(ctx context.Context, message, query string, elapsed time.D
 func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderIds []int) (mediaFiles model.MediaFiles, albums model.Albums, artists model.Artists) {
 	start := time.Now()
 	q := sanitize.Accents(strings.ToLower(strings.TrimSuffix(sp.query, "*")))
-	if api.rustSearch != nil && rustSearchableQuery(q) {
+	if api.rustSearch != nil && rustSearchableQuery(q) && rustSearchPageSupported(sp) {
 		api.rustSearch.RefreshIfStale(ctx, api.ds)
 		scope := musicFolderIds
 		if len(scope) == 0 {
@@ -130,6 +141,17 @@ func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderI
 		log.Warn(ctx, "Search was interrupted", "query", sp.query, "elapsedTime", time.Since(start), err)
 	}
 	return mediaFiles, albums, artists
+}
+
+func rustSearchPageSupported(sp *searchParams) bool {
+	return searchPageInWindow(sp.songOffset, sp.songCount) &&
+		searchPageInWindow(sp.albumOffset, sp.albumCount) &&
+		searchPageInWindow(sp.artistOffset, sp.artistCount)
+}
+
+func searchPageInWindow(offset, count int) bool {
+	return offset >= 0 && count >= 0 && count <= rustsearch.MaxResults &&
+		(count == 0 || offset <= rustsearch.MaxResults-count)
 }
 
 func rustSearchableQuery(query string) bool {

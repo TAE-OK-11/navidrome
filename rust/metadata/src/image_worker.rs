@@ -227,7 +227,7 @@ fn encode(
         OutputFormat::Webp => {
             let encoded = webp::Encoder::from_rgba(rgba, width, height)
                 .encode_simple(false, f32::from(quality))
-                .context("encoding WebP")?;
+                .map_err(|error| anyhow::anyhow!("encoding WebP: {error:?}"))?;
             output.extend_from_slice(&encoded);
         }
     }

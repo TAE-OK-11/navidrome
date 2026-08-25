@@ -102,6 +102,37 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
 }
 
 fn run_scan(request: ScanRequest) -> Result<()> {
+    let (folders, warnings) = collect_scan(request)?;
+    let file_count = folders
+        .values()
+        .map(|folder| folder.audio_files.len() + folder.image_files.len() + folder.num_playlists)
+        .sum();
+    let mut ordered: Vec<&Folder> = folders.values().collect();
+    ordered.sort_by(|left, right| {
+        path_depth(&right.path)
+            .cmp(&path_depth(&left.path))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+
+    let stdout = io::stdout();
+    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
+    for warning in &warnings {
+        write_event(&mut output, &Event::Warning { message: warning })?;
+    }
+    for folder in ordered {
+        write_event(&mut output, &Event::Folder { folder })?;
+    }
+    write_event(
+        &mut output,
+        &Event::Done {
+            folders: folders.len(),
+            files: file_count,
+        },
+    )?;
+    output.flush().context("flushing scan response")
+}
+
+fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<String>)> {
     let root = request
         .root
         .canonicalize()
@@ -158,33 +189,7 @@ fn run_scan(request: ScanRequest) -> Result<()> {
         }
     }
 
-    let file_count = folders
-        .values()
-        .map(|folder| folder.audio_files.len() + folder.image_files.len() + folder.num_playlists)
-        .sum();
-    let mut ordered: Vec<&Folder> = folders.values().collect();
-    ordered.sort_by(|left, right| {
-        path_depth(&right.path)
-            .cmp(&path_depth(&left.path))
-            .then_with(|| left.path.cmp(&right.path))
-    });
-
-    let stdout = io::stdout();
-    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
-    for warning in &warnings {
-        write_event(&mut output, &Event::Warning { message: warning })?;
-    }
-    for folder in ordered {
-        write_event(&mut output, &Event::Folder { folder })?;
-    }
-    write_event(
-        &mut output,
-        &Event::Done {
-            folders: folders.len(),
-            files: file_count,
-        },
-    )?;
-    output.flush().context("flushing scan response")
+    Ok((folders, warnings))
 }
 
 fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool) -> bool {
@@ -333,6 +338,17 @@ fn write_event(output: &mut impl Write, event: &Event<'_>) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn temporary_music_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "navidrome-rust-scanner-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
     #[test]
     fn validates_relative_targets() {
         let root = if cfg!(windows) {
@@ -375,5 +391,36 @@ mod tests {
             "Artist/Album"
         );
         assert_eq!(parent_path("Artist/Album"), "Artist");
+    }
+
+    #[test]
+    fn traverses_classifies_and_applies_ndignore() {
+        let root = temporary_music_root();
+        fs::create_dir_all(root.join("Artist/Album/ignored")).unwrap();
+        fs::create_dir_all(root.join("Artist/.Hidden Album")).unwrap();
+        fs::write(root.join("Artist/Album/.ndignore"), b"ignored/\n").unwrap();
+        fs::write(root.join("Artist/Album/song.flac"), b"audio").unwrap();
+        fs::write(root.join("Artist/Album/cover.jpg"), b"image").unwrap();
+        fs::write(root.join("Artist/Album/list.m3u8"), b"playlist").unwrap();
+        fs::write(root.join("Artist/Album/ignored/skip.mp3"), b"ignored").unwrap();
+        fs::write(root.join("Artist/.Hidden Album/hidden.mp3"), b"hidden").unwrap();
+
+        let (folders, warnings) = collect_scan(ScanRequest {
+            root: root.clone(),
+            targets: vec![".".to_owned()],
+            follow_symlinks: false,
+            ignore_dot_folders: true,
+        })
+        .unwrap();
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let album = folders.get("Artist/Album").unwrap();
+        assert!(album.audio_files.contains_key("song.flac"));
+        assert!(album.image_files.contains_key("cover.jpg"));
+        assert_eq!(album.num_playlists, 1);
+        assert!(!folders.contains_key("Artist/Album/ignored"));
+        assert!(!folders.contains_key("Artist/.Hidden Album"));
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

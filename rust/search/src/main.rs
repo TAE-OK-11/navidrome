@@ -49,32 +49,12 @@ enum Request {
     },
     CommitReplace,
     AbortReplace,
-    Replace {
-        documents: Vec<SearchDocument>,
-    },
-    Upsert {
-        documents: Vec<SearchDocument>,
-    },
-    Delete {
-        keys: Vec<String>,
-    },
-    Search {
-        query: String,
-        kind: String,
-        #[serde(default)]
-        library_ids: Vec<u64>,
-        #[serde(default)]
-        offset: usize,
-        #[serde(default)]
-        limit: usize,
-    },
     SearchAll {
         query: String,
         #[serde(default)]
         library_ids: Vec<u64>,
         searches: Vec<SearchSpec>,
     },
-    Stats,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,8 +73,6 @@ struct SearchGroup {
 struct Response {
     protocol: u32,
     ok: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    hits: Vec<Hit>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     groups: Vec<SearchGroup>,
     indexed: u64,
@@ -213,33 +191,6 @@ impl Engine {
         self.replace_in_progress = false;
         self.indexed = self.reader.searcher().num_docs();
         Ok(())
-    }
-
-    fn upsert(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot upsert while replacing the search index");
-        }
-        validate_document_batch(&documents)?;
-        for document in &documents {
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &document.key));
-        }
-        self.add_documents(documents)?;
-        self.commit()
-    }
-
-    fn delete(&mut self, keys: Vec<String>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot delete while replacing the search index");
-        }
-        if keys.len() > MAX_DOCUMENTS_PER_REQUEST {
-            bail!("delete contains too many keys");
-        }
-        for key in keys {
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &key));
-        }
-        self.commit()
     }
 
     fn add_documents(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
@@ -446,7 +397,6 @@ fn main() -> Result<()> {
             Ok(request) => handle_request(&mut engine, request).unwrap_or_else(|error| Response {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
-                hits: Vec::new(),
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(format!("{error:#}")),
@@ -454,7 +404,6 @@ fn main() -> Result<()> {
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
-                hits: Vec::new(),
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(error.to_string()),
@@ -469,42 +418,19 @@ fn main() -> Result<()> {
 
 fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
     let mut groups = Vec::new();
-    let hits = match request {
+    match request {
         Request::BeginReplace => {
             engine.begin_replace()?;
-            Vec::new()
         }
         Request::Append { documents } => {
             engine.append(documents)?;
-            Vec::new()
         }
         Request::CommitReplace => {
             engine.commit_replace()?;
-            Vec::new()
         }
         Request::AbortReplace => {
             engine.abort_replace()?;
-            Vec::new()
         }
-        Request::Replace { documents } => {
-            engine.replace(documents)?;
-            Vec::new()
-        }
-        Request::Upsert { documents } => {
-            engine.upsert(documents)?;
-            Vec::new()
-        }
-        Request::Delete { keys } => {
-            engine.delete(keys)?;
-            Vec::new()
-        }
-        Request::Search {
-            query,
-            kind,
-            library_ids,
-            offset,
-            limit,
-        } => engine.search(&query, &kind, &library_ids, offset, limit)?,
         Request::SearchAll {
             query,
             library_ids,
@@ -529,14 +455,11 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                     kind: search.kind,
                 });
             }
-            Vec::new()
         }
-        Request::Stats => Vec::new(),
-    };
+    }
     Ok(Response {
         protocol: PROTOCOL_VERSION,
         ok: true,
-        hits,
         groups,
         indexed: engine.indexed,
         error: None,
@@ -594,18 +517,6 @@ mod tests {
         assert!(!typo_hits.is_empty());
         let exact_hits = engine.search("Beatles", "artist", &[1], 0, 10)?;
         assert_eq!(exact_hits.first().map(|hit| hit.id.as_str()), Some("2"));
-        Ok(())
-    }
-
-    #[test]
-    fn upsert_and_delete_are_visible_immediately() -> Result<()> {
-        let mut engine = Engine::new()?;
-        engine.replace(vec![document("song:1", "1", "song", 1, "Old Name")])?;
-        engine.upsert(vec![document("song:1", "1", "song", 1, "New Name")])?;
-        assert!(engine.search("Old", "song", &[1], 0, 10)?.is_empty());
-        assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
-        engine.delete(vec!["song:1".to_owned()])?;
-        assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
         Ok(())
     }
 

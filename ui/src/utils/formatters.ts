@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-export const formatBytes = (bytes, decimals = 2) => {
+export const formatBytes = (bytes: number, decimals = 2): string => {
   if (bytes === 0) return '0 Bytes'
 
   const k = 1024
@@ -11,7 +10,8 @@ export const formatBytes = (bytes, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
 }
 
-export const formatDuration = (d) => {
+export const formatDuration = (duration: number): string => {
+  let d = duration
   d = Math.round(d)
   const days = Math.floor(d / 86400)
   const hours = Math.floor(d / 3600) % 24
@@ -26,7 +26,9 @@ export const formatDuration = (d) => {
   return `${days > 0 ? days + ':' : ''}${f}`
 }
 
-export const formatDuration2 = (totalSeconds) => {
+export const formatDuration2 = (
+  totalSeconds: number | null | undefined,
+): string => {
   if (totalSeconds == null || totalSeconds < 0) {
     return '0s'
   }
@@ -35,7 +37,7 @@ export const formatDuration2 = (totalSeconds) => {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = Math.floor(totalSeconds % 60)
 
-  const parts = []
+  const parts: string[] = []
 
   if (days > 0) {
     // When days are present, show only d h m (3 levels max)
@@ -62,7 +64,7 @@ export const formatDuration2 = (totalSeconds) => {
   return parts.join(' ')
 }
 
-export const formatShortDuration = (ns) => {
+export const formatShortDuration = (ns: number): string => {
   // Convert nanoseconds to seconds
   const seconds = ns / 1e9
   if (seconds < 1.0) {
@@ -82,9 +84,12 @@ export const formatShortDuration = (ns) => {
   return `${secs}s`
 }
 
-export const formatFullDate = (date, locale) => {
+export const formatFullDate = (
+  date: string,
+  locale?: Intl.LocalesArgument,
+): string => {
   const dashes = date.split('-').length - 1
-  let options = {
+  const options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     timeZone: 'UTC',
     ...(dashes > 0 && { month: 'short' }),
@@ -96,7 +101,10 @@ export const formatFullDate = (date, locale) => {
   return new Date(date).toLocaleDateString(locale, options)
 }
 
-export const formatNumber = (value, locale) => {
+export const formatNumber = (
+  value: number | null | undefined,
+  locale?: Intl.LocalesArgument,
+): string => {
   if (value === null || value === undefined) return '0'
   return value.toLocaleString(locale)
 }

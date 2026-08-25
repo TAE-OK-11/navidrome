@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 // These defaults are only used in development mode. When bundled in the app,
 // the __APP_CONFIG__ object is dynamically filled by the ServeIndex function,
 // in the /server/app/serve_index.go
@@ -46,23 +45,59 @@ const defaultConfig = {
   pluginsEnabled: true,
 }
 
-let config
+type AuthenticationInfo = {
+  token?: string
+  id: string
+  name: string
+  username: string
+  avatar?: string
+  isAdmin: boolean
+  subsonicSalt: string
+  subsonicToken: string
+}
+
+export type AppConfig = typeof defaultConfig & {
+  auth?: AuthenticationInfo
+  extAuthLogoutURL?: string
+}
+
+export type ShareInfo = {
+  id: string
+  downloadable: boolean
+  tracks: Array<{
+    id: string
+    title: string
+    artist: string
+    duration: number
+  }>
+}
+
+declare global {
+  interface Window {
+    __APP_CONFIG__?: string
+    __SHARE_INFO__?: string
+  }
+}
+
+let config: AppConfig
 
 try {
-  const appConfig = JSON.parse(window.__APP_CONFIG__)
+  const appConfig = JSON.parse(
+    window.__APP_CONFIG__ ?? '{}',
+  ) as Partial<AppConfig>
   config = {
     ...defaultConfig,
     ...appConfig,
   }
-} catch (e) {
-  config = defaultConfig
+} catch {
+  config = { ...defaultConfig }
 }
 
-export let shareInfo
+export let shareInfo: ShareInfo | null
 
 try {
-  shareInfo = JSON.parse(window.__SHARE_INFO__)
-} catch (e) {
+  shareInfo = JSON.parse(window.__SHARE_INFO__ ?? 'null') as ShareInfo | null
+} catch {
   shareInfo = null
 }
 

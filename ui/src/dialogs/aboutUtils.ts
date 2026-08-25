@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 /**
  * TOML utility functions for configuration export
  */
@@ -9,15 +8,29 @@
  * @param {string} prefix - The current prefix for nested keys
  * @returns {Array} - Array of config objects with key, envVar, and value properties
  */
-export const flattenConfig = (config, prefix = '') => {
-  const result = []
+export type ConfigEntry = {
+  key: string
+  envVar?: string
+  value: unknown
+}
+
+type ConfigObject = Record<string, unknown>
+type ConfigData = { config?: ConfigEntry[] | ConfigObject }
+type ConfigSections = {
+  sections: Record<string, ConfigEntry[]>
+  rootKeys: ConfigEntry[]
+}
+
+export const flattenConfig = (config: unknown, prefix = ''): ConfigEntry[] => {
+  const result: ConfigEntry[] = []
 
   if (!config || typeof config !== 'object') {
     return result
   }
 
-  Object.keys(config).forEach((key) => {
-    const value = config[key]
+  const configObject = config as ConfigObject
+  Object.keys(configObject).forEach((key) => {
+    const value = configObject[key]
     const currentKey = prefix ? `${prefix}.${key}` : key
 
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -28,7 +41,7 @@ export const flattenConfig = (config, prefix = '') => {
       const envVar = 'ND_' + currentKey.toUpperCase().replace(/\./g, '_')
 
       // Convert value to string for display
-      let displayValue = value
+      let displayValue: string
       if (
         Array.isArray(value) ||
         (typeof value === 'object' && value !== null)
@@ -54,9 +67,11 @@ export const flattenConfig = (config, prefix = '') => {
  * @param {Array|Object} configEntries - Array of config objects with key and value, or nested config object
  * @returns {Object} - Object with regularConfigs and devConfigs arrays, both sorted
  */
-export const separateAndSortConfigs = (configEntries) => {
-  const regularConfigs = []
-  const devConfigs = []
+export const separateAndSortConfigs = (
+  configEntries: ConfigEntry[] | ConfigObject | null | undefined,
+): { regularConfigs: ConfigEntry[]; devConfigs: ConfigEntry[] } => {
+  const regularConfigs: ConfigEntry[] = []
+  const devConfigs: ConfigEntry[] = []
 
   // Handle both the old array format and new nested object format
   let flattenedConfigs
@@ -93,7 +108,7 @@ export const separateAndSortConfigs = (configEntries) => {
  * @param {string} key - The key to potentially escape
  * @returns {string} - The escaped key if needed, or the original key
  */
-export const escapeTomlKey = (key) => {
+export const escapeTomlKey = (key: unknown): string => {
   // Convert to string first to handle null/undefined
   const keyStr = String(key)
 
@@ -117,7 +132,7 @@ export const escapeTomlKey = (key) => {
  * @param {*} value - The value to format
  * @returns {string} - The TOML-formatted value
  */
-export const formatTomlValue = (value) => {
+export const formatTomlValue = (value: unknown): string => {
   if (value === null || value === undefined) {
     return '""'
   }
@@ -181,9 +196,9 @@ export const formatTomlValue = (value) => {
  * @param {Array} configs - Array of config objects with key and value
  * @returns {Object} - Object with sections and rootKeys
  */
-export const buildTomlSections = (configs) => {
-  const sections = {}
-  const rootKeys = []
+export const buildTomlSections = (configs: ConfigEntry[]): ConfigSections => {
+  const sections: Record<string, ConfigEntry[]> = {}
+  const rootKeys: ConfigEntry[] = []
 
   configs.forEach(({ key, value }) => {
     if (key.includes('.')) {
@@ -209,7 +224,10 @@ export const buildTomlSections = (configs) => {
  * @param {Function} translate - Translation function for internationalization
  * @returns {string} - The TOML-formatted configuration
  */
-export const configToToml = (configData, translate = (key) => key) => {
+export const configToToml = (
+  configData: ConfigData,
+  translate: (key: string) => string = (key) => key,
+): string => {
   let tomlContent = `# Navidrome Configuration\n# Generated on ${new Date().toISOString()}\n\n`
 
   // Handle both old array format (configData.config is array) and new nested format (configData.config is object)

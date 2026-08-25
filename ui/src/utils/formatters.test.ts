@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   formatBytes,
   formatDuration,
@@ -42,7 +41,7 @@ describe('formatDuration', () => {
 
 describe('formatShortDuration', () => {
   // Convert seconds to nanoseconds for the tests
-  const toNs = (seconds) => seconds * 1e9
+  const toNs = (seconds: number): number => seconds * 1e9
 
   it('formats less than a second', () => {
     expect(formatShortDuration(toNs(0.5))).toEqual('<1s')

@@ -1,8 +1,34 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import subsonic from '../subsonic/index'
 import { playTracks } from '../actions/index'
 
-const shuffleArray = (array) => {
+type PlaybackId = string | number
+
+type ReplayGain = {
+  albumGain?: number
+  albumPeak?: number
+  trackGain?: number
+  trackPeak?: number
+}
+
+export type PlaybackSong = {
+  id: PlaybackId
+  mediaFileId?: PlaybackId
+  replayGain?: ReplayGain
+  [key: string]: unknown
+}
+
+type PlaybackOptions = {
+  seedRecord?: PlaybackSong | null
+  shuffle?: boolean
+}
+
+type PlaybackDispatch = (action: ReturnType<typeof playTracks>) => unknown
+type Notify = (
+  message: string,
+  options?: { type?: 'warning' | 'info' },
+) => unknown
+
+const shuffleArray = <T>(array: readonly T[]): T[] => {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -11,7 +37,7 @@ const shuffleArray = (array) => {
   return shuffled
 }
 
-const mapReplayGain = (song) => {
+const mapReplayGain = (song: PlaybackSong): PlaybackSong => {
   const { replayGain: rg } = song
   if (!rg) {
     return song
@@ -26,9 +52,9 @@ const mapReplayGain = (song) => {
   }
 }
 
-export const processSongsForPlayback = (songs) => {
-  const songData = {}
-  const ids = []
+export const processSongsForPlayback = (songs: PlaybackSong[]) => {
+  const songData: Record<PlaybackId, PlaybackSong> = {}
+  const ids: PlaybackId[] = []
   songs.forEach((s) => {
     const song = mapReplayGain(s)
     songData[song.id] = song
@@ -37,7 +63,12 @@ export const processSongsForPlayback = (songs) => {
   return { songData, ids }
 }
 
-export const playSimilar = async (dispatch, notify, id, options = {}) => {
+export const playSimilar = async (
+  dispatch: PlaybackDispatch,
+  notify: Notify,
+  id: string,
+  options: PlaybackOptions = {},
+): Promise<void> => {
   const { seedRecord = null, shuffle = false } = options
 
   const res = await subsonic.getSimilarSongs2(id, 100)
@@ -49,7 +80,7 @@ export const playSimilar = async (dispatch, notify, id, options = {}) => {
     )
   }
 
-  let songs = data.similarSongs2?.song || []
+  let songs: PlaybackSong[] = data.similarSongs2?.song || []
 
   // Randomize similar songs if requested
   if (shuffle) {

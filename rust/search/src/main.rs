@@ -58,16 +58,6 @@ enum Request {
     Delete {
         keys: Vec<String>,
     },
-    Search {
-        query: String,
-        kind: String,
-        #[serde(default)]
-        library_ids: Vec<u64>,
-        #[serde(default)]
-        offset: usize,
-        #[serde(default)]
-        limit: usize,
-    },
     SearchAll {
         query: String,
         #[serde(default)]
@@ -93,8 +83,6 @@ struct SearchGroup {
 struct Response {
     protocol: u32,
     ok: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    hits: Vec<Hit>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     groups: Vec<SearchGroup>,
     indexed: u64,
@@ -446,7 +434,6 @@ fn main() -> Result<()> {
             Ok(request) => handle_request(&mut engine, request).unwrap_or_else(|error| Response {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
-                hits: Vec::new(),
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(format!("{error:#}")),
@@ -454,7 +441,6 @@ fn main() -> Result<()> {
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
-                hits: Vec::new(),
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(error.to_string()),
@@ -469,42 +455,28 @@ fn main() -> Result<()> {
 
 fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
     let mut groups = Vec::new();
-    let hits = match request {
+    match request {
         Request::BeginReplace => {
             engine.begin_replace()?;
-            Vec::new()
         }
         Request::Append { documents } => {
             engine.append(documents)?;
-            Vec::new()
         }
         Request::CommitReplace => {
             engine.commit_replace()?;
-            Vec::new()
         }
         Request::AbortReplace => {
             engine.abort_replace()?;
-            Vec::new()
         }
         Request::Replace { documents } => {
             engine.replace(documents)?;
-            Vec::new()
         }
         Request::Upsert { documents } => {
             engine.upsert(documents)?;
-            Vec::new()
         }
         Request::Delete { keys } => {
             engine.delete(keys)?;
-            Vec::new()
         }
-        Request::Search {
-            query,
-            kind,
-            library_ids,
-            offset,
-            limit,
-        } => engine.search(&query, &kind, &library_ids, offset, limit)?,
         Request::SearchAll {
             query,
             library_ids,
@@ -529,14 +501,12 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                     kind: search.kind,
                 });
             }
-            Vec::new()
         }
-        Request::Stats => Vec::new(),
-    };
+        Request::Stats => {}
+    }
     Ok(Response {
         protocol: PROTOCOL_VERSION,
         ok: true,
-        hits,
         groups,
         indexed: engine.indexed,
         error: None,

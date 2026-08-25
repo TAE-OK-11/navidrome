@@ -47,10 +47,7 @@ type request struct {
 	Documents  []document   `json:"documents,omitempty"`
 	Keys       []string     `json:"keys,omitempty"`
 	Query      string       `json:"query,omitempty"`
-	Kind       string       `json:"kind,omitempty"`
 	LibraryIDs []uint64     `json:"library_ids,omitempty"`
-	Offset     int          `json:"offset,omitempty"`
-	Limit      int          `json:"limit,omitempty"`
 	Searches   []searchSpec `json:"searches,omitempty"`
 }
 
@@ -73,7 +70,6 @@ type searchGroup struct {
 type response struct {
 	Protocol int           `json:"protocol"`
 	OK       bool          `json:"ok"`
-	Hits     []hit         `json:"hits"`
 	Groups   []searchGroup `json:"groups"`
 	Indexed  uint64        `json:"indexed"`
 	Error    string        `json:"error"`
@@ -120,28 +116,6 @@ func New() *Engine {
 
 func (e *Engine) Ready() bool {
 	return e != nil && e.ready.Load()
-}
-
-func (e *Engine) Search(ctx context.Context, query, kind string, libraryIDs []int, offset, limit int) ([]string, error) {
-	if !e.Ready() {
-		return nil, ErrNotReady
-	}
-	resp, err := e.roundTrip(ctx, request{
-		Op:         "search",
-		Query:      query,
-		Kind:       kind,
-		LibraryIDs: libraryScope(libraryIDs),
-		Offset:     offset,
-		Limit:      limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, len(resp.Hits))
-	for i, hit := range resp.Hits {
-		ids[i] = hit.ID
-	}
-	return ids, nil
 }
 
 func (e *Engine) SearchAll(ctx context.Context, query string, libraryIDs []int, songs, albums, artists SearchLimits) (SearchResults, error) {

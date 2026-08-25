@@ -17,7 +17,7 @@ func TestRoundTripCancellationDoesNotWaitForBusyWorker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
-		_, err := engine.roundTrip(ctx, request{Op: "search"})
+		_, err := engine.roundTrip(ctx, request{Op: "search_all"})
 		result <- err
 	}()
 	cancel()

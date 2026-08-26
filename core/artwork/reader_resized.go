@@ -127,6 +127,13 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 
 	// Preserve animation for animated images
 	if isAnimatedGIF(data) {
+		if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+			return bytes.NewReader(resized), 0, nil
+		} else if ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		} else {
+			log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
+		}
 		if a.a.ffmpeg.IsAvailable() {
 			// Animated GIF: convert to animated WebP via ffmpeg (with optional resize)
 			r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)

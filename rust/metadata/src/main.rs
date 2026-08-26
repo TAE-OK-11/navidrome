@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 mod image_worker;
 mod lyrics;
+mod lyricsfile;
 mod ttml;
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -54,8 +55,7 @@ struct Metadata {
     channels: u8,
     codec: String,
     has_picture: bool,
-    /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when the
-    /// payload needs Go (complex TTML / Lyricsfile YAML).
+    /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when parsing fails.
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics_json: Option<String>,
 }
@@ -312,7 +312,17 @@ fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>,
                 .with_context(|| format!("decoding MP3 {}", path.display()))?;
             (TaggedFile::from(parsed), "mp3".to_owned(), file_metadata)
         }
-        other => bail!("unsupported audio format {other:?}"),
+        other => {
+            let (mut file, file_metadata) = open_file(path)?;
+            let parsed = TaggedFile::read_from(&mut file, ParseOptions::new())
+                .with_context(|| format!("decoding {other} {}", path.display()))?;
+            let codec = if other.is_empty() {
+                "unknown".to_owned()
+            } else {
+                other.to_owned()
+            };
+            (parsed, codec, file_metadata)
+        }
     };
 
     match tagged.file_type() {

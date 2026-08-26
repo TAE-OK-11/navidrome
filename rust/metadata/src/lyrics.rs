@@ -1,7 +1,7 @@
 //! Embedded lyrics parsing for the Lofty metadata worker.
 //!
 //! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC,
-//! and full TTML). Lyricsfile YAML still falls back to Go.
+//! and full TTML). All common embedded lyric formats parse in Rust.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -71,7 +71,7 @@ pub(crate) struct Lyrics {
 }
 
 /// Returns JSON for `media_file.lyrics` when every lyric entry can be parsed in
-/// Rust. Returns `None` when any entry needs the Go parsers (complex TTML / YAML).
+/// Rust. Returns `None` only when parsing fails entirely.
 pub fn parse_tags_to_json(tags: &HashMap<String, Vec<String>>) -> Option<String> {
     let pairs = lyric_pairs(tags);
     if pairs.is_empty() {
@@ -80,9 +80,6 @@ pub fn parse_tags_to_json(tags: &HashMap<String, Vec<String>>) -> Option<String>
 
     let mut list = Vec::new();
     for (lang, text) in pairs {
-        if needs_go_fallback(text) {
-            return None;
-        }
         let tracks = parse_one(lang, text)?;
         for lyrics in tracks {
             if !lyrics.line.is_empty() {
@@ -119,24 +116,13 @@ fn lyric_pairs(tags: &HashMap<String, Vec<String>>) -> Vec<(String, &str)> {
     pairs
 }
 
-fn needs_go_fallback(text: &str) -> bool {
-    let head = text.trim_start();
-    if head.is_empty() {
-        return false;
-    }
-    // Lyricsfile YAML — keep Go for schema parity.
-    if head.contains("version:")
-        && (head.contains("\"1.0\"") || head.contains("'1.0'") || head.contains("version: 1.0"))
-    {
-        return true;
-    }
-    false
-}
-
 fn parse_one(lang: String, text: &str) -> Option<Vec<Lyrics>> {
     // TTML must keep markup; sanitize_text strips tags for LRC/SRT/plain.
     if crate::ttml::looks_like_ttml(text) {
         return crate::ttml::parse_ttml_list(&lang, text);
+    }
+    if crate::lyricsfile::looks_like_lyricsfile(text) {
+        return crate::lyricsfile::parse_lyricsfile(&lang, text);
     }
     let text = sanitize_text(text);
     if text.trim().is_empty() {

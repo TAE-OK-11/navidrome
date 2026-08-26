@@ -22,14 +22,15 @@ const (
 )
 
 type imageWorkerRequest struct {
-	InputSize  int    `json:"input_size,omitempty"`
-	InputSizes []int  `json:"input_sizes,omitempty"`
-	Mosaic     bool   `json:"mosaic,omitempty"`
-	Size       int    `json:"size"`
-	Square     bool   `json:"square"`
-	Fill       bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
-	Quality    int    `json:"quality"`
-	Format     string `json:"format"`
+	InputSize   int    `json:"input_size,omitempty"`
+	InputSizes  []int  `json:"input_sizes,omitempty"`
+	Mosaic      bool   `json:"mosaic,omitempty"`
+	Size        int    `json:"size"`
+	Square      bool   `json:"square"`
+	Fill        bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
+	AnimatedGIF bool   `json:"animated_gif,omitempty"`
+	Quality     int    `json:"quality"`
+	Format      string `json:"format"`
 }
 
 type imageWorkerResponse struct {
@@ -82,6 +83,16 @@ func (p *imageWorkerPool) fill(ctx context.Context, data []byte, size, quality i
 		Size:      size,
 		Quality:   quality,
 		Format:    format,
+	})
+}
+
+func (p *imageWorkerPool) resizeAnimatedGIF(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
+		InputSize:   len(data),
+		Size:        size,
+		AnimatedGIF: true,
+		Quality:     quality,
+		Format:      "gif",
 	})
 }
 

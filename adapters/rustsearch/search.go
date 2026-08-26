@@ -53,6 +53,7 @@ type request struct {
 	Query      string       `json:"query,omitempty"`
 	LibraryIDs []uint64     `json:"library_ids,omitempty"`
 	Searches   []searchSpec `json:"searches,omitempty"`
+	Values     []string     `json:"values,omitempty"`
 }
 
 type searchSpec struct {
@@ -72,11 +73,12 @@ type searchGroup struct {
 }
 
 type response struct {
-	Protocol int           `json:"protocol"`
-	OK       bool          `json:"ok"`
-	Groups   []searchGroup `json:"groups"`
-	Indexed  uint64        `json:"indexed"`
-	Error    string        `json:"error"`
+	Protocol   int           `json:"protocol"`
+	OK         bool          `json:"ok"`
+	Groups     []searchGroup `json:"groups"`
+	Indexed    uint64        `json:"indexed"`
+	Error      string        `json:"error"`
+	Normalized string        `json:"normalized,omitempty"`
 }
 
 type SearchLimits struct {
@@ -461,7 +463,7 @@ func (e *Engine) indexMediaFiles(ctx context.Context, ds model.DataStore, append
 		if mediaFile.Missing {
 			continue
 		}
-		if err := appendDocument(mediaFileDocument(mediaFile)); err != nil {
+		if err := appendDocument(e.mediaFileDocument(ctx, mediaFile)); err != nil {
 			return err
 		}
 	}
@@ -486,18 +488,21 @@ func (e *Engine) deltaMediaFiles(ctx context.Context, ds model.DataStore, since 
 			}
 			continue
 		}
-		if err := upsert(mediaFileDocument(mediaFile)); err != nil {
+		if err := upsert(e.mediaFileDocument(ctx, mediaFile)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func mediaFileDocument(mediaFile model.MediaFile) document {
+func (e *Engine) mediaFileDocument(ctx context.Context, mediaFile model.MediaFile) document {
 	secondary := []string{mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist,
-		mediaFile.SortTitle, mediaFile.SortAlbumName, mediaFile.SortArtistName, mediaFile.SortAlbumArtistName,
-		str.NormalizeForFTS(mediaFile.FullTitle(), mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist)}
+		mediaFile.SortTitle, mediaFile.SortAlbumName, mediaFile.SortArtistName, mediaFile.SortAlbumArtistName}
 	secondary = append(secondary, mediaFile.Participants.AllNames()...)
+	ftsValues := append([]string{mediaFile.FullTitle(), mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist}, secondary...)
+	if norm := e.normalizeFTS(ctx, ftsValues...); norm != "" {
+		secondary = append(secondary, norm)
+	}
 	return document{
 		Key: "song:" + mediaFile.ID, ID: mediaFile.ID, Kind: "song",
 		LibraryIDs: []uint64{uint64(mediaFile.LibraryID)}, Primary: mediaFile.FullTitle(),
@@ -514,7 +519,7 @@ func (e *Engine) indexAlbums(ctx context.Context, ds model.DataStore, appendDocu
 		if album.Missing {
 			continue
 		}
-		if err := appendDocument(albumDocument(album)); err != nil {
+		if err := appendDocument(e.albumDocument(ctx, album)); err != nil {
 			return err
 		}
 	}
@@ -533,17 +538,19 @@ func (e *Engine) deltaAlbums(ctx context.Context, ds model.DataStore, since time
 			}
 			continue
 		}
-		if err := upsert(albumDocument(album)); err != nil {
+		if err := upsert(e.albumDocument(ctx, album)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func albumDocument(album model.Album) document {
+func (e *Engine) albumDocument(ctx context.Context, album model.Album) document {
 	secondary := []string{album.AlbumArtist, album.SortAlbumName, album.SortAlbumArtistName,
-		album.CatalogNum, strings.Join(album.Participants.AllNames(), " "),
-		str.NormalizeForFTS(album.Name, album.AlbumArtist)}
+		album.CatalogNum, strings.Join(album.Participants.AllNames(), " ")}
+	if norm := e.normalizeFTS(ctx, album.Name, album.AlbumArtist); norm != "" {
+		secondary = append(secondary, norm)
+	}
 	return document{
 		Key: "album:" + album.ID, ID: album.ID, Kind: "album",
 		LibraryIDs: []uint64{uint64(album.LibraryID)}, Primary: album.FullName(),
@@ -594,17 +601,35 @@ func (e *Engine) collectArtists(ctx context.Context, ds model.DataStore, librari
 		}
 	}
 	for _, indexed := range documents {
-		doc := document{
-			Key: "artist:" + indexed.artist.ID, ID: indexed.artist.ID, Kind: "artist",
-			LibraryIDs: indexed.libraryIDs, Primary: indexed.artist.Name,
-			Secondary: strings.Join([]string{indexed.artist.SortArtistName, indexed.artist.OrderArtistName,
-				str.NormalizeForFTS(indexed.artist.Name)}, " "),
-		}
+		doc := e.artistDocument(ctx, indexed.artist, indexed.libraryIDs)
 		if err := emit(doc, indexed.artist.Missing); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (e *Engine) artistDocument(ctx context.Context, artist model.Artist, libraryIDs []uint64) document {
+	secondary := []string{artist.SortArtistName, artist.OrderArtistName}
+	if norm := e.normalizeFTS(ctx, artist.Name); norm != "" {
+		secondary = append(secondary, norm)
+	}
+	return document{
+		Key: "artist:" + artist.ID, ID: artist.ID, Kind: "artist",
+		LibraryIDs: libraryIDs, Primary: artist.Name,
+		Secondary: strings.Join(secondary, " "),
+	}
+}
+
+func (e *Engine) normalizeFTS(ctx context.Context, values ...string) string {
+	if e == nil || !e.Ready() || len(values) == 0 {
+		return str.NormalizeForFTS(values...)
+	}
+	resp, err := e.roundTrip(ctx, request{Op: "normalize_fts", Values: values})
+	if err != nil || resp.Normalized == "" {
+		return str.NormalizeForFTS(values...)
+	}
+	return resp.Normalized
 }
 
 func scanGeneration(libraries model.Libraries) int64 {
@@ -623,7 +648,7 @@ func searchIndexStale(ready bool, generation int64, libraries model.Libraries) b
 func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	timeout := searchRequestTimeout
 	switch req.Op {
-	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete":
+	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete", "normalize_fts":
 		timeout = indexRequestTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)

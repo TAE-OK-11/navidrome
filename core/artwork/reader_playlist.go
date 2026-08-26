@@ -255,18 +255,6 @@ func (a *playlistArtworkReader) decodeTiles(ctx context.Context, payloads [][]by
 
 func (a *playlistArtworkReader) createTileFromBytes(ctx context.Context, data []byte) (image.Image, error) {
 	size := tileSize / 2
-	if resized, err := persistentImageWorkers.fill(ctx, data, size, conf.Server.CoverArtQuality, "png"); err == nil {
-		img, _, decodeErr := DecodeImage(bytes.NewReader(resized))
-		if decodeErr == nil {
-			return img, nil
-		}
-		log.Debug(ctx, "Rust playlist tile decode failed; falling back to Go", "error", decodeErr)
-	} else if ctx.Err() != nil {
-		return nil, ctx.Err()
-	} else {
-		log.Debug(ctx, "Rust playlist tile fill unavailable; falling back to Go", "error", err)
-	}
-
 	img, _, err := DecodeImage(bytes.NewReader(data))
 	if err != nil {
 		return nil, err

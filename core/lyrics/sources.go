@@ -39,11 +39,20 @@ func fromExternalFile(ctx context.Context, mf *model.MediaFile, suffix string) (
 		return nil, fmt.Errorf("opening library filesystem: %w", err)
 	}
 
-	f, err := fsys.Open(sidecarRelPath)
+	info, err := fs.Stat(fsys, sidecarRelPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		log.Trace(ctx, "no lyrics found at path")
 		return nil, nil
 	} else if err != nil {
+		return nil, err
+	}
+	if cached, ok := loadSidecarCache(mf.LibraryPath, sidecarRelPath, suffix, info.ModTime()); ok {
+		log.Trace(ctx, "retrieved lyrics from sidecar cache")
+		return cached, nil
+	}
+
+	f, err := fsys.Open(sidecarRelPath)
+	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
@@ -64,6 +73,7 @@ func fromExternalFile(ctx context.Context, mf *model.MediaFile, suffix string) (
 		return nil, nil
 	}
 
+	storeSidecarCache(mf.LibraryPath, sidecarRelPath, suffix, info.ModTime(), list)
 	log.Trace(ctx, "retrieved lyrics from external file")
 	return list, nil
 }

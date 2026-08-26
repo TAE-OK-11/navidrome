@@ -4,7 +4,8 @@ use anyhow::{Context, Result, bail};
 use fast_image_resize as fir;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
-use image::{ExtendedColorType, ImageEncoder, ImageReader, Limits};
+use image::codecs::gif::GifEncoder;
+use image::{AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 
 const MAX_INPUT_BYTES: usize = 128 * 1024 * 1024;
@@ -27,6 +28,8 @@ struct ImageRequest {
     square: bool,
     #[serde(default)]
     fill: bool,
+    #[serde(default)]
+    animated_gif: bool,
     quality: u8,
     format: OutputFormat,
 }
@@ -226,6 +229,9 @@ fn decode_rgba(encoded: &[u8]) -> Result<image::RgbaImage> {
 }
 
 fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    if request.animated_gif && is_animated_gif(encoded) {
+        return resize_animated_gif(encoded, request);
+    }
     let dimensions_reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
         .context("detecting image format")?;
@@ -436,6 +442,62 @@ fn encode(
     Ok(output)
 }
 
+fn is_animated_gif(data: &[u8]) -> bool {
+    data.starts_with(b"GIF") && data.iter().filter(|&&b| b == 0x2C).count() > 1
+}
+
+fn resize_animated_gif(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    use image::codecs::gif::GifDecoder;
+
+    let decoder = GifDecoder::new(Cursor::new(encoded)).context("decoding animated gif")?;
+    let mut resized_frames = Vec::new();
+    for frame in decoder.into_frames() {
+        let frame = frame.context("reading gif frame")?;
+        let delay = frame.delay();
+        let rgba = frame.into_buffer();
+        let (src_width, src_height) = (rgba.width(), rgba.height());
+        validate_dimensions(src_width, src_height)?;
+        let target_size = request.size.min(src_width.max(src_height));
+        let (resized_width, resized_height) = fit_dimensions(src_width, src_height, target_size);
+        let source = fir::images::Image::from_vec_u8(
+            src_width,
+            src_height,
+            rgba.into_raw(),
+            fir::PixelType::U8x4,
+        )
+        .context("creating animated gif resize source")?;
+        let mut resized =
+            fir::images::Image::new(resized_width, resized_height, fir::PixelType::U8x4);
+        let options = fir::ResizeOptions::new()
+            .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+        fir::Resizer::new()
+            .resize(&source, &mut resized, &options)
+            .context("resizing animated gif frame")?;
+        let buffer = image::RgbaImage::from_raw(resized_width, resized_height, resized.into_vec())
+            .context("building animated gif frame buffer")?;
+        resized_frames.push(Frame::from_parts(buffer, 0, 0, delay));
+    }
+    if resized_frames.is_empty() {
+        bail!("animated gif contains no frames");
+    }
+    let mut output = Vec::new();
+    {
+        let mut encoder = GifEncoder::new(&mut output);
+        for frame in resized_frames {
+            encoder
+                .encode_frame(frame)
+                .context("encoding animated gif frame")?;
+        }
+    }
+    if output.is_empty() || output.len() > MAX_OUTPUT_BYTES {
+        bail!(
+            "encoded animated gif size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
+            output.len()
+        );
+    }
+    Ok(output)
+}
+
 fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
     serde_json::to_writer(
         &mut *output,
@@ -489,6 +551,7 @@ mod tests {
                 size: 20,
                 square: true,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -511,6 +574,7 @@ mod tests {
                 size: 20,
                 square: false,
                 fill: true,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -540,6 +604,7 @@ mod tests {
                 size: 40,
                 square: false,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -563,6 +628,7 @@ mod tests {
                 size: 40,
                 square: false,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },

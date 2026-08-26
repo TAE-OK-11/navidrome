@@ -62,6 +62,9 @@ enum Request {
         library_ids: Vec<u64>,
         searches: Vec<SearchSpec>,
     },
+    NormalizeFts {
+        values: Vec<String>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -85,6 +88,8 @@ struct Response {
     indexed: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    normalized: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -425,6 +430,39 @@ fn normalize(value: &str) -> String {
     normalized
 }
 
+static FTS_PUNCT_STRIP: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}]").expect("fts punct regex"));
+
+/// Matches Go `str.NormalizeForFTS`: punctuation-stripped and accent-transliterated
+/// word variants for secondary search fields.
+fn normalize_for_fts(values: &[String]) -> String {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    let mut add = |orig: &str, variant: &str| {
+        if variant.is_empty() || variant == orig {
+            return;
+        }
+        let lower = variant.to_lowercase();
+        if seen.insert(lower) {
+            result.push(variant.to_owned());
+        }
+    };
+
+    for value in values {
+        for word in value.split_whitespace() {
+            let transliterated = deunicode::deunicode(word);
+            add(
+                word,
+                &FTS_PUNCT_STRIP.replace_all(&transliterated, "").into_owned(),
+            );
+            add(word, &transliterated);
+        }
+    }
+    result.join(" ")
+}
+
 fn main() -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
@@ -443,6 +481,7 @@ fn main() -> Result<()> {
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(format!("{error:#}")),
+                normalized: None,
             }),
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
@@ -450,6 +489,7 @@ fn main() -> Result<()> {
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: Some(error.to_string()),
+                normalized: None,
             },
         };
         serde_json::to_writer(&mut output, &response)?;
@@ -508,6 +548,16 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                 });
             }
         }
+        Request::NormalizeFts { values } => {
+            return Ok(Response {
+                protocol: PROTOCOL_VERSION,
+                ok: true,
+                groups: Vec::new(),
+                indexed: engine.indexed,
+                error: None,
+                normalized: Some(normalize_for_fts(&values)),
+            });
+        }
     }
     Ok(Response {
         protocol: PROTOCOL_VERSION,
@@ -515,6 +565,7 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
         groups,
         indexed: engine.indexed,
         error: None,
+        normalized: None,
     })
 }
 

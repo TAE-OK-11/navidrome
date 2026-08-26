@@ -39,7 +39,7 @@ const RadioTitle = ({ record: recordOverride }: RadioRecordOverride) => {
 const RadioEdit = (props: ComponentProps<typeof Edit>) => {
   return (
     <Edit title={<RadioTitle />} {...props}>
-      <SimpleForm variant="outlined">
+      <SimpleForm>
         <RadioCoverArt />
         <TextInput source="name" validate={[required()]} />
         <TextInput

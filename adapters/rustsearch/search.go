@@ -30,6 +30,9 @@ const (
 	freshnessCheckInterval = 10 * time.Second
 	searchRequestTimeout   = 5 * time.Second
 	indexRequestTimeout    = 30 * time.Second
+	// Prefer a full rebuild when the delta is large enough that chunked
+	// upsert/delete commits would spend more time than a single replacement.
+	maxIncrementalRatio = 0.25
 )
 
 var ErrNotReady = errors.New("Rust search index is not ready")
@@ -46,6 +49,7 @@ type document struct {
 type request struct {
 	Op         string       `json:"op"`
 	Documents  []document   `json:"documents,omitempty"`
+	Keys       []string     `json:"keys,omitempty"`
 	Query      string       `json:"query,omitempty"`
 	LibraryIDs []uint64     `json:"library_ids,omitempty"`
 	Searches   []searchSpec `json:"searches,omitempty"`
@@ -101,6 +105,7 @@ type Engine struct {
 	building   atomic.Bool
 	generation atomic.Int64
 	nextCheck  atomic.Int64
+	indexed    atomic.Uint64
 }
 
 func Available() bool {
@@ -175,7 +180,7 @@ func libraryScope(libraryIDs []int) []uint64 {
 }
 
 // RefreshIfStale checks scan generations at a bounded cadence. Searches keep
-// using the old index until a replacement commits.
+// using the old index until a replacement or incremental sync commits.
 func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 	if e == nil || e.building.Load() {
 		return
@@ -191,14 +196,186 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 		log.Debug(ctx, "Rust search freshness check failed", err)
 		return
 	}
-	if !searchIndexStale(e.Ready(), e.generation.Load(), libraries) {
+	ready := e.Ready()
+	generation := e.generation.Load()
+	if !searchIndexStale(ready, generation, libraries) {
 		return
 	}
 	go func() {
-		if err := e.Rebuild(adminCtx, ds); err != nil {
+		var err error
+		if ready && generation > 0 {
+			err = e.RefreshIncremental(adminCtx, ds, generation)
+			if err != nil {
+				log.Debug(adminCtx, "Rust search incremental refresh failed; falling back to full rebuild", err)
+				err = e.Rebuild(adminCtx, ds)
+			}
+		} else {
+			err = e.Rebuild(adminCtx, ds)
+		}
+		if err != nil {
 			log.Warn("Rust search index rebuild failed; SQLite search remains active", err)
 		}
 	}()
+}
+
+// RefreshIncremental applies scan deltas with upsert/delete instead of rebuilding
+// the whole in-RAM Tantivy index. Go remains the control tower: it reads SQLite,
+// builds documents, and decides when to fall back to Rebuild.
+func (e *Engine) RefreshIncremental(ctx context.Context, ds model.DataStore, sinceGeneration int64) error {
+	if !e.building.CompareAndSwap(false, true) {
+		return nil
+	}
+	defer e.building.Store(false)
+	if !e.ready.Load() || sinceGeneration <= 0 {
+		return ErrNotReady
+	}
+
+	ctx = auth.WithAdminUser(ctx, ds)
+	libraries, err := ds.Library(ctx).GetAll()
+	if err != nil {
+		return fmt.Errorf("loading libraries for Rust search: %w", err)
+	}
+	if !searchIndexStale(true, sinceGeneration, libraries) {
+		return nil
+	}
+
+	since := time.Unix(0, sinceGeneration)
+	expected, err := expectedSearchDocuments(ctx, ds)
+	if err != nil {
+		return err
+	}
+	indexedBefore := int64(e.indexed.Load())
+	if preferFullRebuild(indexedBefore, abs64(expected-indexedBefore)) {
+		return e.rebuildLocked(ctx, ds, libraries)
+	}
+
+	upserts := make([]document, 0, indexBatchSize)
+	deletes := make([]string, 0, indexBatchSize)
+	changed := int64(0)
+	var lastIndexed uint64
+	flushUpserts := func() error {
+		if len(upserts) == 0 {
+			return nil
+		}
+		resp, err := e.roundTrip(ctx, request{Op: "upsert", Documents: upserts})
+		if err != nil {
+			return err
+		}
+		lastIndexed = resp.Indexed
+		upserts = upserts[:0]
+		return nil
+	}
+	flushDeletes := func() error {
+		if len(deletes) == 0 {
+			return nil
+		}
+		resp, err := e.roundTrip(ctx, request{Op: "delete", Keys: deletes})
+		if err != nil {
+			return err
+		}
+		lastIndexed = resp.Indexed
+		deletes = deletes[:0]
+		return nil
+	}
+	queueUpsert := func(doc document) error {
+		changed++
+		if preferFullRebuild(indexedBefore, changed) {
+			return errIncrementalTooLarge
+		}
+		upserts = append(upserts, doc)
+		if len(upserts) >= indexBatchSize {
+			return flushUpserts()
+		}
+		return nil
+	}
+	queueDelete := func(key string) error {
+		changed++
+		if preferFullRebuild(indexedBefore, changed) {
+			return errIncrementalTooLarge
+		}
+		deletes = append(deletes, key)
+		if len(deletes) >= indexBatchSize {
+			return flushDeletes()
+		}
+		return nil
+	}
+
+	if err := e.deltaMediaFiles(ctx, ds, since, queueUpsert, queueDelete); err != nil {
+		if errors.Is(err, errIncrementalTooLarge) {
+			return e.rebuildLocked(ctx, ds, libraries)
+		}
+		return err
+	}
+	if err := e.deltaAlbums(ctx, ds, since, queueUpsert, queueDelete); err != nil {
+		if errors.Is(err, errIncrementalTooLarge) {
+			return e.rebuildLocked(ctx, ds, libraries)
+		}
+		return err
+	}
+	if err := e.deltaArtists(ctx, ds, libraries, since, queueUpsert, queueDelete); err != nil {
+		if errors.Is(err, errIncrementalTooLarge) {
+			return e.rebuildLocked(ctx, ds, libraries)
+		}
+		return err
+	}
+	if err := flushUpserts(); err != nil {
+		return err
+	}
+	if err := flushDeletes(); err != nil {
+		return err
+	}
+	if changed == 0 {
+		if indexedBefore != expected {
+			log.Debug(ctx, "Rust search document count drifted without deltas; rebuilding",
+				"indexed", indexedBefore, "expected", expected)
+			return e.rebuildLocked(ctx, ds, libraries)
+		}
+		e.generation.Store(scanGeneration(libraries))
+		return nil
+	}
+	if int64(lastIndexed) != expected {
+		log.Debug(ctx, "Rust search document count drifted after incremental refresh; rebuilding",
+			"indexed", lastIndexed, "expected", expected)
+		return e.rebuildLocked(ctx, ds, libraries)
+	}
+
+	e.indexed.Store(lastIndexed)
+	e.generation.Store(scanGeneration(libraries))
+	e.ready.Store(true)
+	log.Info(ctx, "Rust search index refreshed incrementally", "documents", lastIndexed, "changed", changed)
+	return nil
+}
+
+var errIncrementalTooLarge = errors.New("rust search incremental delta is too large")
+
+func preferFullRebuild(indexed, delta int64) bool {
+	if indexed <= 0 || delta <= 0 {
+		return false
+	}
+	return float64(delta) > float64(indexed)*maxIncrementalRatio
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func expectedSearchDocuments(ctx context.Context, ds model.DataStore) (int64, error) {
+	songs, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	if err != nil {
+		return 0, fmt.Errorf("counting media files for Rust search: %w", err)
+	}
+	albums, err := ds.Album(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	if err != nil {
+		return 0, fmt.Errorf("counting albums for Rust search: %w", err)
+	}
+	artists, err := ds.Artist(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	if err != nil {
+		return 0, fmt.Errorf("counting artists for Rust search: %w", err)
+	}
+	return songs + albums + artists, nil
 }
 
 func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
@@ -206,14 +383,18 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 		return nil
 	}
 	defer e.building.Store(false)
-	wasReady := e.ready.Load()
 
 	ctx = auth.WithAdminUser(ctx, ds)
 	libraries, err := ds.Library(ctx).GetAll()
 	if err != nil {
 		return fmt.Errorf("loading libraries for Rust search: %w", err)
 	}
-	if _, err = e.roundTrip(ctx, request{Op: "begin_replace"}); err != nil {
+	return e.rebuildLocked(ctx, ds, libraries)
+}
+
+func (e *Engine) rebuildLocked(ctx context.Context, ds model.DataStore, libraries model.Libraries) error {
+	wasReady := e.ready.Load()
+	if _, err := e.roundTrip(ctx, request{Op: "begin_replace"}); err != nil {
 		return err
 	}
 	committed := false
@@ -233,12 +414,12 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 			return nil
 		}
 		_, err := e.roundTrip(ctx, request{Op: "append", Documents: batch})
-		batch = make([]document, 0, indexBatchSize)
+		batch = batch[:0]
 		return err
 	}
 	appendDocument := func(doc document) error {
 		batch = append(batch, doc)
-		if len(batch) == cap(batch) {
+		if len(batch) >= indexBatchSize {
 			return flush()
 		}
 		return nil
@@ -261,6 +442,7 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 		return err
 	}
 	committed = true
+	e.indexed.Store(resp.Indexed)
 	e.generation.Store(scanGeneration(libraries))
 	e.ready.Store(true)
 	log.Info(ctx, "Rust search index ready", "documents", resp.Indexed)
@@ -279,19 +461,48 @@ func (e *Engine) indexMediaFiles(ctx context.Context, ds model.DataStore, append
 		if mediaFile.Missing {
 			continue
 		}
-		secondary := []string{mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist,
-			mediaFile.SortTitle, mediaFile.SortAlbumName, mediaFile.SortArtistName, mediaFile.SortAlbumArtistName,
-			str.NormalizeForFTS(mediaFile.FullTitle(), mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist)}
-		secondary = append(secondary, mediaFile.Participants.AllNames()...)
-		if err := appendDocument(document{
-			Key: "song:" + mediaFile.ID, ID: mediaFile.ID, Kind: "song",
-			LibraryIDs: []uint64{uint64(mediaFile.LibraryID)}, Primary: mediaFile.FullTitle(),
-			Secondary: strings.Join(secondary, " "),
-		}); err != nil {
+		if err := appendDocument(mediaFileDocument(mediaFile)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (e *Engine) deltaMediaFiles(ctx context.Context, ds model.DataStore, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
+	cursor, err := ds.MediaFile(ctx).GetCursor(model.QueryOptions{Filters: squirrel.Or{
+		squirrel.Gt{"media_file.created_at": since},
+		squirrel.Gt{"media_file.updated_at": since},
+	}})
+	if err != nil {
+		return fmt.Errorf("opening media file delta cursor for Rust search: %w", err)
+	}
+	for mediaFile, cursorErr := range cursor {
+		if cursorErr != nil {
+			return fmt.Errorf("reading media file deltas for Rust search: %w", cursorErr)
+		}
+		if mediaFile.Missing {
+			if err := deleteKey("song:" + mediaFile.ID); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := upsert(mediaFileDocument(mediaFile)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mediaFileDocument(mediaFile model.MediaFile) document {
+	secondary := []string{mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist,
+		mediaFile.SortTitle, mediaFile.SortAlbumName, mediaFile.SortArtistName, mediaFile.SortAlbumArtistName,
+		str.NormalizeForFTS(mediaFile.FullTitle(), mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist)}
+	secondary = append(secondary, mediaFile.Participants.AllNames()...)
+	return document{
+		Key: "song:" + mediaFile.ID, ID: mediaFile.ID, Kind: "song",
+		LibraryIDs: []uint64{uint64(mediaFile.LibraryID)}, Primary: mediaFile.FullTitle(),
+		Secondary: strings.Join(secondary, " "),
+	}
 }
 
 func (e *Engine) indexAlbums(ctx context.Context, ds model.DataStore, appendDocument func(document) error) error {
@@ -303,35 +514,77 @@ func (e *Engine) indexAlbums(ctx context.Context, ds model.DataStore, appendDocu
 		if album.Missing {
 			continue
 		}
-		secondary := []string{album.AlbumArtist, album.SortAlbumName, album.SortAlbumArtistName,
-			album.CatalogNum, strings.Join(album.Participants.AllNames(), " "),
-			str.NormalizeForFTS(album.Name, album.AlbumArtist)}
-		if err := appendDocument(document{
-			Key: "album:" + album.ID, ID: album.ID, Kind: "album",
-			LibraryIDs: []uint64{uint64(album.LibraryID)}, Primary: album.FullName(),
-			Secondary: strings.Join(secondary, " "),
-		}); err != nil {
+		if err := appendDocument(albumDocument(album)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func (e *Engine) deltaAlbums(ctx context.Context, ds model.DataStore, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
+	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Gt{"album.imported_at": since}})
+	if err != nil {
+		return fmt.Errorf("loading album deltas for Rust search: %w", err)
+	}
+	for _, album := range albums {
+		if album.Missing {
+			if err := deleteKey("album:" + album.ID); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := upsert(albumDocument(album)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func albumDocument(album model.Album) document {
+	secondary := []string{album.AlbumArtist, album.SortAlbumName, album.SortAlbumArtistName,
+		album.CatalogNum, strings.Join(album.Participants.AllNames(), " "),
+		str.NormalizeForFTS(album.Name, album.AlbumArtist)}
+	return document{
+		Key: "album:" + album.ID, ID: album.ID, Kind: "album",
+		LibraryIDs: []uint64{uint64(album.LibraryID)}, Primary: album.FullName(),
+		Secondary: strings.Join(secondary, " "),
+	}
+}
+
 func (e *Engine) indexArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, appendDocument func(document) error) error {
+	return e.collectArtists(ctx, ds, libraries, nil, func(doc document, missing bool) error {
+		if missing {
+			return nil
+		}
+		return appendDocument(doc)
+	})
+}
+
+func (e *Engine) deltaArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
+	return e.collectArtists(ctx, ds, libraries, squirrel.Gt{"artist.updated_at": since}, func(doc document, missing bool) error {
+		if missing {
+			return deleteKey(doc.Key)
+		}
+		return upsert(doc)
+	})
+}
+
+func (e *Engine) collectArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, extraFilter squirrel.Sqlizer, emit func(document, bool) error) error {
 	type artistDocument struct {
 		artist     model.Artist
 		libraryIDs []uint64
 	}
 	documents := make(map[string]*artistDocument)
 	for _, library := range libraries {
-		artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"library_id": []int{library.ID}}})
+		filters := []squirrel.Sqlizer{squirrel.Eq{"library_id": []int{library.ID}}}
+		if extraFilter != nil {
+			filters = append(filters, extraFilter)
+		}
+		artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: squirrel.And(filters)})
 		if err != nil {
 			return fmt.Errorf("loading artists for Rust search: %w", err)
 		}
 		for _, artist := range artists {
-			if artist.Missing {
-				continue
-			}
 			indexed := documents[artist.ID]
 			if indexed == nil {
 				indexed = &artistDocument{artist: artist}
@@ -341,12 +594,13 @@ func (e *Engine) indexArtists(ctx context.Context, ds model.DataStore, libraries
 		}
 	}
 	for _, indexed := range documents {
-		if err := appendDocument(document{
+		doc := document{
 			Key: "artist:" + indexed.artist.ID, ID: indexed.artist.ID, Kind: "artist",
 			LibraryIDs: indexed.libraryIDs, Primary: indexed.artist.Name,
 			Secondary: strings.Join([]string{indexed.artist.SortArtistName, indexed.artist.OrderArtistName,
 				str.NormalizeForFTS(indexed.artist.Name)}, " "),
-		}); err != nil {
+		}
+		if err := emit(doc, indexed.artist.Missing); err != nil {
 			return err
 		}
 	}
@@ -369,7 +623,7 @@ func searchIndexStale(ready bool, generation int64, libraries model.Libraries) b
 func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	timeout := searchRequestTimeout
 	switch req.Op {
-	case "begin_replace", "append", "commit_replace", "abort_replace":
+	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete":
 		timeout = indexRequestTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -472,6 +726,7 @@ func (e *Engine) ensureWorker() (*worker, error) {
 
 func (e *Engine) stopWorker() {
 	e.ready.Store(false)
+	e.indexed.Store(0)
 	if e.worker == nil {
 		return
 	}

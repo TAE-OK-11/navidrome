@@ -245,6 +245,10 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 
 	c, err := io.CopyBuffer(w, s, *bufPtr)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)
+			return c, nil
+		}
 		log.Error(ctx, "Error sending transcoded file", "id", id, err)
 		if c == 0 {
 			w.Header().Del("Content-Length")

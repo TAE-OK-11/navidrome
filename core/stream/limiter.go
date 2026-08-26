@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // ErrTooManyTranscodes is returned by TranscodeLimiter.Acquire when the
@@ -18,10 +19,15 @@ var ErrTooManyTranscodes = errors.New("too many concurrent transcodes")
 // within this window, so retrying after this delay typically succeeds.
 const RetryAfterSeconds = 5
 
+// A retiring transcode normally releases its slot within a few milliseconds
+// after the client closes the old stream. Briefly waiting for that handoff
+// avoids turning an ordinary track change into a five-second 429 retry.
+const transcodeSlotHandoffWait = 100 * time.Millisecond
+
 // TranscodeLimiter gates the number of concurrent ffmpeg transcodes. It enforces
 // both a global cap (to protect the host from process exhaustion) and an optional
-// per-user cap (to keep one client from starving the others). Acquire never
-// blocks: it either reserves a slot or returns ErrTooManyTranscodes immediately.
+// per-user cap (to keep one client from starving the others). Acquire permits a
+// short, context-aware handoff from a retiring stream before returning 429.
 type TranscodeLimiter interface {
 	// Acquire reserves a slot for the given user. On success it returns a release
 	// function that must be called exactly once when the transcode is done.
@@ -42,9 +48,10 @@ func NewTranscodeLimiter(maxConcurrent, maxPerUser int) TranscodeLimiter {
 	if maxConcurrent <= 0 && maxPerUser <= 0 {
 		return noopLimiter{}
 	}
-	l := &transcodeLimiter{maxPerUser: maxPerUser}
-	if maxConcurrent > 0 {
-		l.global = make(chan struct{}, maxConcurrent)
+	l := &transcodeLimiter{
+		maxGlobal:  maxConcurrent,
+		maxPerUser: maxPerUser,
+		changed:    make(chan struct{}),
 	}
 	if maxPerUser > 0 {
 		l.perUser = make(map[string]int)
@@ -75,61 +82,89 @@ func (noopLimiter) Acquire(context.Context, string) (func(), error) {
 func (noopLimiter) Enabled() bool { return false }
 
 type transcodeLimiter struct {
+	maxGlobal  int
 	maxPerUser int
-	global     chan struct{}
 
-	mu      sync.Mutex
-	perUser map[string]int
+	mu           sync.Mutex
+	globalActive int
+	perUser      map[string]int
+	changed      chan struct{}
 }
 
 func (*transcodeLimiter) Enabled() bool { return true }
 
-func (l *transcodeLimiter) Acquire(_ context.Context, user string) (func(), error) {
-	// Reserve a per-user slot first so a noisy user can't burn through
-	// global slots only to be rejected later. An empty user key means
-	// "anonymous" (e.g. public share viewers); we skip the per-user cap
-	// entirely so unrelated anonymous clients do not share a bucket.
-	perUserActive := l.maxPerUser > 0 && user != ""
-	if perUserActive {
+func (l *transcodeLimiter) Acquire(ctx context.Context, user string) (func(), error) {
+	var timer *time.Timer
+	var timeout <-chan time.Time
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		l.mu.Lock()
-		if l.perUser[user] >= l.maxPerUser {
+		if l.availableLocked(user) {
+			l.reserveLocked(user)
 			l.mu.Unlock()
-			return nil, ErrTooManyTranscodes
+			return l.releaseFunc(user), nil
 		}
-		l.perUser[user]++
+		changed := l.changed
 		l.mu.Unlock()
-	}
+		if timer == nil {
+			timer = time.NewTimer(transcodeSlotHandoffWait)
+			timeout = timer.C
+		}
 
-	if l.global != nil {
 		select {
-		case l.global <- struct{}{}:
-		default:
-			if perUserActive {
-				l.releasePerUser(user)
-			}
+		case <-changed:
+			// A release broadcasts to every waiter. Recheck both limits under
+			// the mutex so exactly the allowed number can reserve a slot.
+		case <-timeout:
 			return nil, ErrTooManyTranscodes
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
+}
 
+func (l *transcodeLimiter) availableLocked(user string) bool {
+	perUserActive := l.maxPerUser > 0 && user != ""
+	if perUserActive && l.perUser[user] >= l.maxPerUser {
+		return false
+	}
+	return l.maxGlobal <= 0 || l.globalActive < l.maxGlobal
+}
+
+func (l *transcodeLimiter) reserveLocked(user string) {
+	if l.maxGlobal > 0 {
+		l.globalActive++
+	}
+	if l.maxPerUser > 0 && user != "" {
+		l.perUser[user]++
+	}
+}
+
+func (l *transcodeLimiter) releaseFunc(user string) func() {
 	var released atomic.Bool
 	return func() {
 		if !released.CompareAndSwap(false, true) {
 			return
 		}
-		if l.global != nil {
-			<-l.global
+		l.mu.Lock()
+		if l.maxGlobal > 0 {
+			l.globalActive--
 		}
-		if perUserActive {
-			l.releasePerUser(user)
+		if l.maxPerUser > 0 && user != "" {
+			l.perUser[user]--
+			if l.perUser[user] <= 0 {
+				delete(l.perUser, user)
+			}
 		}
-	}, nil
-}
-
-func (l *transcodeLimiter) releasePerUser(user string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.perUser[user]--
-	if l.perUser[user] <= 0 {
-		delete(l.perUser, user)
+		close(l.changed)
+		l.changed = make(chan struct{})
+		l.mu.Unlock()
 	}
 }

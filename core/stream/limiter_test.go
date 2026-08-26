@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/log"
@@ -51,6 +52,41 @@ var _ = Describe("TranscodeLimiter", func() {
 	})
 
 	Describe("Global cap", func() {
+		It("hands a retiring stream slot to its replacement", func() {
+			lim := stream.NewTranscodeLimiter(1, 0)
+			rel1, err := lim.Acquire(ctx, "alice")
+			Expect(err).ToNot(HaveOccurred())
+
+			type result struct {
+				release func()
+				err     error
+			}
+			acquired := make(chan result, 1)
+			go func() {
+				release, acquireErr := lim.Acquire(ctx, "alice")
+				acquired <- result{release: release, err: acquireErr}
+			}()
+
+			Consistently(acquired, 20*time.Millisecond).ShouldNot(Receive())
+			rel1()
+			var replacement result
+			Eventually(acquired, time.Second).Should(Receive(&replacement))
+			Expect(replacement.err).ToNot(HaveOccurred())
+			replacement.release()
+		})
+
+		It("stops waiting when the request is canceled", func() {
+			lim := stream.NewTranscodeLimiter(1, 0)
+			release, err := lim.Acquire(ctx, "alice")
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(release)
+
+			cancelCtx, cancel := context.WithCancel(ctx)
+			cancel()
+			_, err = lim.Acquire(cancelCtx, "bob")
+			Expect(errors.Is(err, context.Canceled)).To(BeTrue())
+		})
+
 		It("rejects requests beyond MaxConcurrent with ErrTooManyTranscodes", func() {
 			lim := stream.NewTranscodeLimiter(2, 0)
 

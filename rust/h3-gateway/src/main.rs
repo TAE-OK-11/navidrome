@@ -554,11 +554,21 @@ async fn proxy_request(
         ..
     } = incoming;
     if let Err(error) = proxy_request_inner(headers, send, recv, read_fin, &context).await {
-        warn!(
-            "HTTP/3 stream proxy failed peer={}: {error:#}",
-            context.peer
-        );
+        if peer_closed_stream(&error) {
+            log::debug!("HTTP/3 stream closed by peer={}: {error:#}", context.peer);
+        } else {
+            warn!(
+                "HTTP/3 stream proxy failed peer={}: {error:#}",
+                context.peer
+            );
+        }
     }
+}
+
+fn peer_closed_stream(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.to_string().eq_ignore_ascii_case("channel closed"))
 }
 
 async fn proxy_request_inner(
@@ -1262,6 +1272,13 @@ mod tests {
         assert_eq!(normalize_congestion_control("CUBIC").unwrap(), "cubic");
         assert_eq!(normalize_congestion_control("reno").unwrap(), "reno");
         assert!(normalize_congestion_control("bbr3").is_err());
+    }
+
+    #[test]
+    fn peer_channel_close_is_not_an_operational_failure() {
+        let error = anyhow!("channel closed").context("forwarding response body");
+        assert!(peer_closed_stream(&error));
+        assert!(!peer_closed_stream(&anyhow!("bridge failed")));
     }
 
     #[test]

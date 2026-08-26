@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -97,6 +98,17 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(n).To(BeZero())
 			Consistently(reader.reads, 100*time.Millisecond).ShouldNot(Receive())
 		})
+		It("treats a canceled client write as a normal stream close", func() {
+			cancelCtx, cancel := context.WithCancel(ctx)
+			writer := &cancelingResponseWriter{header: make(http.Header), cancel: cancel}
+			s := stream.NewStream(mf, "mp3", 64, io.NopCloser(strings.NewReader("audio")))
+			DeferCleanup(s.Close)
+			req := httptest.NewRequest(http.MethodGet, "/stream", nil).WithContext(cancelCtx)
+
+			n, err := s.Serve(cancelCtx, writer, req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(n).To(BeZero())
+		})
 		It("rejects transcode requests beyond MaxConcurrent with ErrTooManyTranscodes", func() {
 			// Use an ffmpeg whose Read blocks indefinitely so the cache's
 			// background copy can't drain the source and release the slot —
@@ -185,3 +197,15 @@ func (r *readTrackingCloser) Read([]byte) (int, error) {
 }
 
 func (*readTrackingCloser) Close() error { return nil }
+
+type cancelingResponseWriter struct {
+	header http.Header
+	cancel context.CancelFunc
+}
+
+func (w *cancelingResponseWriter) Header() http.Header { return w.header }
+func (*cancelingResponseWriter) WriteHeader(int)       {}
+func (w *cancelingResponseWriter) Write([]byte) (int, error) {
+	w.cancel()
+	return 0, context.Canceled
+}

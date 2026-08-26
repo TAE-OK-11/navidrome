@@ -203,7 +203,7 @@ export const InfoCard = ({ record, manifest, classes, translate, isSmall }) => (
               <Typography
                 variant="caption"
                 color="textSecondary"
-                style={{ marginTop: 4, display: 'block' }}
+                sx={{ marginTop: 4, display: 'block' }}
               >
                 {translate('resources.plugin.messages.clickPermissions')}
               </Typography>

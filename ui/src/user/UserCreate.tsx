@@ -81,7 +81,7 @@ const UserCreate = (props) => {
                 <Typography
                   variant="body2"
                   color="textSecondary"
-                  style={{ marginTop: 16, marginBottom: 16 }}
+                  sx={{ marginTop: 16, marginBottom: 16 }}
                 >
                   {translate('resources.user.message.adminAutoLibraries')}
                 </Typography>

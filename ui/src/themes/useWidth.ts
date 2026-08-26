@@ -1,17 +1,28 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import { createElement, forwardRef } from 'react'
+import { createElement, forwardRef, type ComponentType } from 'react'
+
+export type Width = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+
+type MediaQueryOptions = NonNullable<Parameters<typeof useMediaQuery>[1]>
+
+export type WidthOptions = Omit<MediaQueryOptions, 'noSsr'> & {
+  /** Legacy spelling retained for existing withWidth callers. */
+  noSSR?: boolean
+  noSsr?: boolean
+}
+
+type WithWidthProps = { width: Width }
 
 /**
  * MUI v4 withWidth replacement using useMediaQuery.
  * @see https://mui.com/material-ui/react-use-media-query/#migrating-from-withwidth
  */
-export const useWidth = (options = {}) => {
+export const useWidth = (options: WidthOptions = {}): Width => {
   const theme = useTheme()
   // Accept both MUI (`noSsr`) and legacy withWidth (`noSSR`) spellings.
   const { noSsr, noSSR, ...mediaOptions } = options
-  const queryOptions = {
+  const queryOptions: MediaQueryOptions = {
     noSsr: noSsr ?? noSSR ?? true,
     ...mediaOptions,
   }
@@ -34,15 +45,21 @@ export const useWidth = (options = {}) => {
  * Drop-in HOC compatible with the former @mui/material/withWidth API.
  */
 export const withWidth =
-  (options = {}) =>
-  (WrappedComponent) => {
-    const WithWidth = forwardRef(function WithWidth(props, ref) {
+  (options: WidthOptions = {}) =>
+  <P extends object>(WrappedComponent: ComponentType<P & WithWidthProps>) => {
+    const WithWidth = forwardRef<unknown, P>(function WithWidth(props, ref) {
       const width = useWidth(options)
-      return createElement(WrappedComponent, { width, ref, ...props })
+      return createElement(WrappedComponent, {
+        width,
+        ref,
+        ...props,
+      } as P & WithWidthProps)
     })
-    WithWidth.displayName = `WithWidth(${
-      WrappedComponent.displayName || WrappedComponent.name || 'Component'
-    })`
+    const componentName =
+      WrappedComponent.displayName ||
+      Object.getOwnPropertyDescriptor(WrappedComponent, 'name')?.value ||
+      'Component'
+    WithWidth.displayName = `WithWidth(${componentName})`
     return WithWidth
   }
 

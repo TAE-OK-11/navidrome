@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use ignore::{DirEntry, WalkBuilder};
+use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 
 const MAX_TARGETS: usize = 4096;
@@ -39,6 +40,10 @@ struct Folder {
     num_subfolders: usize,
     audio_files: BTreeMap<String, FileEntry>,
     image_files: BTreeMap<String, FileEntry>,
+    /// Content hash matching scanner/folder_entry.go hash(), so Go can skip
+    /// recomputing MD5 on every folder during change detection / persist.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    hash: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -220,7 +225,81 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
         }
     }
 
+    for folder in folders.values_mut() {
+        folder.hash = folder_content_hash(folder);
+    }
+
     Ok((folders, warnings))
+}
+
+/// Byte-for-byte match of scanner/folder_entry.go `hash()` after unixNanoTime
+/// conversion (ns==0 → Go zero time year 0001).
+fn folder_content_hash(folder: &Folder) -> String {
+    let mut hasher = Md5::new();
+    hasher.update(
+        format!(
+            "{}:{}:{}:{}",
+            go_utc_time_string(folder.mod_time_ns),
+            folder.num_playlists,
+            folder.num_subfolders,
+            go_utc_time_string(folder.images_updated_at_ns),
+        )
+        .as_bytes(),
+    );
+    // BTreeMap iteration is sorted by key, matching Go's slices.Sort(mapKeys).
+    for (name, file) in &folder.audio_files {
+        hasher.update(name.as_bytes());
+        hasher.update(
+            format!(":{}:{}", file.size, go_utc_time_string(file.mod_time_ns)).as_bytes(),
+        );
+    }
+    for (name, file) in &folder.image_files {
+        hasher.update(name.as_bytes());
+        hasher.update(
+            format!(":{}:{}", file.size, go_utc_time_string(file.mod_time_ns)).as_bytes(),
+        );
+    }
+    hex::encode(hasher.finalize())
+}
+
+/// Formats like Go's `time.Time.UTC().String()` / `fmt %s` with layout
+/// `2006-01-02 15:04:05.999999999 -0700 MST` (trailing fractional zeros stripped).
+fn go_utc_time_string(unix_ns: i64) -> String {
+    if unix_ns == 0 {
+        return "0001-01-01 00:00:00 +0000 UTC".to_owned();
+    }
+    let secs = unix_ns.div_euclid(1_000_000_000);
+    let nsec = unix_ns.rem_euclid(1_000_000_000) as u32;
+    let days = secs.div_euclid(86_400);
+    let day_secs = secs.rem_euclid(86_400) as u32;
+    let (year, month, day) = civil_from_days(days);
+    let hour = day_secs / 3600;
+    let minute = (day_secs % 3600) / 60;
+    let second = day_secs % 60;
+    if nsec == 0 {
+        format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} +0000 UTC")
+    } else {
+        let frac = format!("{nsec:09}");
+        let frac = frac.trim_end_matches('0');
+        format!(
+            "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}.{frac} +0000 UTC"
+        )
+    }
+}
+
+/// Howard Hinnant civil_from_days: `z` is days since 1970-01-01.
+fn civil_from_days(z: i64) -> (i32, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = era * 400 + yoe as i64;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m, d)
 }
 
 fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool, follow_symlinks: bool) -> bool {
@@ -502,5 +581,61 @@ mod tests {
         }
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn folder_content_hash_matches_go_reference() {
+        assert_eq!(
+            go_utc_time_string(0),
+            "0001-01-01 00:00:00 +0000 UTC"
+        );
+        assert_eq!(
+            go_utc_time_string(1_710_505_845_000_000_000),
+            "2024-03-15 12:30:45 +0000 UTC"
+        );
+        assert_eq!(
+            go_utc_time_string(1_710_505_845_123_456_789),
+            "2024-03-15 12:30:45.123456789 +0000 UTC"
+        );
+
+        let mut folder = Folder {
+            mod_time_ns: 1_710_505_845_123_456_789,
+            images_updated_at_ns: 0,
+            num_playlists: 1,
+            num_subfolders: 2,
+            ..Folder::default()
+        };
+        folder.audio_files.insert(
+            "a.mp3".to_owned(),
+            FileEntry {
+                name: "a.mp3".to_owned(),
+                size: 100,
+                mod_time_ns: 1_710_505_845_000_000_000,
+            },
+        );
+        folder.audio_files.insert(
+            "b.flac".to_owned(),
+            FileEntry {
+                name: "b.flac".to_owned(),
+                size: 200,
+                mod_time_ns: 1_710_505_845_123_456_789,
+            },
+        );
+        folder.image_files.insert(
+            "cover.jpg".to_owned(),
+            FileEntry {
+                name: "cover.jpg".to_owned(),
+                size: 50,
+                mod_time_ns: 1_710_505_845_123_456_789,
+            },
+        );
+        assert_eq!(
+            folder_content_hash(&folder),
+            "df67bbdb7506a6796a849caf4452a4a7"
+        );
+        assert_eq!(
+            folder_content_hash(&Folder::default()),
+            "c9e122666846c6107bcede3a959aa808"
+        );
     }
 }

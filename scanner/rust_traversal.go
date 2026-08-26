@@ -46,6 +46,7 @@ type rustScanFolder struct {
 	NumSubfolders     int                     `json:"num_subfolders"`
 	AudioFiles        map[string]rustScanFile `json:"audio_files"`
 	ImageFiles        map[string]rustScanFile `json:"image_files"`
+	Hash              string                  `json:"hash,omitempty"`
 }
 
 type rustScanFile struct {
@@ -275,6 +276,7 @@ func folderEntryFromRust(job *scanJob, source rustScanFolder) (*folderEntry, err
 	entry.imagesUpdatedAt = unixNanoTime(source.ImagesUpdatedAtNS)
 	entry.numPlaylists = source.NumPlaylists
 	entry.numSubFolders = source.NumSubfolders
+	entry.rustHash = source.Hash
 	for name, file := range source.AudioFiles {
 		dirEntry, err := rustDirEntryFromFile(name, file)
 		if err != nil {

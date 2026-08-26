@@ -95,7 +95,6 @@ struct ResolvedMetadataLine {
 
 #[derive(Clone)]
 struct DefinedAgent {
-    id: String,
     agent_type: String,
     name: String,
 }
@@ -318,7 +317,6 @@ impl<'a> TtmlParser<'a> {
         }
 
         let mut agent = DefinedAgent {
-            id: id.clone(),
             agent_type: attr_or_empty(&start, "type").to_ascii_lowercase(),
             name: String::new(),
         };

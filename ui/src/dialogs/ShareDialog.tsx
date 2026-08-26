@@ -115,7 +115,7 @@ export const ShareDialog = () => {
           })}
       </DialogTitle>
       <DialogContent>
-        <SimpleForm toolbar={null} variant={'outlined'}>
+        <SimpleForm toolbar={null}>
           <TextInput
             resource={'share'}
             source={'description'}

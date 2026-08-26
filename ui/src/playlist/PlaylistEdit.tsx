@@ -35,7 +35,7 @@ const PlaylistEditForm = (props) => {
   const { record } = props
   const { permissions } = usePermissions()
   return (
-    <SimpleForm redirect="list" variant={'outlined'} {...props}>
+    <SimpleForm redirect="list" {...props}>
       <TextInput source="name" validate={required()} />
       <TextInput
         multiline

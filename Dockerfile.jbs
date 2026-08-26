@@ -1336,7 +1336,8 @@ COPY --link --from=metadata-builder /out/navidrome-metadata /tmp/navidrome-metad
 
 ENV ND_METADATAWORKERPATH=/tmp/navidrome-metadata
 
-RUN test -s ./ui/build/index.html && \
+RUN test -x /tmp/navidrome-metadata && \
+    test -s ./ui/build/index.html && \
     test -n "$(find ./ui/build -type f -name '*.br' -print -quit)" && \
     test -n "$(find ./ui/build -type f -name '*.zst' -print -quit)" && \
     test -n "$(find ./ui/build -type f -name '*.gz' -print -quit)" && \
@@ -1348,7 +1349,9 @@ RUN test -s ./ui/build/index.html && \
 
 RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
     go test -p "${NAVIDROME_BUILD_CORES}" ./conf ./server && \
+    ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
     NAVIDROME_H3_INTEGRATION_BINARY=/tmp/navidrome-h3 \
       go test -p 1 ./server -run '^TestRustHTTP3EndToEnd$' -count=1
 

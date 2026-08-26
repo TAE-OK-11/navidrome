@@ -238,7 +238,10 @@ var testBinaryOnce sync.Once
 func EnsureTestBinary() error {
 	var setupErr error
 	testBinaryOnce.Do(func() {
-		if strings.TrimSpace(os.Getenv(EnvPath)) != "" {
+		if configured := strings.TrimSpace(os.Getenv(EnvPath)); configured != "" {
+			if _, err := resolveConfiguredBinary(configured); err != nil {
+				setupErr = err
+			}
 			return
 		}
 		root, err := repoRoot()

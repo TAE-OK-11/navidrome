@@ -63,6 +63,7 @@ const API_COMPRESSION_MIN_SIZE: usize = 256;
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
+static EARLY_DATA_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 
 const CONTROL_FD_ENV: &str = "NAVIDROME_H3_CONTROL_FD";
 const BRIDGE_FD_ENV: &str = "NAVIDROME_H3_BRIDGE_FD";
@@ -190,7 +191,9 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     quic.enable_pacing = true;
     quic.enable_hystart = true;
     quic.send_capacity_factor = SEND_CAPACITY_FACTOR;
-    quic.enable_early_data = false;
+    // Accept TLS 1.3 early data so resumed clients can send safe GET/HEAD on
+    // 0-RTT. Non-safe methods are rejected with 425 in handle_connection.
+    quic.enable_early_data = true;
     quic.disable_active_migration = true;
     quic.active_connection_id_limit = 2;
     quic.max_path_challenge_recv_queue_len = 1;
@@ -262,7 +265,7 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     control.write_all(b"READY\n")?;
     control.flush()?;
     info!(
-        "HTTP/3 ready udp={} bridge=inherited-af_unix+h2 cc={} early_data=false retry=true pmtud=true pacing=true",
+        "HTTP/3 ready udp={} bridge=inherited-af_unix+h2 cc={} early_data=true retry=true pmtud=true pacing=true",
         public, congestion_control
     );
 
@@ -499,13 +502,17 @@ async fn handle_connection(
                 is_in_early_data,
                 ..
             } => {
-                if *is_in_early_data {
-                    // This is unreachable while quiche early-data is disabled.
-                    // Never turn it into an application-visible HTTP 425.
-                    warn!(
-                        "discarding unexpected early-data stream peer={}",
-                        context.peer
-                    );
+                if *is_in_early_data && !is_safe_early_data_request(&incoming_headers.headers) {
+                    // RFC 8470: refuse non-idempotent / sensitive early data so
+                    // the client retries after the handshake completes.
+                    let total = EARLY_DATA_REJECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
+                    if should_sample_log(total) {
+                        warn!(
+                            "HTTP/3 early-data rejected peer={} total={total}",
+                            context.peer
+                        );
+                    }
+                    reject_too_early(incoming_headers).await;
                     continue;
                 }
                 let request_permit = match context.request_limit.clone().try_acquire_owned() {
@@ -539,6 +546,49 @@ async fn reject_overloaded(incoming: IncomingH3Headers) {
     if let Err(error) = send_overloaded(&mut send).await {
         log::debug!("failed to send HTTP/3 overload response: {error:#}");
     }
+}
+
+async fn reject_too_early(incoming: IncomingH3Headers) {
+    let mut send = incoming.send;
+    if let Err(error) = send_error(
+        &mut send,
+        StatusCode::TOO_EARLY,
+        "HTTP/3 early data is not accepted for this request; retry after the handshake",
+    )
+    .await
+    {
+        log::debug!("failed to send HTTP/3 too-early response: {error:#}");
+    }
+}
+
+/// Early data is limited to replay-tolerant reads. GET/HEAD only; auth session
+/// endpoints stay post-handshake so login cookies are not exposed to 0-RTT replay.
+fn is_safe_early_data_request(headers: &[h3::Header]) -> bool {
+    let mut method = None;
+    let mut path = None;
+    for header in headers {
+        match header.name() {
+            b":method" if method.is_none() => method = Some(header.value()),
+            b":path" if path.is_none() => path = Some(header.value()),
+            _ => {}
+        }
+    }
+    let Some(method) = method else {
+        return false;
+    };
+    if !method.eq_ignore_ascii_case(b"GET") && !method.eq_ignore_ascii_case(b"HEAD") {
+        return false;
+    }
+    let path = path
+        .and_then(|value| std::str::from_utf8(value).ok())
+        .unwrap_or("");
+    let path = path.split_once('?').map_or(path, |(path, _)| path);
+    let normalized_storage = path
+        .bytes()
+        .any(|byte| byte.is_ascii_uppercase())
+        .then(|| path.to_ascii_lowercase());
+    let normalized = normalized_storage.as_deref().unwrap_or(path);
+    !is_sensitive_auth_path(normalized)
 }
 
 async fn proxy_request(
@@ -1300,6 +1350,33 @@ mod tests {
     }
 
     #[test]
+    fn early_data_allows_safe_gets_and_rejects_auth_or_writes() {
+        let get_ping = vec![
+            h3::Header::new(b":method", b"GET"),
+            h3::Header::new(b":path", b"/rest/ping.view"),
+        ];
+        assert!(is_safe_early_data_request(&get_ping));
+
+        let head_cover = vec![
+            h3::Header::new(b":method", b"HEAD"),
+            h3::Header::new(b":path", b"/rest/getCoverArt.view?id=1"),
+        ];
+        assert!(is_safe_early_data_request(&head_cover));
+
+        let post = vec![
+            h3::Header::new(b":method", b"POST"),
+            h3::Header::new(b":path", b"/rest/ping.view"),
+        ];
+        assert!(!is_safe_early_data_request(&post));
+
+        let auth = vec![
+            h3::Header::new(b":method", b"GET"),
+            h3::Header::new(b":path", b"/auth/login"),
+        ];
+        assert!(!is_safe_early_data_request(&auth));
+    }
+
+    #[test]
     fn request_headers_are_sanitized_and_rebuilt() {
         let headers = vec![
             h3::Header::new(b":method", b"GET"),
@@ -1388,14 +1465,11 @@ mod tests {
         headers.insert(CONTENT_LENGTH, HeaderValue::from_static("1024"));
         headers.insert(ETAG, HeaderValue::from_static("\"strong\""));
         headers.insert("digest", HeaderValue::from_static("sha-256=test"));
-        set_rust_compression_headers(
-            &mut headers,
-            CompressionProfile {
-                encoding: CompressionEncoding::Zstd,
-                level: 1,
-                identity_forbidden: false,
-            },
-        );
+        set_rust_compression_headers(&mut headers, CompressionProfile {
+            encoding: CompressionEncoding::Zstd,
+            level: 1,
+            identity_forbidden: false,
+        });
         assert_eq!(headers[CONTENT_ENCODING], "zstd");
         assert_eq!(headers[ETAG], "W/\"strong\"");
         assert!(!headers.contains_key(CONTENT_LENGTH));

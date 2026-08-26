@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,6 +13,17 @@ var (
 	srtTimeRegex           = regexp.MustCompile(`^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*$`)
 	srtBlockSeparatorRegex = regexp.MustCompile(`\n\s*\n`)
 )
+
+// isLikelySRT is a cheap sniff gate: real SRT cues always contain the arrow
+// separator in the timing line. LRC/plain lyrics almost never do, so this
+// avoids allocating and scanning every embedded lyric as SRT during library scans.
+func isLikelySRT(contents []byte) bool {
+	head := contents
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	return bytes.Contains(head, []byte("-->"))
+}
 
 func parseSRT(language string, contents []byte) (LyricList, error) {
 	raw := strings.ReplaceAll(string(contents), "\r\n", "\n")

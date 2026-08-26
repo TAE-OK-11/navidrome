@@ -15,15 +15,20 @@ import (
 // do not carry their own.
 type lyricParser func(lang string, contents []byte) (LyricList, error)
 
+// sniffGate is an optional cheap pre-check used only while content-sniffing.
+// Returning false skips the expensive parser without logging a probe miss.
+type sniffGate func(contents []byte) bool
+
 // lyricFormats is the structured formats in content-sniff probe order; each
 // row's suffixes drive sidecar dispatch. LRC/plain is the unlisted fallback floor.
 var lyricFormats = []struct {
 	suffixes []string
 	parse    lyricParser
+	gate     sniffGate
 }{
-	{[]string{".ttml"}, parseTTML},
-	{[]string{".srt"}, parseSRT},
-	{[]string{".yaml", ".yml"}, parseLyricsfile},
+	{[]string{".ttml"}, parseTTML, nil}, // parseTTML already cheap-rejects via isTTMLDocument
+	{[]string{".srt"}, parseSRT, isLikelySRT},
+	{[]string{".yaml", ".yml"}, parseLyricsfile, looksLikeLyricsfile},
 }
 
 // ParseLyrics is the single entry point for parsing lyrics. A known suffix routes
@@ -39,9 +44,18 @@ func ParseLyrics(ctx context.Context, suffix, lang string, contents []byte) (Lyr
 
 	// Sniffing tries every format in order; a known suffix selects just its own.
 	// Unmatched suffixes leave no candidates, so parseFirstMatch falls to plain.
+	// While sniffing, optional gates skip parsers whose format markers are absent
+	// so embedded LRC/plain lyrics avoid YAML decode and full SRT scans.
 	candidates := make([]lyricParser, 0, len(lyricFormats))
 	for _, f := range lyricFormats {
-		if sniff || slices.Contains(f.suffixes, suffix) {
+		if sniff {
+			if f.gate != nil && !f.gate(contents) {
+				continue
+			}
+			candidates = append(candidates, f.parse)
+			continue
+		}
+		if slices.Contains(f.suffixes, suffix) {
 			candidates = append(candidates, f.parse)
 		}
 	}

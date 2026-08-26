@@ -1,15 +1,13 @@
 //! Embedded lyrics parsing for the Lofty metadata worker.
 //!
 //! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC,
-//! and simple clock-time TTML). Complex TTML (frame rates / agents /
-//! iTunesMetadata) and Lyricsfile YAML fall back to Go.
+//! and full TTML). Lyricsfile YAML still falls back to Go.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::Serialize;
-use serde_json::Value;
 
 static SYNC_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)(^|\n)\s*\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
@@ -20,6 +18,14 @@ static LRC_ID: LazyLock<Regex> =
 static ENHANCED_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
 static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?[A-Za-z][^>]*>").unwrap());
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Agent {
+    pub(crate) id: String,
+    pub(crate) role: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) name: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Cue {
@@ -57,7 +63,7 @@ pub(crate) struct Lyrics {
     pub(crate) kind: String,
     pub(crate) lang: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) agents: Vec<Value>,
+    pub(crate) agents: Vec<Agent>,
     pub(crate) line: Vec<Line>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) offset: Option<i64>,
@@ -72,14 +78,16 @@ pub fn parse_tags_to_json(tags: &HashMap<String, Vec<String>>) -> Option<String>
         return Some("[]".to_owned());
     }
 
-    let mut list = Vec::with_capacity(pairs.len());
+    let mut list = Vec::new();
     for (lang, text) in pairs {
         if needs_go_fallback(text) {
             return None;
         }
-        let lyrics = parse_one(lang, text)?;
-        if !lyrics.line.is_empty() {
-            list.push(lyrics);
+        let tracks = parse_one(lang, text)?;
+        for lyrics in tracks {
+            if !lyrics.line.is_empty() {
+                list.push(lyrics);
+            }
         }
     }
     serde_json::to_string(&list).ok()
@@ -122,26 +130,22 @@ fn needs_go_fallback(text: &str) -> bool {
     {
         return true;
     }
-    // Complex TTML (iTunesMetadata / frame rates / agents) stays in Go.
-    if crate::ttml::looks_like_ttml(text) && crate::ttml::needs_full_go_ttml(text) {
-        return true;
-    }
     false
 }
 
-fn parse_one(lang: String, text: &str) -> Option<Lyrics> {
+fn parse_one(lang: String, text: &str) -> Option<Vec<Lyrics>> {
     // TTML must keep markup; sanitize_text strips tags for LRC/SRT/plain.
     if crate::ttml::looks_like_ttml(text) {
-        return crate::ttml::parse_ttml(&lang, text);
+        return crate::ttml::parse_ttml_list(&lang, text);
     }
     let text = sanitize_text(text);
     if text.trim().is_empty() {
         return None;
     }
     if text.contains("-->") {
-        return parse_srt(lang, &text);
+        return parse_srt(lang, &text).map(|lyrics| vec![lyrics]);
     }
-    Some(parse_lrc(lang, &text))
+    Some(vec![parse_lrc(lang, &text)])
 }
 
 fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
@@ -534,13 +538,15 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_for_complex_ttml() {
+    fn parses_frame_rate_ttml_via_tags() {
         let mut tags = HashMap::new();
         tags.insert(
-            "lyrics".to_owned(),
-            vec![r#"<tt ttp:frameRate="30" xmlns:ttp="http://www.w3.org/ns/ttml#parameter"><body/></tt>"#.to_owned()],
+            "lyrics:eng".to_owned(),
+            vec![r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:frameRate="30"><body><div><p begin="00:00:01:00">Hi</p></div></body></tt>"#.to_owned()],
         );
-        assert!(parse_tags_to_json(&tags).is_none());
+        let json = parse_tags_to_json(&tags).expect("frame-rate TTML");
+        assert!(json.contains("Hi"));
+        assert!(json.contains("1000"));
     }
 
     #[test]

@@ -180,7 +180,18 @@ func findPlaylistSidecarPath(ctx context.Context, plsPath string) string {
 
 func (a *playlistArtworkReader) fromGeneratedTiledCover(ctx context.Context) sourceFunc {
 	return func() (io.ReadCloser, string, error) {
-		tiles, err := a.loadTiles(ctx)
+		payloads, err := a.loadTilePayloads(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		if out, err := persistentImageWorkers.mosaic(ctx, payloads, tileSize, conf.Server.CoverArtQuality, "png"); err == nil {
+			return io.NopCloser(bytes.NewReader(out)), "", nil
+		} else if ctx.Err() != nil {
+			return nil, "", ctx.Err()
+		} else {
+			log.Debug(ctx, "Rust playlist mosaic unavailable; falling back to Go", "error", err)
+		}
+		tiles, err := a.decodeTiles(ctx, payloads)
 		if err != nil {
 			return nil, "", err
 		}
@@ -196,7 +207,7 @@ func toAlbumArtworkIDs(albumIDs []string) []model.ArtworkID {
 	})
 }
 
-func (a *playlistArtworkReader) loadTiles(ctx context.Context) ([]image.Image, error) {
+func (a *playlistArtworkReader) loadTilePayloads(ctx context.Context) ([][]byte, error) {
 	tracksRepo := a.a.ds.Playlist(ctx).Tracks(a.pl.ID, false)
 	albumIds, err := tracksRepo.GetAlbumIDs(model.QueryOptions{Max: 4, Sort: "random()"})
 	if err != nil {
@@ -205,36 +216,44 @@ func (a *playlistArtworkReader) loadTiles(ctx context.Context) ([]image.Image, e
 	}
 	ids := toAlbumArtworkIDs(albumIds)
 
-	var tiles []image.Image
+	var payloads [][]byte
 	for _, id := range ids {
 		r, _, err := fromAlbum(ctx, a.a, id)()
 		if err == nil {
-			tile, err := a.createTile(ctx, r)
-			if err == nil {
-				tiles = append(tiles, tile)
-			}
+			data, readErr := io.ReadAll(io.LimitReader(r, maxImageReadBytes()))
 			_ = r.Close()
+			if readErr == nil && len(data) > 0 {
+				payloads = append(payloads, data)
+			}
 		}
-		if len(tiles) == 4 {
+		if len(payloads) == 4 {
 			break
 		}
 	}
-	switch len(tiles) {
+	switch len(payloads) {
 	case 0:
 		return nil, errors.New("could not find any eligible cover")
 	case 2:
-		tiles = append(tiles, tiles[1], tiles[0])
+		payloads = append(payloads, payloads[1], payloads[0])
 	case 3:
-		tiles = append(tiles, tiles[0])
+		payloads = append(payloads, payloads[0])
+	}
+	return payloads, nil
+}
+
+func (a *playlistArtworkReader) decodeTiles(ctx context.Context, payloads [][]byte) ([]image.Image, error) {
+	tiles := make([]image.Image, 0, len(payloads))
+	for _, data := range payloads {
+		tile, err := a.createTileFromBytes(ctx, data)
+		if err != nil {
+			return nil, err
+		}
+		tiles = append(tiles, tile)
 	}
 	return tiles, nil
 }
 
-func (a *playlistArtworkReader) createTile(ctx context.Context, r io.ReadCloser) (image.Image, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxImageReadBytes()))
-	if err != nil {
-		return nil, err
-	}
+func (a *playlistArtworkReader) createTileFromBytes(ctx context.Context, data []byte) (image.Image, error) {
 	size := tileSize / 2
 	if resized, err := persistentImageWorkers.fill(ctx, data, size, conf.Server.CoverArtQuality, "png"); err == nil {
 		img, _, decodeErr := DecodeImage(bytes.NewReader(resized))
@@ -253,6 +272,14 @@ func (a *playlistArtworkReader) createTile(ctx context.Context, r io.ReadCloser)
 		return nil, err
 	}
 	return fillCenter(img, size, size), nil
+}
+
+func (a *playlistArtworkReader) createTile(ctx context.Context, r io.ReadCloser) (image.Image, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxImageReadBytes()))
+	if err != nil {
+		return nil, err
+	}
+	return a.createTileFromBytes(ctx, data)
 }
 
 func (a *playlistArtworkReader) createTiledImage(_ context.Context, tiles []image.Image) (io.ReadCloser, error) {

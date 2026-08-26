@@ -32,3 +32,18 @@ func TestImageWorkerFillRequestJSON(t *testing.T) {
 		t.Fatalf("fill request = %#v", req)
 	}
 }
+
+func TestImageWorkerMosaicRequestJSON(t *testing.T) {
+	t.Parallel()
+
+	req := imageWorkerRequest{
+		InputSizes: []int{10, 20, 30, 40},
+		Mosaic:     true,
+		Size:       600,
+		Quality:    75,
+		Format:     "png",
+	}
+	if !req.Mosaic || len(req.InputSizes) != 4 || req.InputSize != 0 {
+		t.Fatalf("mosaic request = %#v", req)
+	}
+}

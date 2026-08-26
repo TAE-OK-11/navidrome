@@ -18,6 +18,7 @@ use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
 mod image_worker;
+mod lyrics;
 
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_BATCH_FILES: usize = 4096;
@@ -52,6 +53,10 @@ struct Metadata {
     channels: u8,
     codec: String,
     has_picture: bool,
+    /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when the
+    /// payload needs Go (TTML / Lyricsfile / Enhanced LRC).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lyrics_json: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -247,6 +252,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
 
     let properties = tagged.properties();
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
+    let lyrics_json = lyrics::parse_tags_to_json(&tags);
 
     Ok(Metadata {
         tags,
@@ -258,6 +264,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
         channels: properties.channels().unwrap_or(0),
         codec,
         has_picture,
+        lyrics_json,
     })
 }
 

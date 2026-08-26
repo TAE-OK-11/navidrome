@@ -23,6 +23,9 @@ type Info struct {
 	Tags            model.RawTags
 	AudioProperties AudioProperties
 	HasPicture      bool
+	// LyricsJSON is optional pre-parsed lyrics from the Rust Lofty worker.
+	// Empty means the Go ParseLyrics path should run.
+	LyricsJSON string
 }
 
 type FileInfo interface {
@@ -74,6 +77,7 @@ func New(filePath string, info Info) Metadata {
 		tags:       clean(filePath, info.Tags),
 		audioProps: info.AudioProperties,
 		hasPicture: info.HasPicture,
+		lyricsJSON: info.LyricsJSON,
 	}
 }
 
@@ -83,6 +87,7 @@ type Metadata struct {
 	tags       model.Tags
 	audioProps AudioProperties
 	hasPicture bool
+	lyricsJSON string
 }
 
 func (md Metadata) FilePath() string     { return md.filePath }

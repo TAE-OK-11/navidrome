@@ -1,4 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
+declare global {
+  interface Window {
+    global: typeof globalThis
+  }
+}
+
 window.global = window // fix "global is not defined" error in react-image-lightbox
 
 import { createRoot } from 'react-dom/client'

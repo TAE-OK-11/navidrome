@@ -41,7 +41,15 @@ describe('Pagination', () => {
   })
 
   const context = (resource?: string) =>
-    ({ resource, perPage: 15, setPerPage }) as ListPaginationContextValue
+    ({
+      resource,
+      page: 1,
+      perPage: 15,
+      total: 0,
+      isPending: false,
+      setPage: vi.fn(),
+      setPerPage,
+    }) satisfies ListPaginationContextValue
 
   const selectPerPage = () => fireEvent.click(screen.getByText('select 50'))
 

@@ -25,6 +25,7 @@ type imageWorkerRequest struct {
 	InputSize int    `json:"input_size"`
 	Size      int    `json:"size"`
 	Square    bool   `json:"square"`
+	Fill      bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
 	Quality   int    `json:"quality"`
 	Format    string `json:"format"`
 }
@@ -63,6 +64,26 @@ func newImageWorkerPool() *imageWorkerPool {
 }
 
 func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality int, square bool, format string) ([]byte, error) {
+	return p.resizeRequest(ctx, data, imageWorkerRequest{
+		InputSize: len(data),
+		Size:      size,
+		Square:    square,
+		Quality:   quality,
+		Format:    format,
+	})
+}
+
+func (p *imageWorkerPool) fill(ctx context.Context, data []byte, size, quality int, format string) ([]byte, error) {
+	return p.resizeRequest(ctx, data, imageWorkerRequest{
+		InputSize: len(data),
+		Size:      size,
+		Fill:      true,
+		Quality:   quality,
+		Format:    format,
+	})
+}
+
+func (p *imageWorkerPool) resizeRequest(ctx context.Context, data []byte, request imageWorkerRequest) ([]byte, error) {
 	binary, err := metadataworker.Resolve()
 	if err != nil {
 		return nil, err
@@ -83,13 +104,6 @@ func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality
 	}
 	defer func() { p.idle <- slot }()
 
-	request := imageWorkerRequest{
-		InputSize: len(data),
-		Size:      size,
-		Square:    square,
-		Quality:   quality,
-		Format:    format,
-	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		worker, err := slot.ensure(binary)

@@ -50,12 +50,6 @@ enum Request {
     },
     CommitReplace,
     AbortReplace,
-    Upsert {
-        documents: Vec<SearchDocument>,
-    },
-    Delete {
-        keys: Vec<String>,
-    },
     SearchAll {
         query: String,
         #[serde(default)]
@@ -198,42 +192,6 @@ impl Engine {
         self.replace_in_progress = false;
         self.indexed = self.reader.searcher().num_docs();
         Ok(())
-    }
-
-    fn upsert(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot upsert while replacing the search index");
-        }
-        validate_document_batch(&documents)?;
-        for document in &documents {
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &document.key));
-        }
-        self.add_documents(documents)?;
-        self.commit()
-    }
-
-    fn delete(&mut self, keys: Vec<String>) -> Result<()> {
-        if self.replace_in_progress {
-            bail!("cannot delete while replacing the search index");
-        }
-        if keys.len() > MAX_DOCUMENTS_PER_REQUEST {
-            bail!("delete contains too many keys");
-        }
-        for key in &keys {
-            if key.is_empty() {
-                bail!("delete keys must be non-empty");
-            }
-        }
-        let mut unique = HashSet::with_capacity(keys.len());
-        for key in keys {
-            if !unique.insert(key.clone()) {
-                continue;
-            }
-            self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &key));
-        }
-        self.commit()
     }
 
     fn add_documents(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
@@ -474,12 +432,6 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
         Request::AbortReplace => {
             engine.abort_replace()?;
         }
-        Request::Upsert { documents } => {
-            engine.upsert(documents)?;
-        }
-        Request::Delete { keys } => {
-            engine.delete(keys)?;
-        }
         Request::SearchAll {
             query,
             library_ids,
@@ -573,30 +525,6 @@ mod tests {
     }
 
     #[test]
-    fn upsert_and_delete_are_visible_immediately() -> Result<()> {
-        let mut engine = Engine::new()?;
-        engine.replace(vec![document("song:1", "1", "song", 1, "Old Name")])?;
-        engine.upsert(vec![document("song:1", "1", "song", 1, "New Name")])?;
-        assert!(engine.search("Old", "song", &[1], 0, 10)?.is_empty());
-        assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
-        engine.delete(vec!["song:1".to_owned()])?;
-        assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn upsert_rejects_replace_in_progress() -> Result<()> {
-        let mut engine = Engine::new()?;
-        engine.begin_replace()?;
-        let err = engine
-            .upsert(vec![document("song:1", "1", "song", 1, "Name")])
-            .expect_err("upsert must fail during replacement");
-        assert!(err.to_string().contains("replacing"));
-        engine.abort_replace()?;
-        Ok(())
-    }
-
-    #[test]
     fn chunked_replacement_is_atomic_for_searchers() -> Result<()> {
         let mut engine = Engine::new()?;
         engine.replace(vec![document("song:old", "old", "song", 1, "Old Song")])?;
@@ -626,27 +554,30 @@ mod tests {
             document("artist:1", "artist-1", "artist", 2, "Blue Monday"),
         ])?;
 
-        let response = handle_request(&mut engine, Request::SearchAll {
-            query: "Blue".to_owned(),
-            library_ids: vec![1],
-            searches: vec![
-                SearchSpec {
-                    kind: "song".to_owned(),
-                    offset: 0,
-                    limit: 10,
-                },
-                SearchSpec {
-                    kind: "album".to_owned(),
-                    offset: 0,
-                    limit: 10,
-                },
-                SearchSpec {
-                    kind: "artist".to_owned(),
-                    offset: 0,
-                    limit: 10,
-                },
-            ],
-        })?;
+        let response = handle_request(
+            &mut engine,
+            Request::SearchAll {
+                query: "Blue".to_owned(),
+                library_ids: vec![1],
+                searches: vec![
+                    SearchSpec {
+                        kind: "song".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                    SearchSpec {
+                        kind: "album".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                    SearchSpec {
+                        kind: "artist".to_owned(),
+                        offset: 0,
+                        limit: 10,
+                    },
+                ],
+            },
+        )?;
 
         assert_eq!(response.groups.len(), 3);
         assert_eq!(response.groups[0].hits[0].id, "song-1");

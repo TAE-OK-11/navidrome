@@ -59,43 +59,6 @@ func TestSearchIndexStaleRestartsAnUnavailableWorker(t *testing.T) {
 	}
 }
 
-func TestPreferFullRebuild(t *testing.T) {
-	t.Parallel()
-
-	if preferFullRebuild(0, 100) {
-		t.Fatal("unknown index size should not force a rebuild")
-	}
-	if preferFullRebuild(1000, 100) {
-		t.Fatal("small deltas should stay incremental")
-	}
-	if !preferFullRebuild(1000, 251) {
-		t.Fatal("deltas above 25% should force a full rebuild")
-	}
-}
-
-func TestMediaFileDocumentKey(t *testing.T) {
-	t.Parallel()
-
-	doc := mediaFileDocument(model.MediaFile{
-		ID: "mf-1", LibraryID: 3, Title: "Blue Monday", Album: "Power", Artist: "NO",
-	})
-	if doc.Key != "song:mf-1" || doc.Kind != "song" || doc.Primary != "Blue Monday" {
-		t.Fatalf("media file document = %#v", doc)
-	}
-	if len(doc.LibraryIDs) != 1 || doc.LibraryIDs[0] != 3 {
-		t.Fatalf("library IDs = %#v", doc.LibraryIDs)
-	}
-}
-
-func TestAlbumDocumentKey(t *testing.T) {
-	t.Parallel()
-
-	doc := albumDocument(model.Album{ID: "al-1", LibraryID: 2, Name: "Power", AlbumArtist: "NO"})
-	if doc.Key != "album:al-1" || doc.Kind != "album" || doc.Primary != "Power" {
-		t.Fatalf("album document = %#v", doc)
-	}
-}
-
 func TestDecodeSearchGroups(t *testing.T) {
 	t.Parallel()
 

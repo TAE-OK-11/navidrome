@@ -17,6 +17,8 @@ struct ImageRequest {
     input_size: usize,
     size: u32,
     square: bool,
+    #[serde(default)]
+    fill: bool,
     quality: u8,
     format: OutputFormat,
 }
@@ -104,8 +106,15 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     validate_dimensions(src_width, src_height)?;
 
     let original_size = src_width.max(src_height);
-    let target_size = request.size.min(original_size);
-    if target_size == original_size && !request.square {
+    let target_size = if request.fill {
+        request.size
+    } else {
+        request.size.min(original_size)
+    };
+    if !request.fill && target_size == original_size && !request.square {
+        bail!("image does not require resizing");
+    }
+    if request.fill && src_width == target_size && src_height == target_size {
         bail!("image does not require resizing");
     }
 
@@ -119,38 +128,66 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     decoder.limits(limits);
     let rgba = decoder.decode().context("decoding image")?.into_rgba8();
 
-    let (resized_width, resized_height) = fit_dimensions(src_width, src_height, target_size);
-    let source = fir::images::Image::from_vec_u8(
-        src_width,
-        src_height,
-        rgba.into_raw(),
-        fir::PixelType::U8x4,
-    )
-    .context("creating resize source")?;
-    let mut resized = fir::images::Image::new(resized_width, resized_height, fir::PixelType::U8x4);
-    let options = fir::ResizeOptions::new()
-        .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
-    fir::Resizer::new()
-        .resize(&source, &mut resized, &options)
-        .context("resizing image")?;
-
-    let (pixels, output_width, output_height) = if request.square {
-        let canvas_len = checked_rgba_len(target_size, target_size)?;
-        let mut canvas = vec![0; canvas_len];
-        let offset_x = (target_size - resized_width) / 2;
-        let offset_y = (target_size - resized_height) / 2;
-        let source_stride = resized_width as usize * 4;
-        let destination_stride = target_size as usize * 4;
-        for row in 0..resized_height as usize {
-            let source_start = row * source_stride;
-            let destination_start =
-                (row + offset_y as usize) * destination_stride + offset_x as usize * 4;
-            canvas[destination_start..destination_start + source_stride]
-                .copy_from_slice(&resized.buffer()[source_start..source_start + source_stride]);
-        }
-        (canvas, target_size, target_size)
+    let (pixels, output_width, output_height) = if request.fill {
+        let (crop_x, crop_y, crop_width, crop_height) =
+            fill_crop(src_width, src_height, target_size, target_size);
+        let cropped = crop_rgba(
+            rgba.as_raw(),
+            src_width,
+            crop_x,
+            crop_y,
+            crop_width,
+            crop_height,
+        )?;
+        let source = fir::images::Image::from_vec_u8(
+            crop_width,
+            crop_height,
+            cropped,
+            fir::PixelType::U8x4,
+        )
+        .context("creating fill resize source")?;
+        let mut resized = fir::images::Image::new(target_size, target_size, fir::PixelType::U8x4);
+        let options = fir::ResizeOptions::new()
+            .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+        fir::Resizer::new()
+            .resize(&source, &mut resized, &options)
+            .context("resizing filled image")?;
+        (resized.into_vec(), target_size, target_size)
     } else {
-        (resized.into_vec(), resized_width, resized_height)
+        let (resized_width, resized_height) = fit_dimensions(src_width, src_height, target_size);
+        let source = fir::images::Image::from_vec_u8(
+            src_width,
+            src_height,
+            rgba.into_raw(),
+            fir::PixelType::U8x4,
+        )
+        .context("creating resize source")?;
+        let mut resized =
+            fir::images::Image::new(resized_width, resized_height, fir::PixelType::U8x4);
+        let options = fir::ResizeOptions::new()
+            .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+        fir::Resizer::new()
+            .resize(&source, &mut resized, &options)
+            .context("resizing image")?;
+
+        if request.square {
+            let canvas_len = checked_rgba_len(target_size, target_size)?;
+            let mut canvas = vec![0; canvas_len];
+            let offset_x = (target_size - resized_width) / 2;
+            let offset_y = (target_size - resized_height) / 2;
+            let source_stride = resized_width as usize * 4;
+            let destination_stride = target_size as usize * 4;
+            for row in 0..resized_height as usize {
+                let source_start = row * source_stride;
+                let destination_start =
+                    (row + offset_y as usize) * destination_stride + offset_x as usize * 4;
+                canvas[destination_start..destination_start + source_stride]
+                    .copy_from_slice(&resized.buffer()[source_start..source_start + source_stride]);
+            }
+            (canvas, target_size, target_size)
+        } else {
+            (resized.into_vec(), resized_width, resized_height)
+        }
     };
 
     let result = encode(
@@ -167,6 +204,42 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
         );
     }
     Ok(result)
+}
+
+fn fill_crop(src_width: u32, src_height: u32, dst_width: u32, dst_height: u32) -> (u32, u32, u32, u32) {
+    let src_aspect = f64::from(src_width) / f64::from(src_height);
+    let dst_aspect = f64::from(dst_width) / f64::from(dst_height);
+    if src_aspect > dst_aspect {
+        // Match Go fillCenter truncation so playlist tiles stay pixel-aligned.
+        let crop_width = ((f64::from(src_height) * dst_aspect) as u32).max(1);
+        let crop_x = (src_width - crop_width) / 2;
+        (crop_x, 0, crop_width, src_height)
+    } else {
+        let crop_height = ((f64::from(src_width) / dst_aspect) as u32).max(1);
+        let crop_y = (src_height - crop_height) / 2;
+        (0, crop_y, src_width, crop_height)
+    }
+}
+
+fn crop_rgba(
+    pixels: &[u8],
+    src_width: u32,
+    crop_x: u32,
+    crop_y: u32,
+    crop_width: u32,
+    crop_height: u32,
+) -> Result<Vec<u8>> {
+    let mut cropped = vec![0; checked_rgba_len(crop_width, crop_height)?];
+    let source_stride = src_width as usize * 4;
+    let crop_stride = crop_width as usize * 4;
+    let origin_x = crop_x as usize * 4;
+    for row in 0..crop_height as usize {
+        let source_start = (row + crop_y as usize) * source_stride + origin_x;
+        let destination_start = row * crop_stride;
+        cropped[destination_start..destination_start + crop_stride]
+            .copy_from_slice(&pixels[source_start..source_start + crop_stride]);
+    }
+    Ok(cropped)
 }
 
 fn validate_dimensions(width: u32, height: u32) -> Result<()> {
@@ -284,6 +357,7 @@ mod tests {
                 input_size: input.len(),
                 size: 20,
                 square: true,
+                fill: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -292,6 +366,28 @@ mod tests {
         let decoded = image::load_from_memory(&output).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (20, 20));
         assert_eq!(decoded.to_rgba8().get_pixel(0, 0).0[3], 0);
+    }
+
+    #[test]
+    fn fill_crops_center_and_scales_to_exact_square() {
+        let input = source_png(80, 40);
+        let output = resize(
+            &input,
+            &ImageRequest {
+                input_size: input.len(),
+                size: 20,
+                square: false,
+                fill: true,
+                quality: 80,
+                format: OutputFormat::Png,
+            },
+        )
+        .unwrap();
+        let decoded = image::load_from_memory(&output).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (20, 20));
+        // Fill crops the wider source, so the canvas is fully opaque.
+        assert_eq!(decoded.to_rgba8().get_pixel(0, 0).0[3], 255);
+        assert_eq!(fill_crop(80, 40, 20, 20), (20, 0, 40, 40));
     }
 
     #[test]

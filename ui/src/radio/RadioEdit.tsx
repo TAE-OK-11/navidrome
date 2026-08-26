@@ -1,4 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
+import type { ComponentProps } from 'react'
 import {
   DateField,
   Edit,
@@ -15,8 +15,20 @@ import subsonic from '../subsonic'
 import config from '../config'
 import { RADIO_PLACEHOLDER_IMAGE } from '../consts'
 
-const RadioTitle = ({ record: recordOverride }) => {
-  const record = useRecordContext({ record: recordOverride })
+type RadioRecord = {
+  id: string | number
+  name: string
+  streamUrl: string
+  uploadedImage?: boolean
+  updatedAt?: string | number | boolean
+}
+
+type RadioRecordOverride = {
+  record?: RadioRecord
+}
+
+const RadioTitle = ({ record: recordOverride }: RadioRecordOverride) => {
+  const record = useRecordContext<RadioRecord>({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.radio.name', {
     smart_count: 1,
@@ -24,10 +36,10 @@ const RadioTitle = ({ record: recordOverride }) => {
   return <Title subTitle={`${resourceName} ${record ? record.name : ''}`} />
 }
 
-const RadioEdit = (props) => {
+const RadioEdit = (props: ComponentProps<typeof Edit>) => {
   return (
     <Edit title={<RadioTitle />} {...props}>
-      <SimpleForm variant="outlined" {...props}>
+      <SimpleForm variant="outlined">
         <RadioCoverArt />
         <TextInput source="name" validate={[required()]} />
         <TextInput
@@ -49,8 +61,8 @@ const RadioEdit = (props) => {
   )
 }
 
-const RadioCoverArt = ({ record: recordOverride }) => {
-  const record = useRecordContext({ record: recordOverride })
+const RadioCoverArt = ({ record: recordOverride }: RadioRecordOverride) => {
+  const record = useRecordContext<RadioRecord>({ record: recordOverride })
   const { imageLoading, handleImageLoad, handleImageError } =
     useImageLoadingState(record?.id)
 

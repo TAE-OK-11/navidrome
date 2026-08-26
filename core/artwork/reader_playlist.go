@@ -274,14 +274,6 @@ func (a *playlistArtworkReader) createTileFromBytes(ctx context.Context, data []
 	return fillCenter(img, size, size), nil
 }
 
-func (a *playlistArtworkReader) createTile(ctx context.Context, r io.ReadCloser) (image.Image, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxImageReadBytes()))
-	if err != nil {
-		return nil, err
-	}
-	return a.createTileFromBytes(ctx, data)
-}
-
 func (a *playlistArtworkReader) createTiledImage(_ context.Context, tiles []image.Image) (io.ReadCloser, error) {
 	buf := new(bytes.Buffer)
 	var rgba draw.Image

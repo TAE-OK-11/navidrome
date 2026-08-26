@@ -208,7 +208,7 @@ const InsightsNotice = ({ url }) => {
           target="_blank"
           rel="noopener noreferrer"
           key={`${lineIndex}-${match.index}`}
-          style={{ cursor: 'pointer' }}
+          sx={{ cursor: 'pointer' }}
         >
           {bracketText}
         </Link>,

@@ -88,7 +88,7 @@ export const ConfigCard = ({
           >
             <Alert severity="error">
               {translate('resources.plugin.messages.configValidationError')}
-              <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+              <Box component="ul" sx={{ margin: '8px 0 0', paddingLeft: 20 }}>
                 {formattedErrors.map((error, index) => (
                   <li key={index}>
                     {error.fieldName && <strong>{error.fieldName}</strong>}
@@ -96,7 +96,7 @@ export const ConfigCard = ({
                     {error.message}
                   </li>
                 ))}
-              </ul>
+              </Box>
             </Alert>
           </Box>
         )}

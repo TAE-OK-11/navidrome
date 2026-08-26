@@ -9,7 +9,7 @@ import {
   TextField,
   FunctionField,
 } from 'react-admin'
-import { useMediaQuery } from '@mui/material'
+import { Box, useMediaQuery } from '@mui/material'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import { useDrag } from 'react-dnd'
 import {
@@ -141,9 +141,9 @@ const AlbumTableView = ({
         </>
       )}
       leftIcon={(r) => (
-        <span style={{ marginRight: '8px' }}>
+        <Box component="span" sx={{ marginRight: '8px' }}>
           <CoverArtAvatar record={r} variant="square" />
-        </span>
+        </Box>
       )}
       linkType={'show'}
       rightIcon={(r) => <AlbumContextMenu record={r} />}

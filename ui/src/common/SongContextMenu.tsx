@@ -275,7 +275,7 @@ export const SongContextMenu = ({
                     : undefined
                 }
                 disabled={showInPlaylistDisabled}
-                style={
+                sx={
                   showInPlaylistDisabled ? { pointerEvents: 'auto' } : undefined
                 }
               >

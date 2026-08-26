@@ -35,7 +35,7 @@ const ArtistSimpleList = ({
                     <CoverArtAvatar record={record} />
                   </ListItemAvatar>
                   <ListItemText
-                    style={{ marginLeft: '8px' }}
+                    sx={{ marginLeft: '8px' }}
                     primary={
                       <>
                         <Box

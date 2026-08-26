@@ -125,7 +125,7 @@ export const UsersPermissionCard = ({
             ) : (
               <List
                 dense
-                style={{
+                sx={{
                   maxHeight: 200,
                   overflow: 'auto',
                   border: '1px solid rgba(0, 0, 0, 0.12)',

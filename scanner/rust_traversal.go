@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,14 +9,21 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"os"
 	"os/exec"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/scannerworker"
+	"github.com/navidrome/navidrome/log"
 )
 
-const maxRustScanEntries = 10_000_000
+const (
+	maxRustScanEntries = 10_000_000
+	maxScannerWorkers  = 4
+)
 
 type rustScanRequest struct {
 	Root             string   `json:"root"`
@@ -48,83 +54,202 @@ type rustScanFile struct {
 	ModTimeNS int64  `json:"mod_time_ns"`
 }
 
+type scannerWorker struct {
+	binary  string
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	writer  *bufio.Writer
+	encoder *json.Encoder
+	decoder *json.Decoder
+}
+
+type scannerWorkerSlot struct {
+	worker *scannerWorker
+}
+
+type scannerWorkerPool struct {
+	once  sync.Once
+	slots chan *scannerWorkerSlot
+}
+
+var persistentScannerWorkers scannerWorkerPool // shared across library walks
+
+func (p *scannerWorkerPool) ensure() {
+	p.once.Do(func() {
+		size := min(max(runtime.GOMAXPROCS(0)/2, 1), maxScannerWorkers)
+		p.slots = make(chan *scannerWorkerSlot, size)
+		for range size {
+			p.slots <- &scannerWorkerSlot{}
+		}
+	})
+}
+
 func collectRustFolders(ctx context.Context, job *scanJob, targets []string) ([]rustScanFolder, []string, error) {
 	binary, err := scannerworker.Resolve()
 	if err != nil {
 		return nil, nil, err
 	}
-	request, err := json.Marshal(rustScanRequest{
+	request := rustScanRequest{
 		Root:             job.localRoot,
 		Targets:          targets,
 		FollowSymlinks:   conf.Server.Scanner.FollowSymlinks,
 		IgnoreDotFolders: conf.Server.Scanner.IgnoreDotFolders,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("encoding Rust scanner request: %w", err)
 	}
-	request = append(request, '\n')
 
-	cmd := exec.CommandContext(ctx, binary) //nolint:gosec // resolved administrator-controlled binary
-	cmd.Stdin = bytes.NewReader(request)
+	persistentScannerWorkers.ensure()
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	case slot := <-persistentScannerWorkers.slots:
+		defer func() { persistentScannerWorkers.slots <- slot }()
+		var lastErr error
+		for attempt := 0; attempt < 2; attempt++ {
+			folders, warnings, err := slot.roundTrip(ctx, binary, request)
+			if err == nil {
+				return folders, warnings, nil
+			}
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			lastErr = err
+			log.Debug(ctx, "Rust scanner worker request failed; restarting", "attempt", attempt+1, err)
+			slot.stop()
+		}
+		return nil, nil, fmt.Errorf("persistent Rust scanner failed after restart: %w", lastErr)
+	}
+}
+
+func (s *scannerWorkerSlot) roundTrip(ctx context.Context, binary string, request rustScanRequest) ([]rustScanFolder, []string, error) {
+	worker, err := s.ensure(binary)
+	if err != nil {
+		return nil, nil, err
+	}
+	cancelDone := make(chan struct{})
+	stopCancel := context.AfterFunc(ctx, func() {
+		worker.kill()
+		close(cancelDone)
+	})
+	folders, warnings, err := worker.roundTrip(request)
+	if !stopCancel() {
+		<-cancelDone
+	}
+	if ctx.Err() != nil {
+		s.stop()
+		return nil, nil, ctx.Err()
+	}
+	if err != nil {
+		s.stop()
+		return nil, nil, err
+	}
+	return folders, warnings, nil
+}
+
+func (s *scannerWorkerSlot) ensure(binary string) (*scannerWorker, error) {
+	if s.worker != nil && s.worker.binary == binary {
+		return s.worker, nil
+	}
+	s.stop()
+	worker, err := startScannerWorker(binary)
+	if err != nil {
+		return nil, err
+	}
+	s.worker = worker
+	return worker, nil
+}
+
+func (s *scannerWorkerSlot) stop() {
+	if s.worker == nil {
+		return
+	}
+	s.worker.close()
+	s.worker = nil
+}
+
+func startScannerWorker(binary string) (*scannerWorker, error) {
+	cmd := exec.Command(binary) //nolint:gosec // resolved administrator-controlled binary
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("opening Rust scanner stdin: %w", err)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening Rust scanner output: %w", err)
+		_ = stdin.Close()
+		return nil, fmt.Errorf("opening Rust scanner stdout: %w", err)
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("starting Rust scanner %q: %w", binary, err)
+		_ = stdin.Close()
+		return nil, fmt.Errorf("starting Rust scanner %q: %w", binary, err)
+	}
+	writer := bufio.NewWriterSize(stdin, 64*1024)
+	encoder := json.NewEncoder(writer)
+	encoder.SetEscapeHTML(false)
+	return &scannerWorker{
+		binary:  binary,
+		cmd:     cmd,
+		stdin:   stdin,
+		writer:  writer,
+		encoder: encoder,
+		decoder: json.NewDecoder(bufio.NewReaderSize(stdout, 256*1024)),
+	}, nil
+}
+
+func (w *scannerWorker) roundTrip(request rustScanRequest) ([]rustScanFolder, []string, error) {
+	if err := w.encoder.Encode(request); err != nil {
+		return nil, nil, fmt.Errorf("writing Rust scanner request: %w", err)
+	}
+	if err := w.writer.Flush(); err != nil {
+		return nil, nil, fmt.Errorf("flushing Rust scanner request: %w", err)
 	}
 
-	decoder := json.NewDecoder(bufio.NewReaderSize(stdout, 256*1024))
 	folders := make([]rustScanFolder, 0, 1024)
 	var warnings []string
-	done := false
 	for {
 		var event rustScanEvent
-		if err := decoder.Decode(&event); errors.Is(err, io.EOF) {
-			break
+		if err := w.decoder.Decode(&event); errors.Is(err, io.EOF) {
+			return nil, nil, errors.New("Rust scanner ended without completion marker")
 		} else if err != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
 			return nil, nil, fmt.Errorf("decoding Rust scanner response: %w", err)
 		}
 		switch event.Kind {
 		case "folder":
 			if event.Folder == nil || event.Folder.Path == "" {
-				_ = cmd.Process.Kill()
-				_ = cmd.Wait()
 				return nil, nil, errors.New("Rust scanner returned an invalid folder event")
 			}
 			folders = append(folders, *event.Folder)
 			if len(folders) > maxRustScanEntries {
-				_ = cmd.Process.Kill()
-				_ = cmd.Wait()
 				return nil, nil, errors.New("Rust scanner exceeded folder safety limit")
 			}
 		case "warning":
 			if event.Message != "" {
 				warnings = append(warnings, event.Message)
 			}
+		case "error":
+			if event.Message == "" {
+				event.Message = "Rust scanner request failed"
+			}
+			return nil, nil, errors.New(event.Message)
 		case "done":
-			done = true
+			if err := validateRustFolders(folders); err != nil {
+				return nil, nil, err
+			}
+			return folders, warnings, nil
 		default:
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
 			return nil, nil, fmt.Errorf("Rust scanner returned unknown event %q", event.Kind)
 		}
 	}
-	waitErr := cmd.Wait()
-	if waitErr != nil {
-		return nil, nil, fmt.Errorf("Rust scanner failed: %s: %w", stderr.String(), waitErr)
+}
+
+func (w *scannerWorker) kill() {
+	if w.cmd.Process != nil {
+		_ = w.cmd.Process.Kill()
 	}
-	if !done {
-		return nil, nil, errors.New("Rust scanner ended without completion marker")
-	}
-	if err := validateRustFolders(folders); err != nil {
-		return nil, nil, err
-	}
-	return folders, warnings, nil
+}
+
+func (w *scannerWorker) close() {
+	_ = w.stdin.Close()
+	w.kill()
+	_ = w.cmd.Wait()
 }
 
 func validateRustFolders(folders []rustScanFolder) error {

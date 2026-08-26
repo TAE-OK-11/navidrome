@@ -53,20 +53,58 @@ struct FileEntry {
 enum Event<'a> {
     Folder { folder: &'a Folder },
     Warning { message: &'a str },
+    Error { message: &'a str },
     Done { folders: usize, files: usize },
 }
 
 fn main() -> Result<()> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut input = BufReader::with_capacity(64 * 1024, stdin.lock());
+    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
     let mut line = String::with_capacity(4096);
-    BufReader::with_capacity(64 * 1024, io::stdin().lock())
-        .read_line(&mut line)
-        .context("reading scan request")?;
-    if line.trim().is_empty() {
-        bail!("scan request is empty");
+
+    loop {
+        line.clear();
+        let read = input
+            .read_line(&mut line)
+            .context("reading scan request")?;
+        if read == 0 {
+            return Ok(());
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let request = match serde_json::from_str::<ScanRequest>(&line) {
+            Ok(request) => request,
+            Err(error) => {
+                write_event(
+                    &mut output,
+                    &Event::Error {
+                        message: &format!("decoding scan request: {error}"),
+                    },
+                )?;
+                continue;
+            }
+        };
+        if let Err(error) = validate_request(&request) {
+            write_event(
+                &mut output,
+                &Event::Error {
+                    message: &format!("{error:#}"),
+                },
+            )?;
+            continue;
+        }
+        if let Err(error) = run_scan(request, &mut output) {
+            write_event(
+                &mut output,
+                &Event::Error {
+                    message: &format!("{error:#}"),
+                },
+            )?;
+        }
     }
-    let request: ScanRequest = serde_json::from_str(&line).context("decoding scan request")?;
-    validate_request(&request)?;
-    run_scan(request)
 }
 
 fn validate_request(request: &ScanRequest) -> Result<()> {
@@ -95,7 +133,7 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
     Ok(())
 }
 
-fn run_scan(request: ScanRequest) -> Result<()> {
+fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
     let (folders, warnings) = collect_scan(request)?;
     let file_count = folders
         .values()
@@ -108,16 +146,14 @@ fn run_scan(request: ScanRequest) -> Result<()> {
             .then_with(|| left.path.cmp(&right.path))
     });
 
-    let stdout = io::stdout();
-    let mut output = BufWriter::with_capacity(256 * 1024, stdout.lock());
     for warning in &warnings {
-        write_event(&mut output, &Event::Warning { message: warning })?;
+        write_event(output, &Event::Warning { message: warning })?;
     }
     for folder in ordered {
-        write_event(&mut output, &Event::Folder { folder })?;
+        write_event(output, &Event::Folder { folder })?;
     }
     write_event(
-        &mut output,
+        output,
         &Event::Done {
             folders: folders.len(),
             files: file_count,

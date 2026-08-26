@@ -76,16 +76,6 @@ func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality
 	})
 }
 
-func (p *imageWorkerPool) fill(ctx context.Context, data []byte, size, quality int, format string) ([]byte, error) {
-	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
-		InputSize: len(data),
-		Fill:      true,
-		Size:      size,
-		Quality:   quality,
-		Format:    format,
-	})
-}
-
 func (p *imageWorkerPool) resizeAnimatedGIF(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
 	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
 		InputSize:   len(data),

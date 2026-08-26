@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 mod image_worker;
 mod lyrics;
+mod ttml;
 
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_BATCH_FILES: usize = 4096;
@@ -54,7 +55,7 @@ struct Metadata {
     codec: String,
     has_picture: bool,
     /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when the
-    /// payload needs Go (TTML / Lyricsfile / Enhanced LRC).
+    /// payload needs Go (complex TTML / Lyricsfile YAML).
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics_json: Option<String>,
 }

@@ -1,8 +1,8 @@
 //! Embedded lyrics parsing for the Lofty metadata worker.
 //!
-//! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC).
-//! TTML and Lyricsfile YAML fall back to Go so OpenSubsonic karaoke / Apple
-//! Music parity stays in one place until a dedicated TTML port lands.
+//! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC,
+//! and simple clock-time TTML). Complex TTML (frame rates / agents /
+//! iTunesMetadata) and Lyricsfile YAML fall back to Go.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -21,51 +21,51 @@ static ENHANCED_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
 static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?[A-Za-z][^>]*>").unwrap());
 
-#[derive(Debug, Serialize)]
-struct Cue {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Cue {
     #[serde(skip_serializing_if = "Option::is_none")]
-    start: Option<i64>,
+    pub(crate) start: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    end: Option<i64>,
-    value: String,
+    pub(crate) end: Option<i64>,
+    pub(crate) value: String,
     #[serde(rename = "byteStart")]
-    byte_start: usize,
+    pub(crate) byte_start: usize,
     #[serde(rename = "byteEnd")]
-    byte_end: usize,
+    pub(crate) byte_end: usize,
     #[serde(rename = "agentId", skip_serializing_if = "Option::is_none")]
-    agent_id: Option<String>,
+    pub(crate) agent_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-struct Line {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Line {
     #[serde(skip_serializing_if = "Option::is_none")]
-    start: Option<i64>,
+    pub(crate) start: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    end: Option<i64>,
-    value: String,
+    pub(crate) end: Option<i64>,
+    pub(crate) value: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    cue: Vec<Cue>,
+    pub(crate) cue: Vec<Cue>,
 }
 
 #[derive(Debug, Serialize)]
-struct Lyrics {
+pub(crate) struct Lyrics {
     #[serde(rename = "displayArtist", skip_serializing_if = "String::is_empty")]
-    display_artist: String,
+    pub(crate) display_artist: String,
     #[serde(rename = "displayTitle", skip_serializing_if = "String::is_empty")]
-    display_title: String,
+    pub(crate) display_title: String,
     #[serde(skip_serializing_if = "String::is_empty")]
-    kind: String,
-    lang: String,
+    pub(crate) kind: String,
+    pub(crate) lang: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    agents: Vec<Value>,
-    line: Vec<Line>,
+    pub(crate) agents: Vec<Value>,
+    pub(crate) line: Vec<Line>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    offset: Option<i64>,
-    synced: bool,
+    pub(crate) offset: Option<i64>,
+    pub(crate) synced: bool,
 }
 
 /// Returns JSON for `media_file.lyrics` when every lyric entry can be parsed in
-/// Rust. Returns `None` when any entry needs the Go parsers (TTML / YAML / ELRC).
+/// Rust. Returns `None` when any entry needs the Go parsers (complex TTML / YAML).
 pub fn parse_tags_to_json(tags: &HashMap<String, Vec<String>>) -> Option<String> {
     let pairs = lyric_pairs(tags);
     if pairs.is_empty() {
@@ -116,20 +116,24 @@ fn needs_go_fallback(text: &str) -> bool {
     if head.is_empty() {
         return false;
     }
-    // TTML / XML — still Go until a dedicated Rust TTML port lands.
-    if head.as_bytes().first().copied() == Some(b'<') {
-        return true;
-    }
-    // Lyricsfile YAML
+    // Lyricsfile YAML — keep Go for schema parity.
     if head.contains("version:")
         && (head.contains("\"1.0\"") || head.contains("'1.0'") || head.contains("version: 1.0"))
     {
+        return true;
+    }
+    // Complex TTML (iTunesMetadata / frame rates / agents) stays in Go.
+    if crate::ttml::looks_like_ttml(text) && crate::ttml::needs_full_go_ttml(text) {
         return true;
     }
     false
 }
 
 fn parse_one(lang: String, text: &str) -> Option<Lyrics> {
+    // TTML must keep markup; sanitize_text strips tags for LRC/SRT/plain.
+    if crate::ttml::looks_like_ttml(text) {
+        return crate::ttml::parse_ttml(&lang, text);
+    }
     let text = sanitize_text(text);
     if text.trim().is_empty() {
         return None;
@@ -530,13 +534,25 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_for_ttml() {
+    fn falls_back_for_complex_ttml() {
         let mut tags = HashMap::new();
         tags.insert(
             "lyrics".to_owned(),
-            vec![r#"<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"#.to_owned()],
+            vec![r#"<tt ttp:frameRate="30" xmlns:ttp="http://www.w3.org/ns/ttml#parameter"><body/></tt>"#.to_owned()],
         );
         assert!(parse_tags_to_json(&tags).is_none());
+    }
+
+    #[test]
+    fn parses_simple_ttml_via_tags() {
+        let mut tags = HashMap::new();
+        tags.insert(
+            "lyrics:eng".to_owned(),
+            vec![r#"<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="eng"><body><div><p begin="00:00:01.000" end="00:00:02.000">Hello</p></div></body></tt>"#.to_owned()],
+        );
+        let json = parse_tags_to_json(&tags).expect("simple TTML");
+        assert!(json.contains("Hello"));
+        assert!(json.contains("1000"));
     }
 
     #[test]

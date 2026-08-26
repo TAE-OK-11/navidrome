@@ -116,6 +116,15 @@ var _ = Describe("ToMediaFile", func() {
 			sort.Slice(expected, func(i, j int) bool { return expected[i].Lang < expected[j].Lang })
 			Expect(actual).To(Equal(expected))
 		})
+
+		It("uses Rust pre-parsed lyrics_json when present", func() {
+			props.Tags = model.RawTags{"LYRICS:ENG": {"ignored by Go path"}}
+			props.LyricsJSON = `[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`
+			md = metadata.New("song.mp3", props)
+			Expect(md.ToMediaFile(1, "folderID").Lyrics).To(Equal(
+				`[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`,
+			))
+		})
 	})
 
 	Describe("BPM", func() {

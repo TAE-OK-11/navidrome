@@ -60,6 +60,7 @@ type rawResult struct {
 	Channels   uint8               `json:"channels"`
 	Codec      string              `json:"codec"`
 	HasPicture bool                `json:"has_picture"`
+	LyricsJSON string              `json:"lyrics_json,omitempty"`
 }
 
 type rawFileInfo struct {
@@ -76,13 +77,13 @@ type workerFileInfo struct {
 	birthTime time.Time
 }
 
-func (f workerFileInfo) Name() string          { return f.name }
-func (f workerFileInfo) Size() int64           { return f.size }
-func (f workerFileInfo) Mode() fs.FileMode     { return 0 }
-func (f workerFileInfo) ModTime() time.Time    { return f.modified }
-func (f workerFileInfo) IsDir() bool           { return false }
-func (f workerFileInfo) Sys() any              { return nil }
-func (f workerFileInfo) BirthTime() time.Time  { return f.birthTime }
+func (f workerFileInfo) Name() string         { return f.name }
+func (f workerFileInfo) Size() int64          { return f.size }
+func (f workerFileInfo) Mode() fs.FileMode    { return 0 }
+func (f workerFileInfo) ModTime() time.Time   { return f.modified }
+func (f workerFileInfo) IsDir() bool          { return false }
+func (f workerFileInfo) Sys() any             { return nil }
+func (f workerFileInfo) BirthTime() time.Time { return f.birthTime }
 
 type worker struct {
 	cmd     *exec.Cmd
@@ -366,6 +367,7 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 				Codec:      value.Codec,
 			},
 			HasPicture: value.HasPicture,
+			LyricsJSON: value.LyricsJSON,
 		}
 	}
 	for key, workerErr := range resp.Errors {

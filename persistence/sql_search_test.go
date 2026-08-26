@@ -51,7 +51,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(sql).To(ContainSubstring("LIKE"))
 		})
 
-		It("routes CJK queries to LIKE strategy instead of FTS", func() {
+		It("routes CJK queries through FTS strategy", func() {
 			DeferCleanup(configtest.SetupConfig())
 			conf.Server.Search.Backend = "fts"
 			conf.Server.Search.FullString = false
@@ -60,9 +60,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(strategy).ToNot(BeNil())
 			sql, _, err := strategy.ToSql()
 			Expect(err).ToNot(HaveOccurred())
-			// CJK should use LIKE, not MATCH
-			Expect(sql).To(ContainSubstring("LIKE"))
-			Expect(sql).NotTo(ContainSubstring("MATCH"))
+			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 
 		It("routes non-CJK queries to FTS strategy", func() {

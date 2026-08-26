@@ -40,14 +40,15 @@ func Resolve() (string, error) {
 
 func resolveConfiguredBinary(configured string) (string, error) {
 	if filepath.IsAbs(configured) {
-		info, err := os.Stat(configured)
+		cleaned := filepath.Clean(configured)
+		info, err := os.Stat(cleaned) //nolint:gosec // administrator-controlled ND_METADATAWORKERPATH
 		if err != nil {
-			return "", fmt.Errorf("metadata worker not found at %q: %w", configured, err)
+			return "", fmt.Errorf("metadata worker not found at %q: %w", cleaned, err)
 		}
 		if info.IsDir() {
-			return "", fmt.Errorf("metadata worker path %q is a directory", configured)
+			return "", fmt.Errorf("metadata worker path %q is a directory", cleaned)
 		}
-		return configured, nil
+		return cleaned, nil
 	}
 	return exec.LookPath(configured)
 }

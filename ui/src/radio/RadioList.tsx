@@ -52,11 +52,7 @@ const RadioListActions = ({
 
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
-      {isAdmin && (
-        <CreateButton>
-          {translate('ra.action.create')}
-        </CreateButton>
-      )}
+      {isAdmin && <CreateButton>{translate('ra.action.create')}</CreateButton>}
       {filters &&
         cloneElement(filters, {
           resource,

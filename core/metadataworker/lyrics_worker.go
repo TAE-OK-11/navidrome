@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	maxLyricsWorkers      = 2
-	maxLyricsInputBytes    = 16 * 1024 * 1024
-	lyricsWorkerHeaderLen = 8 * 1024
+	maxLyricsWorkers        = 2
+	maxLyricsInputBytes      = 16 * 1024 * 1024
+	maxLyricsResponseBytes   = 16 * 1024 * 1024
+	lyricsWorkerReadBufBytes = 64 * 1024
 )
 
 type lyricsWorkerRequest struct {
@@ -168,7 +169,7 @@ func startLyricsWorker(binary string) (*lyricsWorker, error) {
 		cmd:    cmd,
 		stdin:  stdin,
 		writer: bufio.NewWriterSize(stdin, 64*1024),
-		reader: bufio.NewReaderSize(stdout, lyricsWorkerHeaderLen),
+		reader: bufio.NewReaderSize(stdout, lyricsWorkerReadBufBytes),
 	}, nil
 }
 
@@ -195,9 +196,12 @@ func (w *lyricsWorker) roundTrip(suffix, lang string, contents []byte) (string, 
 		return "", fmt.Errorf("flushing lyrics request: %w", err)
 	}
 
-	responseHeader, err := w.reader.ReadSlice('\n')
+	responseHeader, err := w.reader.ReadBytes('\n')
 	if err != nil {
 		return "", fmt.Errorf("reading lyrics response header: %w", err)
+	}
+	if len(responseHeader) > maxLyricsResponseBytes {
+		return "", fmt.Errorf("lyrics response exceeds maximum size of %d bytes", maxLyricsResponseBytes)
 	}
 	var response lyricsWorkerResponse
 	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {

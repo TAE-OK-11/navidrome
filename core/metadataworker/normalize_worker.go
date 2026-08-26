@@ -149,7 +149,7 @@ func startNormalizeWorker(binary string) (*normalizeWorker, error) {
 		cmd:    cmd,
 		stdin:  stdin,
 		writer: bufio.NewWriterSize(stdin, 16*1024),
-		reader: bufio.NewReaderSize(stdout, lyricsWorkerHeaderLen),
+		reader: bufio.NewReaderSize(stdout, lyricsWorkerReadBufBytes),
 	}, nil
 }
 

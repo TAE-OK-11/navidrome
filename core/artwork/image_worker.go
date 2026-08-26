@@ -25,6 +25,7 @@ type imageWorkerRequest struct {
 	InputSize   int    `json:"input_size,omitempty"`
 	InputSizes  []int  `json:"input_sizes,omitempty"`
 	Mosaic      bool   `json:"mosaic,omitempty"`
+	Sniff       bool   `json:"sniff,omitempty"`
 	Size        int    `json:"size"`
 	Square      bool   `json:"square"`
 	Fill        bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
@@ -33,10 +34,19 @@ type imageWorkerRequest struct {
 	Format      string `json:"format"`
 }
 
+type imageAnimationFlags struct {
+	AnimatedGIF bool
+	AnimatedWebP bool
+	AnimatedPNG bool
+}
+
 type imageWorkerResponse struct {
-	OK    bool   `json:"ok"`
-	Size  int64  `json:"size"`
-	Error string `json:"error"`
+	OK            bool   `json:"ok"`
+	Size          int64  `json:"size"`
+	Error         string `json:"error"`
+	AnimatedGIF   *bool  `json:"animated_gif,omitempty"`
+	AnimatedWebP  *bool  `json:"animated_webp,omitempty"`
+	AnimatedPNG   *bool  `json:"animated_png,omitempty"`
 }
 
 type imageWorker struct {
@@ -102,6 +112,51 @@ func (p *imageWorkerPool) mosaic(ctx context.Context, tiles [][]byte, size, qual
 		Quality:    quality,
 		Format:     format,
 	})
+}
+
+func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imageAnimationFlags, error) {
+	var flags imageAnimationFlags
+	binary, err := metadataworker.Resolve()
+	if err != nil {
+		return flags, err
+	}
+
+	select {
+	case p.limit <- struct{}{}:
+	case <-ctx.Done():
+		return flags, ctx.Err()
+	}
+	defer func() { <-p.limit }()
+
+	var slot *imageWorkerSlot
+	select {
+	case slot = <-p.idle:
+	default:
+		slot = &imageWorkerSlot{}
+	}
+	defer func() { p.idle <- slot }()
+
+	worker, err := slot.ensure(binary)
+	if err != nil {
+		return flags, err
+	}
+	response, err := worker.roundTripHeader(imageWorkerRequest{
+		Sniff:     true,
+		InputSize: len(data),
+	}, [][]byte{data})
+	if err != nil {
+		return flags, err
+	}
+	if response.AnimatedGIF != nil {
+		flags.AnimatedGIF = *response.AnimatedGIF
+	}
+	if response.AnimatedWebP != nil {
+		flags.AnimatedWebP = *response.AnimatedWebP
+	}
+	if response.AnimatedPNG != nil {
+		flags.AnimatedPNG = *response.AnimatedPNG
+	}
+	return flags, nil
 }
 
 func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
@@ -204,38 +259,12 @@ func startImageWorker(binary string) (*imageWorker, error) {
 }
 
 func (w *imageWorker) roundTrip(request imageWorkerRequest, payloads [][]byte) ([]byte, error) {
-	header, err := json.Marshal(request)
+	response, err := w.writeRequest(request, payloads)
 	if err != nil {
-		return nil, fmt.Errorf("encoding image request: %w", err)
+		return nil, err
 	}
-	if _, err := w.writer.Write(header); err != nil {
-		return nil, fmt.Errorf("writing image request: %w", err)
-	}
-	if err := w.writer.WriteByte('\n'); err != nil {
-		return nil, fmt.Errorf("framing image request: %w", err)
-	}
-	for i, data := range payloads {
-		if _, err := w.writer.Write(data); err != nil {
-			return nil, fmt.Errorf("writing image payload %d: %w", i, err)
-		}
-	}
-	if err := w.writer.Flush(); err != nil {
-		return nil, fmt.Errorf("flushing image request: %w", err)
-	}
-
-	responseHeader, err := w.reader.ReadSlice('\n')
-	if err != nil {
-		return nil, fmt.Errorf("reading image response header: %w", err)
-	}
-	var response imageWorkerResponse
-	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {
-		return nil, fmt.Errorf("decoding image response header: %w", err)
-	}
-	if !response.OK {
-		if response.Error == "" {
-			response.Error = "Rust image worker could not resize artwork"
-		}
-		return nil, &imageResizeError{message: response.Error}
+	if request.Sniff {
+		return nil, fmt.Errorf("sniff request must use roundTripHeader")
 	}
 	if response.Size <= 0 || response.Size > maxWorkerOutputBytes {
 		return nil, fmt.Errorf("Rust image worker returned invalid output size %d", response.Size)
@@ -245,6 +274,47 @@ func (w *imageWorker) roundTrip(request imageWorkerRequest, payloads [][]byte) (
 		return nil, fmt.Errorf("reading resized image: %w", err)
 	}
 	return resized, nil
+}
+
+func (w *imageWorker) roundTripHeader(request imageWorkerRequest, payloads [][]byte) (imageWorkerResponse, error) {
+	return w.writeRequest(request, payloads)
+}
+
+func (w *imageWorker) writeRequest(request imageWorkerRequest, payloads [][]byte) (imageWorkerResponse, error) {
+	header, err := json.Marshal(request)
+	if err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("encoding image request: %w", err)
+	}
+	if _, err := w.writer.Write(header); err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("writing image request: %w", err)
+	}
+	if err := w.writer.WriteByte('\n'); err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("framing image request: %w", err)
+	}
+	for i, data := range payloads {
+		if _, err := w.writer.Write(data); err != nil {
+			return imageWorkerResponse{}, fmt.Errorf("writing image payload %d: %w", i, err)
+		}
+	}
+	if err := w.writer.Flush(); err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("flushing image request: %w", err)
+	}
+
+	responseHeader, err := w.reader.ReadSlice('\n')
+	if err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("reading image response header: %w", err)
+	}
+	var response imageWorkerResponse
+	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {
+		return imageWorkerResponse{}, fmt.Errorf("decoding image response header: %w", err)
+	}
+	if !response.OK {
+		if response.Error == "" {
+			response.Error = "Rust image worker request failed"
+		}
+		return imageWorkerResponse{}, &imageResizeError{message: response.Error}
+	}
+	return response, nil
 }
 
 func (w *imageWorker) kill() {

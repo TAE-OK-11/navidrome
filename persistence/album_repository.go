@@ -13,10 +13,10 @@ import (
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/ftsnormalize"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/slice"
-	"github.com/navidrome/navidrome/utils/str"
 	"github.com/pocketbase/dbx"
 )
 
@@ -77,7 +77,7 @@ func (a *dbAlbum) PostMapArgs(args map[string]any) error {
 	fullText = append(fullText, a.Album.Tags[model.TagCatalogNumber]...)
 	args["full_text"] = formatFullText(fullText...)
 	args["search_participants"] = strings.Join(participantNames, " ")
-	args["search_normalized"] = str.NormalizeForFTS(a.Name, a.AlbumArtist)
+	args["search_normalized"] = ftsnormalize.NormalizeForFTS(context.Background(), a.Name, a.AlbumArtist)
 
 	args["tags"] = marshalTags(a.Album.Tags)
 	args["participants"] = marshalParticipants(a.Album.Participants)

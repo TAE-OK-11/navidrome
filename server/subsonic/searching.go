@@ -157,6 +157,12 @@ func searchPageInWindow(offset, count int) bool {
 func rustSearchableQuery(query string) bool {
 	searchable := 0
 	for _, char := range query {
+		if unicode.Is(unicode.Han, char) ||
+			unicode.Is(unicode.Hiragana, char) ||
+			unicode.Is(unicode.Katakana, char) ||
+			unicode.Is(unicode.Hangul, char) {
+			return true
+		}
 		if unicode.IsLetter(char) || unicode.IsNumber(char) {
 			searchable++
 			if searchable >= 2 {

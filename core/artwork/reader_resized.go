@@ -114,26 +114,49 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 		return nil, 0, err
 	}
 
-	// Preserve animation for animated images
-	if isAnimatedGIF(data) {
-		if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
-			return bytes.NewReader(resized), 0, nil
-		} else if ctx.Err() != nil {
-			return nil, 0, ctx.Err()
-		} else {
-			log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
-		}
-		if a.a.ffmpeg.IsAvailable() {
-			// Animated GIF: convert to animated WebP via ffmpeg (with optional resize)
-			r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
-			if err == nil {
-				return r, 0, nil
+	// Preserve animation for animated images (detected in Rust).
+	flags, sniffErr := persistentImageWorkers.sniffAnimation(ctx, data)
+	if sniffErr == nil {
+		if flags.AnimatedGIF {
+			if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			} else {
+				log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
 			}
-			log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			if a.a.ffmpeg.IsAvailable() {
+				r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
+				if err == nil {
+					return r, 0, nil
+				}
+				log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			}
+		} else if flags.AnimatedWebP || flags.AnimatedPNG {
+			return bytes.NewReader(data), 0, nil
 		}
-	} else if isAnimatedWebP(data) || isAnimatedPNG(data) {
-		// Animated WebP/APNG: return original as-is (ffmpeg can't re-encode these)
-		return bytes.NewReader(data), 0, nil
+	} else if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	} else {
+		log.Debug(ctx, "Rust animation sniff unavailable; using Go heuristics", "error", sniffErr)
+		if isAnimatedGIF(data) {
+			if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			} else {
+				log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
+			}
+			if a.a.ffmpeg.IsAvailable() {
+				r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
+				if err == nil {
+					return r, 0, nil
+				}
+				log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			}
+		} else if isAnimatedWebP(data) || isAnimatedPNG(data) {
+			return bytes.NewReader(data), 0, nil
+		}
 	}
 
 	return resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)

@@ -87,10 +87,20 @@ done
 			}
 			dir := GinkgoT().TempDir()
 			worker := filepath.Join(dir, "navidrome-metadata")
-			Expect(os.WriteFile(worker, []byte("#!/bin/sh\nprintf native-original-cover"), 0600)).To(Succeed())
+			script := `#!/bin/sh
+if [ "$1" != "--picture-worker" ]; then
+  exit 2
+fi
+while IFS= read -r request; do
+  printf '{"ok":true,"size":21}\n'
+  printf native-original-cover
+done
+`
+			Expect(os.WriteFile(worker, []byte(script), 0600)).To(Succeed())
 			Expect(os.Chmod(worker, 0700)).To(Succeed()) //nolint:gosec // Executable test helper.
 			Expect(os.Setenv(metadataworker.EnvPath, worker)).To(Succeed())
 			DeferCleanup(os.Unsetenv, metadataworker.EnvPath)
+			DeferCleanup(persistentPictureWorkers.closeIdle)
 
 			mediaFile := filepath.Join(dir, "track.m4a")
 			Expect(os.WriteFile(mediaFile, []byte("audio"), 0600)).To(Succeed())

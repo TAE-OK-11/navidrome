@@ -26,6 +26,8 @@ type Info struct {
 	// LyricsJSON is optional pre-parsed lyrics from the Rust Lofty worker.
 	// Empty means sidecar/legacy parsing should run via model.ParseLyrics (Rust worker).
 	LyricsJSON string
+	// MediaFileJSON is optional pre-mapped scan fields from the Rust Lofty worker.
+	MediaFileJSON string
 }
 
 type FileInfo interface {
@@ -72,12 +74,13 @@ func NewPair(key, value string) string {
 
 func New(filePath string, info Info) Metadata {
 	return Metadata{
-		filePath:   filePath,
-		fileInfo:   info.FileInfo,
-		tags:       clean(filePath, info.Tags),
-		audioProps: info.AudioProperties,
-		hasPicture: info.HasPicture,
-		lyricsJSON: info.LyricsJSON,
+		filePath:      filePath,
+		fileInfo:      info.FileInfo,
+		tags:          clean(filePath, info.Tags),
+		audioProps:    info.AudioProperties,
+		hasPicture:    info.HasPicture,
+		lyricsJSON:    info.LyricsJSON,
+		mediaFileJSON: info.MediaFileJSON,
 	}
 }
 
@@ -88,6 +91,7 @@ type Metadata struct {
 	audioProps AudioProperties
 	hasPicture bool
 	lyricsJSON string
+	mediaFileJSON string
 }
 
 func (md Metadata) FilePath() string     { return md.filePath }

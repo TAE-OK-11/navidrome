@@ -70,8 +70,7 @@ func checkFFmpegInstallation() {
 	if err != nil {
 		log.Warn("Unable to find ffmpeg. Transcoding will fail if used", err)
 		if conf.Server.Scanner.Extractor == "ffmpeg" {
-			log.Warn("ffmpeg cannot be used for metadata extraction. Falling back to taglib")
-			conf.Server.Scanner.Extractor = "taglib"
+			conf.Server.Scanner.Extractor = "lofty"
 		}
 		return
 	}

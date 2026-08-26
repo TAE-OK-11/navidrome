@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
  * Manages image loading/error state and lightbox open/close.
  * Resets when recordId changes.
  */
-export const useImageLoadingState = (
-  recordId: string | number | undefined,
-) => {
+export const useImageLoadingState = (recordId: string | number | undefined) => {
   const [imageLoading, setImageLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
   const [isLightboxOpen, setLightboxOpen] = useState(false)

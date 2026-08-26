@@ -33,12 +33,13 @@ Important settings:
 - `NAVIDROME_H3_THREADS`: optional Tokio worker override. By default the
   companion uses the available CPU parallelism capped at four workers.
 
-0-RTT request data is always disabled. Session resumption remains available,
-but Navidrome never receives an application request before handshake
-completion, so the old route-level HTTP 425 behavior is gone. H3 extended
-CONNECT is not advertised and CONNECT is answered with 501; WebSocket clients
-continue using the existing HTTP/1.1 upgrade path. Range, streaming request and
-response bodies, and SSE use bounded async streams with transport backpressure.
+0-RTT early data is enabled for resumed connections. Only GET and HEAD that
+are not auth-session paths are accepted before the handshake completes; other
+methods receive HTTP 425 Too Early and should retry. Session resumption itself
+remains available either way. H3 extended CONNECT is not advertised and CONNECT
+is answered with 501; WebSocket clients continue using the existing HTTP/1.1
+upgrade path. Range, streaming request and response bodies, and SSE use bounded
+async streams with transport backpressure.
 
 On Linux the listener probes and enables the available UDP GSO/GRO,
 `SO_TXTIME`, overflow accounting and PMTU capabilities. It also uses 7 MiB

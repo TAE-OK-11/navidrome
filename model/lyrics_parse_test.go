@@ -68,20 +68,18 @@ var _ = Describe("ParseLyrics", func() {
 			})
 		})
 
-		// This is the source of the full-scan log spam: embedded lyrics are parsed
-		// with an empty suffix (sniff mode), so every plain-text lyric fails the
-		// YAML/SRT/TTML probes on its way to the plain-text fallback. A probe miss
-		// during sniffing is expected control flow, not a warning.
-		It("logs sniff probe misses at trace only, with file attribution", func() {
+		// Embedded lyrics are parsed with an empty suffix (sniff mode). Cheap
+		// sniff gates skip SRT/YAML when format markers are absent, so plain
+		// text falls through to LRC without probe-miss noise. Any remaining
+		// probe rejection must stay at Trace — never Warn — during sniffing.
+		It("does not warn when sniffing plain embedded lyrics", func() {
 			ctx := log.NewContext(GinkgoT().Context(), "file", "/music/song.mp3")
 			list, err := ParseLyrics(ctx, "", "eng", []byte("Just a plain\nlyric line\n"))
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(list).To(HaveLen(1))
 			Expect(list[0].Line[0].Value).To(Equal("Just a plain"))
-			entries := hook.AllEntries()
-			Expect(entries).ToNot(BeEmpty(), "probe misses should be observable at trace")
-			for _, e := range entries {
+			for _, e := range hook.AllEntries() {
 				Expect(e.Level).To(Equal(logrus.TraceLevel),
 					"sniff-mode probe misses must not be logged above Trace")
 				Expect(e.Data).To(HaveKeyWithValue("file", "/music/song.mp3"))
@@ -265,5 +263,12 @@ Another subtitle line`
 		Expect(list[0].Synced).To(BeTrue())
 		Expect(list[0].Line).To(HaveLen(1))
 		Expect(list[0].Line[0].Value).To(Equal("sniffed yaml line"))
+	})
+
+	It("sniff gates skip YAML and SRT for ordinary LRC content", func() {
+		Expect(looksLikeLyricsfile([]byte("[00:01.00]hello\n"))).To(BeFalse())
+		Expect(isLikelySRT([]byte("[00:01.00]hello\n"))).To(BeFalse())
+		Expect(looksLikeLyricsfile([]byte("version: \"1.0\"\nlines:\n  - text: x\n    start_ms: 1\n"))).To(BeTrue())
+		Expect(isLikelySRT([]byte("1\n00:00:01,000 --> 00:00:02,000\nHi\n"))).To(BeTrue())
 	})
 })

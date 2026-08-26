@@ -71,6 +71,23 @@ func parseLyricsfile(lang string, contents []byte) (LyricList, error) {
 
 const lyricsfileVersion = "1.0"
 
+// looksLikeLyricsfile is a cheap sniff gate used before yaml.Decode. Lyricsfile
+// documents declare version 1.0 near the top; embedded LRC/plain lyrics do not,
+// so skipping the YAML decoder removes the dominant cost on the scan hot path.
+func looksLikeLyricsfile(contents []byte) bool {
+	head := contents
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	if !bytes.Contains(head, []byte("version:")) {
+		return false
+	}
+	return bytes.Contains(head, []byte(`"`+lyricsfileVersion+`"`)) ||
+		bytes.Contains(head, []byte(`'`+lyricsfileVersion+`'`)) ||
+		bytes.Contains(head, []byte("version: "+lyricsfileVersion)) ||
+		bytes.Contains(head, []byte("version:"+lyricsfileVersion))
+}
+
 type lyricsfileDocument struct {
 	Version  string                `yaml:"version"`
 	Metadata lyricsfileMetadata    `yaml:"metadata"`

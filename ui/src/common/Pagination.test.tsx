@@ -40,7 +40,7 @@ describe('Pagination', () => {
     mockContext = vi.mocked(useListPaginationContext)
   })
 
-  const context = (resource?: string) =>
+  const context = (resource = '') =>
     ({
       resource,
       page: 1,
@@ -77,7 +77,7 @@ describe('Pagination', () => {
     mockContext.mockReturnValue(context())
     render(<Pagination />)
     selectPerPage()
-    expect(localStorage.getItem('perPage.undefined')).toBeNull()
+    expect(localStorage).toHaveLength(0)
     expect(setPerPage).toHaveBeenCalledWith(50)
   })
 })

@@ -43,6 +43,7 @@ type folderEntry struct {
 	numSubFolders   int
 	imagesUpdatedAt time.Time
 	prevHash        string // Previous hash from DB
+	rustHash        string // Precomputed by Rust scanner when available
 	tracks          model.MediaFiles
 	albums          model.Albums
 	albumIDMap      map[string]string
@@ -83,6 +84,9 @@ func (f *folderEntry) toFolder() *model.Folder {
 }
 
 func (f *folderEntry) hash() string {
+	if f.rustHash != "" {
+		return f.rustHash
+	}
 	h := md5.New()
 	_, _ = fmt.Fprintf(
 		h,

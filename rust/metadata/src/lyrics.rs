@@ -1,14 +1,25 @@
 //! Embedded lyrics parsing for the Lofty metadata worker.
 //!
-//! Handles the common scan-path formats (LRC, plain text, SRT). TTML, Lyricsfile
-//! YAML, and Enhanced LRC with word cues fall back to Go so OpenSubsonic karaoke
-//! parity stays in one place.
+//! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC).
+//! TTML and Lyricsfile YAML fall back to Go so OpenSubsonic karaoke / Apple
+//! Music parity stays in one place until a dedicated TTML port lands.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
+
+static SYNC_LRC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)(^|\n)\s*\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
+static TIME_LRC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
+static LRC_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\[(ar|ti|offset|lang):([^\]]+)\]").unwrap());
+static ENHANCED_LRC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
+static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?[A-Za-z][^>]*>").unwrap());
 
 #[derive(Debug, Serialize)]
 struct Cue {
@@ -105,7 +116,7 @@ fn needs_go_fallback(text: &str) -> bool {
     if head.is_empty() {
         return false;
     }
-    // TTML / XML
+    // TTML / XML — still Go until a dedicated Rust TTML port lands.
     if head.as_bytes().first().copied() == Some(b'<') {
         return true;
     }
@@ -113,10 +124,6 @@ fn needs_go_fallback(text: &str) -> bool {
     if head.contains("version:")
         && (head.contains("\"1.0\"") || head.contains("'1.0'") || head.contains("version: 1.0"))
     {
-        return true;
-    }
-    // Enhanced LRC word cues — keep Go for byte-offset karaoke parity.
-    if ENHANCED_LRC.is_match(text) {
         return true;
     }
     false
@@ -183,12 +190,18 @@ fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
             }
 
             if valid {
-                for &ts in &timestamps {
+                let (value, base_cues) = parse_enhanced_line(&prior);
+                for (idx, &ts) in timestamps.iter().enumerate() {
+                    let offset = if idx == 0 {
+                        0
+                    } else {
+                        ts - timestamps[0]
+                    };
                     lines.push(Line {
                         start: Some(ts),
                         end: None,
-                        value: prior.trim().to_owned(),
-                        cue: Vec::new(),
+                        value: value.clone(),
+                        cue: shift_elrc_cues(&base_cues, offset),
                     });
                 }
                 timestamps.clear();
@@ -224,12 +237,14 @@ fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
     }
 
     if valid {
-        for &ts in &timestamps {
+        let (value, base_cues) = parse_enhanced_line(&prior);
+        for (idx, &ts) in timestamps.iter().enumerate() {
+            let offset = if idx == 0 { 0 } else { ts - timestamps[0] };
             lines.push(Line {
                 start: Some(ts),
                 end: None,
-                value: prior.trim().to_owned(),
-                cue: Vec::new(),
+                value: value.clone(),
+                cue: shift_elrc_cues(&base_cues, offset),
             });
         }
     }
@@ -237,6 +252,8 @@ fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
     if repeated {
         lines.sort_by_key(|line| line.start.unwrap_or(0));
     }
+
+    normalize_cue_lines(&mut lines);
 
     Lyrics {
         display_artist: artist,
@@ -247,6 +264,127 @@ fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
         line: lines,
         offset,
         synced,
+    }
+}
+
+fn parse_enhanced_line(text: &str) -> (String, Vec<Cue>) {
+    let matches: Vec<_> = ENHANCED_LRC.find_iter(text).collect();
+    if matches.is_empty() {
+        return (text.trim().to_owned(), Vec::new());
+    }
+
+    struct Segment {
+        start: i64,
+        raw_start: usize,
+        raw_end: usize,
+    }
+
+    let mut segments = Vec::new();
+    let mut raw_value = String::new();
+    let mut trailing_end: Option<i64> = None;
+
+    for (i, m) in matches.iter().enumerate() {
+        let inner = &text[m.start() + 1..m.end() - 1];
+        let Some(time_ms) = parse_lrc_time(&format!("[{inner}]")) else {
+            continue;
+        };
+        let text_start = m.end();
+        let text_end = if i + 1 < matches.len() {
+            matches[i + 1].start()
+        } else {
+            text.len()
+        };
+        let word = &text[text_start..text_end];
+        if word.is_empty() {
+            if i + 1 == matches.len() {
+                trailing_end = Some(time_ms);
+            }
+            continue;
+        }
+        let raw_start = raw_value.len();
+        raw_value.push_str(word);
+        segments.push(Segment {
+            start: time_ms,
+            raw_start,
+            raw_end: raw_value.len(),
+        });
+    }
+
+    if segments.is_empty() {
+        let stripped = ENHANCED_LRC.replace_all(text, "");
+        return (stripped.trim().to_owned(), Vec::new());
+    }
+
+    let left_trim = raw_value.len() - raw_value.trim_start().len();
+    let right_trim = raw_value.len() - raw_value.trim_end().len();
+    let trimmed_end = raw_value.len().saturating_sub(right_trim).max(left_trim);
+
+    let mut cues = Vec::with_capacity(segments.len());
+    for seg in segments {
+        let byte_start = seg.raw_start.max(left_trim);
+        let byte_end = seg.raw_end.min(trimmed_end);
+        if byte_start >= byte_end {
+            continue;
+        }
+        cues.push(Cue {
+            start: Some(seg.start),
+            end: None,
+            value: raw_value[byte_start..byte_end].to_owned(),
+            byte_start: byte_start - left_trim,
+            byte_end: byte_end - left_trim - 1,
+            agent_id: None,
+        });
+    }
+    if let (Some(end), true) = (trailing_end, !cues.is_empty()) {
+        cues.last_mut().unwrap().end = Some(end);
+    }
+    (raw_value.trim().to_owned(), cues)
+}
+
+fn shift_elrc_cues(base: &[Cue], offset_ms: i64) -> Vec<Cue> {
+    if base.is_empty() {
+        return Vec::new();
+    }
+    base.iter()
+        .map(|cue| Cue {
+            start: cue.start.map(|s| s + offset_ms),
+            end: cue.end.map(|e| e + offset_ms),
+            value: cue.value.clone(),
+            byte_start: cue.byte_start,
+            byte_end: cue.byte_end,
+            agent_id: cue.agent_id.clone(),
+        })
+        .collect()
+}
+
+fn normalize_cue_lines(lines: &mut [Line]) {
+    for i in 0..lines.len() {
+        if lines[i].cue.is_empty() {
+            continue;
+        }
+        let fallback_end = lines[i].end.or_else(|| {
+            lines
+                .get(i + 1)
+                .and_then(|next| next.start)
+        });
+        let cues = &mut lines[i].cue;
+        for j in 0..cues.len() {
+            if cues[j].end.is_none() {
+                cues[j].end = cues
+                    .get(j + 1)
+                    .and_then(|next| next.start)
+                    .or(fallback_end);
+            }
+        }
+        if lines[i].start.is_none() {
+            lines[i].start = cues.iter().filter_map(|c| c.start).min();
+        }
+        if lines[i].end.is_none() {
+            lines[i].end = cues
+                .iter()
+                .filter_map(|c| c.end.or(c.start))
+                .max();
+        }
     }
 }
 
@@ -347,9 +485,9 @@ fn normalize_lang(lang: &str) -> String {
 }
 
 /// Lightweight stand-in for Go's bluemonday UGC sanitize on lyric payloads:
-/// strip tags and unescape a few common entities. Typical LRC has no HTML.
+/// strip HTML tags (not Enhanced LRC `<mm:ss>` markers) and unescape entities.
 fn sanitize_text(text: &str) -> String {
-    let no_tags = TAG_RE.replace_all(text, "");
+    let no_tags = HTML_TAG_RE.replace_all(text, "");
     no_tags
         .replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -358,18 +496,6 @@ fn sanitize_text(text: &str) -> String {
         .replace("&#39;", "'")
         .replace("&apos;", "'")
 }
-
-use std::sync::LazyLock;
-
-static SYNC_LRC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)(^|\n)\s*\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
-static TIME_LRC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
-static LRC_ID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\[(ar|ti|offset|lang):([^\]]+)\]").unwrap());
-static ENHANCED_LRC: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
-static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
 
 #[cfg(test)]
 mod tests {
@@ -389,21 +515,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_enhanced_lrc_word_cues() {
+        let mut tags = HashMap::new();
+        tags.insert(
+            "lyrics".to_owned(),
+            vec!["[00:01.00]<00:01.00>Lead <00:01.50>words".to_owned()],
+        );
+        let json = parse_tags_to_json(&tags).expect("ELRC should parse in Rust");
+        assert!(json.contains("\"synced\":true"));
+        assert!(json.contains("Lead words"));
+        assert!(json.contains("byteStart"));
+        assert!(json.contains("1000"));
+        assert!(json.contains("1500"));
+    }
+
+    #[test]
     fn falls_back_for_ttml() {
         let mut tags = HashMap::new();
         tags.insert(
             "lyrics".to_owned(),
             vec![r#"<tt xmlns="http://www.w3.org/ns/ttml"><body/></tt>"#.to_owned()],
-        );
-        assert!(parse_tags_to_json(&tags).is_none());
-    }
-
-    #[test]
-    fn falls_back_for_enhanced_lrc() {
-        let mut tags = HashMap::new();
-        tags.insert(
-            "lyrics".to_owned(),
-            vec!["[00:01.00]<00:01.00>Lead <00:01.50>words".to_owned()],
         );
         assert!(parse_tags_to_json(&tags).is_none());
     }

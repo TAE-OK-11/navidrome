@@ -136,6 +136,10 @@ func (md Metadata) mapGain(rg, r128 model.TagName) *float64 {
 }
 
 func (md Metadata) mapLyrics() string {
+	if md.lyricsJSON != "" {
+		return md.lyricsJSON
+	}
+
 	rawLyrics := md.Pairs(model.TagLyrics)
 
 	lyricList := make(model.LyricList, 0, len(rawLyrics))

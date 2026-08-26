@@ -22,12 +22,14 @@ const (
 )
 
 type imageWorkerRequest struct {
-	InputSize int    `json:"input_size"`
-	Size      int    `json:"size"`
-	Square    bool   `json:"square"`
-	Fill      bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
-	Quality   int    `json:"quality"`
-	Format    string `json:"format"`
+	InputSize  int    `json:"input_size,omitempty"`
+	InputSizes []int  `json:"input_sizes,omitempty"`
+	Mosaic     bool   `json:"mosaic,omitempty"`
+	Size       int    `json:"size"`
+	Square     bool   `json:"square"`
+	Fill       bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
+	Quality    int    `json:"quality"`
+	Format     string `json:"format"`
 }
 
 type imageWorkerResponse struct {
@@ -64,7 +66,7 @@ func newImageWorkerPool() *imageWorkerPool {
 }
 
 func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality int, square bool, format string) ([]byte, error) {
-	return p.resizeRequest(ctx, data, imageWorkerRequest{
+	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
 		InputSize: len(data),
 		Size:      size,
 		Square:    square,
@@ -74,16 +76,34 @@ func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality
 }
 
 func (p *imageWorkerPool) fill(ctx context.Context, data []byte, size, quality int, format string) ([]byte, error) {
-	return p.resizeRequest(ctx, data, imageWorkerRequest{
+	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
 		InputSize: len(data),
-		Size:      size,
 		Fill:      true,
+		Size:      size,
 		Quality:   quality,
 		Format:    format,
 	})
 }
 
-func (p *imageWorkerPool) resizeRequest(ctx context.Context, data []byte, request imageWorkerRequest) ([]byte, error) {
+// mosaic fills and stitches 1 or 4 album covers into a playlist mosaic in one Rust round-trip.
+func (p *imageWorkerPool) mosaic(ctx context.Context, tiles [][]byte, size, quality int, format string) ([]byte, error) {
+	if len(tiles) == 0 || len(tiles) > 4 {
+		return nil, fmt.Errorf("mosaic requires 1..=4 tiles, got %d", len(tiles))
+	}
+	sizes := make([]int, len(tiles))
+	for i, tile := range tiles {
+		sizes[i] = len(tile)
+	}
+	return p.resizeRequest(ctx, tiles, imageWorkerRequest{
+		InputSizes: sizes,
+		Mosaic:     true,
+		Size:       size,
+		Quality:    quality,
+		Format:     format,
+	})
+}
+
+func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
 	binary, err := metadataworker.Resolve()
 	if err != nil {
 		return nil, err
@@ -115,7 +135,7 @@ func (p *imageWorkerPool) resizeRequest(ctx context.Context, data []byte, reques
 			worker.kill()
 			close(cancelDone)
 		})
-		resized, err := worker.roundTrip(request, data)
+		resized, err := worker.roundTrip(request, payloads)
 		if !stopCancel() {
 			<-cancelDone
 		}
@@ -182,7 +202,7 @@ func startImageWorker(binary string) (*imageWorker, error) {
 	}, nil
 }
 
-func (w *imageWorker) roundTrip(request imageWorkerRequest, data []byte) ([]byte, error) {
+func (w *imageWorker) roundTrip(request imageWorkerRequest, payloads [][]byte) ([]byte, error) {
 	header, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("encoding image request: %w", err)
@@ -193,8 +213,10 @@ func (w *imageWorker) roundTrip(request imageWorkerRequest, data []byte) ([]byte
 	if err := w.writer.WriteByte('\n'); err != nil {
 		return nil, fmt.Errorf("framing image request: %w", err)
 	}
-	if _, err := w.writer.Write(data); err != nil {
-		return nil, fmt.Errorf("writing image payload: %w", err)
+	for i, data := range payloads {
+		if _, err := w.writer.Write(data); err != nil {
+			return nil, fmt.Errorf("writing image payload %d: %w", i, err)
+		}
 	}
 	if err := w.writer.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing image request: %w", err)

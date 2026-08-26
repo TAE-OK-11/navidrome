@@ -9,6 +9,7 @@ anyhow = "1.0.100"
 fast_image_resize = "=6.1.0"
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 lofty = "=0.25.1"
+regex = "1.11.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 webp = { version = "=0.3.1", default-features = false }

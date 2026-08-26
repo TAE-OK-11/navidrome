@@ -14,8 +14,16 @@ const MAX_PIXELS: u64 = 40_000_000;
 
 #[derive(Debug, Deserialize)]
 struct ImageRequest {
+    /// Single-image resize/fill payload length. Ignored when `mosaic` is set.
+    #[serde(default)]
     input_size: usize,
+    /// Concatenated mosaic tile payloads (1..=4), each filled to size/2.
+    #[serde(default)]
+    input_sizes: Vec<usize>,
+    #[serde(default)]
+    mosaic: bool,
     size: u32,
+    #[serde(default)]
     square: bool,
     #[serde(default)]
     fill: bool,
@@ -64,12 +72,25 @@ pub fn run() -> Result<()> {
         validate_request(&request)
             .context("invalid image request; closing worker to resynchronize framing")?;
 
-        let mut encoded = vec![0; request.input_size];
-        input
-            .read_exact(&mut encoded)
-            .context("reading framed image payload")?;
+        let result = if request.mosaic {
+            let mut payloads = Vec::with_capacity(request.input_sizes.len());
+            for &size in &request.input_sizes {
+                let mut encoded = vec![0; size];
+                input
+                    .read_exact(&mut encoded)
+                    .context("reading framed mosaic tile payload")?;
+                payloads.push(encoded);
+            }
+            compose_mosaic(&payloads, &request)
+        } else {
+            let mut encoded = vec![0; request.input_size];
+            input
+                .read_exact(&mut encoded)
+                .context("reading framed image payload")?;
+            resize(&encoded, &request)
+        };
 
-        match resize(&encoded, &request) {
+        match result {
             Ok(resized) => write_success(&mut output, &resized)?,
             Err(error) => write_error(&mut output, format!("{error:#}"))?,
         }
@@ -78,7 +99,26 @@ pub fn run() -> Result<()> {
 }
 
 fn validate_request(request: &ImageRequest) -> Result<()> {
-    if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
+    if request.mosaic {
+        if request.input_sizes.is_empty() || request.input_sizes.len() > 4 {
+            bail!(
+                "mosaic requests require 1..=4 input_sizes, got {}",
+                request.input_sizes.len()
+            );
+        }
+        let mut total = 0usize;
+        for &size in &request.input_sizes {
+            if size == 0 || size > MAX_INPUT_BYTES {
+                bail!("mosaic tile size {size} is outside the allowed range 1..={MAX_INPUT_BYTES}");
+            }
+            total = total
+                .checked_add(size)
+                .context("mosaic payload size overflow")?;
+        }
+        if total > MAX_INPUT_BYTES {
+            bail!("combined mosaic payload {total} exceeds {MAX_INPUT_BYTES}");
+        }
+    } else if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
         bail!(
             "input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
             request.input_size
@@ -94,6 +134,95 @@ fn validate_request(request: &ImageRequest) -> Result<()> {
         bail!("quality must be between 1 and 100");
     }
     Ok(())
+}
+
+/// Fill each album cover to a size/2 tile and stitch 1 or 4 tiles into one PNG/JPEG/WebP.
+/// Matches the Go playlist mosaic layout: one tile stays half-size; two/three are padded
+/// to four by the caller before this runs.
+fn compose_mosaic(payloads: &[Vec<u8>], request: &ImageRequest) -> Result<Vec<u8>> {
+    let canvas = request.size;
+    if canvas < 2 || canvas % 2 != 0 {
+        bail!("mosaic canvas size must be an even value >= 2");
+    }
+    let tile = canvas / 2;
+
+    let mut tiles_rgba = Vec::with_capacity(payloads.len());
+    for payload in payloads {
+        tiles_rgba.push(fill_to_tile_rgba(payload, tile)?);
+    }
+
+    let (pixels, width, height) = if tiles_rgba.len() == 1 {
+        (tiles_rgba.remove(0), tile, tile)
+    } else if tiles_rgba.len() == 4 {
+        let mut canvas_pixels = vec![0u8; checked_rgba_len(canvas, canvas)?];
+        let tile_stride = tile as usize * 4;
+        let canvas_stride = canvas as usize * 4;
+        let positions = [(0u32, 0u32), (tile, 0), (0, tile), (tile, tile)];
+        for (tile_pixels, (origin_x, origin_y)) in tiles_rgba.iter().zip(positions) {
+            for row in 0..tile as usize {
+                let src = row * tile_stride;
+                let dst = (row + origin_y as usize) * canvas_stride + origin_x as usize * 4;
+                canvas_pixels[dst..dst + tile_stride]
+                    .copy_from_slice(&tile_pixels[src..src + tile_stride]);
+            }
+        }
+        (canvas_pixels, canvas, canvas)
+    } else {
+        bail!(
+            "mosaic expects 1 or 4 tiles after caller padding, got {}",
+            tiles_rgba.len()
+        );
+    };
+
+    let result = encode(&pixels, width, height, request.quality, &request.format)?;
+    if result.is_empty() || result.len() > MAX_OUTPUT_BYTES {
+        bail!(
+            "encoded mosaic size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
+            result.len()
+        );
+    }
+    Ok(result)
+}
+
+fn fill_to_tile_rgba(encoded: &[u8], tile: u32) -> Result<Vec<u8>> {
+    let rgba = decode_rgba(encoded)?;
+    let src_width = rgba.width();
+    let src_height = rgba.height();
+    validate_dimensions(src_width, src_height)?;
+    if src_width == tile && src_height == tile {
+        return Ok(rgba.into_raw());
+    }
+    let (crop_x, crop_y, crop_width, crop_height) = fill_crop(src_width, src_height, tile, tile);
+    let cropped = crop_rgba(
+        rgba.as_raw(),
+        src_width,
+        crop_x,
+        crop_y,
+        crop_width,
+        crop_height,
+    )?;
+    let source =
+        fir::images::Image::from_vec_u8(crop_width, crop_height, cropped, fir::PixelType::U8x4)
+            .context("creating mosaic fill source")?;
+    let mut resized = fir::images::Image::new(tile, tile, fir::PixelType::U8x4);
+    let options = fir::ResizeOptions::new()
+        .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+    fir::Resizer::new()
+        .resize(&source, &mut resized, &options)
+        .context("resizing mosaic tile")?;
+    Ok(resized.into_vec())
+}
+
+fn decode_rgba(encoded: &[u8]) -> Result<image::RgbaImage> {
+    let mut decoder = ImageReader::new(Cursor::new(encoded))
+        .with_guessed_format()
+        .context("detecting image format")?;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_DIMENSION);
+    limits.max_image_height = Some(MAX_DIMENSION);
+    limits.max_alloc = Some(MAX_PIXELS * 8);
+    decoder.limits(limits);
+    Ok(decoder.decode().context("decoding image")?.into_rgba8())
 }
 
 fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
@@ -355,6 +484,8 @@ mod tests {
             &input,
             &ImageRequest {
                 input_size: input.len(),
+                input_sizes: Vec::new(),
+                mosaic: false,
                 size: 20,
                 square: true,
                 fill: false,
@@ -375,6 +506,8 @@ mod tests {
             &input,
             &ImageRequest {
                 input_size: input.len(),
+                input_sizes: Vec::new(),
+                mosaic: false,
                 size: 20,
                 square: false,
                 fill: true,
@@ -388,6 +521,55 @@ mod tests {
         // Fill crops the wider source, so the canvas is fully opaque.
         assert_eq!(decoded.to_rgba8().get_pixel(0, 0).0[3], 255);
         assert_eq!(fill_crop(80, 40, 20, 20), (20, 0, 40, 40));
+    }
+
+    #[test]
+    fn compose_mosaic_stitches_four_filled_tiles() {
+        let tiles = [
+            source_png(80, 40),
+            source_png(40, 80),
+            source_png(60, 60),
+            source_png(100, 50),
+        ];
+        let output = compose_mosaic(
+            &tiles,
+            &ImageRequest {
+                input_size: 0,
+                input_sizes: tiles.iter().map(Vec::len).collect(),
+                mosaic: true,
+                size: 40,
+                square: false,
+                fill: false,
+                quality: 80,
+                format: OutputFormat::Png,
+            },
+        )
+        .unwrap();
+        let decoded = image::load_from_memory(&output).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (40, 40));
+        assert_eq!(decoded.to_rgba8().get_pixel(0, 0).0[3], 255);
+        assert_eq!(decoded.to_rgba8().get_pixel(39, 39).0[3], 255);
+    }
+
+    #[test]
+    fn compose_mosaic_single_tile_stays_half_canvas() {
+        let tile = source_png(80, 40);
+        let output = compose_mosaic(
+            &[tile.clone()],
+            &ImageRequest {
+                input_size: 0,
+                input_sizes: vec![tile.len()],
+                mosaic: true,
+                size: 40,
+                square: false,
+                fill: false,
+                quality: 80,
+                format: OutputFormat::Png,
+            },
+        )
+        .unwrap();
+        let decoded = image::load_from_memory(&output).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (20, 20));
     }
 
     #[test]

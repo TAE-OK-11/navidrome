@@ -1,9 +1,10 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
+import type { ReactEventHandler } from 'react'
 import DeleteIcon from '@mui/icons-material/Delete'
-import { alpha } from '@mui/material/styles'
+import { alpha, type Theme } from '@mui/material/styles'
 import clsx from 'clsx'
 import {
+  type RaRecord,
   useDeleteWithConfirmController,
   Button,
   Confirm,
@@ -12,7 +13,7 @@ import {
 } from 'react-admin'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const deleteButtonSx = (theme) => ({
+const deleteButtonSx = (theme: Theme) => ({
   color: theme.palette.error.main,
   '&:hover': {
     backgroundColor: alpha(theme.palette.error.main, 0.12),
@@ -22,9 +23,21 @@ const deleteButtonSx = (theme) => ({
   },
 })
 
-const DeleteUserButton = (props) => {
-  const { resource, record, basePath, className, onClick, ...rest } = props
+type UserRecord = RaRecord & { name?: string }
 
+type DeleteUserButtonProps = {
+  resource?: string
+  record?: UserRecord
+  className?: string
+  onClick?: ReactEventHandler
+}
+
+const DeleteUserButton = ({
+  resource,
+  record,
+  className,
+  onClick,
+}: DeleteUserButtonProps) => {
   const notify = useNotify()
   const redirect = useRedirect()
 
@@ -33,20 +46,25 @@ const DeleteUserButton = (props) => {
     redirect('/user')
   }
 
-  const { open, loading, handleDialogOpen, handleDialogClose, handleDelete } =
-    useDeleteWithConfirmController({
-      resource,
-      record,
-      basePath,
-      onClick,
-      onSuccess,
-    })
+  const {
+    open,
+    isPending,
+    handleDialogOpen,
+    handleDialogClose,
+    handleDelete,
+  } = useDeleteWithConfirmController({
+    resource,
+    record,
+    onClick,
+    mutationOptions: { onSuccess },
+  })
 
   return (
     <>
       <Button
         onClick={handleDialogOpen}
         label="ra.action.delete"
+        disabled={isPending}
         className={clsx('ra-delete-button', className)}
         sx={[
           deleteButtonSx,
@@ -58,18 +76,16 @@ const DeleteUserButton = (props) => {
             ),
         ]}
         key="button"
-        {...rest}
       >
         <DeleteIcon />
       </Button>
       <Confirm
         isOpen={open}
-        loading={loading}
+        loading={isPending}
         title="message.delete_user_title"
         content="message.delete_user_content"
-        translateOptions={{
-          name: record.name,
-        }}
+        titleTranslateOptions={{ name: record?.name ?? '' }}
+        contentTranslateOptions={{ name: record?.name ?? '' }}
         onConfirm={handleDelete}
         onClose={handleDialogClose}
       />

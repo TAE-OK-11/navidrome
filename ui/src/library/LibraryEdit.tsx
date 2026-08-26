@@ -38,7 +38,6 @@ const CustomToolbar = ({ showDelete }) => {
         <DeleteLibraryButton
           record={record}
           resource="library"
-          basePath="/library"
         />
       )}
     </Toolbar>

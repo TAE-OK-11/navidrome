@@ -48,7 +48,7 @@ const SongFilter = (props) => {
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
   return (
-    <Filter {...props} variant={'outlined'}>
+    <Filter {...props}>
       <SearchInput source="title" alwaysOn />
       <ReferenceArrayInput
         label={translate('resources.song.fields.genre')}

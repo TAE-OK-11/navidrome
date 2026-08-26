@@ -59,7 +59,7 @@ const AlbumFilter = (props) => {
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
   return (
-    <Filter {...props} variant={'outlined'}>
+    <Filter {...props}>
       <SearchInput id="search" source="name" alwaysOn />
       <ReferenceInput
         label={translate('resources.album.fields.artist')}

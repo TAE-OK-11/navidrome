@@ -33,7 +33,7 @@ const exporter = (files) => {
 const MissingFilesFilter = (props) => {
   const translate = useTranslate()
   return (
-    <Filter {...props} variant={'outlined'}>
+    <Filter {...props}>
       <ReferenceInput
         label={translate('resources.missing.fields.libraryName')}
         source="library_id"

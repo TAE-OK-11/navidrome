@@ -67,7 +67,7 @@ const LibraryCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props}>
-      <SimpleForm save={save} variant={'outlined'}>
+      <SimpleForm save={save}>
         <TextInput source="name" validate={[required()]} />
         <TextInput source="path" validate={[required()]} fullWidth />
         <BooleanInput source="defaultNewUsers" />

@@ -11,7 +11,7 @@ import { useMediaQuery } from '@mui/material'
 import { List, DateField } from '../common'
 
 const UserFilter = (props) => (
-  <Filter {...props} variant={'outlined'}>
+  <Filter {...props}>
     <SearchInput id="search" source="name" alwaysOn />
   </Filter>
 )

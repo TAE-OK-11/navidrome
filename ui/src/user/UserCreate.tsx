@@ -56,7 +56,7 @@ const UserCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props}>
-      <SimpleForm save={save} validate={validateUserForm} variant={'outlined'}>
+      <SimpleForm save={save} validate={validateUserForm}>
         <TextInput
           spellCheck={false}
           source="userName"

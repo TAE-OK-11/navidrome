@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 mod image_worker;
 mod lyrics;
 mod lyricsfile;
+mod parse_lyrics_worker;
 mod ttml;
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -91,6 +92,12 @@ fn main() -> Result<()> {
                 bail!("--image-worker accepts no arguments");
             }
             return image_worker::run();
+        }
+        if command == "--parse-lyrics-worker" {
+            if args.next().is_some() {
+                bail!("--parse-lyrics-worker accepts no arguments");
+            }
+            return parse_lyrics_worker::run();
         }
         if command == "--picture-worker" {
             if args.next().is_some() {

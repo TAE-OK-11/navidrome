@@ -24,7 +24,7 @@ type Info struct {
 	AudioProperties AudioProperties
 	HasPicture      bool
 	// LyricsJSON is optional pre-parsed lyrics from the Rust Lofty worker.
-	// Empty means the Go ParseLyrics path should run.
+	// Empty means sidecar/legacy parsing should run via model.ParseLyrics (Rust worker).
 	LyricsJSON string
 }
 

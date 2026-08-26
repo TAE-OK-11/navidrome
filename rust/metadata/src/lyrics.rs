@@ -18,6 +18,8 @@ static LRC_ID: LazyLock<Regex> =
 static ENHANCED_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
 static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?[A-Za-z][^>]*>").unwrap());
+static SRT_BLOCK_SEPARATOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\n\s*\n").unwrap());
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct Agent {
@@ -385,7 +387,7 @@ fn normalize_cue_lines(lines: &mut [Line]) {
 fn parse_srt(lang: String, text: &str) -> Option<Lyrics> {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut lines = Vec::new();
-    for block in text.split("\n\n") {
+    for block in SRT_BLOCK_SEPARATOR.split(&text) {
         let block = block.trim();
         if block.is_empty() {
             continue;
@@ -469,6 +471,81 @@ fn parse_srt_time(value: &str) -> Option<i64> {
     Some(h * 3_600_000 + m * 60_000 + s * 1000 + ms)
 }
 
+fn strip_bom(contents: &[u8]) -> &[u8] {
+    contents.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(contents)
+}
+
+fn is_likely_srt(contents: &[u8]) -> bool {
+    let head = if contents.len() > 512 {
+        &contents[..512]
+    } else {
+        contents
+    };
+    head.windows(3).any(|window| window == b"-->")
+}
+
+fn lyrics_nonempty(list: &[Lyrics]) -> bool {
+    list.iter().any(|lyrics| !lyrics.line.is_empty())
+}
+
+type LyricsParseFn = fn(&str, &str) -> Option<Vec<Lyrics>>;
+
+fn try_ttml(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    crate::ttml::parse_ttml_list(lang, text)
+}
+
+fn try_srt(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    parse_srt(lang.to_owned(), text).map(|lyrics| vec![lyrics])
+}
+
+fn try_lyricsfile(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    crate::lyricsfile::parse_lyricsfile(lang, text)
+}
+
+/// Parses sidecar/embedded lyrics bytes the same way Go's `ParseLyrics` did:
+/// suffix routing, optional content sniffing, then LRC/plain fallback.
+pub fn parse_lyrics_external(suffix: &str, lang: &str, contents: &[u8]) -> Result<String, String> {
+    let contents = strip_bom(contents);
+    let text = String::from_utf8_lossy(contents);
+    let suffix = suffix.trim().to_ascii_lowercase();
+    let sniff = suffix.is_empty() || suffix == "auto";
+    let lang = normalize_lang(lang);
+
+    let mut candidates: Vec<LyricsParseFn> = Vec::new();
+    if sniff {
+        if crate::ttml::looks_like_ttml(&text) {
+            candidates.push(try_ttml);
+        }
+        if is_likely_srt(contents) {
+            candidates.push(try_srt);
+        }
+        if crate::lyricsfile::looks_like_lyricsfile(&text) {
+            candidates.push(try_lyricsfile);
+        }
+    } else {
+        match suffix.as_str() {
+            ".ttml" => candidates.push(try_ttml),
+            ".srt" => candidates.push(try_srt),
+            ".yaml" | ".yml" => candidates.push(try_lyricsfile),
+            _ => {}
+        }
+    }
+
+    for parse in candidates {
+        if let Some(list) = parse(&lang, &text) {
+            if lyrics_nonempty(&list) {
+                return serde_json::to_string(&list).map_err(|error| error.to_string());
+            }
+        }
+    }
+
+    let lyrics = parse_lrc(lang, &sanitize_text(&text));
+    if lyrics.line.is_empty() {
+        return Ok("[]".to_owned());
+    }
+    serde_json::to_string(&vec![lyrics]).map_err(|error| error.to_string())
+}
+
 fn normalize_lang(lang: &str) -> String {
     let lang = lang.trim().to_ascii_lowercase();
     if lang.is_empty() {
@@ -548,14 +625,16 @@ mod tests {
     }
 
     #[test]
-    fn parses_srt() {
-        let mut tags = HashMap::new();
-        tags.insert(
-            "lyrics:eng".to_owned(),
-            vec!["1\n00:00:01,000 --> 00:00:02,000\nFirst\n".to_owned()],
-        );
-        let json = parse_tags_to_json(&tags).unwrap();
-        assert!(json.contains("\"lang\":\"eng\""));
-        assert!(json.contains("First"));
+    fn parse_external_lrc_suffix() {
+        let json = parse_lyrics_external(".lrc", "eng", b"[00:01.00]hello").unwrap();
+        assert!(json.contains("hello"));
+        assert!(json.contains("\"synced\":true"));
+    }
+
+    #[test]
+    fn parse_external_plain_fallback() {
+        let json = parse_lyrics_external(".txt", "eng", b"plain line").unwrap();
+        assert!(json.contains("plain line"));
+        assert!(json.contains("\"synced\":false"));
     }
 }

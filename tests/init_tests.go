@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -25,9 +26,12 @@ func Init(t *testing.T, skipOnShort bool) {
 		_ = os.Chdir(appPath)
 		conf.LoadFromFile(confPath)
 
-		noLog := os.Getenv("NOLOG")
-		if noLog != "" {
+		if noLog := os.Getenv("NOLOG"); noLog != "" {
 			log.SetLevel(log.LevelError)
+		}
+
+		if err := metadataworker.EnsureTestBinary(); err != nil {
+			panic(err)
 		}
 	})
 }

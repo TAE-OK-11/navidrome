@@ -20,7 +20,6 @@ import (
 	"github.com/navidrome/navidrome/core/searchworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/str"
 )
 
 const (
@@ -623,11 +622,11 @@ func (e *Engine) artistDocument(ctx context.Context, artist model.Artist, librar
 
 func (e *Engine) normalizeFTS(ctx context.Context, values ...string) string {
 	if e == nil || !e.Ready() || len(values) == 0 {
-		return str.NormalizeForFTS(values...)
+		return ""
 	}
 	resp, err := e.roundTrip(ctx, request{Op: "normalize_fts", Values: values})
 	if err != nil || resp.Normalized == "" {
-		return str.NormalizeForFTS(values...)
+		return ""
 	}
 	return resp.Normalized
 }

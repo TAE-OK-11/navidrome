@@ -29,7 +29,14 @@ jobs:
         run: |
           go mod download
           go mod verify
+      - name: Install Rust 1.97
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Build metadata worker
+        working-directory: rust/metadata
+        run: cargo +1.97.0 build --release --locked
       - name: Test
+        env:
+          ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/metadata/target/release/navidrome-metadata
         run: go test -shuffle=on -tags netgo,sqlite_fts5 -race ./...
 
   lint:

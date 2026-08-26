@@ -1,9 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import DeleteIcon from '@mui/icons-material/Delete'
-import { alpha } from '@mui/material/styles'
+import { alpha, type Theme } from '@mui/material/styles'
 import clsx from 'clsx'
 import {
+  type RaRecord,
   useNotify,
   useDeleteWithConfirmController,
   Button,
@@ -13,7 +13,7 @@ import {
 } from 'react-admin'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
 
-const deleteButtonSx = (theme) => ({
+const deleteButtonSx = (theme: Theme) => ({
   color: theme.palette.error.main,
   '&:hover': {
     backgroundColor: alpha(theme.palette.error.main, 0.12),
@@ -23,13 +23,17 @@ const deleteButtonSx = (theme) => ({
   },
 })
 
+type DeleteLibraryButtonProps = {
+  record?: RaRecord
+  resource?: string
+  className?: string
+}
+
 const DeleteLibraryButton = ({
   record,
   resource,
-  basePath,
   className,
-  ...props
-}) => {
+}: DeleteLibraryButtonProps) => {
   const translate = useTranslate()
   const notify = useNotify()
   const redirect = useRedirect()
@@ -42,12 +46,11 @@ const DeleteLibraryButton = ({
     redirect('/library')
   }
 
-  const { open, loading, handleDialogOpen, handleDialogClose, handleDelete } =
+  const { open, isPending, handleDialogOpen, handleDialogClose, handleDelete } =
     useDeleteWithConfirmController({
       resource,
       record,
-      basePath,
-      onSuccess,
+      mutationOptions: { onSuccess },
     })
 
   return (
@@ -55,7 +58,7 @@ const DeleteLibraryButton = ({
       <Button
         label="ra.action.delete"
         onClick={handleDialogOpen}
-        disabled={loading}
+        disabled={isPending}
         className={clsx('ra-delete-button', className)}
         sx={[
           deleteButtonSx,
@@ -66,13 +69,12 @@ const DeleteLibraryButton = ({
               'deleteButton',
             ),
         ]}
-        {...props}
       >
         <DeleteIcon />
       </Button>
       <Confirm
         isOpen={open}
-        loading={loading}
+        loading={isPending}
         title={translate('resources.library.name', { smart_count: 1 })}
         content={translate('resources.library.messages.deleteConfirm')}
         onConfirm={handleDelete}

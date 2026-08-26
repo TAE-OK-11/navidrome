@@ -52,6 +52,7 @@ type response struct {
 
 type rawResult struct {
 	Tags       map[string][]string `json:"tags"`
+	FileInfo   *rawFileInfo        `json:"file_info,omitempty"`
 	DurationNS uint64              `json:"duration_ns"`
 	BitRate    uint32              `json:"bit_rate"`
 	BitDepth   uint8               `json:"bit_depth"`
@@ -60,6 +61,28 @@ type rawResult struct {
 	Codec      string              `json:"codec"`
 	HasPicture bool                `json:"has_picture"`
 }
+
+type rawFileInfo struct {
+	Name       string `json:"name"`
+	Size       uint64 `json:"size"`
+	ModifiedNS int64  `json:"modified_ns"`
+	CreatedNS  *int64 `json:"created_ns,omitempty"`
+}
+
+type workerFileInfo struct {
+	name      string
+	size      int64
+	modified  time.Time
+	birthTime time.Time
+}
+
+func (f workerFileInfo) Name() string          { return f.name }
+func (f workerFileInfo) Size() int64           { return f.size }
+func (f workerFileInfo) Mode() fs.FileMode     { return 0 }
+func (f workerFileInfo) ModTime() time.Time    { return f.modified }
+func (f workerFileInfo) IsDir() bool           { return false }
+func (f workerFileInfo) Sys() any              { return nil }
+func (f workerFileInfo) BirthTime() time.Time  { return f.birthTime }
 
 type worker struct {
 	cmd     *exec.Cmd
@@ -327,8 +350,13 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 	}
 	results := make(map[string]metadata.Info, len(resp.Results))
 	for key, value := range resp.Results {
+		fileInfo, err := convertFileInfo(value.FileInfo)
+		if err != nil {
+			return nil, fmt.Errorf("invalid file information for %q: %w", key, err)
+		}
 		results[key] = metadata.Info{
-			Tags: value.Tags,
+			FileInfo: fileInfo,
+			Tags:     value.Tags,
 			AudioProperties: metadata.AudioProperties{
 				Duration:   time.Duration(value.DurationNS),
 				BitRate:    int(value.BitRate),
@@ -347,6 +375,28 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 		log.Warn("Lofty could not read metadata; skipping file", "filePath", key, "error", workerErr)
 	}
 	return results, nil
+}
+
+func convertFileInfo(raw *rawFileInfo) (metadata.FileInfo, error) {
+	// Older administrator-provided workers do not return file_info. Keep the
+	// existing Go stat fallback in localFS for protocol compatibility.
+	if raw == nil {
+		return nil, nil
+	}
+	if raw.Size > uint64(1<<63-1) {
+		return nil, fmt.Errorf("file size %d exceeds int64", raw.Size)
+	}
+	modified := time.Unix(0, raw.ModifiedNS).UTC()
+	birthTime := modified
+	if raw.CreatedNS != nil {
+		birthTime = time.Unix(0, *raw.CreatedNS).UTC()
+	}
+	return workerFileInfo{
+		name:      raw.Name,
+		size:      int64(raw.Size),
+		modified:  modified,
+		birthTime: birthTime,
+	}, nil
 }
 
 func resolveWorkerPath() string {

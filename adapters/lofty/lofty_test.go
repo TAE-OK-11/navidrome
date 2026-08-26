@@ -90,11 +90,15 @@ func TestMetadataTaskCount(t *testing.T) {
 func TestConvertResponse(t *testing.T) {
 	t.Parallel()
 
+	modified := time.Date(2026, time.August, 26, 6, 30, 0, 123, time.UTC)
+	created := modified.Add(-time.Hour)
+	createdNS := created.UnixNano()
 	resp := response{
 		Protocol: protocolVersion,
 		Results: map[string]rawResult{
 			"song.m4a": {
 				Tags:       map[string][]string{"title": {"Song"}},
+				FileInfo:   &rawFileInfo{Name: "song.m4a", Size: 1234, ModifiedNS: modified.UnixNano(), CreatedNS: &createdNS},
 				DurationNS: uint64((3*time.Minute + 12*time.Second).Nanoseconds()),
 				BitRate:    256,
 				BitDepth:   16,
@@ -118,6 +122,27 @@ func TestConvertResponse(t *testing.T) {
 	}
 	if !info.HasPicture {
 		t.Fatal("HasPicture = false, want true")
+	}
+	if info.FileInfo == nil {
+		t.Fatal("FileInfo = nil")
+	}
+	if info.FileInfo.Name() != "song.m4a" || info.FileInfo.Size() != 1234 {
+		t.Fatalf("FileInfo = %q, %d", info.FileInfo.Name(), info.FileInfo.Size())
+	}
+	if !info.FileInfo.ModTime().Equal(modified) || !info.FileInfo.BirthTime().Equal(created) {
+		t.Fatalf("file times = %s, %s", info.FileInfo.ModTime(), info.FileInfo.BirthTime())
+	}
+}
+
+func TestConvertResponseAllowsOlderWorkerWithoutFileInfo(t *testing.T) {
+	t.Parallel()
+
+	got, err := convertResponse(response{Results: map[string]rawResult{"song.mp3": {}}})
+	if err != nil {
+		t.Fatalf("convertResponse() error = %v", err)
+	}
+	if got["song.mp3"].FileInfo != nil {
+		t.Fatal("older worker result unexpectedly populated FileInfo")
 	}
 }
 

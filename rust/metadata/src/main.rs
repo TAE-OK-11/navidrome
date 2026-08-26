@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File, Metadata as FileMetadata};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use lofty::aac::AacFile;
@@ -43,6 +44,7 @@ struct Response {
 #[derive(Debug, Serialize)]
 struct Metadata {
     tags: HashMap<String, Vec<String>>,
+    file_info: FileInfo,
     duration_ns: u64,
     bit_rate: u32,
     bit_depth: u8,
@@ -50,6 +52,15 @@ struct Metadata {
     channels: u8,
     codec: String,
     has_picture: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct FileInfo {
+    name: String,
+    size: u64,
+    modified_ns: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_ns: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +100,7 @@ fn main() -> Result<()> {
             if args.next().is_some() {
                 bail!("--extract-picture accepts exactly one file path");
             }
-            let (tagged, _, _) = read_file(&path)?;
+            let (tagged, _, _, _) = read_file(&path)?;
             let picture = picture_data(&tagged, &path)?;
             io::stdout().lock().write_all(picture)?;
             return Ok(());
@@ -112,7 +123,7 @@ fn run_picture_worker() -> Result<()> {
         }
 
         match serde_json::from_str::<PictureRequest>(&line) {
-            Ok(request) => match read_file(&request.path).and_then(|(tagged, _, _)| {
+            Ok(request) => match read_file(&request.path).and_then(|(tagged, _, _, _)| {
                 let picture = picture_data(&tagged, &request.path)?;
                 if picture.len() as u64 > request.max_bytes {
                     bail!(
@@ -227,7 +238,7 @@ fn handle_request(request: Request) -> Response {
 }
 
 fn parse_file(path: &Path) -> Result<Metadata> {
-    let (tagged, codec, raw_vorbis) = read_file(path)?;
+    let (tagged, codec, raw_vorbis, file_metadata) = read_file(path)?;
 
     let mut tags = generic_tags(&tagged);
     if let Some(vorbis) = raw_vorbis.as_ref() {
@@ -239,6 +250,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
 
     Ok(Metadata {
         tags,
+        file_info: build_file_info(path, &file_metadata)?,
         duration_ns: properties.duration().as_nanos().min(u128::from(u64::MAX)) as u64,
         bit_rate: properties.audio_bitrate().unwrap_or(0),
         bit_depth: properties.bit_depth().unwrap_or(0),
@@ -249,28 +261,25 @@ fn parse_file(path: &Path) -> Result<Metadata> {
     })
 }
 
-fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>)> {
+fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>, FileMetadata)> {
     let mut raw_vorbis = None;
-    let (tagged, codec) = match extension(path).as_str() {
+    let (tagged, codec, file_metadata) = match extension(path).as_str() {
         "flac" => {
-            let mut file =
-                File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let (mut file, file_metadata) = open_file(path)?;
             let parsed = FlacFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding FLAC {}", path.display()))?;
             raw_vorbis = parsed.vorbis_comments().cloned();
-            (TaggedFile::from(parsed), "flac".to_owned())
+            (TaggedFile::from(parsed), "flac".to_owned(), file_metadata)
         }
         "opus" => {
-            let mut file =
-                File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let (mut file, file_metadata) = open_file(path)?;
             let parsed = OpusFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding Opus {}", path.display()))?;
             raw_vorbis = Some(parsed.vorbis_comments().clone());
-            (TaggedFile::from(parsed), "opus".to_owned())
+            (TaggedFile::from(parsed), "opus".to_owned(), file_metadata)
         }
         "m4a" | "mp4" => {
-            let mut file =
-                File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let (mut file, file_metadata) = open_file(path)?;
             let parsed = Mp4File::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding M4A/MP4 {}", path.display()))?;
             let codec = match parsed.properties().codec() {
@@ -281,21 +290,19 @@ fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>)
                 Some(_) | None => "m4a",
             }
             .to_owned();
-            (TaggedFile::from(parsed), codec)
+            (TaggedFile::from(parsed), codec, file_metadata)
         }
         "aac" => {
-            let mut file =
-                File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let (mut file, file_metadata) = open_file(path)?;
             let parsed = AacFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding AAC {}", path.display()))?;
-            (TaggedFile::from(parsed), "aac".to_owned())
+            (TaggedFile::from(parsed), "aac".to_owned(), file_metadata)
         }
         "mp3" => {
-            let mut file =
-                File::open(path).with_context(|| format!("opening {}", path.display()))?;
+            let (mut file, file_metadata) = open_file(path)?;
             let parsed = MpegFile::read_from(&mut file, ParseOptions::new())
                 .with_context(|| format!("decoding MP3 {}", path.display()))?;
-            (TaggedFile::from(parsed), "mp3".to_owned())
+            (TaggedFile::from(parsed), "mp3".to_owned(), file_metadata)
         }
         other => bail!("unsupported audio format {other:?}"),
     };
@@ -305,7 +312,39 @@ fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>)
         other => bail!("Lofty detected unsupported file type {other:?}"),
     }
 
-    Ok((tagged, codec, raw_vorbis))
+    Ok((tagged, codec, raw_vorbis, file_metadata))
+}
+
+fn open_file(path: &Path) -> Result<(File, FileMetadata)> {
+    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("reading file information for {}", path.display()))?;
+    Ok((file, metadata))
+}
+
+fn build_file_info(path: &Path, metadata: &FileMetadata) -> Result<FileInfo> {
+    let modified = metadata
+        .modified()
+        .with_context(|| format!("reading modification time for {}", path.display()))?;
+    Ok(FileInfo {
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        size: metadata.len(),
+        modified_ns: unix_nanos(modified),
+        created_ns: metadata.created().ok().map(unix_nanos),
+    })
+}
+
+fn unix_nanos(time: SystemTime) -> i64 {
+    let nanos = match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos() as i128,
+        Err(error) => -(error.duration().as_nanos() as i128),
+    };
+    nanos.clamp(i64::MIN as i128, i64::MAX as i128) as i64
 }
 
 fn picture_data<'a>(tagged: &'a TaggedFile, path: &Path) -> Result<&'a [u8]> {
@@ -459,5 +498,24 @@ mod tests {
             .build();
         let pictures = [&back, &front];
         assert_eq!(preferred_picture(&pictures).unwrap().data(), &[4, 5, 6]);
+    }
+
+    #[test]
+    fn reuses_open_file_information_in_metadata_response() {
+        let file_name = format!(
+            "navidrome-metadata-file-info-{}-{}",
+            std::process::id(),
+            unix_nanos(SystemTime::now())
+        );
+        let path = std::env::temp_dir().join(&file_name);
+        std::fs::write(&path, b"navidrome").unwrap();
+        let metadata = std::fs::metadata(&path).unwrap();
+
+        let info = build_file_info(&path, &metadata).unwrap();
+
+        assert_eq!(info.name, file_name);
+        assert_eq!(info.size, 9);
+        assert!(info.modified_ns > 0);
+        std::fs::remove_file(path).unwrap();
     }
 }

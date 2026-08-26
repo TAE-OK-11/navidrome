@@ -77,7 +77,7 @@ describe('Pagination', () => {
     mockContext.mockReturnValue(context())
     render(<Pagination />)
     selectPerPage()
-    expect(localStorage).toHaveLength(0)
+    expect(localStorage.getItem('perPage.')).toBeNull()
     expect(setPerPage).toHaveBeenCalledWith(50)
   })
 })

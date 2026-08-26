@@ -34,12 +34,7 @@ const CustomToolbar = ({ showDelete }) => {
   return (
     <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
       <SaveButton />
-      {showDelete && (
-        <DeleteLibraryButton
-          record={record}
-          resource="library"
-        />
-      )}
+      {showDelete && <DeleteLibraryButton record={record} resource="library" />}
     </Toolbar>
   )
 }

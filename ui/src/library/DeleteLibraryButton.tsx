@@ -46,17 +46,12 @@ const DeleteLibraryButton = ({
     redirect('/library')
   }
 
-  const {
-    open,
-    isPending,
-    handleDialogOpen,
-    handleDialogClose,
-    handleDelete,
-  } = useDeleteWithConfirmController({
-    resource,
-    record,
-    mutationOptions: { onSuccess },
-  })
+  const { open, isPending, handleDialogOpen, handleDialogClose, handleDelete } =
+    useDeleteWithConfirmController({
+      resource,
+      record,
+      mutationOptions: { onSuccess },
+    })
 
   return (
     <>

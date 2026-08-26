@@ -46,18 +46,13 @@ const DeleteUserButton = ({
     redirect('/user')
   }
 
-  const {
-    open,
-    isPending,
-    handleDialogOpen,
-    handleDialogClose,
-    handleDelete,
-  } = useDeleteWithConfirmController({
-    resource,
-    record,
-    onClick,
-    mutationOptions: { onSuccess },
-  })
+  const { open, isPending, handleDialogOpen, handleDialogClose, handleDelete } =
+    useDeleteWithConfirmController({
+      resource,
+      record,
+      onClick,
+      mutationOptions: { onSuccess },
+    })
 
   return (
     <>

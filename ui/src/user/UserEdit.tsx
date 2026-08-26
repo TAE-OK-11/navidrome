@@ -139,7 +139,7 @@ const UserEdit = (props) => {
         </FormDataConsumer>
 
         {permissions === 'admin' && (
-          <BooleanInput source="isAdmin" initialValue={false} />
+          <BooleanInput source="isAdmin" defaultValue={false} />
         )}
 
         {/* Conditional Library Selection for Admin Users Only */}

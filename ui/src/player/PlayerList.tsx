@@ -13,7 +13,7 @@ import { useMediaQuery } from '@mui/material'
 import { SimpleList, List } from '../common'
 
 const PlayerFilter = (props) => (
-  <Filter {...props} variant={'outlined'}>
+  <Filter {...props}>
     <SearchInput id="search" source="name" alwaysOn />
   </Filter>
 )

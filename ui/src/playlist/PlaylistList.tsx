@@ -41,7 +41,7 @@ const bulkButtonSx = {
 const PlaylistFilter = (props) => {
   const { permissions } = usePermissions()
   return (
-    <Filter {...props} variant={'outlined'}>
+    <Filter {...props}>
       <SearchInput source="q" alwaysOn />
       {permissions === 'admin' && (
         <ReferenceInput

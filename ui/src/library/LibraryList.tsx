@@ -15,7 +15,7 @@ import LibraryListBulkActions from './LibraryListBulkActions'
 import LibraryListActions from './LibraryListActions'
 
 const LibraryFilter = (props) => (
-  <Filter {...props} variant={'outlined'}>
+  <Filter {...props}>
     <SearchInput source="name" alwaysOn />
   </Filter>
 )

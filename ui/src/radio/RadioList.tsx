@@ -32,7 +32,7 @@ import { RADIO_PLACEHOLDER_IMAGE } from '../consts'
 import { useDispatch } from 'react-redux'
 
 const RadioFilter = (props) => (
-  <Filter {...props} variant={'outlined'}>
+  <Filter {...props}>
     <SearchInput id="search" source="name" alwaysOn />
   </Filter>
 )
@@ -53,7 +53,7 @@ const RadioListActions = ({
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
       {isAdmin && (
-        <CreateButton basePath="/radio">
+        <CreateButton>
           {translate('ra.action.create')}
         </CreateButton>
       )}

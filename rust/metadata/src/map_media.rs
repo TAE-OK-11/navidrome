@@ -99,8 +99,8 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
     let artist = display_artist(tags);
     let album_artist = display_album_artist(tags);
     let (original_date, release_date, date) = map_dates(tags);
-    let (track_number, _) = tuple(tags, "tracknumber", "tracktotal");
-    let (disc_number, _) = tuple(tags, "discnumber", "disctotal");
+    let (track_number, _) = track_tuple(tags);
+    let (disc_number, _) = disc_tuple(tags);
 
     Some(ScanMediaFile {
         title: if title.is_empty() {
@@ -132,8 +132,8 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
         release_date,
         year: year_from_date(&date),
         date,
-        mbz_recording_id: first(tags, "musicbrainz_recordingid"),
-        mbz_release_track_id: first(tags, "musicbrainz_trackid"),
+        mbz_recording_id: mbz_recording_id(tags),
+        mbz_release_track_id: mbz_release_track_id(tags),
         mbz_album_id: first(tags, "musicbrainz_albumid"),
         mbz_release_group_id: first(tags, "musicbrainz_releasegroupid"),
         mbz_album_type: first(tags, "releasetype"),
@@ -264,6 +264,24 @@ fn all(tags: &HashMap<String, Vec<String>>, key: &str) -> Vec<String> {
         .collect()
 }
 
+fn mbz_recording_id(tags: &HashMap<String, Vec<String>>) -> String {
+    let recording = first(tags, "musicbrainz_recordingid");
+    if !recording.is_empty() {
+        return recording;
+    }
+    if !first(tags, "musicbrainz_releasetrackid").is_empty() {
+        return first(tags, "musicbrainz_trackid");
+    }
+    String::new()
+}
+
+fn mbz_release_track_id(tags: &HashMap<String, Vec<String>>) -> String {
+    non_empty_or(
+        first(tags, "musicbrainz_releasetrackid"),
+        first(tags, "musicbrainz_trackid"),
+    )
+}
+
 fn non_empty_or(a: String, b: String) -> String {
     if a.is_empty() { b } else { a }
 }
@@ -332,6 +350,22 @@ fn tuple(tags: &HashMap<String, Vec<String>>, key: &str, total_key: &str) -> (i3
         .or_else(|| first(tags, total_key).parse().ok())
         .unwrap_or(0);
     (first_num, second)
+}
+
+fn track_tuple(tags: &HashMap<String, Vec<String>>) -> (i32, i32) {
+    let (number, total) = tuple(tags, "tracknumber", "tracktotal");
+    if number != 0 {
+        return (number, total);
+    }
+    tuple(tags, "track", "tracktotal")
+}
+
+fn disc_tuple(tags: &HashMap<String, Vec<String>>) -> (i32, i32) {
+    let (number, total) = tuple(tags, "discnumber", "disctotal");
+    if number != 0 {
+        return (number, total);
+    }
+    tuple(tags, "disc", "disctotal")
 }
 
 fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {

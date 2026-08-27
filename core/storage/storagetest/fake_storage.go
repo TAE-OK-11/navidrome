@@ -2,6 +2,7 @@
 package storagetest
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,12 +10,14 @@ import (
 	"maps"
 	"net/url"
 	"path"
+	"strings"
 	"testing/fstest"
 	"time"
 
-	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/core/metadataworker"
+	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/metadata"
 	"github.com/navidrome/navidrome/utils/random"
 )
@@ -293,10 +296,43 @@ func (ffs *FakeFS) parseFile(filePath string) (*metadata.Info, error) {
 	}
 	file := ffs.MapFS[filePath]
 	p.FileInfo = &fakeFileInfo{path: filePath, tags: data, file: file}
+	if lyricsJSON := parseEmbeddedLyricsJSON(data); lyricsJSON != "" {
+		p.LyricsJSON = lyricsJSON
+	}
 	if mediaFileJSON, err := metadataworker.MapMediaFileJSON(filePath, p.Tags, p.LyricsJSON); err == nil {
 		p.MediaFileJSON = mediaFileJSON
 	}
 	return &p, nil
+}
+
+func parseEmbeddedLyricsJSON(data map[string]any) string {
+	raw, ok := data["lyrics"].(string)
+	if !ok || raw == "" {
+		return ""
+	}
+	list, err := model.ParseLyrics(context.Background(), lyricsSuffixForContent(raw), "", []byte(raw))
+	if err != nil || len(list) == 0 {
+		return ""
+	}
+	payload, err := json.Marshal(list)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
+}
+
+func lyricsSuffixForContent(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "<?xml") || strings.Contains(trimmed, "<tt ") {
+		return ".ttml"
+	}
+	if strings.Contains(content, "<00:") {
+		return ".elrc"
+	}
+	if strings.Contains(content, "[00:") || strings.Contains(content, "-->") {
+		return ".lrc"
+	}
+	return ".txt"
 }
 
 const (

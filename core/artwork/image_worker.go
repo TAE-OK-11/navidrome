@@ -31,7 +31,7 @@ type imageWorkerRequest struct {
 	Fill        bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
 	AnimatedGIF bool   `json:"animated_gif,omitempty"`
 	Quality     int    `json:"quality"`
-	Format      string `json:"format"`
+	Format      string `json:"format,omitempty"`
 }
 
 type imageAnimationFlags struct {
@@ -92,7 +92,6 @@ func (p *imageWorkerPool) resizeAnimatedGIF(ctx context.Context, data []byte, si
 		Size:        size,
 		AnimatedGIF: true,
 		Quality:     quality,
-		Format:      "gif",
 	})
 }
 

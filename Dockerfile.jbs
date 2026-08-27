@@ -1086,8 +1086,9 @@ ARG RUST_TARGET_CPU
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
-WORKDIR /build
+WORKDIR /build/rust/metadata
 
+COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
 COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock ./
 COPY --link --from=source /src/rust/metadata/src ./src
 COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
@@ -1162,8 +1163,9 @@ FROM ${RUST_IMAGE} AS search-builder
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
 
-WORKDIR /build
+WORKDIR /build/rust/search
 
+COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
 COPY --link --from=source /src/rust/search/Cargo.toml /src/rust/search/Cargo.lock ./
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \

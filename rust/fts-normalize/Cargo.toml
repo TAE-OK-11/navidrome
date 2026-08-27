@@ -1,0 +1,9 @@
+[package]
+name = "fts-normalize"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+deunicode = "1.6.2"
+regex = "1.11.1"

@@ -275,13 +275,12 @@ impl Engine {
         limit: usize,
     ) -> Result<Vec<Hit>> {
         let normalized = normalize(query);
-        if normalized.chars().filter(|c| c.is_alphanumeric()).count() < 2 || limit == 0 {
+        if !is_searchable_query(query) || limit == 0 {
             return Ok(Vec::new());
         }
         let limit = limit.min(MAX_RESULTS);
         let requested = offset.saturating_add(limit).min(MAX_RESULTS);
 
-        let text_query = self.ngram_query(&normalized)?;
         let exact_query: Box<dyn Query> = Box::new(BoostQuery::new(
             Box::new(TermQuery::new(
                 Term::from_field_text(self.fields.exact, &normalized),
@@ -289,6 +288,16 @@ impl Engine {
             )),
             12.0,
         ));
+        let text_query = match self.ngram_query(&normalized) {
+            Ok(query) => query,
+            Err(_) if normalized.chars().any(is_cjk_char) => {
+                Box::new(TermQuery::new(
+                    Term::from_field_text(self.fields.primary, &normalized),
+                    IndexRecordOption::WithFreqs,
+                )) as Box<dyn Query>
+            }
+            Err(error) => return Err(error),
+        };
         let mut relevance_clauses = vec![(Occur::Should, exact_query), (Occur::Should, text_query)];
         // N-grams provide fast substring matching, while a bounded fuzzy prefix
         // catches common Latin-script typos and transpositions. Keep it off the
@@ -430,37 +439,33 @@ fn normalize(value: &str) -> String {
     normalized
 }
 
-static FTS_PUNCT_STRIP: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}]").expect("fts punct regex"));
-
-/// Matches Go `str.NormalizeForFTS`: punctuation-stripped and accent-transliterated
-/// word variants for secondary search fields.
-fn normalize_for_fts(values: &[String]) -> String {
-    use std::collections::HashSet;
-
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    let mut add = |orig: &str, variant: &str| {
-        if variant.is_empty() || variant == orig {
-            return;
+/// Mirrors Go `rustSearchableQuery`: any CJK rune, or at least two alphanumeric chars.
+fn is_searchable_query(query: &str) -> bool {
+    let mut searchable = 0usize;
+    for ch in query.chars() {
+        if is_cjk_char(ch) {
+            return true;
         }
-        let lower = variant.to_lowercase();
-        if seen.insert(lower) {
-            result.push(variant.to_owned());
-        }
-    };
-
-    for value in values {
-        for word in value.split_whitespace() {
-            let transliterated = deunicode::deunicode(word);
-            add(
-                word,
-                &FTS_PUNCT_STRIP.replace_all(&transliterated, "").into_owned(),
-            );
-            add(word, &transliterated);
+        if ch.is_alphanumeric() {
+            searchable += 1;
+            if searchable >= 2 {
+                return true;
+            }
         }
     }
-    result.join(" ")
+    false
+}
+
+fn is_cjk_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{1100}'..='\u{11FF}'
+            | '\u{3040}'..='\u{309F}'
+            | '\u{30A0}'..='\u{30FF}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{AC00}'..='\u{D7AF}'
+    )
 }
 
 fn main() -> Result<()> {
@@ -555,7 +560,7 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                 groups: Vec::new(),
                 indexed: engine.indexed,
                 error: None,
-                normalized: Some(normalize_for_fts(&values)),
+                normalized: Some(fts_normalize::normalize_for_fts(&values)),
             });
         }
     }
@@ -666,6 +671,25 @@ mod tests {
     #[test]
     fn normalization_preserves_unicode_words() {
         assert_eq!(normalize("  AC/DC — 소년! "), "ac dc 소년");
+    }
+
+    #[test]
+    fn finds_single_cjk_character_exact_match() -> Result<()> {
+        let mut engine = Engine::new()?;
+        engine.replace(vec![document("artist:1", "1", "artist", 1, "한")])?;
+        let hits = engine.search("한", "artist", &[1], 0, 10)?;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "1");
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_non_searchable_queries() -> Result<()> {
+        let mut engine = Engine::new()?;
+        engine.replace(vec![document("artist:1", "1", "artist", 1, "Muse")])?;
+        assert!(engine.search("a", "artist", &[1], 0, 10)?.is_empty());
+        assert!(engine.search("!!!", "artist", &[1], 0, 10)?.is_empty());
+        Ok(())
     }
 
     #[test]

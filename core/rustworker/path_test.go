@@ -9,7 +9,7 @@ import (
 func TestResolveBinaryConfiguredAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "navidrome-metadata")
-	if err := os.WriteFile(binary, []byte{0}, 0o755); err != nil {
+	if err := os.WriteFile(binary, []byte{0}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	resolved, err := ResolveBinary(binary, "navidrome-metadata")

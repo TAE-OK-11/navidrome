@@ -49,17 +49,17 @@ type response struct {
 }
 
 type rawResult struct {
-	Tags       map[string][]string `json:"tags"`
-	FileInfo   *rawFileInfo        `json:"file_info,omitempty"`
-	DurationNS uint64              `json:"duration_ns"`
-	BitRate    uint32              `json:"bit_rate"`
-	BitDepth   uint8               `json:"bit_depth"`
-	SampleRate uint32              `json:"sample_rate"`
-	Channels   uint8               `json:"channels"`
-	Codec      string              `json:"codec"`
-	HasPicture bool                `json:"has_picture"`
-	LyricsJSON string              `json:"lyrics_json,omitempty"`
-	MediaFileJSON string           `json:"media_file_json,omitempty"`
+	Tags          map[string][]string `json:"tags"`
+	FileInfo      *rawFileInfo        `json:"file_info,omitempty"`
+	DurationNS    uint64              `json:"duration_ns"`
+	BitRate       uint32              `json:"bit_rate"`
+	BitDepth      uint8               `json:"bit_depth"`
+	SampleRate    uint32              `json:"sample_rate"`
+	Channels      uint8               `json:"channels"`
+	Codec         string              `json:"codec"`
+	HasPicture    bool                `json:"has_picture"`
+	LyricsJSON    string              `json:"lyrics_json,omitempty"`
+	MediaFileJSON string              `json:"media_file_json,omitempty"`
 }
 
 type rawFileInfo struct {

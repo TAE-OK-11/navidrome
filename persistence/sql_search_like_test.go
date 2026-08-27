@@ -12,38 +12,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("newLegacySearch", func() {
-	It("returns non-nil for single-character query", func() {
-		strategy := newLegacySearch("media_file", "a")
-		Expect(strategy).ToNot(BeNil(), "single-char queries must not be rejected; min-length is enforced in doSearch, not here")
-		sql, _, err := strategy.ToSql()
-		Expect(err).ToNot(HaveOccurred())
-		Expect(sql).To(ContainSubstring("LIKE"))
-	})
-})
-
-var _ = Describe("legacySearchExpr", func() {
-	It("returns nil for empty query", func() {
-		Expect(legacySearchExpr("media_file", "")).To(BeNil())
-	})
-
-	It("generates LIKE filter for single word", func() {
-		expr := legacySearchExpr("media_file", "beatles")
-		sql, args, err := expr.ToSql()
-		Expect(err).ToNot(HaveOccurred())
-		Expect(sql).To(ContainSubstring("media_file.full_text LIKE"))
-		Expect(args).To(ContainElement("% beatles%"))
-	})
-
-	It("generates AND of LIKE filters for multiple words", func() {
-		expr := legacySearchExpr("media_file", "abbey road")
-		sql, args, err := expr.ToSql()
-		Expect(err).ToNot(HaveOccurred())
-		Expect(sql).To(ContainSubstring("AND"))
-		Expect(args).To(HaveLen(2))
-	})
-})
-
 var _ = Describe("likeSearchExpr", func() {
 	It("returns nil for empty query", func() {
 		Expect(likeSearchExpr("media_file", "")).To(BeNil())
@@ -57,7 +25,6 @@ var _ = Describe("likeSearchExpr", func() {
 		expr := likeSearchExpr("media_file", "周杰伦")
 		sql, args, err := expr.ToSql()
 		Expect(err).ToNot(HaveOccurred())
-		// Should have OR between columns for the single word
 		Expect(sql).To(ContainSubstring("OR"))
 		Expect(sql).To(ContainSubstring("media_file.title LIKE"))
 		Expect(sql).To(ContainSubstring("media_file.album LIKE"))
@@ -73,7 +40,6 @@ var _ = Describe("likeSearchExpr", func() {
 		expr := likeSearchExpr("media_file", "周杰伦 greatest")
 		sql, args, err := expr.ToSql()
 		Expect(err).ToNot(HaveOccurred())
-		// Two groups AND'd together, each with 4 columns OR'd
 		Expect(sql).To(ContainSubstring("AND"))
 		Expect(args).To(HaveLen(8))
 	})
@@ -100,12 +66,12 @@ var _ = Describe("likeSearchExpr", func() {
 	})
 })
 
-var _ = Describe("Legacy Integration Search", func() {
+var _ = Describe("FTS Integration Search", func() {
 	var mr model.MediaFileRepository
 
 	BeforeEach(func() {
 		DeferCleanup(configtest.SetupConfig())
-		conf.Server.Search.Backend = "legacy"
+		conf.Server.Search.Backend = "fts"
 
 		ctx := log.NewContext(context.TODO())
 		ctx = request.WithUser(ctx, adminUser)
@@ -113,7 +79,7 @@ var _ = Describe("Legacy Integration Search", func() {
 		mr = NewMediaFileRepository(ctx, conn)
 	})
 
-	It("returns results using legacy LIKE-based search", func() {
+	It("returns results using FTS search", func() {
 		results, err := mr.Search("Radioactivity", model.QueryOptions{Max: 10})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(results).To(HaveLen(1))

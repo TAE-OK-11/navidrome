@@ -27,19 +27,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 
-		It("routes deprecated legacy backend through FTS strategy", func() {
-			DeferCleanup(configtest.SetupConfig())
-			conf.Server.Search.Backend = "legacy"
-			conf.Server.Search.FullString = false
-
-			strategy := getSearchStrategy("media_file", "test")
-			Expect(strategy).ToNot(BeNil())
-			sql, _, err := strategy.ToSql()
-			Expect(err).ToNot(HaveOccurred())
-			Expect(sql).To(ContainSubstring("MATCH"))
-		})
-
-		It("falls back to legacy LIKE strategy when SearchFullString is enabled", func() {
+		It("ignores deprecated SearchFullString and still uses FTS", func() {
 			DeferCleanup(configtest.SetupConfig())
 			conf.Server.Search.Backend = "fts"
 			conf.Server.Search.FullString = true
@@ -48,7 +36,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(strategy).ToNot(BeNil())
 			sql, _, err := strategy.ToSql()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(sql).To(ContainSubstring("LIKE"))
+			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 
 		It("routes CJK queries through FTS strategy", func() {

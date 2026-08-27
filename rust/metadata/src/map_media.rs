@@ -137,12 +137,12 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
         mbz_album_id: first(tags, "musicbrainz_albumid"),
         mbz_release_group_id: first(tags, "musicbrainz_releasegroupid"),
         mbz_album_type: first(tags, "releasetype"),
-        rg_album_peak: parse_float(strip_db(first(tags, "replaygain_album_peak"))),
+        rg_album_peak: parse_float(first(tags, "replaygain_album_peak")),
         rg_album_gain: map_gain(
             first(tags, "replaygain_album_gain"),
             first(tags, "r128_album_gain"),
         ),
-        rg_track_peak: parse_float(strip_db(first(tags, "replaygain_track_peak"))),
+        rg_track_peak: parse_float(first(tags, "replaygain_track_peak")),
         rg_track_gain: map_gain(
             first(tags, "replaygain_track_gain"),
             first(tags, "r128_track_gain"),
@@ -280,7 +280,14 @@ fn parse_bpm(value: String) -> Option<i32> {
 }
 
 fn parse_float(value: String) -> Option<f64> {
+    let value = value.trim();
     if value.is_empty() {
+        return None;
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E'))
+    {
         return None;
     }
     value.parse().ok()
@@ -326,7 +333,7 @@ fn tuple(tags: &HashMap<String, Vec<String>>, key: &str, total_key: &str) -> (i3
 fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {
     let mut original = first(tags, "originaldate");
     let mut release = first(tags, "releasedate");
-    let mut date = first(tags, "date");
+    let mut date = non_empty_or(first(tags, "date"), first(tags, "recordingdate"));
     if original.is_empty() {
         original = first(tags, "originalyear");
     }
@@ -337,7 +344,7 @@ fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {
         date = first(tags, "year");
     }
     if !original.is_empty() && release.is_empty() && !date.is_empty() && date >= original {
-        return (original, date.clone(), date);
+        return (original.clone(), date.clone(), original);
     }
     let resolved = if !date.is_empty() {
         date.clone()

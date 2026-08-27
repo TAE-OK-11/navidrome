@@ -7,7 +7,6 @@ import (
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
-	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/str"
 )
@@ -36,12 +35,9 @@ type searchStrategy interface {
 	execute(r sqlRepository, sq SelectBuilder, dest any, cfg searchConfig, options model.QueryOptions) error
 }
 
-// getSearchStrategy returns the appropriate search strategy based on config and query content.
+// getSearchStrategy returns the FTS search strategy for the query.
 // Returns nil when the query produces no searchable tokens.
 func getSearchStrategy(tableName, query string) searchStrategy {
-	if conf.Server.Search.FullString {
-		return newLegacySearch(tableName, query)
-	}
 	return newFTSSearch(tableName, query)
 }
 

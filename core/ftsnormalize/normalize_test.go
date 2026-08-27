@@ -1,14 +1,16 @@
-package str_test
+package ftsnormalize_test
 
 import (
-	"github.com/navidrome/navidrome/utils/str"
+	"context"
+
+	"github.com/navidrome/navidrome/core/ftsnormalize"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = DescribeTable("NormalizeForFTS",
 	func(expected string, values ...string) {
-		Expect(str.NormalizeForFTS(values...)).To(Equal(expected))
+		Expect(ftsnormalize.NormalizeForFTS(context.Background(), values...)).To(Equal(expected))
 	},
 	Entry("strips dots and concatenates", "REM", "R.E.M."),
 	Entry("strips slash", "ACDC", "AC/DC"),

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/navidrome/navidrome/utils/str"
+	"github.com/navidrome/navidrome/core/ftsnormalize"
 	"github.com/pressly/goose/v3"
 )
 
@@ -32,7 +32,7 @@ func upBackfillArtistSearchNormalized(ctx context.Context, tx *sql.Tx) error {
 		if err := rows.Scan(&id, &name, &current); err != nil {
 			return fmt.Errorf("scanning artist: %w", err)
 		}
-		if expected := str.NormalizeForFTS(name); expected != current {
+		if expected := ftsnormalize.NormalizeForFTS(ctx, name); expected != current {
 			updates[id] = expected
 		}
 	}

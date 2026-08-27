@@ -1,8 +1,6 @@
 package metadata
 
 import (
-	"cmp"
-	"context"
 	"encoding/json"
 	"maps"
 
@@ -14,16 +12,16 @@ import (
 func (md Metadata) ToMediaFile(libID int, folderID string) model.MediaFile {
 	if md.mediaFileJSON == "" {
 		log.Warn("Missing media_file_json from Rust worker", "file", md.filePath)
-		return md.fallbackMediaFile(libID, folderID)
+		return md.shellMediaFile(libID, folderID)
 	}
 	mf, ok := md.mediaFileFromRust(libID, folderID)
 	if !ok {
-		return md.fallbackMediaFile(libID, folderID)
+		return md.shellMediaFile(libID, folderID)
 	}
 	return mf
 }
 
-func (md Metadata) fallbackMediaFile(libID int, folderID string) model.MediaFile {
+func (md Metadata) shellMediaFile(libID int, folderID string) model.MediaFile {
 	mf := model.MediaFile{
 		LibraryID: libID,
 		FolderID:  folderID,
@@ -33,6 +31,7 @@ func (md Metadata) fallbackMediaFile(libID int, folderID string) model.MediaFile
 		BirthTime: md.BirthTime(),
 		UpdatedAt: md.ModTime(),
 		Tags:      maps.Clone(md.tags),
+		Lyrics:    md.lyricsJSONOrEmpty(),
 	}
 	mf.HasCoverArt = md.HasPicture()
 	mf.Duration = md.Length()
@@ -43,7 +42,6 @@ func (md Metadata) fallbackMediaFile(libID int, folderID string) model.MediaFile
 	}
 	mf.Channels = md.AudioProperties().Channels
 	mf.Codec = md.AudioProperties().Codec
-	mf.Lyrics = md.mapLyrics()
 	return mf
 }
 
@@ -89,7 +87,7 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 	mf.Channels = md.AudioProperties().Channels
 	mf.Codec = md.AudioProperties().Codec
 	if mf.Lyrics == "" {
-		mf.Lyrics = md.mapLyrics()
+		mf.Lyrics = md.lyricsJSONOrEmpty()
 	}
 	mf.PID = md.trackPID(mf)
 	mf.AlbumID = md.albumID(mf, conf.Server.PID.Album)
@@ -108,59 +106,13 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 	return mf, true
 }
 
-func (md Metadata) AlbumID(mf model.MediaFile, pidConf string) string {
-	return md.albumID(mf, pidConf)
-}
-
-func (md Metadata) mapLyrics() string {
+func (md Metadata) lyricsJSONOrEmpty() string {
 	if md.lyricsJSON != "" {
 		return md.lyricsJSON
 	}
-
-	rawLyrics := md.Pairs(model.TagLyrics)
-
-	lyricList := make(model.LyricList, 0, len(rawLyrics))
-
-	ctx := log.NewContext(context.Background(), "file", md.filePath)
-	for _, raw := range rawLyrics {
-		lang := raw.Key()
-		text := raw.Value()
-
-		lyrics, err := model.ParseLyrics(ctx, "", lang, []byte(text))
-		if err != nil {
-			log.Warn(ctx, "Unexpected failure occurred when parsing lyrics", err)
-			continue
-		}
-		for _, lyric := range lyrics {
-			if !lyric.IsEmpty() {
-				lyricList = append(lyricList, lyric)
-			}
-		}
-	}
-
-	res, err := json.Marshal(lyricList)
-	if err != nil {
-		log.Warn("Unexpected error occurred when serializing lyrics", "file", md.filePath, err)
-		return ""
-	}
-	return string(res)
+	return "[]"
 }
 
-func (md Metadata) mapDates() (date Date, originalDate Date, releaseDate Date) {
-	// Start with defaults
-	date = md.Date(model.TagRecordingDate)
-	originalDate = md.Date(model.TagOriginalDate)
-	releaseDate = md.Date(model.TagReleaseDate)
-
-	// For some historic reason, taggers have been writing the Release Date of an album to the Date tag,
-	// and leave the Release Date tag empty.
-	legacyMappings := (originalDate != "") &&
-		(releaseDate == "") &&
-		(date >= originalDate)
-	if legacyMappings {
-		return originalDate, originalDate, date
-	}
-	// when there's no Date, first fall back to Original Date, then to Release Date.
-	date = cmp.Or(date, originalDate, releaseDate)
-	return date, originalDate, releaseDate
+func (md Metadata) AlbumID(mf model.MediaFile, pidConf string) string {
+	return md.albumID(mf, pidConf)
 }

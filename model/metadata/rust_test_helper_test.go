@@ -3,8 +3,8 @@ package metadata_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os/exec"
-	"testing"
 
 	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/model"
@@ -23,11 +23,10 @@ type mapMediaResponse struct {
 	Error         string `json:"error,omitempty"`
 }
 
-func rustMediaFileJSON(tb testing.TB, filePath string, props metadata.Info) string {
-	tb.Helper()
+func rustMediaFileJSON(filePath string, props metadata.Info) (string, error) {
 	binary, err := metadataworker.Resolve()
 	if err != nil {
-		tb.Fatalf("resolve metadata worker: %v", err)
+		return "", fmt.Errorf("resolve metadata worker: %w", err)
 	}
 
 	md := metadata.New(filePath, props)
@@ -46,41 +45,46 @@ func rustMediaFileJSON(tb testing.TB, filePath string, props metadata.Info) stri
 		LyricsJSON: lyricsJSON,
 	})
 	if err != nil {
-		tb.Fatalf("encode map media request: %v", err)
+		return "", fmt.Errorf("encode map media request: %w", err)
 	}
 
 	cmd := exec.Command(binary, "--map-media-worker") //nolint:gosec // test-only resolved binary
 	cmd.Stdin = bytes.NewReader(append(request, '\n'))
 	output, err := cmd.Output()
 	if err != nil {
-		tb.Fatalf("map media worker failed: %v", err)
+		return "", fmt.Errorf("map media worker failed: %w", err)
 	}
 
 	var response mapMediaResponse
 	if err := json.Unmarshal(bytes.TrimSpace(output), &response); err != nil {
-		tb.Fatalf("decode map media response: %v", err)
+		return "", fmt.Errorf("decode map media response: %w", err)
 	}
 	if !response.OK {
 		if response.Error == "" {
 			response.Error = "map media worker failed"
 		}
-		tb.Fatal(response.Error)
+		return "", fmt.Errorf("%s", response.Error)
 	}
 	if response.MediaFileJSON == "" {
-		tb.Fatal("map media worker returned empty media_file_json")
+		return "", fmt.Errorf("map media worker returned empty media_file_json")
 	}
-	return response.MediaFileJSON
+	return response.MediaFileJSON, nil
 }
 
-func propsWithRustMediaFile(tb testing.TB, filePath string, props metadata.Info) metadata.Info {
-	tb.Helper()
-	props.MediaFileJSON = rustMediaFileJSON(tb, filePath, props)
-	return props
+func propsWithRustMediaFile(filePath string, props metadata.Info) (metadata.Info, error) {
+	jsonPayload, err := rustMediaFileJSON(filePath, props)
+	if err != nil {
+		return props, err
+	}
+	props.MediaFileJSON = jsonPayload
+	return props, nil
 }
 
-func toMediaFileFromTags(tb testing.TB, filePath string, props metadata.Info, tags model.RawTags) model.MediaFile {
-	tb.Helper()
+func toMediaFileFromTags(filePath string, props metadata.Info, tags model.RawTags) (model.MediaFile, error) {
 	props.Tags = tags
-	props = propsWithRustMediaFile(tb, filePath, props)
-	return metadata.New(filePath, props).ToMediaFile(1, "folderID")
+	props, err := propsWithRustMediaFile(filePath, props)
+	if err != nil {
+		return model.MediaFile{}, err
+	}
+	return metadata.New(filePath, props).ToMediaFile(1, "folderID"), nil
 }

@@ -26,9 +26,9 @@ var _ = Describe("sqlRestful", func() {
 			Expect(r.parseRestFilters(context.Background(), options)).To(BeNil())
 		})
 
-		It(`returns nil if tries a filter with legacySearchExpr("'")`, func() {
+		It(`returns nil for a single-quote FTS filter`, func() {
 			DeferCleanup(configtest.SetupConfig())
-			conf.Server.Search.Backend = "legacy"
+			conf.Server.Search.Backend = "fts"
 			r.filterMappings = map[string]filterFunc{
 				"name": fullTextFilter("table"),
 			}
@@ -130,27 +130,14 @@ var _ = Describe("sqlRestful", func() {
 			})
 		})
 
-		Context("when SearchFullString config changes behavior", func() {
-			It("uses FTS when SearchFullString=false", func() {
-				conf.Server.Search.FullString = false
+		Context("FTS query handling", func() {
+			It("uses FTS for multi-word queries", func() {
 				result := filter("search", "test query")
 
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(sql).To(ContainSubstring("MATCH"))
 				Expect(args).ToNot(BeEmpty())
-			})
-
-			It("uses full_text LIKE when SearchFullString=true", func() {
-				conf.Server.Search.FullString = true
-				result := filter("search", "test query")
-
-				sql, args, err := result.ToSql()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(HaveLen(2))
-				Expect(args).To(ContainElement("%test%"))
-				Expect(args).To(ContainElement("%query%"))
 			})
 		})
 
@@ -177,13 +164,12 @@ var _ = Describe("sqlRestful", func() {
 			})
 
 			It("handles special characters that are sanitized", func() {
-				conf.Server.Search.FullString = true
 				result := filter("search", "don't")
 
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% dont%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 
 			It("returns nil for single quote (SQL injection protection)", func() {
@@ -223,13 +209,12 @@ var _ = Describe("sqlRestful", func() {
 			})
 
 			It("converts value to lowercase before processing", func() {
-				conf.Server.Search.FullString = true
 				result := filter("search", "TEST")
 
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% test%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 		})
 	})

@@ -32,7 +32,9 @@ var _ = Describe("ToMediaFile", func() {
 		if _, ok := tags["ALBUM"]; !ok {
 			tags["ALBUM"] = []string{"Test Album"}
 		}
-		return toMediaFileFromTags(GinkgoT(), filePath, props, tags)
+		mf, err := toMediaFileFromTags(filePath, props, tags)
+		Expect(err).NotTo(HaveOccurred())
+		return mf
 	}
 
 	Describe("Dates", func() {
@@ -103,7 +105,9 @@ var _ = Describe("ToMediaFile", func() {
 				"LYRICS:ENG": {"ignored by Rust path"},
 			}
 			props.LyricsJSON = `[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`
-			props = propsWithRustMediaFile(GinkgoT(), "song.mp3", props)
+			var err error
+			props, err = propsWithRustMediaFile("song.mp3", props)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(metadata.New("song.mp3", props).ToMediaFile(1, "folderID").Lyrics).To(Equal(
 				`[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`,
 			))

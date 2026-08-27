@@ -1,0 +1,15 @@
+[package]
+name = "navidrome-metadata-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+navidrome-metadata = { path = "../../metadata" }
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = false }
+
+[[bench]]
+name = "metadata_hotpaths"
+harness = false

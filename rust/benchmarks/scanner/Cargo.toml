@@ -1,0 +1,15 @@
+[package]
+name = "navidrome-scanner-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+navidrome-scanner = { path = "../../scanner" }
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = false }
+
+[[bench]]
+name = "scanner_hotpaths"
+harness = false

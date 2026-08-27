@@ -90,8 +90,8 @@ pub fn map_to_json(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json
 }
 
 fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str) -> Option<ScanMediaFile> {
-    let title = first(tags, "title");
-    let album = first(tags, "album");
+    let title = first_ref(tags, "title");
+    let album = first_ref(tags, "album");
     if title.is_empty() && album.is_empty() {
         return None;
     }
@@ -101,31 +101,35 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
     let (original_date, release_date, date) = map_dates(tags);
     let (track_number, _) = track_tuple(tags);
     let (disc_number, _) = disc_tuple(tags);
+    let explicit = map_explicit(non_empty_or_ref(
+        first_ref(tags, "itunesadvisory"),
+        first_ref(tags, "explicit"),
+    ));
 
     Some(ScanMediaFile {
         title: if title.is_empty() {
             path.file_stem()?.to_str()?.to_owned()
         } else {
-            title
+            title.to_owned()
         },
-        album,
+        album: album.to_owned(),
         artist: artist.clone(),
         album_artist: album_artist.clone(),
         sort_title: first(tags, "titlesort"),
         sort_album_name: first(tags, "albumsort"),
         sort_artist_name: non_empty_or(first(tags, "artistsort"), first(tags, "albumartistsort")),
         sort_album_artist_name: first(tags, "albumartistsort"),
-        order_title: sanitize_sort(&first(tags, "title")),
-        order_album_name: sanitize_sort_no_article(&first(tags, "album")),
-        compilation: parse_bool(first(tags, "compilation")),
+        order_title: sanitize_sort(title),
+        order_album_name: sanitize_sort_no_article(album),
+        compilation: parse_bool(first_ref(tags, "compilation")),
         track_number,
         disc_number,
         disc_subtitle: first(tags, "discsubtitle"),
         catalog_num: first(tags, "catalognumber"),
         comment: first(tags, "comment"),
-        bpm: parse_bpm(first(tags, "bpm")),
+        bpm: parse_bpm(first_ref(tags, "bpm")),
         lyrics: lyrics_json.to_owned(),
-        explicit_status: map_explicit(non_empty_or(first(tags, "itunesadvisory"), first(tags, "explicit"))),
+        explicit_status: explicit,
         original_year: year_from_date(&original_date),
         original_date,
         release_year: year_from_date(&release_date),
@@ -137,15 +141,15 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
         mbz_album_id: first(tags, "musicbrainz_albumid"),
         mbz_release_group_id: first(tags, "musicbrainz_releasegroupid"),
         mbz_album_type: first(tags, "releasetype"),
-        rg_album_peak: parse_float(first(tags, "replaygain_album_peak")),
+        rg_album_peak: parse_float(first_ref(tags, "replaygain_album_peak")),
         rg_album_gain: map_gain(
-            first(tags, "replaygain_album_gain"),
-            first(tags, "r128_album_gain"),
+            first_ref(tags, "replaygain_album_gain"),
+            first_ref(tags, "r128_album_gain"),
         ),
-        rg_track_peak: parse_float(first(tags, "replaygain_track_peak")),
+        rg_track_peak: parse_float(first_ref(tags, "replaygain_track_peak")),
         rg_track_gain: map_gain(
-            first(tags, "replaygain_track_gain"),
-            first(tags, "r128_track_gain"),
+            first_ref(tags, "replaygain_track_gain"),
+            first_ref(tags, "r128_track_gain"),
         ),
         participants: map_participants(tags, &artist, &album_artist),
     })
@@ -173,19 +177,19 @@ fn map_participants(
     }
     out.insert("albumartist".to_owned(), album_artists);
 
-    for (role, key) in [
-        ("composer", "composer"),
-        ("conductor", "conductor"),
-        ("lyricist", "lyricist"),
-        ("arranger", "arranger"),
-        ("producer", "producer"),
-        ("director", "director"),
-        ("engineer", "engineer"),
-        ("mixer", "mixer"),
-        ("remixer", "remixer"),
-        ("djmixer", "djmixer"),
+    for (role, key, sort_key, mbid_key) in [
+        ("composer", "composer", "composersort", "musicbrainz_composerid"),
+        ("conductor", "conductor", "conductorsort", "musicbrainz_conductorid"),
+        ("lyricist", "lyricist", "lyricistsort", "musicbrainz_lyricistid"),
+        ("arranger", "arranger", "arrangersort", "musicbrainz_arrangerid"),
+        ("producer", "producer", "producersort", "musicbrainz_producerid"),
+        ("director", "director", "directorsort", "musicbrainz_directorid"),
+        ("engineer", "engineer", "engineersort", "musicbrainz_engineerid"),
+        ("mixer", "mixer", "mixersort", "musicbrainz_mixerid"),
+        ("remixer", "remixer", "remixersort", "musicbrainz_remixerid"),
+        ("djmixer", "djmixer", "djmixersort", "musicbrainz_djmixerid"),
     ] {
-        let artists = artists_from_tags(tags, key, key, &format!("{key}sort"), &format!("musicbrainz_{key}id"));
+        let artists = artists_from_tags(tags, key, key, sort_key, mbid_key);
         if !artists.is_empty() {
             out.insert(role.to_owned(), artists);
         }
@@ -204,18 +208,25 @@ fn artists_from_tags(
     sort_key: &str,
     mbid_key: &str,
 ) -> Vec<ScanArtist> {
-    let names = all(tags, plural);
-    let names = if names.is_empty() { all(tags, single) } else { names };
-    let sorts = all(tags, sort_key);
-    let mbids = all(tags, mbid_key);
+    let names = filtered_value_refs(tags, plural);
+    let names = if names.is_empty() {
+        filtered_value_refs(tags, single)
+    } else {
+        names
+    };
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let sorts = tag_values(tags, sort_key);
+    let mbids = tag_values(tags, mbid_key);
     names
         .into_iter()
         .enumerate()
         .map(|(idx, name)| {
             scan_artist(
-                &name,
-                sorts.get(idx).map(String::as_str).unwrap_or_default(),
-                mbids.get(idx).map(String::as_str).unwrap_or_default(),
+                name,
+                sorts.and_then(|values| values.get(idx)).map(String::as_str).unwrap_or_default(),
+                mbids.and_then(|values| values.get(idx)).map(String::as_str).unwrap_or_default(),
             )
         })
         .collect()
@@ -232,76 +243,96 @@ fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
 }
 
 fn display_artist(tags: &HashMap<String, Vec<String>>) -> String {
-    let values = all(tags, "artists");
-    let values = if values.is_empty() { all(tags, "artist") } else { values };
-    join(values)
-}
-
-fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
-    let values = all(tags, "albumartists");
+    let values = filtered_value_refs(tags, "artists");
     let values = if values.is_empty() {
-        all(tags, "albumartist")
+        filtered_value_refs(tags, "artist")
     } else {
         values
     };
-    let joined = join(values);
+    values.join("; ")
+}
+
+fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
+    let values = filtered_value_refs(tags, "albumartists");
+    let values = if values.is_empty() {
+        filtered_value_refs(tags, "albumartist")
+    } else {
+        values
+    };
+    let joined = values.join("; ");
     if !joined.is_empty() {
         return joined;
     }
     display_artist(tags)
 }
 
-fn join(values: Vec<String>) -> String {
-    values.join("; ")
+fn filtered_value_refs<'a>(tags: &'a HashMap<String, Vec<String>>, key: &str) -> Vec<&'a str> {
+    tags.get(key)
+        .map(|values| {
+            values
+                .iter()
+                .map(String::as_str)
+                .filter(|value| !value.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-fn all(tags: &HashMap<String, Vec<String>>, key: &str) -> Vec<String> {
+fn tag_values<'a>(
+    tags: &'a HashMap<String, Vec<String>>,
+    key: &str,
+) -> Option<&'a [String]> {
+    let values = tags.get(key)?;
+    if values.iter().any(|value| !value.is_empty()) {
+        Some(values.as_slice())
+    } else {
+        None
+    }
+}
+
+fn first_ref<'a>(tags: &'a HashMap<String, Vec<String>>, key: &str) -> &'a str {
     tags.get(key)
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|value| !value.is_empty())
-        .collect()
+        .and_then(|values| values.first())
+        .map(String::as_str)
+        .unwrap_or("")
 }
 
 fn mbz_recording_id(tags: &HashMap<String, Vec<String>>) -> String {
-    let recording = first(tags, "musicbrainz_recordingid");
+    let recording = first_ref(tags, "musicbrainz_recordingid");
     if !recording.is_empty() {
-        return recording;
+        return recording.to_owned();
     }
-    if !first(tags, "musicbrainz_releasetrackid").is_empty() {
+    if !first_ref(tags, "musicbrainz_releasetrackid").is_empty() {
         return first(tags, "musicbrainz_trackid");
     }
     String::new()
 }
 
 fn mbz_release_track_id(tags: &HashMap<String, Vec<String>>) -> String {
-    non_empty_or(
-        first(tags, "musicbrainz_releasetrackid"),
-        first(tags, "musicbrainz_trackid"),
+    non_empty_or_ref(
+        first_ref(tags, "musicbrainz_releasetrackid"),
+        first_ref(tags, "musicbrainz_trackid"),
     )
+    .to_owned()
 }
 
-fn non_empty_or(a: String, b: String) -> String {
+fn non_empty_or_ref<'a>(a: &'a str, b: &'a str) -> &'a str {
     if a.is_empty() { b } else { a }
 }
 
 fn first(tags: &HashMap<String, Vec<String>>, key: &str) -> String {
-    tags.get(key)
-        .and_then(|values| values.first())
-        .cloned()
-        .unwrap_or_default()
+    first_ref(tags, key).to_owned()
 }
 
-fn parse_bool(value: String) -> bool {
+fn parse_bool(value: &str) -> bool {
     matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
 }
 
-fn parse_bpm(value: String) -> Option<i32> {
+fn parse_bpm(value: &str) -> Option<i32> {
     value.trim().parse::<f64>().ok().map(|v| v.round() as i32).filter(|&v| v != 0)
 }
 
-fn parse_float(value: String) -> Option<f64> {
+fn parse_float(value: &str) -> Option<f64> {
     let value = value.trim();
     if value.is_empty() {
         return None;
@@ -315,12 +346,13 @@ fn parse_float(value: String) -> Option<f64> {
     value.parse().ok()
 }
 
-fn strip_db(value: String) -> String {
+fn strip_db(value: &str) -> String {
     value.replace("dB", "").replace("db", "").trim().to_owned()
 }
 
-fn map_gain(rg: String, r128: String) -> Option<f64> {
-    if let Some(v) = parse_float(strip_db(rg)) {
+fn map_gain(rg: &str, r128: &str) -> Option<f64> {
+    let stripped = strip_db(rg);
+    if let Some(v) = parse_float(&stripped) {
         return Some(v);
     }
     if let Ok(v) = r128.trim().parse::<i64>() {
@@ -329,7 +361,7 @@ fn map_gain(rg: String, r128: String) -> Option<f64> {
     None
 }
 
-fn map_explicit(value: String) -> String {
+fn map_explicit(value: &str) -> String {
     match value.trim() {
         "1" | "4" => "e".to_owned(),
         "2" => "c".to_owned(),
@@ -338,7 +370,7 @@ fn map_explicit(value: String) -> String {
 }
 
 fn tuple(tags: &HashMap<String, Vec<String>>, key: &str, total_key: &str) -> (i32, i32) {
-    let raw = first(tags, key);
+    let raw = first_ref(tags, key);
     if raw.is_empty() {
         return (0, 0);
     }
@@ -347,7 +379,7 @@ fn tuple(tags: &HashMap<String, Vec<String>>, key: &str, total_key: &str) -> (i3
     let second = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .or_else(|| first(tags, total_key).parse().ok())
+        .or_else(|| first_ref(tags, total_key).parse().ok())
         .unwrap_or(0);
     (first_num, second)
 }
@@ -392,6 +424,10 @@ fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {
         release.clone()
     };
     (original, release, resolved)
+}
+
+fn non_empty_or(a: String, b: String) -> String {
+    if a.is_empty() { b } else { a }
 }
 
 fn year_from_date(value: &str) -> i32 {

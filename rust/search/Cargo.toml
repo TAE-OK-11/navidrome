@@ -5,6 +5,14 @@ edition = "2024"
 rust-version = "1.97"
 license = "GPL-3.0-only"
 
+[lib]
+name = "navidrome_search"
+path = "src/lib.rs"
+
+[[bin]]
+name = "navidrome-search"
+path = "src/main.rs"
+
 [dependencies]
 fts-normalize = { path = "../fts-normalize" }
 anyhow = "1.0.100"

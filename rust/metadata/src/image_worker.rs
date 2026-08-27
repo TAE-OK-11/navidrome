@@ -5,7 +5,7 @@ use fast_image_resize as fir;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::gif::GifEncoder;
-use image::{AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageReader, Limits};
+use image::{AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 
 const MAX_INPUT_BYTES: usize = 128 * 1024 * 1024;
@@ -279,6 +279,9 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     let dimensions_reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
         .context("detecting image format")?;
+    let source_format = dimensions_reader
+        .format()
+        .context("detecting image format")?;
     let (src_width, src_height) = dimensions_reader
         .into_dimensions()
         .context("reading image dimensions")?;
@@ -290,6 +293,14 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     } else {
         request.size.min(original_size)
     };
+    let dimensions_match = if request.fill {
+        src_width == target_size && src_height == target_size
+    } else {
+        target_size == original_size && !request.square
+    };
+    if dimensions_match && format_matches_request(source_format, &request.format) {
+        return Ok(encoded.to_vec());
+    }
     if !request.fill && target_size == original_size && !request.square {
         bail!("image does not require resizing");
     }
@@ -451,6 +462,15 @@ fn checked_rgba_len(width: u32, height: u32) -> Result<usize> {
         .and_then(|pixels| pixels.checked_mul(4))
         .context("image allocation overflow")?;
     usize::try_from(bytes).context("image allocation exceeds platform limits")
+}
+
+fn format_matches_request(source: ImageFormat, format: &OutputFormat) -> bool {
+    matches!(
+        (format, source),
+        (OutputFormat::Jpeg, ImageFormat::Jpeg)
+            | (OutputFormat::Png, ImageFormat::Png)
+            | (OutputFormat::Webp, ImageFormat::WebP)
+    )
 }
 
 fn encode(
@@ -623,6 +643,28 @@ mod tests {
             .write_image(image.as_raw(), width, height, ExtendedColorType::Rgba8)
             .unwrap();
         output
+    }
+
+    #[test]
+    fn passthrough_returns_original_when_dimensions_and_format_match() {
+        let input = source_png(120, 120);
+        let output = resize(
+            &input,
+            &ImageRequest {
+                input_size: input.len(),
+                input_sizes: Vec::new(),
+                mosaic: false,
+                sniff: false,
+                size: 120,
+                square: false,
+                fill: false,
+                animated_gif: false,
+                quality: 80,
+                format: OutputFormat::Png,
+            },
+        )
+        .unwrap();
+        assert_eq!(output, input);
     }
 
     #[test]

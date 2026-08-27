@@ -53,6 +53,7 @@ const SEND_CAPACITY_FACTOR: f64 = 2.0;
 const MAX_AMPLIFICATION_FACTOR: usize = 3;
 const SOCKET_BUFFER_SIZE: usize = 7 * 1024 * 1024;
 const MAX_ADMISSION_PEERS: usize = 2_048;
+const ADMISSION_SHARDS: usize = 16;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -240,7 +241,7 @@ async fn run(config: Config, mut control: StdUnixStream, bridge: StdUnixStream) 
     .context("invalid Alt-Svc value")?;
     let connection_limit = Arc::new(Semaphore::new(config.max_connections));
     let request_limit = Arc::new(Semaphore::new(config.max_in_flight_requests));
-    let admission = Arc::new(Admission::new(
+    let admission = Arc::new(ShardedAdmission::new(
         config.connection_rate_per_second,
         config.connection_burst,
         config.max_connections_per_ip,
@@ -394,6 +395,31 @@ struct Admission {
     rate_per_second: f64,
     burst: u32,
     max_active: usize,
+}
+
+struct ShardedAdmission {
+    shards: [Arc<Admission>; ADMISSION_SHARDS],
+}
+
+impl ShardedAdmission {
+    fn new(rate_per_second: f64, burst: u32, max_active: usize) -> Self {
+        Self {
+            shards: std::array::from_fn(|_| {
+                Arc::new(Admission::new(rate_per_second, burst, max_active))
+            }),
+        }
+    }
+
+    fn admit(self: &Arc<Self>, ip: IpAddr) -> Result<AdmissionPermit, AdmissionRejection> {
+        self.shards[admission_shard(ip)].admit(ip)
+    }
+}
+
+fn admission_shard(ip: IpAddr) -> usize {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    ip.hash(&mut hasher);
+    (hasher.finish() as usize) % ADMISSION_SHARDS
 }
 
 impl Admission {
@@ -1549,7 +1575,7 @@ mod tests {
     #[test]
     fn admission_limits_rate_and_active_connections() {
         let ip = "192.0.2.20".parse().unwrap();
-        let active = Arc::new(Admission::new(1000.0, 10, 1));
+        let active = Arc::new(ShardedAdmission::new(1000.0, 10, 1));
         let permit = active.admit(ip).unwrap();
         assert!(matches!(
             active.admit(ip),
@@ -1557,7 +1583,7 @@ mod tests {
         ));
         drop(permit);
 
-        let rate = Arc::new(Admission::new(0.01, 0, 10));
+        let rate = Arc::new(ShardedAdmission::new(0.01, 0, 10));
         let _permit = rate.admit(ip).unwrap();
         assert!(matches!(
             rate.admit(ip),

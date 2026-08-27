@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[lib]
+name = "navidrome_metadata"
+path = "src/lib.rs"
+
+[[bin]]
+name = "navidrome-metadata"
+path = "src/main.rs"
+
 [dependencies]
 fts-normalize = { path = "../fts-normalize" }
 anyhow = "1.0.100"

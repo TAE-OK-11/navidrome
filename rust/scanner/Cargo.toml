@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[lib]
+name = "navidrome_scanner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "navidrome-scanner"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "=1.0.100"
 hex = "0.4.3"

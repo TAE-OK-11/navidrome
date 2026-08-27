@@ -2,22 +2,17 @@ package artwork
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"runtime"
 
 	"github.com/navidrome/navidrome/core/metadataworker"
+	"github.com/navidrome/navidrome/core/rustworker"
 )
 
 const (
 	maxImageWorkers      = 2
-	imageWorkerHeaderLen = 16 * 1024
 	maxWorkerOutputBytes = 64 * 1024 * 1024
 )
 
@@ -35,24 +30,23 @@ type imageWorkerRequest struct {
 }
 
 type imageAnimationFlags struct {
-	AnimatedGIF bool
+	AnimatedGIF  bool
 	AnimatedWebP bool
-	AnimatedPNG bool
+	AnimatedPNG  bool
 }
 
 type imageWorkerResponse struct {
-	OK            bool   `json:"ok"`
-	Size          int64  `json:"size"`
-	Error         string `json:"error"`
-	AnimatedGIF   *bool  `json:"animated_gif,omitempty"`
-	AnimatedWebP  *bool  `json:"animated_webp,omitempty"`
-	AnimatedPNG   *bool  `json:"animated_png,omitempty"`
+	OK           bool   `json:"ok"`
+	Size         int64  `json:"size"`
+	Error        string `json:"error"`
+	AnimatedGIF  *bool  `json:"animated_gif,omitempty"`
+	AnimatedWebP *bool  `json:"animated_webp,omitempty"`
+	AnimatedPNG  *bool  `json:"animated_png,omitempty"`
 }
 
 type imageWorker struct {
 	binary string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
+	pipes  *rustworker.Pipes
 	writer *bufio.Writer
 	reader *bufio.Reader
 }
@@ -135,16 +129,31 @@ func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imag
 	}
 	defer func() { p.idle <- slot }()
 
-	worker, err := slot.ensure(binary)
+	var response imageWorkerResponse
+	err = rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
+		}
+		var roundErr error
+		response, roundErr = worker.roundTripHeader(imageWorkerRequest{
+			Sniff:     true,
+			InputSize: len(data),
+		}, [][]byte{data})
+		if roundErr != nil {
+			var resizeErr *imageResizeError
+			if errors.As(roundErr, &resizeErr) {
+				return roundErr
+			}
+		}
+		return roundErr
+	})
 	if err != nil {
-		return flags, err
-	}
-	response, err := worker.roundTripHeader(imageWorkerRequest{
-		Sniff:     true,
-		InputSize: len(data),
-	}, [][]byte{data})
-	if err != nil {
-		return flags, err
+		var resizeErr *imageResizeError
+		if errors.As(err, &resizeErr) {
+			return flags, err
+		}
+		return flags, rustworker.FailAfterRestarts("image", err)
 	}
 	if response.AnimatedGIF != nil {
 		flags.AnimatedGIF = *response.AnimatedGIF
@@ -179,36 +188,30 @@ func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, 
 	}
 	defer func() { p.idle <- slot }()
 
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		worker, err := slot.ensure(binary)
-		if err != nil {
-			return nil, err
+	var resized []byte
+	err = rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
 		}
-		cancelDone := make(chan struct{})
-		stopCancel := context.AfterFunc(ctx, func() {
-			worker.kill()
-			close(cancelDone)
-		})
-		resized, err := worker.roundTrip(request, payloads)
-		if !stopCancel() {
-			<-cancelDone
+		var roundErr error
+		resized, roundErr = worker.roundTrip(request, payloads)
+		if roundErr != nil {
+			var resizeErr *imageResizeError
+			if errors.As(roundErr, &resizeErr) {
+				return roundErr
+			}
 		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			slot.stop()
-			return nil, ctxErr
-		}
-		if err == nil {
-			return resized, nil
-		}
+		return roundErr
+	})
+	if err != nil {
 		var resizeErr *imageResizeError
 		if errors.As(err, &resizeErr) {
 			return nil, err
 		}
-		lastErr = err
-		slot.stop()
+		return nil, rustworker.FailAfterRestarts("image", err)
 	}
-	return nil, fmt.Errorf("persistent Rust image worker failed after restart: %w", lastErr)
+	return resized, nil
 }
 
 func (s *imageWorkerSlot) ensure(binary string) (*imageWorker, error) {
@@ -233,79 +236,36 @@ func (s *imageWorkerSlot) stop() {
 }
 
 func startImageWorker(binary string) (*imageWorker, error) {
-	cmd := exec.Command(binary, "--image-worker") //nolint:gosec // resolved administrator-controlled binary
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary, "--image-worker")
 	if err != nil {
-		return nil, fmt.Errorf("opening image worker stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening image worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting image worker %q: %w", binary, err)
+		return nil, err
 	}
 	return &imageWorker{
 		binary: binary,
-		cmd:    cmd,
-		stdin:  stdin,
-		writer: bufio.NewWriterSize(stdin, 128*1024),
-		reader: bufio.NewReaderSize(stdout, imageWorkerHeaderLen),
+		pipes:  pipes,
+		writer: bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf),
+		reader: bufio.NewReaderSize(pipes.Stdout, rustworker.DefaultReadBuf),
 	}, nil
 }
 
 func (w *imageWorker) roundTrip(request imageWorkerRequest, payloads [][]byte) ([]byte, error) {
-	response, err := w.writeRequest(request, payloads)
+	response, err := w.roundTripHeader(request, payloads)
 	if err != nil {
 		return nil, err
 	}
 	if request.Sniff {
 		return nil, fmt.Errorf("sniff request must use roundTripHeader")
 	}
-	if response.Size <= 0 || response.Size > maxWorkerOutputBytes {
-		return nil, fmt.Errorf("Rust image worker returned invalid output size %d", response.Size)
-	}
-	resized := make([]byte, response.Size)
-	if _, err := io.ReadFull(w.reader, resized); err != nil {
-		return nil, fmt.Errorf("reading resized image: %w", err)
-	}
-	return resized, nil
+	return rustworker.ReadSizedBody(w.reader, response.Size, maxWorkerOutputBytes)
 }
 
 func (w *imageWorker) roundTripHeader(request imageWorkerRequest, payloads [][]byte) (imageWorkerResponse, error) {
-	return w.writeRequest(request, payloads)
-}
-
-func (w *imageWorker) writeRequest(request imageWorkerRequest, payloads [][]byte) (imageWorkerResponse, error) {
-	header, err := json.Marshal(request)
-	if err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("encoding image request: %w", err)
-	}
-	if _, err := w.writer.Write(header); err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("writing image request: %w", err)
-	}
-	if err := w.writer.WriteByte('\n'); err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("framing image request: %w", err)
-	}
-	for i, data := range payloads {
-		if _, err := w.writer.Write(data); err != nil {
-			return imageWorkerResponse{}, fmt.Errorf("writing image payload %d: %w", i, err)
-		}
-	}
-	if err := w.writer.Flush(); err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("flushing image request: %w", err)
-	}
-
-	responseHeader, err := w.reader.ReadSlice('\n')
-	if err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("reading image response header: %w", err)
+	if err := rustworker.WriteHeaderAndBodies(w.writer, request, payloads...); err != nil {
+		return imageWorkerResponse{}, err
 	}
 	var response imageWorkerResponse
-	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {
-		return imageWorkerResponse{}, fmt.Errorf("decoding image response header: %w", err)
+	if err := rustworker.ReadJSONLine(w.reader, &response); err != nil {
+		return imageWorkerResponse{}, err
 	}
 	if !response.OK {
 		if response.Error == "" {
@@ -316,16 +276,8 @@ func (w *imageWorker) writeRequest(request imageWorkerRequest, payloads [][]byte
 	return response, nil
 }
 
-func (w *imageWorker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
-}
-
 func (w *imageWorker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }
 
 type imageResizeError struct {

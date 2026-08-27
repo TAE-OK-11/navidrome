@@ -2,15 +2,11 @@ package metadataworker
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"runtime"
+
+	"github.com/navidrome/navidrome/core/rustworker"
 )
 
 type normalizeWorkerRequest struct {
@@ -25,8 +21,7 @@ type normalizeWorkerResponse struct {
 
 type normalizeWorker struct {
 	binary string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
+	pipes  *rustworker.Pipes
 	writer *bufio.Writer
 	reader *bufio.Reader
 }
@@ -79,32 +74,20 @@ func (p *normalizeWorkerPool) Normalize(ctx context.Context, values ...string) (
 	}
 	defer func() { p.idle <- slot }()
 
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		worker, err := slot.ensure(binary)
-		if err != nil {
-			return "", err
+	var normalized string
+	err = rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
 		}
-		cancelDone := make(chan struct{})
-		stopCancel := context.AfterFunc(ctx, func() {
-			worker.kill()
-			close(cancelDone)
-		})
-		normalized, err := worker.roundTrip(values)
-		if !stopCancel() {
-			<-cancelDone
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			slot.stop()
-			return "", ctxErr
-		}
-		if err == nil {
-			return normalized, nil
-		}
-		lastErr = err
-		slot.stop()
+		var roundErr error
+		normalized, roundErr = worker.roundTrip(values)
+		return roundErr
+	})
+	if err != nil {
+		return "", rustworker.FailAfterRestarts("normalize", err)
 	}
-	return "", fmt.Errorf("persistent Rust normalize worker failed after restart: %w", lastErr)
+	return normalized, nil
 }
 
 func (s *normalizeWorkerSlot) ensure(binary string) (*normalizeWorker, error) {
@@ -129,53 +112,25 @@ func (s *normalizeWorkerSlot) stop() {
 }
 
 func startNormalizeWorker(binary string) (*normalizeWorker, error) {
-	cmd := exec.Command(binary, "--normalize-fts-worker") //nolint:gosec // resolved administrator-controlled binary
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary, "--normalize-fts-worker")
 	if err != nil {
-		return nil, fmt.Errorf("opening normalize worker stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening normalize worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting normalize worker %q: %w", binary, err)
+		return nil, err
 	}
 	return &normalizeWorker{
 		binary: binary,
-		cmd:    cmd,
-		stdin:  stdin,
-		writer: bufio.NewWriterSize(stdin, 16*1024),
-		reader: bufio.NewReaderSize(stdout, lyricsWorkerReadBufBytes),
+		pipes:  pipes,
+		writer: bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf),
+		reader: bufio.NewReaderSize(pipes.Stdout, rustworker.DefaultReadBuf),
 	}, nil
 }
 
 func (w *normalizeWorker) roundTrip(values []string) (string, error) {
-	request := normalizeWorkerRequest{Values: values}
-	header, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("encoding normalize request: %w", err)
-	}
-	if _, err := w.writer.Write(header); err != nil {
-		return "", fmt.Errorf("writing normalize request: %w", err)
-	}
-	if err := w.writer.WriteByte('\n'); err != nil {
-		return "", fmt.Errorf("framing normalize request: %w", err)
-	}
-	if err := w.writer.Flush(); err != nil {
-		return "", fmt.Errorf("flushing normalize request: %w", err)
-	}
-
-	responseHeader, err := w.reader.ReadSlice('\n')
-	if err != nil {
-		return "", fmt.Errorf("reading normalize response header: %w", err)
+	if err := rustworker.WriteJSONLine(w.writer, normalizeWorkerRequest{Values: values}); err != nil {
+		return "", err
 	}
 	var response normalizeWorkerResponse
-	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {
-		return "", fmt.Errorf("decoding normalize response header: %w", err)
+	if err := rustworker.ReadJSONLine(w.reader, &response); err != nil {
+		return "", err
 	}
 	if !response.OK {
 		if response.Error == "" {
@@ -186,14 +141,6 @@ func (w *normalizeWorker) roundTrip(values []string) (string, error) {
 	return response.Normalized, nil
 }
 
-func (w *normalizeWorker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
-}
-
 func (w *normalizeWorker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }

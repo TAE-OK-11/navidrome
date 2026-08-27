@@ -11,10 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,6 +19,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/metadataworker"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/storage/local"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/metadata"
@@ -87,8 +85,7 @@ func (f workerFileInfo) Sys() any             { return nil }
 func (f workerFileInfo) BirthTime() time.Time { return f.birthTime }
 
 type worker struct {
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
+	pipes   *rustworker.Pipes
 	writer  *bufio.Writer
 	decoder *json.Decoder
 }
@@ -286,26 +283,14 @@ func (s *workerSlot) stopWorker() {
 }
 
 func startWorker(binary string) (*worker, error) {
-	cmd := exec.Command(binary) //nolint:gosec // binary path is administrator-controlled or colocated with Navidrome
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary)
 	if err != nil {
-		return nil, fmt.Errorf("opening Lofty worker stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening Lofty worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting Lofty metadata worker %q: %w", binary, err)
+		return nil, err
 	}
 	return &worker{
-		cmd:     cmd,
-		stdin:   stdin,
-		writer:  bufio.NewWriterSize(stdin, 256*1024),
-		decoder: json.NewDecoder(bufio.NewReaderSize(stdout, 256*1024)),
+		pipes:   pipes,
+		writer:  bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf),
+		decoder: json.NewDecoder(bufio.NewReaderSize(pipes.Stdout, rustworker.DefaultReadBuf)),
 	}, nil
 }
 
@@ -335,15 +320,11 @@ func (w *worker) roundTrip(req request) (response, error) {
 }
 
 func (w *worker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }
 
 func (w *worker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
+	rustworker.Kill(w.pipes.Cmd)
 }
 
 func convertResponse(resp response) (map[string]metadata.Info, error) {

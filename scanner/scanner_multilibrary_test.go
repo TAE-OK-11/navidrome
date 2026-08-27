@@ -268,7 +268,7 @@ var _ = Describe("Scanner - Multi-Library", Ordered, func() {
 				Expect(rockLib.TotalSongs).To(Equal(4))
 				Expect(rockLib.TotalAlbums).To(Equal(2))
 
-				Expect(rockLib.TotalArtists).To(Equal(3)) // The Beatles, Led Zeppelin, [Unknown Artist]
+				Expect(rockLib.TotalArtists).To(Equal(2)) // The Beatles, Led Zeppelin
 				Expect(rockLib.TotalFolders).To(Equal(2)) // Abbey Road, IV (only folders with audio files)
 
 				// Check Jazz library stats
@@ -276,7 +276,7 @@ var _ = Describe("Scanner - Multi-Library", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(jazzLib.TotalSongs).To(Equal(4))
 				Expect(jazzLib.TotalAlbums).To(Equal(2))
-				Expect(jazzLib.TotalArtists).To(Equal(3)) // Miles Davis, John Coltrane, [Unknown Artist]
+				Expect(jazzLib.TotalArtists).To(Equal(2)) // Miles Davis, John Coltrane
 				Expect(jazzLib.TotalFolders).To(Equal(2)) // Kind of Blue, Giant Steps (only folders with audio files)
 			})
 		})

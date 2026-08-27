@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/core/storage"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/metadata"
 	"github.com/navidrome/navidrome/utils/random"
@@ -292,6 +293,9 @@ func (ffs *FakeFS) parseFile(filePath string) (*metadata.Info, error) {
 	}
 	file := ffs.MapFS[filePath]
 	p.FileInfo = &fakeFileInfo{path: filePath, tags: data, file: file}
+	if mediaFileJSON, err := metadataworker.MapMediaFileJSON(filePath, p.Tags, p.LyricsJSON); err == nil {
+		p.MediaFileJSON = mediaFileJSON
+	}
 	return &p, nil
 }
 

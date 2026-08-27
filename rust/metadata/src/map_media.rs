@@ -244,7 +244,11 @@ fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
     } else {
         values
     };
-    join(values)
+    let joined = join(values);
+    if !joined.is_empty() {
+        return joined;
+    }
+    display_artist(tags)
 }
 
 fn join(values: Vec<String>) -> String {

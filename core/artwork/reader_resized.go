@@ -5,18 +5,13 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/draw"
-	"image/jpeg"
-	"image/png"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/gen2brain/webp"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	xdraw "golang.org/x/image/draw"
 )
 
 func init() {
@@ -33,12 +28,6 @@ func init() {
 			log.Debug("Using native libwebp for WebP encoding/decoding")
 		}
 	})
-}
-
-var bufPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
 }
 
 type resizedArtworkReader struct {
@@ -125,38 +114,52 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 		return nil, 0, err
 	}
 
-	// Preserve animation for animated images
-	if isAnimatedGIF(data) {
-		if a.a.ffmpeg.IsAvailable() {
-			// Animated GIF: convert to animated WebP via ffmpeg (with optional resize)
-			r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
-			if err == nil {
-				return r, 0, nil
+	// Preserve animation for animated images (detected in Rust).
+	flags, sniffErr := persistentImageWorkers.sniffAnimation(ctx, data)
+	if sniffErr == nil {
+		if flags.AnimatedGIF {
+			if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			} else {
+				log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
 			}
-			log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			if a.a.ffmpeg.IsAvailable() {
+				r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
+				if err == nil {
+					return r, 0, nil
+				}
+				log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			}
+		} else if flags.AnimatedWebP || flags.AnimatedPNG {
+			return bytes.NewReader(data), 0, nil
 		}
-	} else if isAnimatedWebP(data) || isAnimatedPNG(data) {
-		// Animated WebP/APNG: return original as-is (ffmpeg can't re-encode these)
-		return bytes.NewReader(data), 0, nil
+	} else if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	} else {
+		log.Debug(ctx, "Rust animation sniff unavailable; using Go heuristics", "error", sniffErr)
+		if isAnimatedGIF(data) {
+			if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			} else {
+				log.Debug(ctx, "Rust animated GIF resize unavailable; trying ffmpeg", "error", err)
+			}
+			if a.a.ffmpeg.IsAvailable() {
+				r, err := a.a.ffmpeg.ConvertAnimatedImage(ctx, bytes.NewReader(data), a.size, conf.Server.CoverArtQuality)
+				if err == nil {
+					return r, 0, nil
+				}
+				log.Warn(ctx, "Could not convert animated GIF, falling back to static", err)
+			}
+		} else if isAnimatedWebP(data) || isAnimatedPNG(data) {
+			return bytes.NewReader(data), 0, nil
+		}
 	}
 
 	return resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)
-}
-
-// toFastScaleType converts images whose concrete type has no optimized scaler
-// in x/image/draw (e.g. *image.NYCbCrA from WebP, *image.Paletted from indexed
-// PNGs) into *image.RGBA, which has a fast path. Without this, CatmullRom.Scale
-// falls back to a generic per-pixel At()/RGBA() loop that is several times
-// slower. Fast-path types are returned unchanged.
-func toFastScaleType(img image.Image) image.Image {
-	switch img.(type) {
-	case *image.RGBA, *image.NRGBA, *image.Gray, *image.YCbCr:
-		return img
-	default:
-		rgba := image.NewRGBA(img.Bounds())
-		draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
-		return rgba
-	}
 }
 
 func resizeStaticImage(data []byte, size int, square bool) (io.Reader, int, error) {
@@ -187,66 +190,18 @@ func resizeStaticImageWithConfigContext(ctx context.Context, data []byte, config
 	} else if format == "png" || square {
 		outputFormat = "png"
 	}
-	if resized, err := persistentImageWorkers.resize(
+	resized, resizeErr := persistentImageWorkers.resize(
 		ctx,
 		data,
 		size,
 		conf.Server.CoverArtQuality,
 		square,
 		outputFormat,
-	); err == nil {
+	)
+	if resizeErr == nil {
 		return bytes.NewReader(resized), originalSize, nil
 	} else if ctx.Err() != nil {
 		return nil, originalSize, ctx.Err()
-	} else {
-		log.Debug(ctx, "Rust artwork resize unavailable; falling back to Go", "error", err)
 	}
-
-	original, format, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, 0, err
-	}
-
-	bounds := original.Bounds()
-
-	// Calculate aspect-fit dimensions
-	srcW, srcH := bounds.Dx(), bounds.Dy()
-	scale := float64(size) / float64(max(srcW, srcH))
-	dstW := int(float64(srcW) * scale)
-	dstH := int(float64(srcH) * scale)
-
-	var dst *image.NRGBA
-	var dstRect image.Rectangle
-	if square {
-		// Square canvas with image centered (transparent padding via zero-initialized NRGBA)
-		dst = image.NewNRGBA(image.Rect(0, 0, size, size))
-		offsetX := (size - dstW) / 2
-		offsetY := (size - dstH) / 2
-		dstRect = image.Rect(offsetX, offsetY, offsetX+dstW, offsetY+dstH)
-	} else {
-		// Tight-fit canvas
-		dst = image.NewNRGBA(image.Rect(0, 0, dstW, dstH))
-		dstRect = dst.Bounds()
-	}
-	original = toFastScaleType(original)
-	xdraw.CatmullRom.Scale(dst, dstRect, original, bounds, draw.Src, nil)
-
-	buf := bufPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	if conf.Server.EnableWebPEncoding {
-		err = webp.Encode(buf, dst, webp.Options{Quality: conf.Server.CoverArtQuality})
-	} else if format == "png" || square {
-		err = png.Encode(buf, dst)
-	} else {
-		err = jpeg.Encode(buf, dst, &jpeg.Options{Quality: conf.Server.CoverArtQuality})
-	}
-	if err != nil {
-		bufPool.Put(buf)
-		return nil, originalSize, err
-	}
-	// Copy bytes before returning buffer to pool (pool may reuse the buffer)
-	encoded := make([]byte, buf.Len())
-	copy(encoded, buf.Bytes())
-	bufPool.Put(buf)
-	return bytes.NewReader(encoded), originalSize, nil
+	return nil, originalSize, fmt.Errorf("Rust artwork resize unavailable: %w", resizeErr)
 }

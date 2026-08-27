@@ -15,6 +15,76 @@ import (
 )
 
 func (md Metadata) ToMediaFile(libID int, folderID string) model.MediaFile {
+	if md.mediaFileJSON != "" {
+		if mf, ok := md.mediaFileFromRust(libID, folderID); ok {
+			return mf
+		}
+	}
+	return md.toMediaFileGo(libID, folderID)
+}
+
+func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFile, bool) {
+	var payload struct {
+		model.MediaFile
+		Participants map[string][]model.Participant `json:"participants"`
+	}
+	if err := json.Unmarshal([]byte(md.mediaFileJSON), &payload); err != nil {
+		log.Warn("Rust media_file_json decode failed; falling back to Go mapping", "file", md.filePath, err)
+		return model.MediaFile{}, false
+	}
+	mf := payload.MediaFile
+	if len(payload.Participants) > 0 {
+		mf.Participants = make(model.Participants, len(payload.Participants))
+		for roleKey, list := range payload.Participants {
+			role := model.RoleFromString(roleKey)
+			if role == model.RoleInvalid {
+				continue
+			}
+			for i := range list {
+				if list[i].ID == "" {
+					list[i].ID = md.artistID(list[i].Name)
+				}
+			}
+			mf.Participants[role] = list
+		}
+	}
+	mf.LibraryID = libID
+	mf.FolderID = folderID
+	mf.Path = md.FilePath()
+	mf.Suffix = md.Suffix()
+	mf.Size = md.Size()
+	mf.BirthTime = md.BirthTime()
+	mf.UpdatedAt = md.ModTime()
+	mf.HasCoverArt = md.HasPicture()
+	mf.Duration = md.Length()
+	mf.BitRate = md.AudioProperties().BitRate
+	mf.SampleRate = md.AudioProperties().SampleRate
+	if bd := md.AudioProperties().BitDepth; bd > 0 {
+		mf.BitDepth = new(bd)
+	}
+	mf.Channels = md.AudioProperties().Channels
+	mf.Codec = md.AudioProperties().Codec
+	if mf.Lyrics == "" {
+		mf.Lyrics = md.mapLyrics()
+	}
+	mf.PID = md.trackPID(mf)
+	mf.AlbumID = md.albumID(mf, conf.Server.PID.Album)
+	mf.ArtistID = mf.Participants.First(model.RoleArtist).ID
+	mf.AlbumArtistID = mf.Participants.First(model.RoleAlbumArtist).ID
+	mf.OrderArtistName = mf.Participants.First(model.RoleArtist).OrderArtistName
+	mf.OrderAlbumArtistName = mf.Participants.First(model.RoleAlbumArtist).OrderArtistName
+	mf.SortArtistName = mf.Participants.First(model.RoleArtist).SortArtistName
+	mf.SortAlbumArtistName = mf.Participants.First(model.RoleAlbumArtist).SortArtistName
+	mf.Tags = maps.Clone(md.tags)
+	for tag, conf := range model.TagMainMappings() {
+		if !conf.Album {
+			delete(mf.Tags, tag)
+		}
+	}
+	return mf, true
+}
+
+func (md Metadata) toMediaFileGo(libID int, folderID string) model.MediaFile {
 	mf := model.MediaFile{
 		LibraryID: libID,
 		FolderID:  folderID,

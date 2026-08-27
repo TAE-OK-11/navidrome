@@ -1,15 +1,13 @@
 //! Embedded lyrics parsing for the Lofty metadata worker.
 //!
 //! Handles the common scan-path formats (LRC, plain text, SRT, Enhanced LRC,
-//! and simple clock-time TTML). Complex TTML (frame rates / agents /
-//! iTunesMetadata) and Lyricsfile YAML fall back to Go.
+//! and full TTML). All common embedded lyric formats parse in Rust.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::Serialize;
-use serde_json::Value;
 
 static SYNC_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)(^|\n)\s*\[(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?\]").unwrap());
@@ -20,6 +18,16 @@ static LRC_ID: LazyLock<Regex> =
 static ENHANCED_LRC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<(?:[0-9]{1,2}:)?[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]{1,3})?>").unwrap());
 static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"</?[A-Za-z][^>]*>").unwrap());
+static SRT_BLOCK_SEPARATOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\n\s*\n").unwrap());
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Agent {
+    pub(crate) id: String,
+    pub(crate) role: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(crate) name: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Cue {
@@ -57,7 +65,7 @@ pub(crate) struct Lyrics {
     pub(crate) kind: String,
     pub(crate) lang: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) agents: Vec<Value>,
+    pub(crate) agents: Vec<Agent>,
     pub(crate) line: Vec<Line>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) offset: Option<i64>,
@@ -65,21 +73,20 @@ pub(crate) struct Lyrics {
 }
 
 /// Returns JSON for `media_file.lyrics` when every lyric entry can be parsed in
-/// Rust. Returns `None` when any entry needs the Go parsers (complex TTML / YAML).
+/// Rust. Returns `None` only when parsing fails entirely.
 pub fn parse_tags_to_json(tags: &HashMap<String, Vec<String>>) -> Option<String> {
     let pairs = lyric_pairs(tags);
     if pairs.is_empty() {
         return Some("[]".to_owned());
     }
 
-    let mut list = Vec::with_capacity(pairs.len());
+    let mut list = Vec::new();
     for (lang, text) in pairs {
-        if needs_go_fallback(text) {
-            return None;
-        }
-        let lyrics = parse_one(lang, text)?;
-        if !lyrics.line.is_empty() {
-            list.push(lyrics);
+        let tracks = parse_one(lang, text)?;
+        for lyrics in tracks {
+            if !lyrics.line.is_empty() {
+                list.push(lyrics);
+            }
         }
     }
     serde_json::to_string(&list).ok()
@@ -111,37 +118,22 @@ fn lyric_pairs(tags: &HashMap<String, Vec<String>>) -> Vec<(String, &str)> {
     pairs
 }
 
-fn needs_go_fallback(text: &str) -> bool {
-    let head = text.trim_start();
-    if head.is_empty() {
-        return false;
-    }
-    // Lyricsfile YAML — keep Go for schema parity.
-    if head.contains("version:")
-        && (head.contains("\"1.0\"") || head.contains("'1.0'") || head.contains("version: 1.0"))
-    {
-        return true;
-    }
-    // Complex TTML (iTunesMetadata / frame rates / agents) stays in Go.
-    if crate::ttml::looks_like_ttml(text) && crate::ttml::needs_full_go_ttml(text) {
-        return true;
-    }
-    false
-}
-
-fn parse_one(lang: String, text: &str) -> Option<Lyrics> {
+fn parse_one(lang: String, text: &str) -> Option<Vec<Lyrics>> {
     // TTML must keep markup; sanitize_text strips tags for LRC/SRT/plain.
     if crate::ttml::looks_like_ttml(text) {
-        return crate::ttml::parse_ttml(&lang, text);
+        return crate::ttml::parse_ttml_list(&lang, text);
+    }
+    if crate::lyricsfile::looks_like_lyricsfile(text) {
+        return crate::lyricsfile::parse_lyricsfile(&lang, text);
     }
     let text = sanitize_text(text);
     if text.trim().is_empty() {
         return None;
     }
     if text.contains("-->") {
-        return parse_srt(lang, &text);
+        return parse_srt(lang, &text).map(|lyrics| vec![lyrics]);
     }
-    Some(parse_lrc(lang, &text))
+    Some(vec![parse_lrc(lang, &text)])
 }
 
 fn parse_lrc(mut lang: String, text: &str) -> Lyrics {
@@ -395,7 +387,7 @@ fn normalize_cue_lines(lines: &mut [Line]) {
 fn parse_srt(lang: String, text: &str) -> Option<Lyrics> {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut lines = Vec::new();
-    for block in text.split("\n\n") {
+    for block in SRT_BLOCK_SEPARATOR.split(&text) {
         let block = block.trim();
         if block.is_empty() {
             continue;
@@ -479,6 +471,81 @@ fn parse_srt_time(value: &str) -> Option<i64> {
     Some(h * 3_600_000 + m * 60_000 + s * 1000 + ms)
 }
 
+fn strip_bom(contents: &[u8]) -> &[u8] {
+    contents.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(contents)
+}
+
+fn is_likely_srt(contents: &[u8]) -> bool {
+    let head = if contents.len() > 512 {
+        &contents[..512]
+    } else {
+        contents
+    };
+    head.windows(3).any(|window| window == b"-->")
+}
+
+fn lyrics_nonempty(list: &[Lyrics]) -> bool {
+    list.iter().any(|lyrics| !lyrics.line.is_empty())
+}
+
+type LyricsParseFn = fn(&str, &str) -> Option<Vec<Lyrics>>;
+
+fn try_ttml(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    crate::ttml::parse_ttml_list(lang, text)
+}
+
+fn try_srt(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    parse_srt(lang.to_owned(), text).map(|lyrics| vec![lyrics])
+}
+
+fn try_lyricsfile(lang: &str, text: &str) -> Option<Vec<Lyrics>> {
+    crate::lyricsfile::parse_lyricsfile(lang, text)
+}
+
+/// Parses sidecar/embedded lyrics bytes the same way Go's `ParseLyrics` did:
+/// suffix routing, optional content sniffing, then LRC/plain fallback.
+pub fn parse_lyrics_external(suffix: &str, lang: &str, contents: &[u8]) -> Result<String, String> {
+    let contents = strip_bom(contents);
+    let text = String::from_utf8_lossy(contents);
+    let suffix = suffix.trim().to_ascii_lowercase();
+    let sniff = suffix.is_empty() || suffix == "auto";
+    let lang = normalize_lang(lang);
+
+    let mut candidates: Vec<LyricsParseFn> = Vec::new();
+    if sniff {
+        if crate::ttml::looks_like_ttml(&text) {
+            candidates.push(try_ttml);
+        }
+        if is_likely_srt(contents) {
+            candidates.push(try_srt);
+        }
+        if crate::lyricsfile::looks_like_lyricsfile(&text) {
+            candidates.push(try_lyricsfile);
+        }
+    } else {
+        match suffix.as_str() {
+            ".ttml" => candidates.push(try_ttml),
+            ".srt" => candidates.push(try_srt),
+            ".yaml" | ".yml" => candidates.push(try_lyricsfile),
+            _ => {}
+        }
+    }
+
+    for parse in candidates {
+        if let Some(list) = parse(&lang, &text) {
+            if lyrics_nonempty(&list) {
+                return serde_json::to_string(&list).map_err(|error| error.to_string());
+            }
+        }
+    }
+
+    let lyrics = parse_lrc(lang, &sanitize_text(&text));
+    if lyrics.line.is_empty() {
+        return Ok("[]".to_owned());
+    }
+    serde_json::to_string(&vec![lyrics]).map_err(|error| error.to_string())
+}
+
 fn normalize_lang(lang: &str) -> String {
     let lang = lang.trim().to_ascii_lowercase();
     if lang.is_empty() {
@@ -534,13 +601,15 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_for_complex_ttml() {
+    fn parses_frame_rate_ttml_via_tags() {
         let mut tags = HashMap::new();
         tags.insert(
-            "lyrics".to_owned(),
-            vec![r#"<tt ttp:frameRate="30" xmlns:ttp="http://www.w3.org/ns/ttml#parameter"><body/></tt>"#.to_owned()],
+            "lyrics:eng".to_owned(),
+            vec![r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:frameRate="30"><body><div><p begin="00:00:01:00">Hi</p></div></body></tt>"#.to_owned()],
         );
-        assert!(parse_tags_to_json(&tags).is_none());
+        let json = parse_tags_to_json(&tags).expect("frame-rate TTML");
+        assert!(json.contains("Hi"));
+        assert!(json.contains("1000"));
     }
 
     #[test]
@@ -556,14 +625,16 @@ mod tests {
     }
 
     #[test]
-    fn parses_srt() {
-        let mut tags = HashMap::new();
-        tags.insert(
-            "lyrics:eng".to_owned(),
-            vec!["1\n00:00:01,000 --> 00:00:02,000\nFirst\n".to_owned()],
-        );
-        let json = parse_tags_to_json(&tags).unwrap();
-        assert!(json.contains("\"lang\":\"eng\""));
-        assert!(json.contains("First"));
+    fn parse_external_lrc_suffix() {
+        let json = parse_lyrics_external(".lrc", "eng", b"[00:01.00]hello").unwrap();
+        assert!(json.contains("hello"));
+        assert!(json.contains("\"synced\":true"));
+    }
+
+    #[test]
+    fn parse_external_plain_fallback() {
+        let json = parse_lyrics_external(".txt", "eng", b"plain line").unwrap();
+        assert!(json.contains("plain line"));
+        assert!(json.contains("\"synced\":false"));
     }
 }

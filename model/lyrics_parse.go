@@ -1,98 +1,30 @@
 package model
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"slices"
-	"strings"
 
-	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/core/metadataworker"
 )
 
-// lyricParser returns an empty list (not an error) when the input is not its
-// format, so parsers can be tried in order. lang is the default for formats that
-// do not carry their own.
-type lyricParser func(lang string, contents []byte) (LyricList, error)
-
-// sniffGate is an optional cheap pre-check used only while content-sniffing.
-// Returning false skips the expensive parser without logging a probe miss.
-type sniffGate func(contents []byte) bool
-
-// lyricFormats is the structured formats in content-sniff probe order; each
-// row's suffixes drive sidecar dispatch. LRC/plain is the unlisted fallback floor.
-var lyricFormats = []struct {
-	suffixes []string
-	parse    lyricParser
-	gate     sniffGate
-}{
-	{[]string{".ttml"}, parseTTML, nil}, // parseTTML already cheap-rejects via isTTMLDocument
-	{[]string{".srt"}, parseSRT, isLikelySRT},
-	{[]string{".yaml", ".yml"}, parseLyricsfile, looksLikeLyricsfile},
-}
-
-// ParseLyrics is the single entry point for parsing lyrics. A known suffix routes
-// to that format's parser; an empty or "auto" suffix content-sniffs. Either way,
-// a structured parser that does not match falls back to the LRC/plain-text floor.
-//
-// Parse failures are logged through ctx; callers that know the source should
-// attach it for attribution, e.g. log.NewContext(ctx, "file", path).
+// ParseLyrics is the single entry point for parsing lyrics. Parsing runs in the
+// Rust metadata worker (`--parse-lyrics-worker`); Go only frames requests and
+// decodes the returned OpenSubsonic lyrics JSON.
 func ParseLyrics(ctx context.Context, suffix, lang string, contents []byte) (LyricList, error) {
-	contents = stripBOM(contents)
-	suffix = strings.ToLower(suffix)
-	sniff := suffix == "" || suffix == "auto"
-
-	// Sniffing tries every format in order; a known suffix selects just its own.
-	// Unmatched suffixes leave no candidates, so parseFirstMatch falls to plain.
-	// While sniffing, optional gates skip parsers whose format markers are absent
-	// so embedded LRC/plain lyrics avoid YAML decode and full SRT scans.
-	candidates := make([]lyricParser, 0, len(lyricFormats))
-	for _, f := range lyricFormats {
-		if sniff {
-			if f.gate != nil && !f.gate(contents) {
-				continue
-			}
-			candidates = append(candidates, f.parse)
-			continue
-		}
-		if slices.Contains(f.suffixes, suffix) {
-			candidates = append(candidates, f.parse)
-		}
-	}
-	return parseFirstMatch(ctx, sniff, lang, contents, candidates...)
-}
-
-func parseFirstMatch(ctx context.Context, sniff bool, lang string, contents []byte, candidates ...lyricParser) (LyricList, error) {
-	for _, parse := range candidates {
-		list, err := parse(lang, contents)
-		if err == nil && len(list) > 0 {
-			return list, nil
-		}
-		if err != nil {
-			// While sniffing, a probe rejecting content it does not own is expected
-			// control flow, so keep it at trace. A failure under an explicit suffix
-			// means the declared format is malformed and deserves a warning.
-			if sniff {
-				log.Trace(ctx, "Lyrics probe did not match, trying next format", err)
-			} else {
-				log.Warn(ctx, "Error parsing lyrics, falling back to plain text", err)
-			}
-		}
-	}
-	return plainLRC(lang, contents)
-}
-
-func plainLRC(lang string, contents []byte) (LyricList, error) {
-	lyric, err := parseLRC(lang, string(contents))
+	jsonPayload, err := metadataworker.PersistentLyricsWorkers().Parse(ctx, suffix, lang, contents)
 	if err != nil {
 		return nil, fmt.Errorf("parsing lyrics: %w", err)
 	}
-	if lyric == nil || lyric.IsEmpty() {
+	if jsonPayload == "" || jsonPayload == "[]" {
 		return nil, nil
 	}
-	return LyricList{*lyric}, nil
-}
-
-func stripBOM(contents []byte) []byte {
-	return bytes.TrimPrefix(contents, []byte("\ufeff"))
+	var list LyricList
+	if err := json.Unmarshal([]byte(jsonPayload), &list); err != nil {
+		return nil, fmt.Errorf("decoding parsed lyrics: %w", err)
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	return list, nil
 }

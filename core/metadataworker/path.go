@@ -1,6 +1,7 @@
 package metadataworker
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,11 @@ func BinaryName() string {
 // beside the Navidrome executable before consulting PATH.
 func Resolve() (string, error) {
 	if configured := strings.TrimSpace(os.Getenv(EnvPath)); configured != "" {
-		return exec.LookPath(configured)
+		if resolved, err := resolveConfiguredBinary(configured); err == nil {
+			return resolved, nil
+		} else if filepath.IsAbs(configured) {
+			return "", err
+		}
 	}
 	name := BinaryName()
 	if executable, err := os.Executable(); err == nil {
@@ -31,4 +36,19 @@ func Resolve() (string, error) {
 		}
 	}
 	return exec.LookPath(name)
+}
+
+func resolveConfiguredBinary(configured string) (string, error) {
+	if filepath.IsAbs(configured) {
+		cleaned := filepath.Clean(configured)
+		info, err := os.Stat(cleaned) //nolint:gosec // administrator-controlled ND_METADATAWORKERPATH
+		if err != nil {
+			return "", fmt.Errorf("metadata worker not found at %q: %w", cleaned, err)
+		}
+		if info.IsDir() {
+			return "", fmt.Errorf("metadata worker path %q is a directory", cleaned)
+		}
+		return cleaned, nil
+	}
+	return exec.LookPath(configured)
 }

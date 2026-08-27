@@ -61,6 +61,7 @@ type rawResult struct {
 	Codec      string              `json:"codec"`
 	HasPicture bool                `json:"has_picture"`
 	LyricsJSON string              `json:"lyrics_json,omitempty"`
+	MediaFileJSON string           `json:"media_file_json,omitempty"`
 }
 
 type rawFileInfo struct {
@@ -366,8 +367,9 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 				Channels:   int(value.Channels),
 				Codec:      value.Codec,
 			},
-			HasPicture: value.HasPicture,
-			LyricsJSON: value.LyricsJSON,
+			HasPicture:    value.HasPicture,
+			LyricsJSON:    value.LyricsJSON,
+			MediaFileJSON: value.MediaFileJSON,
 		}
 	}
 	for key, workerErr := range resp.Errors {

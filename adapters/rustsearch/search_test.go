@@ -76,7 +76,8 @@ func TestPreferFullRebuild(t *testing.T) {
 func TestMediaFileDocumentKey(t *testing.T) {
 	t.Parallel()
 
-	doc := mediaFileDocument(model.MediaFile{
+	engine := New()
+	doc := engine.mediaFileDocument(context.Background(), model.MediaFile{
 		ID: "mf-1", LibraryID: 3, Title: "Blue Monday", Album: "Power", Artist: "NO",
 	})
 	if doc.Key != "song:mf-1" || doc.Kind != "song" || doc.Primary != "Blue Monday" {
@@ -90,7 +91,8 @@ func TestMediaFileDocumentKey(t *testing.T) {
 func TestAlbumDocumentKey(t *testing.T) {
 	t.Parallel()
 
-	doc := albumDocument(model.Album{ID: "al-1", LibraryID: 2, Name: "Power", AlbumArtist: "NO"})
+	engine := New()
+	doc := engine.albumDocument(context.Background(), model.Album{ID: "al-1", LibraryID: 2, Name: "Power", AlbumArtist: "NO"})
 	if doc.Key != "album:al-1" || doc.Kind != "album" || doc.Primary != "Power" {
 		t.Fatalf("album document = %#v", doc)
 	}

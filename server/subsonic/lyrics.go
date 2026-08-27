@@ -238,10 +238,13 @@ func buildLyricCues(cues []model.Cue, lineEnd *int64) []responses.LyricCue {
 		return nil
 	}
 
-	// Only resolve end times when at least one cue carries one; otherwise the
-	// group is start-only and must stay that way.
+	// Only resolve end times when at least one cue carries one and another cue
+	// still lacks an end — Rust-parsed lyrics already normalize cue ends at parse time.
 	hasAnyEnd := slices.ContainsFunc(cues, func(c model.Cue) bool { return c.End != nil })
-	if hasAnyEnd {
+	needsNormalize := hasAnyEnd && slices.ContainsFunc(cues, func(c model.Cue) bool {
+		return c.Start != nil && c.End == nil
+	})
+	if needsNormalize {
 		cues = model.NormalizeCueEnds(cues, lineEnd)
 	}
 

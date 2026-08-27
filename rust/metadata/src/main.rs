@@ -19,6 +19,11 @@ use serde::{Deserialize, Serialize};
 
 mod image_worker;
 mod lyrics;
+mod lyricsfile;
+mod map_media;
+mod normalize_fts;
+mod normalize_fts_worker;
+mod parse_lyrics_worker;
 mod ttml;
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -54,10 +59,12 @@ struct Metadata {
     channels: u8,
     codec: String,
     has_picture: bool,
-    /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when the
-    /// payload needs Go (complex TTML / Lyricsfile YAML).
+    /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when parsing fails.
     #[serde(skip_serializing_if = "Option::is_none")]
     lyrics_json: Option<String>,
+    /// Pre-mapped MediaFile scan fields (participants, titles, dates, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_file_json: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -91,6 +98,18 @@ fn main() -> Result<()> {
                 bail!("--image-worker accepts no arguments");
             }
             return image_worker::run();
+        }
+        if command == "--parse-lyrics-worker" {
+            if args.next().is_some() {
+                bail!("--parse-lyrics-worker accepts no arguments");
+            }
+            return parse_lyrics_worker::run();
+        }
+        if command == "--normalize-fts-worker" {
+            if args.next().is_some() {
+                bail!("--normalize-fts-worker accepts no arguments");
+            }
+            return normalize_fts_worker::run();
         }
         if command == "--picture-worker" {
             if args.next().is_some() {
@@ -254,6 +273,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
     let properties = tagged.properties();
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
     let lyrics_json = lyrics::parse_tags_to_json(&tags);
+    let media_file_json = map_media::map_to_json(&tags, path, lyrics_json.as_deref());
 
     Ok(Metadata {
         tags,
@@ -266,6 +286,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
         codec,
         has_picture,
         lyrics_json,
+        media_file_json,
     })
 }
 
@@ -312,7 +333,17 @@ fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>,
                 .with_context(|| format!("decoding MP3 {}", path.display()))?;
             (TaggedFile::from(parsed), "mp3".to_owned(), file_metadata)
         }
-        other => bail!("unsupported audio format {other:?}"),
+        other => {
+            let (mut file, file_metadata) = open_file(path)?;
+            let parsed = TaggedFile::read_from(&mut file, ParseOptions::new())
+                .with_context(|| format!("decoding {other} {}", path.display()))?;
+            let codec = if other.is_empty() {
+                "unknown".to_owned()
+            } else {
+                other.to_owned()
+            };
+            (parsed, codec, file_metadata)
+        }
     };
 
     match tagged.file_type() {

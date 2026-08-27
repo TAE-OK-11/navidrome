@@ -42,9 +42,6 @@ func getSearchStrategy(tableName, query string) searchStrategy {
 	if conf.Server.Search.Backend == "legacy" || conf.Server.Search.FullString {
 		return newLegacySearch(tableName, query)
 	}
-	if containsCJK(query) {
-		return newLikeSearch(tableName, query)
-	}
 	return newFTSSearch(tableName, query)
 }
 

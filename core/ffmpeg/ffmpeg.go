@@ -158,41 +158,7 @@ func extractImageWithMetadataWorker(ctx context.Context, path string) (io.ReadCl
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, ctxErr
 	}
-
-	// Preserve compatibility with an administrator-provided older metadata
-	// binary that supports only the original one-shot picture command.
-	cmd := exec.CommandContext(ctx, workerPath, "--extract-picture", path) // #nosec -- resolved administrator-controlled binary
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("opening metadata worker output: %w", err)
-	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &limitedWriter{buf: &stderr, limit: 4096}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("starting metadata worker: %w", err)
-	}
-
-	data, readErr := io.ReadAll(io.LimitReader(stdout, limit+1))
-	if int64(len(data)) > limit {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return nil, fmt.Errorf("embedded artwork exceeds maximum size of %d bytes", limit)
-	}
-	waitErr := cmd.Wait()
-	if readErr != nil {
-		return nil, fmt.Errorf("reading metadata worker output: %w", readErr)
-	}
-	if waitErr != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return nil, fmt.Errorf("metadata worker could not extract artwork: %s: %w", message, waitErr)
-		}
-		return nil, fmt.Errorf("metadata worker could not extract artwork: %w", waitErr)
-	}
-	if len(data) == 0 {
-		return nil, errors.New("metadata worker returned empty artwork")
-	}
-	return io.NopCloser(bytes.NewReader(data)), nil
+	return nil, persistentErr
 }
 
 func embeddedImageReadLimit() int64 {

@@ -3,11 +3,8 @@ package model
 import (
 	"strings"
 
-	"github.com/navidrome/navidrome/log"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
-	"github.com/sirupsen/logrus/hooks/test"
 )
 
 var _ = Describe("ParseLyrics", func() {
@@ -50,56 +47,6 @@ var _ = Describe("ParseLyrics", func() {
 		Expect(list[0].Line[0].Value).To(Equal("not actually an srt file"))
 	})
 
-	Describe("logging on parser probe failures", func() {
-		var hook *test.Hook
-
-		BeforeEach(func() {
-			prevLevel := log.CurrentLevel()
-			l, h := test.NewNullLogger()
-			hook = h
-			// Swap the logger before raising the level: SetLevel also forces the
-			// current default logger to logrus.TraceLevel, and the null logger would
-			// otherwise stay at Info and drop Trace entries before the hook sees them.
-			prevLogger := log.SetDefaultLogger(l)
-			log.SetLevel(log.LevelTrace)
-			DeferCleanup(func() {
-				log.SetDefaultLogger(prevLogger)
-				log.SetLevel(prevLevel)
-			})
-		})
-
-		// Embedded lyrics are parsed with an empty suffix (sniff mode). Cheap
-		// sniff gates skip SRT/YAML when format markers are absent, so plain
-		// text falls through to LRC without probe-miss noise. Any remaining
-		// probe rejection must stay at Trace — never Warn — during sniffing.
-		It("does not warn when sniffing plain embedded lyrics", func() {
-			ctx := log.NewContext(GinkgoT().Context(), "file", "/music/song.mp3")
-			list, err := ParseLyrics(ctx, "", "eng", []byte("Just a plain\nlyric line\n"))
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(list).To(HaveLen(1))
-			Expect(list[0].Line[0].Value).To(Equal("Just a plain"))
-			for _, e := range hook.AllEntries() {
-				Expect(e.Level).To(Equal(logrus.TraceLevel),
-					"sniff-mode probe misses must not be logged above Trace")
-				Expect(e.Data).To(HaveKeyWithValue("file", "/music/song.mp3"))
-			}
-		})
-
-		// A specific suffix means the user declared the format, so a structural
-		// failure is worth surfacing loudly — and it must name the file.
-		It("warns and names the file when a requested suffix fails to parse", func() {
-			ctx := log.NewContext(GinkgoT().Context(), "file", "/music/song.yaml")
-			list, err := ParseLyrics(ctx, ".yaml", "eng", []byte("not: [valid, yaml\n"))
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(list).To(HaveLen(1)) // still falls back to plain text
-			entry := hook.LastEntry()
-			Expect(entry).ToNot(BeNil())
-			Expect(entry.Level).To(Equal(logrus.WarnLevel))
-			Expect(entry.Data).To(HaveKeyWithValue("file", "/music/song.yaml"))
-		})
-	})
 })
 
 var _ = Describe("ParseLyrics content-sniffing", func() {
@@ -263,12 +210,5 @@ Another subtitle line`
 		Expect(list[0].Synced).To(BeTrue())
 		Expect(list[0].Line).To(HaveLen(1))
 		Expect(list[0].Line[0].Value).To(Equal("sniffed yaml line"))
-	})
-
-	It("sniff gates skip YAML and SRT for ordinary LRC content", func() {
-		Expect(looksLikeLyricsfile([]byte("[00:01.00]hello\n"))).To(BeFalse())
-		Expect(isLikelySRT([]byte("[00:01.00]hello\n"))).To(BeFalse())
-		Expect(looksLikeLyricsfile([]byte("version: \"1.0\"\nlines:\n  - text: x\n    start_ms: 1\n"))).To(BeTrue())
-		Expect(isLikelySRT([]byte("1\n00:00:01,000 --> 00:00:02,000\nHi\n"))).To(BeTrue())
 	})
 })

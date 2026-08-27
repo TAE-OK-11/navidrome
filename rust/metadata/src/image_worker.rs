@@ -4,7 +4,8 @@ use anyhow::{Context, Result, bail};
 use fast_image_resize as fir;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
-use image::{ExtendedColorType, ImageEncoder, ImageReader, Limits};
+use image::codecs::gif::GifEncoder;
+use image::{AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 
 const MAX_INPUT_BYTES: usize = 128 * 1024 * 1024;
@@ -22,18 +23,42 @@ struct ImageRequest {
     input_sizes: Vec<usize>,
     #[serde(default)]
     mosaic: bool,
+    #[serde(default)]
+    sniff: bool,
+    #[serde(default)]
     size: u32,
     #[serde(default)]
     square: bool,
     #[serde(default)]
     fill: bool,
+    #[serde(default)]
+    animated_gif: bool,
+    #[serde(default = "default_quality")]
     quality: u8,
+    #[serde(default)]
     format: OutputFormat,
 }
 
-#[derive(Debug, Deserialize)]
+fn default_quality() -> u8 {
+    75
+}
+
+#[derive(Debug)]
+struct SniffAnimationFlags {
+    animated_gif: bool,
+    animated_webp: bool,
+    animated_png: bool,
+}
+
+enum SniffResult {
+    Animation(SniffAnimationFlags),
+    Bytes(Vec<u8>),
+}
+
+#[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 enum OutputFormat {
+    #[default]
     Jpeg,
     Png,
     Webp,
@@ -45,6 +70,12 @@ struct ImageResponse {
     size: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animated_gif: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animated_webp: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animated_png: Option<bool>,
 }
 
 pub fn run() -> Result<()> {
@@ -72,7 +103,13 @@ pub fn run() -> Result<()> {
         validate_request(&request)
             .context("invalid image request; closing worker to resynchronize framing")?;
 
-        let result = if request.mosaic {
+        let result = if request.sniff {
+            let mut encoded = vec![0; request.input_size];
+            input
+                .read_exact(&mut encoded)
+                .context("reading framed sniff payload")?;
+            Ok(SniffResult::Animation(sniff_animation(&encoded)))
+        } else if request.mosaic {
             let mut payloads = Vec::with_capacity(request.input_sizes.len());
             for &size in &request.input_sizes {
                 let mut encoded = vec![0; size];
@@ -81,17 +118,18 @@ pub fn run() -> Result<()> {
                     .context("reading framed mosaic tile payload")?;
                 payloads.push(encoded);
             }
-            compose_mosaic(&payloads, &request)
+            compose_mosaic(&payloads, &request).map(SniffResult::Bytes)
         } else {
             let mut encoded = vec![0; request.input_size];
             input
                 .read_exact(&mut encoded)
                 .context("reading framed image payload")?;
-            resize(&encoded, &request)
+            resize(&encoded, &request).map(SniffResult::Bytes)
         };
 
         match result {
-            Ok(resized) => write_success(&mut output, &resized)?,
+            Ok(SniffResult::Animation(flags)) => write_sniff(&mut output, flags)?,
+            Ok(SniffResult::Bytes(resized)) => write_success(&mut output, &resized)?,
             Err(error) => write_error(&mut output, format!("{error:#}"))?,
         }
         output.flush().context("flushing image response")?;
@@ -99,6 +137,15 @@ pub fn run() -> Result<()> {
 }
 
 fn validate_request(request: &ImageRequest) -> Result<()> {
+    if request.sniff {
+        if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
+            bail!(
+                "sniff input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
+                request.input_size
+            );
+        }
+        return Ok(());
+    }
     if request.mosaic {
         if request.input_sizes.is_empty() || request.input_sizes.len() > 4 {
             bail!(
@@ -226,6 +273,9 @@ fn decode_rgba(encoded: &[u8]) -> Result<image::RgbaImage> {
 }
 
 fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    if request.animated_gif && is_animated_gif(encoded) {
+        return resize_animated_gif(encoded, request);
+    }
     let dimensions_reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
         .context("detecting image format")?;
@@ -436,6 +486,98 @@ fn encode(
     Ok(output)
 }
 
+fn is_animated_gif(data: &[u8]) -> bool {
+    data.starts_with(b"GIF") && data.iter().filter(|&&b| b == 0x2C).count() > 1
+}
+
+fn is_animated_webp(data: &[u8]) -> bool {
+    data.starts_with(b"RIFF")
+        && data.len() >= 12
+        && &data[8..12] == b"WEBP"
+        && data.windows(4).any(|window| window == b"ANMF")
+}
+
+fn is_animated_png(data: &[u8]) -> bool {
+    data.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'])
+        && data.windows(4).any(|window| window == b"acTL")
+}
+
+fn sniff_animation(data: &[u8]) -> SniffAnimationFlags {
+    SniffAnimationFlags {
+        animated_gif: is_animated_gif(data),
+        animated_webp: is_animated_webp(data),
+        animated_png: is_animated_png(data),
+    }
+}
+
+fn write_sniff(output: &mut impl Write, flags: SniffAnimationFlags) -> Result<()> {
+    serde_json::to_writer(
+        &mut *output,
+        &ImageResponse {
+            ok: true,
+            size: 0,
+            error: None,
+            animated_gif: Some(flags.animated_gif),
+            animated_webp: Some(flags.animated_webp),
+            animated_png: Some(flags.animated_png),
+        },
+    )?;
+    output.write_all(b"\n")?;
+    Ok(())
+}
+
+fn resize_animated_gif(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    use image::codecs::gif::GifDecoder;
+
+    let decoder = GifDecoder::new(Cursor::new(encoded)).context("decoding animated gif")?;
+    let mut resized_frames = Vec::new();
+    for frame in decoder.into_frames() {
+        let frame = frame.context("reading gif frame")?;
+        let delay = frame.delay();
+        let rgba = frame.into_buffer();
+        let (src_width, src_height) = (rgba.width(), rgba.height());
+        validate_dimensions(src_width, src_height)?;
+        let target_size = request.size.min(src_width.max(src_height));
+        let (resized_width, resized_height) = fit_dimensions(src_width, src_height, target_size);
+        let source = fir::images::Image::from_vec_u8(
+            src_width,
+            src_height,
+            rgba.into_raw(),
+            fir::PixelType::U8x4,
+        )
+        .context("creating animated gif resize source")?;
+        let mut resized =
+            fir::images::Image::new(resized_width, resized_height, fir::PixelType::U8x4);
+        let options = fir::ResizeOptions::new()
+            .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
+        fir::Resizer::new()
+            .resize(&source, &mut resized, &options)
+            .context("resizing animated gif frame")?;
+        let buffer = image::RgbaImage::from_raw(resized_width, resized_height, resized.into_vec())
+            .context("building animated gif frame buffer")?;
+        resized_frames.push(Frame::from_parts(buffer, 0, 0, delay));
+    }
+    if resized_frames.is_empty() {
+        bail!("animated gif contains no frames");
+    }
+    let mut output = Vec::new();
+    {
+        let mut encoder = GifEncoder::new(&mut output);
+        for frame in resized_frames {
+            encoder
+                .encode_frame(frame)
+                .context("encoding animated gif frame")?;
+        }
+    }
+    if output.is_empty() || output.len() > MAX_OUTPUT_BYTES {
+        bail!(
+            "encoded animated gif size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
+            output.len()
+        );
+    }
+    Ok(output)
+}
+
 fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
     serde_json::to_writer(
         &mut *output,
@@ -443,6 +585,9 @@ fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
             ok: true,
             size: image.len(),
             error: None,
+            animated_gif: None,
+            animated_webp: None,
+            animated_png: None,
         },
     )?;
     output.write_all(b"\n")?;
@@ -457,6 +602,9 @@ fn write_error(output: &mut impl Write, error: String) -> Result<()> {
             ok: false,
             size: 0,
             error: Some(error),
+            animated_gif: None,
+            animated_webp: None,
+            animated_png: None,
         },
     )?;
     output.write_all(b"\n")?;
@@ -486,9 +634,11 @@ mod tests {
                 input_size: input.len(),
                 input_sizes: Vec::new(),
                 mosaic: false,
+                sniff: false,
                 size: 20,
                 square: true,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -508,9 +658,11 @@ mod tests {
                 input_size: input.len(),
                 input_sizes: Vec::new(),
                 mosaic: false,
+                sniff: false,
                 size: 20,
                 square: false,
                 fill: true,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -537,9 +689,11 @@ mod tests {
                 input_size: 0,
                 input_sizes: tiles.iter().map(Vec::len).collect(),
                 mosaic: true,
+                sniff: false,
                 size: 40,
                 square: false,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -560,9 +714,11 @@ mod tests {
                 input_size: 0,
                 input_sizes: vec![tile.len()],
                 mosaic: true,
+                sniff: false,
                 size: 40,
                 square: false,
                 fill: false,
+                animated_gif: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },

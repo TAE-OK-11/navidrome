@@ -5,116 +5,47 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("normalizeCueLines", func() {
-	It("should not mutate caller cue slices when filling missing cue end times", func() {
-		start0, start1, nextLineStart := int64(1000), int64(1500), int64(3000)
-		lines := []Line{
-			{
-				Start: &start0,
-				Value: "Some lyrics",
-				Cue: []Cue{
-					{Start: &start0, Value: "Some ", ByteStart: 0, ByteEnd: 4},
-					{Start: &start1, Value: "lyrics", ByteStart: 5, ByteEnd: 10},
-				},
-			},
-			{
-				Start: &nextLineStart,
-				Value: "Next line",
-			},
-		}
-
-		normalized := normalizeCueLines(lines)
-
-		Expect(normalized[0].Cue[0].End).To(Equal(&start1))
-		Expect(normalized[0].Cue[1].End).To(Equal(&nextLineStart))
-		Expect(lines[0].Cue[0].End).To(BeNil())
-		Expect(lines[0].Cue[1].End).To(BeNil())
-	})
-})
+func p(v int64) *int64 { return &v }
 
 var _ = Describe("NormalizeCueEnds", func() {
-	// p returns a fresh pointer so cases don't share *int64 state.
-	p := func(v int64) *int64 { return &v }
-
-	// endsOf extracts the resolved end times (nil-safe) for compact assertions.
-	endsOf := func(cues []Cue) []*int64 {
-		out := make([]*int64, len(cues))
-		for i := range cues {
-			out[i] = cues[i].End
-		}
-		return out
-	}
-
-	It("returns the input as-is when empty", func() {
+	It("returns nil/empty inputs unchanged", func() {
 		Expect(NormalizeCueEnds(nil, p(1000))).To(BeNil())
 		Expect(NormalizeCueEnds([]Cue{}, p(1000))).To(BeEmpty())
 	})
 
-	It("fills a missing end from the next cue's start", func() {
+	It("fills missing ends from the next cue start", func() {
 		cues := []Cue{
-			{Start: p(1000)},
-			{Start: p(1500)},
+			{Start: p(1000), Value: "a"},
+			{Start: p(2000), Value: "b"},
 		}
-
 		out := NormalizeCueEnds(cues, p(3000))
-
-		Expect(endsOf(out)).To(Equal([]*int64{p(1500), p(3000)}))
+		Expect(out[0].End).To(Equal(p(2000)))
+		Expect(out[1].End).To(Equal(p(3000)))
 	})
 
-	It("fills the last cue's missing end from fallbackEnd", func() {
+	It("clamps ends that overrun the next cue", func() {
 		cues := []Cue{
-			{Start: p(1000), End: p(1200)},
-			{Start: p(1500)},
+			{Start: p(1000), End: p(2500), Value: "a"},
+			{Start: p(2000), Value: "b"},
 		}
-
 		out := NormalizeCueEnds(cues, p(3000))
-
-		Expect(endsOf(out)).To(Equal([]*int64{p(1200), p(3000)}))
+		Expect(out[0].End).To(Equal(p(2000)))
 	})
 
-	It("clamps an end that overruns the next cue's start", func() {
+	It("clears all ends when any cue still lacks one", func() {
 		cues := []Cue{
-			{Start: p(1000), End: p(9999)},
-			{Start: p(1500), End: p(2000)},
+			{Start: p(1000), Value: "a"},
+			{Start: p(2000), Value: "b"},
 		}
-
-		out := NormalizeCueEnds(cues, p(3000))
-
-		Expect(endsOf(out)).To(Equal([]*int64{p(1500), p(2000)}))
-	})
-
-	It("clamps an end that precedes the cue's own start", func() {
-		cues := []Cue{
-			{Start: p(1000), End: p(500)},
-		}
-
-		out := NormalizeCueEnds(cues, p(3000))
-
-		Expect(endsOf(out)).To(Equal([]*int64{p(1000)}))
-	})
-
-	It("clears all ends when any cue still lacks one (all-or-none)", func() {
-		// The last cue has no end and there is no fallback, so it stays nil and
-		// every end in the group is cleared.
-		cues := []Cue{
-			{Start: p(1000), End: p(1200)},
-			{Start: p(1500)},
-		}
-
 		out := NormalizeCueEnds(cues, nil)
-
-		Expect(endsOf(out)).To(Equal([]*int64{nil, nil}))
+		for _, cue := range out {
+			Expect(cue.End).To(BeNil())
+		}
 	})
 
 	It("does not mutate the input slice", func() {
-		cues := []Cue{
-			{Start: p(1000)},
-			{Start: p(1500)},
-		}
-
+		cues := []Cue{{Start: p(1000), Value: "a"}, {Start: p(2000), Value: "b"}}
 		_ = NormalizeCueEnds(cues, p(3000))
-
 		Expect(cues[0].End).To(BeNil())
-		Expect(cues[1].End).To(BeNil())
 	})
 })

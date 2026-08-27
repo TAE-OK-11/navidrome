@@ -12,10 +12,10 @@ import (
 
 const (
 	minRetryDelay = 5 * time.Second
-	maxRetryDelay = 4 * time.Minute
+	maxRetryDelay = 15 * time.Minute
 	// maxRetryShift caps the exponent so the shift never overflows int64.
-	// minRetryDelay<<6 = 320s already exceeds maxRetryDelay, so 6 reaches the ceiling.
-	maxRetryShift = 6
+	// minRetryDelay<<8 = 1280s already exceeds maxRetryDelay, so 8 reaches the ceiling.
+	maxRetryShift = 8
 )
 
 // backoffDelay returns the delay for a zero-based retry index (0 = first retry):

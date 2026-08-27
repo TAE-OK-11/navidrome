@@ -125,6 +125,16 @@ var _ = Describe("listenBrainzAgent", func() {
 			Expect(err).To(MatchError(scrobbler.ErrNotAuthorized))
 		})
 
+		It("returns ErrRetryLater on error 429", func() {
+			httpClient.Res = http.Response{
+				Body:       io.NopCloser(bytes.NewBufferString(`{"code": 429, "error": "Slow down."}`)),
+				StatusCode: 429,
+			}
+
+			err := agent.Scrobble(ctx, "user-1", sc)
+			Expect(err).To(MatchError(scrobbler.ErrRetryLater))
+		})
+
 		It("returns ErrRetryLater on error 503", func() {
 			httpClient.Res = http.Response{
 				Body:       io.NopCloser(bytes.NewBufferString(`{"code": 503, "error": "Cannot submit listens to queue, please try again later."}`)),

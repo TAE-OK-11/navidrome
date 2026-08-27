@@ -115,9 +115,11 @@ var _ = Describe("backoffDelay", func() {
 		Entry("fourth failure", 3, 40*time.Second),
 		Entry("fifth failure", 4, 80*time.Second),
 		Entry("sixth failure", 5, 160*time.Second),
-		Entry("reaches the ceiling", 6, 4*time.Minute),
-		Entry("stays clamped past the ceiling", 7, 4*time.Minute),
-		Entry("stays clamped for large values", 1000, 4*time.Minute),
+		Entry("seventh failure", 6, 320*time.Second),
+		Entry("eighth failure", 7, 640*time.Second),
+		Entry("reaches the ceiling", 8, 15*time.Minute),
+		Entry("stays clamped past the ceiling", 9, 15*time.Minute),
+		Entry("stays clamped for large values", 1000, 15*time.Minute),
 		Entry("negative is treated as zero", -1, 5*time.Second),
 	)
 })

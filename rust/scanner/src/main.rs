@@ -211,14 +211,14 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
         }
     }
 
-    let folder_paths: HashSet<String> = folders.keys().cloned().collect();
     let paths: Vec<String> = folders.keys().cloned().collect();
+    let folder_paths: HashSet<&str> = paths.iter().map(String::as_str).collect();
     for path in &paths {
         if path == "." {
             continue;
         }
         let parent = parent_path(path);
-        if folder_paths.contains(&parent)
+        if folder_paths.contains(parent.as_str())
             && let Some(folder) = folders.get_mut(&parent)
         {
             folder.num_subfolders += 1;
@@ -236,37 +236,67 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
 /// conversion (ns==0 → Go zero time year 0001).
 fn folder_content_hash(folder: &Folder) -> String {
     let mut hasher = Md5::new();
-    hasher.update(
-        format!(
-            "{}:{}:{}:{}",
-            go_utc_time_string(folder.mod_time_ns),
-            folder.num_playlists,
-            folder.num_subfolders,
-            go_utc_time_string(folder.images_updated_at_ns),
-        )
-        .as_bytes(),
-    );
+    hash_folder_header(&mut hasher, folder);
     // BTreeMap iteration is sorted by key, matching Go's slices.Sort(mapKeys).
     for (name, file) in &folder.audio_files {
-        hasher.update(name.as_bytes());
-        hasher.update(
-            format!(":{}:{}", file.size, go_utc_time_string(file.mod_time_ns)).as_bytes(),
-        );
+        hash_file_entry(&mut hasher, name, file);
     }
     for (name, file) in &folder.image_files {
-        hasher.update(name.as_bytes());
-        hasher.update(
-            format!(":{}:{}", file.size, go_utc_time_string(file.mod_time_ns)).as_bytes(),
-        );
+        hash_file_entry(&mut hasher, name, file);
     }
     hex::encode(hasher.finalize())
+}
+
+fn hash_folder_header(hasher: &mut Md5, folder: &Folder) {
+    append_go_utc_time(hasher, folder.mod_time_ns);
+    hasher.update(b":");
+    write_decimal(hasher, folder.num_playlists as u64);
+    hasher.update(b":");
+    write_decimal(hasher, folder.num_subfolders as u64);
+    hasher.update(b":");
+    append_go_utc_time(hasher, folder.images_updated_at_ns);
+}
+
+fn hash_file_entry(hasher: &mut Md5, name: &str, file: &FileEntry) {
+    hasher.update(name.as_bytes());
+    hasher.update(b":");
+    write_decimal(hasher, file.size);
+    hasher.update(b":");
+    append_go_utc_time(hasher, file.mod_time_ns);
+}
+
+fn write_decimal(hasher: &mut Md5, value: u64) {
+    let mut buffer = [0u8; 20];
+    let mut index = buffer.len();
+    let mut current = value;
+    loop {
+        index -= 1;
+        buffer[index] = b'0' + (current % 10) as u8;
+        current /= 10;
+        if current == 0 {
+            break;
+        }
+    }
+    hasher.update(&buffer[index..]);
 }
 
 /// Formats like Go's `time.Time.UTC().String()` / `fmt %s` with layout
 /// `2006-01-02 15:04:05.999999999 -0700 MST` (trailing fractional zeros stripped).
 fn go_utc_time_string(unix_ns: i64) -> String {
+    let mut buffer = Vec::with_capacity(40);
+    write_go_utc_time_bytes(|slice| buffer.extend_from_slice(slice), unix_ns);
+    // SAFETY: only ASCII digits, punctuation, and spaces are written.
+    unsafe { String::from_utf8_unchecked(buffer) }
+}
+
+fn append_go_utc_time(hasher: &mut Md5, unix_ns: i64) {
+    write_go_utc_time_bytes(|slice| hasher.update(slice), unix_ns);
+}
+
+fn write_go_utc_time_bytes(mut write: impl FnMut(&[u8]), unix_ns: i64) {
     if unix_ns == 0 {
-        return "0001-01-01 00:00:00 +0000 UTC".to_owned();
+        write(b"0001-01-01 00:00:00 +0000 UTC");
+        return;
     }
     let secs = unix_ns.div_euclid(1_000_000_000);
     let nsec = unix_ns.rem_euclid(1_000_000_000) as u32;
@@ -276,15 +306,70 @@ fn go_utc_time_string(unix_ns: i64) -> String {
     let hour = day_secs / 3600;
     let minute = (day_secs % 3600) / 60;
     let second = day_secs % 60;
-    if nsec == 0 {
-        format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} +0000 UTC")
-    } else {
-        let frac = format!("{nsec:09}");
-        let frac = frac.trim_end_matches('0');
-        format!(
-            "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}.{frac} +0000 UTC"
-        )
+    write_date_time(&mut write, year, month, day, hour, minute, second);
+    if nsec != 0 {
+        write(b".");
+        write_fractional_nanos(&mut write, nsec);
     }
+    write(b" +0000 UTC");
+}
+
+fn write_date_time(
+    write: &mut impl FnMut(&[u8]),
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+) {
+    write_padded(write, year as u64, 4);
+    write(b"-");
+    write_padded(write, month as u64, 2);
+    write(b"-");
+    write_padded(write, day as u64, 2);
+    write(b" ");
+    write_padded(write, hour as u64, 2);
+    write(b":");
+    write_padded(write, minute as u64, 2);
+    write(b":");
+    write_padded(write, second as u64, 2);
+}
+
+fn write_padded(write: &mut impl FnMut(&[u8]), value: u64, width: usize) {
+    let mut buffer = [0u8; 20];
+    let mut index = buffer.len();
+    let mut current = value;
+    if current == 0 {
+        index -= 1;
+        buffer[index] = b'0';
+    } else {
+        while current > 0 {
+            index -= 1;
+            buffer[index] = b'0' + (current % 10) as u8;
+            current /= 10;
+        }
+    }
+    let digits = &buffer[index..];
+    for _ in digits.len()..width {
+        write(b"0");
+    }
+    write(digits);
+}
+
+fn write_fractional_nanos(write: &mut impl FnMut(&[u8]), nsec: u32) {
+    let mut buffer = [0u8; 9];
+    let mut current = nsec;
+    for index in (0..9).rev() {
+        buffer[index] = b'0' + (current % 10) as u8;
+        current /= 10;
+    }
+    let trimmed = buffer
+        .iter()
+        .rposition(|byte| *byte != b'0')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    write(&buffer[..trimmed]);
 }
 
 /// Howard Hinnant civil_from_days: `z` is days since 1970-01-01.
@@ -355,7 +440,7 @@ fn collect_entry(
         .context("entry is outside music root")?;
     let relative_path = normalize_relative(relative);
     let file_type = entry.file_type().context("entry has no file type")?;
-    let metadata = fs::metadata(entry.path()).context("reading metadata")?;
+    let metadata = entry.metadata().context("reading metadata")?;
     let mod_time_ns = system_time_ns(metadata.modified().unwrap_or(UNIX_EPOCH));
 
     if file_type.is_dir() {

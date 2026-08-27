@@ -1040,11 +1040,13 @@ fn split_pieces_by_break(pieces: &[Piece]) -> Vec<Vec<Piece>> {
             continue;
         }
         prev_ended_with_space = raw.ends_with(' ');
-        lines.last_mut().unwrap().push(Piece {
-            raw,
-            cue: piece.cue.clone(),
-            is_break: false,
-        });
+        if let Some(last) = lines.last_mut() {
+            last.push(Piece {
+                raw,
+                cue: piece.cue.clone(),
+                is_break: false,
+            });
+        }
     }
 
     lines

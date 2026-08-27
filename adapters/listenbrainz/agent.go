@@ -107,7 +107,10 @@ func (l *listenBrainzAgent) Scrobble(ctx context.Context, userId string, s scrob
 		log.Warn(ctx, "ListenBrainz Scrobble returned HTTP error", "track", s.Title, err)
 		return errors.Join(err, scrobbler.ErrRetryLater)
 	}
-	if lbErr.Code == 500 || lbErr.Code == 503 {
+	// Transient upstream/rate-limit responses should stay buffered and retry later.
+	if lbErr.Code == 429 || lbErr.Code == 500 || lbErr.Code == 502 || lbErr.Code == 503 || lbErr.Code == 504 {
+		log.Warn(ctx, "ListenBrainz Scrobble temporarily unavailable; will retry later",
+			"track", s.Title, "code", lbErr.Code, "error", lbErr.Message)
 		return errors.Join(err, scrobbler.ErrRetryLater)
 	}
 	return errors.Join(err, scrobbler.ErrUnrecoverable)

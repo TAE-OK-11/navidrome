@@ -178,8 +178,18 @@ func (c *client) makeAuthenticatedRequest(ctx context.Context, method string, en
 
 	var response listenBrainzResponse
 	jsonErr := decoder.Decode(&response)
-	if resp.StatusCode != 200 && jsonErr != nil {
-		return nil, fmt.Errorf("ListenBrainz: HTTP Error, Status: (%d)", resp.StatusCode)
+	if resp.StatusCode != 200 {
+		if jsonErr == nil && response.Code != 0 {
+			return nil, &listenBrainzError{Code: response.Code, Message: response.Error}
+		}
+		msg := response.Error
+		if msg == "" {
+			msg = response.Message
+		}
+		if msg == "" {
+			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
+		return nil, &listenBrainzError{Code: resp.StatusCode, Message: msg}
 	}
 	if jsonErr != nil {
 		return nil, jsonErr

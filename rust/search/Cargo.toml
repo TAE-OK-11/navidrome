@@ -5,12 +5,27 @@ edition = "2024"
 rust-version = "1.97"
 license = "GPL-3.0-only"
 
+[lib]
+name = "navidrome_search"
+path = "src/lib.rs"
+
+[[bin]]
+name = "navidrome-search"
+path = "src/main.rs"
+
 [dependencies]
 fts-normalize = { path = "../fts-normalize" }
 anyhow = "1.0.100"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tantivy = { version = "0.26.1", default-features = false, features = ["lz4-compression", "mmap"] }
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = false }
+
+[[bench]]
+name = "search_hotpaths"
+harness = false
 
 [profile.release]
 codegen-units = 1

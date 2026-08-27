@@ -3,6 +3,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use navidrome_metadata::map_media;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +46,7 @@ pub fn run() -> Result<()> {
                 } else {
                     &request.lyrics_json
                 };
-                match crate::map_media::map_to_json(&request.tags, &request.path, Some(lyrics)) {
+                match map_media::map_to_json(&request.tags, &request.path, Some(lyrics)) {
                     Some(json) => write_response(&mut output, true, Some(json), None)?,
                     None => write_response(
                         &mut output,

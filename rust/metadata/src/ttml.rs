@@ -1053,7 +1053,8 @@ fn split_pieces_by_break(pieces: &[Piece]) -> Vec<Vec<Piece>> {
 }
 
 fn finalize_logical_line(line: &[Piece]) -> (String, Vec<Cue>) {
-    let raw_line = concat_piece_raw(line);
+    let mut raw_line = String::new();
+    concat_piece_raw_into(&mut raw_line, line);
     if raw_line.is_empty() {
         return (String::new(), Vec::new());
     }
@@ -1061,20 +1062,24 @@ fn finalize_logical_line(line: &[Piece]) -> (String, Vec<Cue>) {
     let left_trim_bytes = raw_line.len() - raw_line.trim_start().len();
     let right_trim_bytes = raw_line.len() - raw_line.trim_end().len();
     let trimmed_end = raw_line.len().saturating_sub(right_trim_bytes).max(left_trim_bytes);
-    let trimmed = raw_line.trim().to_owned();
+    let trimmed = raw_line[left_trim_bytes..trimmed_end].to_owned();
 
     let mut cues = Vec::with_capacity(line.len());
     let mut cursor = 0_usize;
     for piece in line {
         let piece_end = cursor + piece.raw.len();
-        if let Some(mut cue) = piece.cue.clone() {
+        if let Some(cue) = piece.cue.as_ref() {
             let byte_start = cursor.max(left_trim_bytes);
             let byte_end = piece_end.min(trimmed_end);
             if byte_start < byte_end {
-                cue.value = raw_line[byte_start..byte_end].to_owned();
-                cue.byte_start = byte_start - left_trim_bytes;
-                cue.byte_end = byte_end - left_trim_bytes - 1;
-                cues.push(cue);
+                cues.push(Cue {
+                    start: cue.start,
+                    end: cue.end,
+                    value: raw_line[byte_start..byte_end].to_owned(),
+                    byte_start: byte_start - left_trim_bytes,
+                    byte_end: byte_end - left_trim_bytes - 1,
+                    agent_id: cue.agent_id.clone(),
+                });
             }
         }
         cursor = piece_end;
@@ -1116,10 +1121,15 @@ fn collapse_ttml_whitespace(raw: &str) -> String {
 }
 
 fn concat_piece_raw(pieces: &[Piece]) -> String {
-    pieces
-        .iter()
-        .map(|piece| normalize_piece_raw(&piece.raw))
-        .collect()
+    let mut raw_line = String::new();
+    concat_piece_raw_into(&mut raw_line, pieces);
+    raw_line
+}
+
+fn concat_piece_raw_into(buffer: &mut String, pieces: &[Piece]) {
+    for piece in pieces {
+        buffer.push_str(&normalize_piece_raw(&piece.raw));
+    }
 }
 
 fn pieces_contain_cue(pieces: &[Piece]) -> bool {

@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[lib]
+name = "navidrome_scanner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "navidrome-scanner"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "=1.0.100"
 hex = "0.4.3"
@@ -11,6 +19,13 @@ ignore = "=0.4.23"
 md-5 = "0.10.6"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = false }
+
+[[bench]]
+name = "scanner_hotpaths"
+harness = false
 
 [profile.release]
 opt-level = 3

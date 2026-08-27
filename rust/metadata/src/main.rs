@@ -17,10 +17,11 @@ use lofty::picture::{Picture, PictureType};
 use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
+use navidrome_metadata::map_media;
+
 mod image_worker;
 mod lyrics;
 mod lyricsfile;
-mod map_media;
 mod map_media_worker;
 mod normalize_fts;
 mod normalize_fts_worker;

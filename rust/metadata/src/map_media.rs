@@ -381,4 +381,29 @@ mod tests {
         assert!(json.contains("Song"));
         assert!(json.contains("Album"));
     }
+
+    #[test]
+    fn maps_legacy_release_date_mapping() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("date".to_owned(), vec!["2020-05-15".to_owned()]);
+        tags.insert("originaldate".to_owned(), vec!["2019-02-10".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""releaseDate":"2020-05-15""#));
+    }
+
+    #[test]
+    fn maps_properly_tagged_dates() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("originaldate".to_owned(), vec!["1978-09-10".to_owned()]);
+        tags.insert("date".to_owned(), vec!["1977-03-04".to_owned()]);
+        tags.insert("releasedate".to_owned(), vec!["2002-01-02".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""date":"1977-03-04""#));
+        assert!(json.contains(r#""originalDate":"1978-09-10""#));
+        assert!(json.contains(r#""releaseDate":"2002-01-02""#));
+    }
 }

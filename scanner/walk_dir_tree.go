@@ -26,34 +26,19 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 		go func() {
 			defer close(results)
 			folders, warnings, err := collectRustFolders(ctx, job, targetFolders)
-			if err == nil {
-				for _, warning := range warnings {
-					log.Warn(ctx, "Rust scanner traversal warning", "warning", warning)
-				}
-				for _, source := range folders {
-					entry, convertErr := folderEntryFromRust(job, source)
-					if convertErr != nil {
-						log.Warn(ctx, "Rust scanner returned invalid folder; falling back to Go", convertErr)
-						err = convertErr
-						break
-					}
-					select {
-					case results <- entry:
-					case <-ctx.Done():
-						return
-					}
-				}
-				if err == nil {
-					return
-				}
-			}
-			log.Warn(ctx, "Rust filesystem traversal unavailable; falling back to Go", "error", err)
-			fallback, fallbackErr := walkDirTreeGo(ctx, job, targetFolders...)
-			if fallbackErr != nil {
-				log.Error(ctx, "Scanner: Go filesystem traversal fallback failed", fallbackErr)
+			if err != nil {
+				log.Error(ctx, "Rust filesystem traversal failed", err)
 				return
 			}
-			for entry := range fallback {
+			for _, warning := range warnings {
+				log.Warn(ctx, "Rust scanner traversal warning", "warning", warning)
+			}
+			for _, source := range folders {
+				entry, convertErr := folderEntryFromRust(job, source)
+				if convertErr != nil {
+					log.Error(ctx, "Rust scanner returned invalid folder", convertErr)
+					return
+				}
 				select {
 				case results <- entry:
 				case <-ctx.Done():

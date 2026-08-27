@@ -130,9 +130,9 @@ var _ = Describe("Configuration", func() {
 			Expect(conf.NormalizeSearchBackend(input)).To(Equal(expected))
 		},
 		Entry("accepts 'fts'", "fts", "fts"),
-		Entry("accepts 'legacy'", "legacy", "legacy"),
+		Entry("maps deprecated 'legacy' to 'fts'", "legacy", "fts"),
 		Entry("normalizes 'FTS' to lowercase", "FTS", "fts"),
-		Entry("normalizes 'Legacy' to lowercase", "Legacy", "legacy"),
+		Entry("maps deprecated 'Legacy' to 'fts'", "Legacy", "fts"),
 		Entry("trims whitespace", "  fts  ", "fts"),
 		Entry("falls back to 'fts' for 'fts5'", "fts5", "fts"),
 		Entry("falls back to 'fts' for unrecognized values", "invalid", "fts"),

@@ -1,9 +1,7 @@
 package metadata_test
 
 import (
-	"encoding/json"
 	"os"
-	"sort"
 
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/metadata"
@@ -14,13 +12,13 @@ import (
 
 var _ = Describe("ToMediaFile", func() {
 	var (
-		props metadata.Info
-		md    metadata.Metadata
-		mf    model.MediaFile
+		filePath string
+		props    metadata.Info
+		mf       model.MediaFile
 	)
 
 	BeforeEach(func() {
-		_, filePath, _ := tests.TempFile(GinkgoT(), "test", ".mp3")
+		_, filePath, _ = tests.TempFile(GinkgoT(), "test", ".mp3")
 		fileInfo, _ := os.Stat(filePath)
 		props = metadata.Info{
 			FileInfo: testFileInfo{fileInfo},
@@ -28,9 +26,13 @@ var _ = Describe("ToMediaFile", func() {
 	})
 
 	var toMediaFile = func(tags model.RawTags) model.MediaFile {
-		props.Tags = tags
-		md = metadata.New("filepath", props)
-		return md.ToMediaFile(1, "folderID")
+		if _, ok := tags["TITLE"]; !ok {
+			tags["TITLE"] = []string{"Test Track"}
+		}
+		if _, ok := tags["ALBUM"]; !ok {
+			tags["ALBUM"] = []string{"Test Album"}
+		}
+		return toMediaFileFromTags(GinkgoT(), filePath, props, tags)
 	}
 
 	Describe("Dates", func() {
@@ -94,34 +96,15 @@ var _ = Describe("ToMediaFile", func() {
 	})
 
 	Describe("Lyrics", func() {
-		It("should parse the lyrics", func() {
-			mf = toMediaFile(model.RawTags{
-				"LYRICS:XXX": {"Lyrics"},
-				"LYRICS:ENG": {
-					"[00:00.00]This is\n[00:02.50]English SYLT\n",
-				},
-			})
-			var actual model.LyricList
-			err := json.Unmarshal([]byte(mf.Lyrics), &actual)
-			Expect(err).ToNot(HaveOccurred())
-
-			expected := model.LyricList{
-				{Lang: "eng", Line: []model.Line{
-					{Value: "This is", Start: new(int64(0))},
-					{Value: "English SYLT", Start: new(int64(2500))},
-				}, Synced: true},
-				{Lang: "xxx", Line: []model.Line{{Value: "Lyrics"}}, Synced: false},
-			}
-			sort.Slice(actual, func(i, j int) bool { return actual[i].Lang < actual[j].Lang })
-			sort.Slice(expected, func(i, j int) bool { return expected[i].Lang < expected[j].Lang })
-			Expect(actual).To(Equal(expected))
-		})
-
 		It("uses Rust pre-parsed lyrics_json when present", func() {
-			props.Tags = model.RawTags{"LYRICS:ENG": {"ignored by Go path"}}
+			props.Tags = model.RawTags{
+				"TITLE":      {"Song"},
+				"ALBUM":      {"Album"},
+				"LYRICS:ENG": {"ignored by Rust path"},
+			}
 			props.LyricsJSON = `[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`
-			md = metadata.New("song.mp3", props)
-			Expect(md.ToMediaFile(1, "folderID").Lyrics).To(Equal(
+			props = propsWithRustMediaFile(GinkgoT(), "song.mp3", props)
+			Expect(metadata.New("song.mp3", props).ToMediaFile(1, "folderID").Lyrics).To(Equal(
 				`[{"lang":"eng","line":[{"value":"from rust","start":1000}],"synced":true}]`,
 			))
 		})

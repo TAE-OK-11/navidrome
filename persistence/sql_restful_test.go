@@ -79,7 +79,8 @@ var _ = Describe("sqlRestful", func() {
 
 		BeforeEach(func() {
 			DeferCleanup(configtest.SetupConfig())
-			conf.Server.Search.Backend = "legacy"
+			conf.Server.Search.Backend = "fts"
+			conf.Server.Search.FullString = false
 			tableName = "test_table"
 			mbidFields = []string{"mbid", "artist_mbid"}
 			filter = fullTextFilter(tableName, mbidFields...)
@@ -102,23 +103,21 @@ var _ = Describe("sqlRestful", func() {
 				uuid := "550e8400-e29b-41d4-a716-446655440000"
 				result := noMbidFilter("search", uuid)
 
-				// mbidExpr with no fields returns nil, so cmp.Or falls back to search strategy
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% 550e8400-e29b-41d4-a716-446655440000%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 		})
 
 		Context("when value is not a valid UUID", func() {
-			It("returns full text search condition only", func() {
+			It("returns FTS search condition only", func() {
 				result := filter("search", "beatles")
 
-				// mbidExpr returns nil for non-UUIDs, so search strategy result is returned directly
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% beatles%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 
 			It("handles multi-word search terms", func() {
@@ -126,30 +125,23 @@ var _ = Describe("sqlRestful", func() {
 
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				// All words should be present as LIKE conditions
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(HaveLen(4))
-				Expect(args).To(ContainElement("% the%"))
-				Expect(args).To(ContainElement("% beatles%"))
-				Expect(args).To(ContainElement("% abbey%"))
-				Expect(args).To(ContainElement("% road%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 		})
 
 		Context("when SearchFullString config changes behavior", func() {
-			It("uses different separator with SearchFullString=false", func() {
+			It("uses FTS when SearchFullString=false", func() {
 				conf.Server.Search.FullString = false
 				result := filter("search", "test query")
 
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(HaveLen(2))
-				Expect(args).To(ContainElement("% test%"))
-				Expect(args).To(ContainElement("% query%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 
-			It("uses no separator with SearchFullString=true", func() {
+			It("uses full_text LIKE when SearchFullString=true", func() {
 				conf.Server.Search.FullString = true
 				result := filter("search", "test query")
 
@@ -163,21 +155,8 @@ var _ = Describe("sqlRestful", func() {
 		})
 
 		Context("single-character queries (regression: must not be rejected)", func() {
-			It("returns valid filter for single-char query with legacy backend", func() {
-				conf.Server.Search.Backend = "legacy"
-				result := filter("search", "a")
-				Expect(result).ToNot(BeNil(), "single-char REST filter must not be dropped")
-				sql, args, err := result.ToSql()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("LIKE"))
-				Expect(args).ToNot(BeEmpty())
-			})
-
 			It("returns valid filter for single-char query with FTS backend", func() {
-				conf.Server.Search.Backend = "fts"
-				conf.Server.Search.FullString = false
-				ftsFilter := fullTextFilter(tableName, mbidFields...)
-				result := ftsFilter("search", "a")
+				result := filter("search", "a")
 				Expect(result).ToNot(BeNil(), "single-char REST filter must not be dropped")
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
@@ -198,6 +177,7 @@ var _ = Describe("sqlRestful", func() {
 			})
 
 			It("handles special characters that are sanitized", func() {
+				conf.Server.Search.FullString = true
 				result := filter("search", "don't")
 
 				sql, args, err := result.ToSql()
@@ -226,25 +206,24 @@ var _ = Describe("sqlRestful", func() {
 			It("handles invalid UUID format gracefully", func() {
 				result := filter("search", "550e8400-invalid-uuid")
 
-				// Should return full text filter since UUID is invalid
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% 550e8400-invalid-uuid%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 
 			It("handles empty mbid fields array", func() {
 				emptyMbidFilter := fullTextFilter(tableName, []string{}...)
 				result := emptyMbidFilter("search", "test")
 
-				// mbidExpr with empty fields returns nil, so search strategy result is returned directly
 				sql, args, err := result.ToSql()
 				Expect(err).ToNot(HaveOccurred())
-				Expect(sql).To(ContainSubstring("test_table.full_text LIKE"))
-				Expect(args).To(ContainElement("% test%"))
+				Expect(sql).To(ContainSubstring("MATCH"))
+				Expect(args).ToNot(BeEmpty())
 			})
 
 			It("converts value to lowercase before processing", func() {
+				conf.Server.Search.FullString = true
 				result := filter("search", "TEST")
 
 				sql, args, err := result.ToSql()

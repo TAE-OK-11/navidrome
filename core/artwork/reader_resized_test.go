@@ -3,7 +3,6 @@ package artwork
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 
 	"github.com/navidrome/navidrome/core/ffmpeg"
@@ -36,19 +35,6 @@ var _ = Describe("resizeImage", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(output)).To(BeNumerically(">", 0))
 			Expect(output[:3]).To(Equal([]byte("GIF")))
-		})
-
-		It("falls back to static resize when ffmpeg fails for animated GIF", func() {
-			mockFF.Error = errors.New("ffmpeg failed")
-			r.size = 1
-			data := createAnimatedGIF(3)
-			result, _, err := r.resizeImage(context.Background(), bytes.NewReader(data))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(result).ToNot(BeNil())
-
-			output, err := io.ReadAll(result)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(len(output)).To(BeNumerically(">", 0))
 		})
 
 		It("preserves animation for square thumbnails with animated GIF", func() {

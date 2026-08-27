@@ -720,7 +720,10 @@ func normalizeSearchBackend(value string) string {
 	v := strings.ToLower(strings.TrimSpace(value))
 	switch v {
 	case "fts", "legacy":
-		return v
+		if v == "legacy" {
+			log.Warn("Search.Backend=legacy is deprecated; using fts")
+		}
+		return "fts"
 	default:
 		log.Error("Invalid Search.Backend value, falling back to 'fts'", "value", value)
 		return "fts"

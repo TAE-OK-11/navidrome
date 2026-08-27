@@ -1127,8 +1127,10 @@ COPY --link --from=source /src/resources/mime_types.yaml /resources/mime_types.y
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    mkdir src && \
-    printf 'fn main() {}\n' > src/main.rs && \
+    mkdir -p src benches && \
+    printf 'pub fn run() -> anyhow::Result<()> { Ok(()) }\n' > src/lib.rs && \
+    printf 'fn main() -> anyhow::Result<()> { navidrome_scanner::run() }\n' > src/main.rs && \
+    printf 'fn main() {}\n' > benches/scanner_hotpaths.rs && \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
     RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \

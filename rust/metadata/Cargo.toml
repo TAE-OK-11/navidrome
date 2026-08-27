@@ -30,7 +30,7 @@ webp = { version = "=0.3.1", default-features = false }
 bench = []
 
 [dev-dependencies]
-criterion = { version = "0.5.1", default-features = false, optional = true }
+criterion = { version = "0.5.1", default-features = false }
 
 [[bench]]
 name = "metadata_hotpaths"

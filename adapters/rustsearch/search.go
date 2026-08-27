@@ -326,6 +326,13 @@ func (e *Engine) RefreshIncremental(ctx context.Context, ds model.DataStore, sin
 	if err := flushDeletes(); err != nil {
 		return err
 	}
+	if changed > 0 {
+		resp, err := e.roundTrip(ctx, request{Op: "commit"})
+		if err != nil {
+			return err
+		}
+		lastIndexed = resp.Indexed
+	}
 	if changed == 0 {
 		if indexedBefore != expected {
 			log.Debug(ctx, "Rust search document count drifted without deltas; rebuilding",
@@ -641,7 +648,7 @@ func searchIndexStale(ready bool, generation int64, libraries model.Libraries) b
 func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	timeout := searchRequestTimeout
 	switch req.Op {
-	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete":
+	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete", "commit":
 		timeout = indexRequestTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)

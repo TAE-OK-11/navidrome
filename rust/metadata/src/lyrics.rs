@@ -331,8 +331,8 @@ fn parse_enhanced_line(text: &str) -> (String, Vec<Cue>) {
             agent_id: None,
         });
     }
-    if let (Some(end), true) = (trailing_end, !cues.is_empty()) {
-        cues.last_mut().unwrap().end = Some(end);
+    if let (Some(end), Some(last)) = (trailing_end, cues.last_mut()) {
+        last.end = Some(end);
     }
     (raw_value.trim().to_owned(), cues)
 }

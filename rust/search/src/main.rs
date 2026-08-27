@@ -56,6 +56,7 @@ enum Request {
     Delete {
         keys: Vec<String>,
     },
+    Commit,
     SearchAll {
         query: String,
         #[serde(default)]
@@ -215,7 +216,7 @@ impl Engine {
                 .delete_term(Term::from_field_text(self.fields.key, &document.key));
         }
         self.add_documents(documents)?;
-        self.commit()
+        Ok(())
     }
 
     fn delete(&mut self, keys: Vec<String>) -> Result<()> {
@@ -238,18 +239,24 @@ impl Engine {
             self.writer
                 .delete_term(Term::from_field_text(self.fields.key, &key));
         }
-        self.commit()
+        Ok(())
     }
 
     fn add_documents(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
         for document in documents {
+            let normalized_primary = normalize(&document.primary);
+            let normalized_secondary = if document.secondary.is_empty() {
+                String::new()
+            } else {
+                normalize(&document.secondary)
+            };
             let mut indexed = doc!(
                 self.fields.key => document.key,
                 self.fields.id => document.id,
                 self.fields.kind => document.kind,
-                self.fields.exact => normalize(&document.primary),
-                self.fields.primary => normalize(&document.primary),
-                self.fields.secondary => normalize(&document.secondary),
+                self.fields.exact => normalized_primary.clone(),
+                self.fields.primary => normalized_primary,
+                self.fields.secondary => normalized_secondary,
             );
             for library_id in document.library_ids {
                 indexed.add_u64(self.fields.library_id, library_id);
@@ -525,6 +532,9 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
         Request::Delete { keys } => {
             engine.delete(keys)?;
         }
+        Request::Commit => {
+            engine.commit()?;
+        }
         Request::SearchAll {
             query,
             library_ids,
@@ -629,13 +639,18 @@ mod tests {
     }
 
     #[test]
-    fn upsert_and_delete_are_visible_immediately() -> Result<()> {
+    fn upsert_and_delete_are_visible_after_commit() -> Result<()> {
         let mut engine = Engine::new()?;
         engine.replace(vec![document("song:1", "1", "song", 1, "Old Name")])?;
         engine.upsert(vec![document("song:1", "1", "song", 1, "New Name")])?;
+        assert_eq!(engine.search("Old", "song", &[1], 0, 10)?.len(), 1);
+        assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
+        engine.commit()?;
         assert!(engine.search("Old", "song", &[1], 0, 10)?.is_empty());
         assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
         engine.delete(vec!["song:1".to_owned()])?;
+        assert_eq!(engine.search("New", "song", &[1], 0, 10)?.len(), 1);
+        engine.commit()?;
         assert!(engine.search("New", "song", &[1], 0, 10)?.is_empty());
         Ok(())
     }

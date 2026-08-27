@@ -9,13 +9,12 @@ import (
 	"io"
 	"io/fs"
 	"math"
-	"os"
-	"os/exec"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
 	"github.com/navidrome/navidrome/log"
 )
@@ -57,8 +56,7 @@ type rustScanFile struct {
 
 type scannerWorker struct {
 	binary  string
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
+	pipes   *rustworker.Pipes
 	writer  *bufio.Writer
 	encoder *json.Encoder
 	decoder *json.Decoder
@@ -167,31 +165,19 @@ func (s *scannerWorkerSlot) stop() {
 }
 
 func startScannerWorker(binary string) (*scannerWorker, error) {
-	cmd := exec.Command(binary) //nolint:gosec // resolved administrator-controlled binary
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary)
 	if err != nil {
-		return nil, fmt.Errorf("opening Rust scanner stdin: %w", err)
+		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening Rust scanner stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting Rust scanner %q: %w", binary, err)
-	}
-	writer := bufio.NewWriterSize(stdin, 64*1024)
+	writer := bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf)
 	encoder := json.NewEncoder(writer)
 	encoder.SetEscapeHTML(false)
 	return &scannerWorker{
 		binary:  binary,
-		cmd:     cmd,
-		stdin:   stdin,
+		pipes:   pipes,
 		writer:  writer,
 		encoder: encoder,
-		decoder: json.NewDecoder(bufio.NewReaderSize(stdout, 256*1024)),
+		decoder: json.NewDecoder(bufio.NewReaderSize(pipes.Stdout, 256*1024)),
 	}, nil
 }
 
@@ -242,15 +228,11 @@ func (w *scannerWorker) roundTrip(request rustScanRequest) ([]rustScanFolder, []
 }
 
 func (w *scannerWorker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
+	rustworker.Kill(w.pipes.Cmd)
 }
 
 func (w *scannerWorker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }
 
 func validateRustFolders(folders []rustScanFolder) error {

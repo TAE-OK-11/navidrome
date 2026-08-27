@@ -27,19 +27,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 
-		It("returns legacy LIKE strategy when SearchBackend is legacy", func() {
-			DeferCleanup(configtest.SetupConfig())
-			conf.Server.Search.Backend = "legacy"
-			conf.Server.Search.FullString = false
-
-			strategy := getSearchStrategy("media_file", "test")
-			Expect(strategy).ToNot(BeNil())
-			sql, _, err := strategy.ToSql()
-			Expect(err).ToNot(HaveOccurred())
-			Expect(sql).To(ContainSubstring("LIKE"))
-		})
-
-		It("falls back to legacy LIKE strategy when SearchFullString is enabled", func() {
+		It("ignores deprecated SearchFullString and still uses FTS", func() {
 			DeferCleanup(configtest.SetupConfig())
 			conf.Server.Search.Backend = "fts"
 			conf.Server.Search.FullString = true
@@ -48,7 +36,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(strategy).ToNot(BeNil())
 			sql, _, err := strategy.ToSql()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(sql).To(ContainSubstring("LIKE"))
+			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 
 		It("routes CJK queries through FTS strategy", func() {
@@ -84,16 +72,16 @@ var _ = Describe("sqlRepository", func() {
 			Expect(strategy).ToNot(BeNil(), "single-char queries must be accepted by strategies (min-length is enforced in doSearch)")
 		})
 
-		It("returns non-nil for single-character query with legacy backend", func() {
+		It("returns non-nil for single-character query with deprecated legacy backend", func() {
 			DeferCleanup(configtest.SetupConfig())
 			conf.Server.Search.Backend = "legacy"
 			conf.Server.Search.FullString = false
 
 			strategy := getSearchStrategy("media_file", "a")
-			Expect(strategy).ToNot(BeNil(), "single-char queries must be accepted by legacy strategy (min-length is enforced in doSearch)")
+			Expect(strategy).ToNot(BeNil(), "single-char queries must be accepted by FTS strategy (min-length is enforced in doSearch)")
 		})
 
-		It("uses legacy for CJK when SearchBackend is legacy", func() {
+		It("routes CJK through FTS when SearchBackend is legacy", func() {
 			DeferCleanup(configtest.SetupConfig())
 			conf.Server.Search.Backend = "legacy"
 			conf.Server.Search.FullString = false
@@ -102,9 +90,7 @@ var _ = Describe("sqlRepository", func() {
 			Expect(strategy).ToNot(BeNil())
 			sql, _, err := strategy.ToSql()
 			Expect(err).ToNot(HaveOccurred())
-			// Legacy should still use full_text column LIKE
-			Expect(sql).To(ContainSubstring("LIKE"))
-			Expect(sql).To(ContainSubstring("full_text"))
+			Expect(sql).To(ContainSubstring("MATCH"))
 		})
 	})
 })

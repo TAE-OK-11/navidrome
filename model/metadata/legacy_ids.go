@@ -55,3 +55,18 @@ func legacyMapAlbumName(md Metadata) string {
 		consts.UnknownAlbum,
 	)
 }
+
+func (md Metadata) mapDates() (date Date, originalDate Date, releaseDate Date) {
+	date = md.Date(model.TagRecordingDate)
+	originalDate = md.Date(model.TagOriginalDate)
+	releaseDate = md.Date(model.TagReleaseDate)
+
+	legacyMappings := (originalDate != "") &&
+		(releaseDate == "") &&
+		(date >= originalDate)
+	if legacyMappings {
+		return originalDate, originalDate, date
+	}
+	date = cmp.Or(date, originalDate, releaseDate)
+	return date, originalDate, releaseDate
+}

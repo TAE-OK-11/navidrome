@@ -99,8 +99,8 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
     let artist = display_artist(tags);
     let album_artist = display_album_artist(tags);
     let (original_date, release_date, date) = map_dates(tags);
-    let (track_number, _) = tuple(tags, "tracknumber", "tracktotal");
-    let (disc_number, _) = tuple(tags, "discnumber", "disctotal");
+    let (track_number, _) = track_tuple(tags);
+    let (disc_number, _) = disc_tuple(tags);
 
     Some(ScanMediaFile {
         title: if title.is_empty() {
@@ -132,17 +132,17 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
         release_date,
         year: year_from_date(&date),
         date,
-        mbz_recording_id: first(tags, "musicbrainz_recordingid"),
-        mbz_release_track_id: first(tags, "musicbrainz_trackid"),
+        mbz_recording_id: mbz_recording_id(tags),
+        mbz_release_track_id: mbz_release_track_id(tags),
         mbz_album_id: first(tags, "musicbrainz_albumid"),
         mbz_release_group_id: first(tags, "musicbrainz_releasegroupid"),
         mbz_album_type: first(tags, "releasetype"),
-        rg_album_peak: parse_float(strip_db(first(tags, "replaygain_album_peak"))),
+        rg_album_peak: parse_float(first(tags, "replaygain_album_peak")),
         rg_album_gain: map_gain(
             first(tags, "replaygain_album_gain"),
             first(tags, "r128_album_gain"),
         ),
-        rg_track_peak: parse_float(strip_db(first(tags, "replaygain_track_peak"))),
+        rg_track_peak: parse_float(first(tags, "replaygain_track_peak")),
         rg_track_gain: map_gain(
             first(tags, "replaygain_track_gain"),
             first(tags, "r128_track_gain"),
@@ -244,7 +244,11 @@ fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
     } else {
         values
     };
-    join(values)
+    let joined = join(values);
+    if !joined.is_empty() {
+        return joined;
+    }
+    display_artist(tags)
 }
 
 fn join(values: Vec<String>) -> String {
@@ -258,6 +262,24 @@ fn all(tags: &HashMap<String, Vec<String>>, key: &str) -> Vec<String> {
         .into_iter()
         .filter(|value| !value.is_empty())
         .collect()
+}
+
+fn mbz_recording_id(tags: &HashMap<String, Vec<String>>) -> String {
+    let recording = first(tags, "musicbrainz_recordingid");
+    if !recording.is_empty() {
+        return recording;
+    }
+    if !first(tags, "musicbrainz_releasetrackid").is_empty() {
+        return first(tags, "musicbrainz_trackid");
+    }
+    String::new()
+}
+
+fn mbz_release_track_id(tags: &HashMap<String, Vec<String>>) -> String {
+    non_empty_or(
+        first(tags, "musicbrainz_releasetrackid"),
+        first(tags, "musicbrainz_trackid"),
+    )
 }
 
 fn non_empty_or(a: String, b: String) -> String {
@@ -280,7 +302,14 @@ fn parse_bpm(value: String) -> Option<i32> {
 }
 
 fn parse_float(value: String) -> Option<f64> {
+    let value = value.trim();
     if value.is_empty() {
+        return None;
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E'))
+    {
         return None;
     }
     value.parse().ok()
@@ -323,10 +352,26 @@ fn tuple(tags: &HashMap<String, Vec<String>>, key: &str, total_key: &str) -> (i3
     (first_num, second)
 }
 
+fn track_tuple(tags: &HashMap<String, Vec<String>>) -> (i32, i32) {
+    let (number, total) = tuple(tags, "tracknumber", "tracktotal");
+    if number != 0 {
+        return (number, total);
+    }
+    tuple(tags, "track", "tracktotal")
+}
+
+fn disc_tuple(tags: &HashMap<String, Vec<String>>) -> (i32, i32) {
+    let (number, total) = tuple(tags, "discnumber", "disctotal");
+    if number != 0 {
+        return (number, total);
+    }
+    tuple(tags, "disc", "disctotal")
+}
+
 fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {
     let mut original = first(tags, "originaldate");
     let mut release = first(tags, "releasedate");
-    let mut date = first(tags, "date");
+    let mut date = non_empty_or(first(tags, "date"), first(tags, "recordingdate"));
     if original.is_empty() {
         original = first(tags, "originalyear");
     }
@@ -337,7 +382,7 @@ fn map_dates(tags: &HashMap<String, Vec<String>>) -> (String, String, String) {
         date = first(tags, "year");
     }
     if !original.is_empty() && release.is_empty() && !date.is_empty() && date >= original {
-        return (original, date.clone(), date);
+        return (original.clone(), date.clone(), original);
     }
     let resolved = if !date.is_empty() {
         date.clone()
@@ -380,5 +425,30 @@ mod tests {
         let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
         assert!(json.contains("Song"));
         assert!(json.contains("Album"));
+    }
+
+    #[test]
+    fn maps_legacy_release_date_mapping() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("date".to_owned(), vec!["2020-05-15".to_owned()]);
+        tags.insert("originaldate".to_owned(), vec!["2019-02-10".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""releaseDate":"2020-05-15""#));
+    }
+
+    #[test]
+    fn maps_properly_tagged_dates() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("originaldate".to_owned(), vec!["1978-09-10".to_owned()]);
+        tags.insert("date".to_owned(), vec!["1977-03-04".to_owned()]);
+        tags.insert("releasedate".to_owned(), vec!["2002-01-02".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""date":"1977-03-04""#));
+        assert!(json.contains(r#""originalDate":"1978-09-10""#));
+        assert!(json.contains(r#""releaseDate":"2002-01-02""#));
     }
 }

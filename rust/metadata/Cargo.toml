@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+fts-normalize = { path = "../fts-normalize" }
 anyhow = "1.0.100"
 fast_image_resize = "=6.1.0"
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }

@@ -69,7 +69,6 @@ func New() FFmpeg {
 var ErrAnimatedWebPUnsupported = errors.New("ffmpeg lacks libwebp_anim encoder — install an ffmpeg build with libwebp")
 
 const (
-	extractImageCmd     = "ffmpeg -i %s -map 0:v -map -0:V -vcodec copy -f image2pipe -"
 	probeCmd            = "ffmpeg %s -f ffmetadata"
 	probeAudioStreamCmd = "ffprobe -v error -select_streams a:0 -print_format json -show_streams -show_format %s"
 )
@@ -129,16 +128,7 @@ func (e *ffmpeg) ExtractImage(ctx context.Context, path string) (io.ReadCloser, 
 	if err := fileExists(path); err != nil {
 		return nil, err
 	}
-	if reader, err := extractImageWithMetadataWorker(ctx, path); err == nil {
-		return reader, nil
-	} else {
-		log.Debug(ctx, "Native embedded artwork extraction unavailable; falling back to ffmpeg", "path", path, "error", err)
-	}
-	if _, err := ffmpegCmd(); err != nil {
-		return nil, err
-	}
-	args := createFFmpegCommand(extractImageCmd, path, 0, 0)
-	return e.start(ctx, args)
+	return extractImageWithMetadataWorker(ctx, path)
 }
 
 func extractImageWithMetadataWorker(ctx context.Context, path string) (io.ReadCloser, error) {

@@ -151,6 +151,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fts-normalize"
+version = "0.1.0"
+dependencies = [
+ "deunicode",
+ "regex",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -324,6 +332,7 @@ dependencies = [
  "anyhow",
  "deunicode",
  "fast_image_resize",
+ "fts-normalize",
  "image",
  "lofty",
  "quick-xml",

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core/auth"
+	"github.com/navidrome/navidrome/core/ftsnormalize"
 	"github.com/navidrome/navidrome/core/searchworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -621,14 +622,7 @@ func (e *Engine) artistDocument(ctx context.Context, artist model.Artist, librar
 }
 
 func (e *Engine) normalizeFTS(ctx context.Context, values ...string) string {
-	if e == nil || !e.Ready() || len(values) == 0 {
-		return ""
-	}
-	resp, err := e.roundTrip(ctx, request{Op: "normalize_fts", Values: values})
-	if err != nil || resp.Normalized == "" {
-		return ""
-	}
-	return resp.Normalized
+	return ftsnormalize.NormalizeForFTS(ctx, values...)
 }
 
 func scanGeneration(libraries model.Libraries) int64 {
@@ -647,7 +641,7 @@ func searchIndexStale(ready bool, generation int64, libraries model.Libraries) b
 func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	timeout := searchRequestTimeout
 	switch req.Op {
-	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete", "normalize_fts":
+	case "begin_replace", "append", "commit_replace", "abort_replace", "upsert", "delete":
 		timeout = indexRequestTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)

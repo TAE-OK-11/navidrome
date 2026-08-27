@@ -277,11 +277,14 @@ var _ = Describe("Metadata", func() {
 
 		Describe("ReplayGain", func() {
 			createMF := func(tag, tagValue string) model.MediaFile {
-				props.Tags = model.RawTags{
-					tag: {tagValue},
+				tags := model.RawTags{
+					"TITLE": {"Test"},
+					"ALBUM": {"Album"},
+					tag:     {tagValue},
 				}
-				md = metadata.New(filePath, props)
-				return md.ToMediaFile(0, "0")
+				mf, err := toMediaFileFromTags(filePath, props, tags)
+				Expect(err).NotTo(HaveOccurred())
+				return mf
 			}
 
 			DescribeTable("Gain",

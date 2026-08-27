@@ -1,17 +1,14 @@
 package metadata
 
 import (
-	"cmp"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/id"
-	"github.com/navidrome/navidrome/utils"
 	"github.com/navidrome/navidrome/utils/str"
 )
 
@@ -91,18 +88,4 @@ func (md Metadata) albumID(mf model.MediaFile, pidConf string) string {
 func (md Metadata) artistID(name string) string {
 	mf := model.MediaFile{AlbumArtist: name}
 	return computePID(mf, md, "albumartistid", false, id.NewHash)
-}
-
-func (md Metadata) mapTrackTitle() string {
-	if title := md.String(model.TagTitle); title != "" {
-		return title
-	}
-	return utils.BaseName(md.FilePath())
-}
-
-func (md Metadata) mapAlbumName() string {
-	return cmp.Or(
-		md.String(model.TagAlbum),
-		consts.UnknownAlbum,
-	)
 }

@@ -6,12 +6,11 @@ rust-version = "1.97"
 license = "GPL-3.0-only"
 
 [dependencies]
+fts-normalize = { path = "../fts-normalize" }
 anyhow = "1.0.100"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tantivy = { version = "0.26.1", default-features = false, features = ["lz4-compression", "mmap"] }
-deunicode = "1.6.2"
-regex = "1.11.1"
 
 [profile.release]
 codegen-units = 1

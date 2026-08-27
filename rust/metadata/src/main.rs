@@ -21,6 +21,7 @@ mod image_worker;
 mod lyrics;
 mod lyricsfile;
 mod map_media;
+mod map_media_worker;
 mod normalize_fts;
 mod normalize_fts_worker;
 mod parse_lyrics_worker;
@@ -110,6 +111,12 @@ fn main() -> Result<()> {
                 bail!("--normalize-fts-worker accepts no arguments");
             }
             return normalize_fts_worker::run();
+        }
+        if command == "--map-media-worker" {
+            if args.next().is_some() {
+                bail!("--map-media-worker accepts no arguments");
+            }
+            return map_media_worker::run();
         }
         if command == "--picture-worker" {
             if args.next().is_some() {

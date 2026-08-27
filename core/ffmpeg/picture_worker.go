@@ -2,21 +2,14 @@ package ffmpeg
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"runtime"
+
+	"github.com/navidrome/navidrome/core/rustworker"
 )
 
-const (
-	maxPictureWorkers  = 4
-	pictureHeaderBytes = 16 * 1024
-)
+const maxPictureWorkers = 4
 
 type pictureRequest struct {
 	Path     string `json:"path"`
@@ -31,8 +24,7 @@ type pictureResponse struct {
 
 type pictureWorker struct {
 	binary string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
+	pipes  *rustworker.Pipes
 	writer *bufio.Writer
 	reader *bufio.Reader
 }
@@ -70,40 +62,32 @@ func (p *pictureWorkerPool) extract(ctx context.Context, binary, path string, ma
 	default:
 		slot = &pictureWorkerSlot{}
 	}
-	// Return the worker before releasing capacity, so the next admitted request
-	// observes the reusable process instead of spawning another one.
 	defer func() { p.idle <- slot }()
 
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		worker, err := slot.ensure(binary)
-		if err != nil {
-			return nil, err
+	var data []byte
+	err := rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
 		}
-		cancelDone := make(chan struct{})
-		stopCancel := context.AfterFunc(ctx, func() {
-			worker.kill()
-			close(cancelDone)
-		})
-		data, err := worker.roundTrip(path, maxBytes)
-		if !stopCancel() {
-			<-cancelDone
+		var roundErr error
+		data, roundErr = worker.roundTrip(path, maxBytes)
+		if roundErr != nil {
+			var extractionErr *pictureExtractionError
+			if errors.As(roundErr, &extractionErr) {
+				return roundErr
+			}
 		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			slot.stop()
-			return nil, ctxErr
-		}
-		if err == nil {
-			return data, nil
-		}
+		return roundErr
+	})
+	if err != nil {
 		var extractionErr *pictureExtractionError
 		if errors.As(err, &extractionErr) {
 			return nil, err
 		}
-		lastErr = err
-		slot.stop()
+		return nil, rustworker.FailAfterRestarts("picture", err)
 	}
-	return nil, fmt.Errorf("persistent metadata picture worker failed after restart: %w", lastErr)
+	return data, nil
 }
 
 func (s *pictureWorkerSlot) ensure(binary string) (*pictureWorker, error) {
@@ -128,52 +112,25 @@ func (s *pictureWorkerSlot) stop() {
 }
 
 func startPictureWorker(binary string) (*pictureWorker, error) {
-	cmd := exec.Command(binary, "--picture-worker") //nolint:gosec // resolved administrator-controlled binary
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary, "--picture-worker")
 	if err != nil {
-		return nil, fmt.Errorf("opening picture worker stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening picture worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting picture worker %q: %w", binary, err)
+		return nil, err
 	}
 	return &pictureWorker{
 		binary: binary,
-		cmd:    cmd,
-		stdin:  stdin,
-		writer: bufio.NewWriterSize(stdin, pictureHeaderBytes),
-		reader: bufio.NewReaderSize(stdout, pictureHeaderBytes),
+		pipes:  pipes,
+		writer: bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf),
+		reader: bufio.NewReaderSize(pipes.Stdout, rustworker.DefaultReadBuf),
 	}, nil
 }
 
 func (w *pictureWorker) roundTrip(path string, maxBytes int64) ([]byte, error) {
-	payload, err := json.Marshal(pictureRequest{Path: path, MaxBytes: maxBytes})
-	if err != nil {
-		return nil, fmt.Errorf("encoding picture request: %w", err)
-	}
-	if _, err := w.writer.Write(payload); err != nil {
-		return nil, fmt.Errorf("writing picture request: %w", err)
-	}
-	if err := w.writer.WriteByte('\n'); err != nil {
-		return nil, fmt.Errorf("framing picture request: %w", err)
-	}
-	if err := w.writer.Flush(); err != nil {
-		return nil, fmt.Errorf("flushing picture request: %w", err)
-	}
-
-	header, err := w.reader.ReadSlice('\n')
-	if err != nil {
-		return nil, fmt.Errorf("reading picture response header: %w", err)
+	if err := rustworker.WriteJSONLine(w.writer, pictureRequest{Path: path, MaxBytes: maxBytes}); err != nil {
+		return nil, err
 	}
 	var response pictureResponse
-	if err := json.Unmarshal(bytes.TrimSuffix(header, []byte{'\n'}), &response); err != nil {
-		return nil, fmt.Errorf("decoding picture response header: %w", err)
+	if err := rustworker.ReadJSONLine(w.reader, &response); err != nil {
+		return nil, err
 	}
 	if !response.OK {
 		if response.Error == "" {
@@ -181,29 +138,11 @@ func (w *pictureWorker) roundTrip(path string, maxBytes int64) ([]byte, error) {
 		}
 		return nil, &pictureExtractionError{message: response.Error}
 	}
-	if response.Size <= 0 {
-		return nil, errors.New("metadata picture worker returned an invalid size")
-	}
-	if response.Size > maxBytes {
-		return nil, fmt.Errorf("metadata picture worker response exceeds maximum size of %d bytes", maxBytes)
-	}
-	data := make([]byte, response.Size)
-	if _, err := io.ReadFull(w.reader, data); err != nil {
-		return nil, fmt.Errorf("reading metadata picture: %w", err)
-	}
-	return data, nil
-}
-
-func (w *pictureWorker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
+	return rustworker.ReadSizedBody(w.reader, response.Size, maxBytes)
 }
 
 func (w *pictureWorker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }
 
 type pictureExtractionError struct {

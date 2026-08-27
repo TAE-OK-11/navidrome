@@ -11,8 +11,11 @@ import (
 	"github.com/deluan/sanitize"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/utils/str"
 )
+
+// ftsPunctStrip matches any character that is not a letter or number. Query-time FTS
+// processing shares this with Rust index-time normalization so both sides agree on tokens.
+var ftsPunctStrip = regexp.MustCompile(`[^\p{L}\p{N}]`)
 
 // containsCJK returns true if the string contains any CJK (Chinese/Japanese/Korean) characters.
 // CJK text doesn't use spaces between words, so FTS5's unicode61 tokenizer treats entire
@@ -65,7 +68,7 @@ func processPunctuatedWords(input string, phrases []string) (string, []string) {
 			result = append(result, w)
 			continue
 		}
-		concat := str.FTSPunctStrip.ReplaceAllString(w, "")
+		concat := ftsPunctStrip.ReplaceAllString(w, "")
 		if concat == "" || concat == w {
 			result = append(result, w)
 			continue
@@ -312,7 +315,7 @@ func ftsQueryDegraded(original, ftsQuery string) bool {
 	// Strip quotes from original for comparison — we want the raw content
 	stripped := strings.ReplaceAll(original, `"`, "")
 	// Extract the alphanumeric content from the original query
-	alphaNum := str.FTSPunctStrip.ReplaceAllString(stripped, "")
+	alphaNum := ftsPunctStrip.ReplaceAllString(stripped, "")
 	// If the original is entirely alphanumeric, nothing was stripped — not degraded
 	if len(alphaNum) == len(stripped) {
 		return false
@@ -336,7 +339,7 @@ func ftsQueryDegraded(original, ftsQuery string) bool {
 		if strings.HasPrefix(t, `"`) {
 			// Extract content between quotes
 			inner := strings.Trim(t, `"`)
-			innerAlpha := str.FTSPunctStrip.ReplaceAllString(inner, " ")
+			innerAlpha := ftsPunctStrip.ReplaceAllString(inner, " ")
 			for it := range strings.FieldsSeq(innerAlpha) {
 				if len(it) > 2 {
 					return false

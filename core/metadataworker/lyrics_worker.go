@@ -2,25 +2,23 @@ package metadataworker
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/navidrome/navidrome/core/rustworker"
 )
 
 const (
-	maxLyricsWorkers        = 2
-	maxLyricsInputBytes      = 16 * 1024 * 1024
-	maxLyricsResponseBytes   = 16 * 1024 * 1024
-	lyricsWorkerReadBufBytes = 64 * 1024
+	maxLyricsWorkers       = 2
+	maxLyricsInputBytes    = 16 * 1024 * 1024
+	maxLyricsResponseBytes = 16 * 1024 * 1024
 )
 
 type lyricsWorkerRequest struct {
@@ -37,8 +35,7 @@ type lyricsWorkerResponse struct {
 
 type lyricsWorker struct {
 	binary string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
+	pipes  *rustworker.Pipes
 	writer *bufio.Writer
 	reader *bufio.Reader
 }
@@ -99,32 +96,20 @@ func (p *lyricsWorkerPool) parse(ctx context.Context, suffix, lang string, conte
 	}
 	defer func() { p.idle <- slot }()
 
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		worker, err := slot.ensure(binary)
-		if err != nil {
-			return "", err
+	var lyricsJSON string
+	err = rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
 		}
-		cancelDone := make(chan struct{})
-		stopCancel := context.AfterFunc(ctx, func() {
-			worker.kill()
-			close(cancelDone)
-		})
-		jsonPayload, err := worker.roundTrip(suffix, lang, contents)
-		if !stopCancel() {
-			<-cancelDone
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			slot.stop()
-			return "", ctxErr
-		}
-		if err == nil {
-			return jsonPayload, nil
-		}
-		lastErr = err
-		slot.stop()
+		var roundErr error
+		lyricsJSON, roundErr = worker.roundTrip(suffix, lang, contents)
+		return roundErr
+	})
+	if err != nil {
+		return "", rustworker.FailAfterRestarts("lyrics", err)
 	}
-	return "", fmt.Errorf("persistent Rust lyrics worker failed after restart: %w", lastErr)
+	return lyricsJSON, nil
 }
 
 func (s *lyricsWorkerSlot) ensure(binary string) (*lyricsWorker, error) {
@@ -149,27 +134,15 @@ func (s *lyricsWorkerSlot) stop() {
 }
 
 func startLyricsWorker(binary string) (*lyricsWorker, error) {
-	cmd := exec.Command(binary, "--parse-lyrics-worker") //nolint:gosec // resolved administrator-controlled binary
-	stdin, err := cmd.StdinPipe()
+	pipes, err := rustworker.Start(binary, "--parse-lyrics-worker")
 	if err != nil {
-		return nil, fmt.Errorf("opening lyrics worker stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("opening lyrics worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		return nil, fmt.Errorf("starting lyrics worker %q: %w", binary, err)
+		return nil, err
 	}
 	return &lyricsWorker{
 		binary: binary,
-		cmd:    cmd,
-		stdin:  stdin,
-		writer: bufio.NewWriterSize(stdin, 64*1024),
-		reader: bufio.NewReaderSize(stdout, lyricsWorkerReadBufBytes),
+		pipes:  pipes,
+		writer: bufio.NewWriterSize(pipes.Stdin, rustworker.DefaultWriteBuf),
+		reader: bufio.NewReaderSize(pipes.Stdout, rustworker.DefaultReadBuf),
 	}, nil
 }
 
@@ -179,33 +152,16 @@ func (w *lyricsWorker) roundTrip(suffix, lang string, contents []byte) (string, 
 		Lang:      lang,
 		InputSize: len(contents),
 	}
-	header, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("encoding lyrics request: %w", err)
-	}
-	if _, err := w.writer.Write(header); err != nil {
-		return "", fmt.Errorf("writing lyrics request: %w", err)
-	}
-	if err := w.writer.WriteByte('\n'); err != nil {
-		return "", fmt.Errorf("framing lyrics request: %w", err)
-	}
-	if _, err := w.writer.Write(contents); err != nil {
-		return "", fmt.Errorf("writing lyrics payload: %w", err)
-	}
-	if err := w.writer.Flush(); err != nil {
-		return "", fmt.Errorf("flushing lyrics request: %w", err)
+	if err := rustworker.WriteHeaderAndBodies(w.writer, request, contents); err != nil {
+		return "", err
 	}
 
-	responseHeader, err := w.reader.ReadBytes('\n')
-	if err != nil {
-		return "", fmt.Errorf("reading lyrics response header: %w", err)
-	}
-	if len(responseHeader) > maxLyricsResponseBytes {
-		return "", fmt.Errorf("lyrics response exceeds maximum size of %d bytes", maxLyricsResponseBytes)
-	}
 	var response lyricsWorkerResponse
-	if err := json.Unmarshal(bytes.TrimSuffix(responseHeader, []byte{'\n'}), &response); err != nil {
-		return "", fmt.Errorf("decoding lyrics response header: %w", err)
+	if err := rustworker.ReadJSONLine(w.reader, &response); err != nil {
+		return "", err
+	}
+	if len(response.LyricsJSON) > maxLyricsResponseBytes {
+		return "", fmt.Errorf("lyrics response exceeds maximum size of %d bytes", maxLyricsResponseBytes)
 	}
 	if !response.OK {
 		if response.Error == "" {
@@ -219,16 +175,8 @@ func (w *lyricsWorker) roundTrip(suffix, lang string, contents []byte) (string, 
 	return response.LyricsJSON, nil
 }
 
-func (w *lyricsWorker) kill() {
-	if w.cmd.Process != nil {
-		_ = w.cmd.Process.Kill()
-	}
-}
-
 func (w *lyricsWorker) close() {
-	_ = w.stdin.Close()
-	w.kill()
-	_ = w.cmd.Wait()
+	rustworker.Close(w.pipes)
 }
 
 var testBinaryOnce sync.Once
@@ -239,7 +187,7 @@ func EnsureTestBinary() error {
 	var setupErr error
 	testBinaryOnce.Do(func() {
 		if configured := strings.TrimSpace(os.Getenv(EnvPath)); configured != "" {
-			if _, err := resolveConfiguredBinary(configured); err != nil {
+			if _, err := rustworker.ResolveBinary(configured, BinaryName()); err != nil {
 				setupErr = err
 			}
 			return

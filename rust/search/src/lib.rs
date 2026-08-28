@@ -497,27 +497,38 @@ pub fn run() -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut output = BufWriter::with_capacity(64 * 1024, stdout.lock());
-    let mut engine = Engine::new()?;
+    let mut engine: Option<Engine> = None;
 
     for line in BufReader::with_capacity(256 * 1024, stdin.lock()).lines() {
         let line = line.context("reading search request")?;
         if line.trim().is_empty() {
             continue;
         }
+        let indexed = engine.as_ref().map(|engine| engine.indexed).unwrap_or(0);
         let response = match serde_json::from_str::<Request>(&line) {
-            Ok(request) => handle_request(&mut engine, request).unwrap_or_else(|error| Response {
-                protocol: PROTOCOL_VERSION,
-                ok: false,
-                groups: Vec::new(),
-                indexed: engine.indexed,
-                error: Some(format!("{error:#}")),
-                normalized: None,
-            }),
+            Ok(request) => match ensure_engine(&mut engine) {
+                Ok(engine) => handle_request(engine, request).unwrap_or_else(|error| Response {
+                    protocol: PROTOCOL_VERSION,
+                    ok: false,
+                    groups: Vec::new(),
+                    indexed: engine.indexed,
+                    error: Some(format!("{error:#}")),
+                    normalized: None,
+                }),
+                Err(error) => Response {
+                    protocol: PROTOCOL_VERSION,
+                    ok: false,
+                    groups: Vec::new(),
+                    indexed,
+                    error: Some(format!("{error:#}")),
+                    normalized: None,
+                },
+            },
             Err(error) => Response {
                 protocol: PROTOCOL_VERSION,
                 ok: false,
                 groups: Vec::new(),
-                indexed: engine.indexed,
+                indexed,
                 error: Some(error.to_string()),
                 normalized: None,
             },
@@ -527,6 +538,13 @@ pub fn run() -> Result<()> {
         output.flush()?;
     }
     Ok(())
+}
+
+fn ensure_engine(engine: &mut Option<Engine>) -> Result<&mut Engine> {
+    if engine.is_none() {
+        *engine = Some(Engine::new()?);
+    }
+    Ok(engine.as_mut().expect("engine initialized above"))
 }
 
 fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {

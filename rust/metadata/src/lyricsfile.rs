@@ -8,12 +8,19 @@ use crate::lyrics::{Agent, Cue, Line, Lyrics};
 
 const LYRICSFILE_VERSION: &str = "1.0";
 
+fn utf8_prefix(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 pub fn looks_like_lyricsfile(text: &str) -> bool {
-    let head = if text.len() > 4096 {
-        &text[..4096]
-    } else {
-        text
-    };
+    let head = utf8_prefix(text, 4096);
     if !head.contains("version:") {
         return false;
     }
@@ -299,5 +306,14 @@ lines:
     fn skips_non_lyricsfile_yaml() {
         let yaml = "title: not lyricsfile\nversion: 2.0\n";
         assert!(parse_lyricsfile("eng", yaml).is_none());
+    }
+
+    #[test]
+    fn looks_like_lyricsfile_handles_utf8_boundary_at_prefix_limit() {
+        let mut text = String::from("version: \"1.0\"\n");
+        while text.len() < 4096 {
+            text.push('가');
+        }
+        assert!(looks_like_lyricsfile(&text));
     }
 }

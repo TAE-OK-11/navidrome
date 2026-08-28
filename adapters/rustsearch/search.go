@@ -11,11 +11,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/ftsnormalize"
 	"github.com/navidrome/navidrome/core/searchworker"
@@ -26,10 +29,10 @@ import (
 const (
 	protocolVersion        = 1
 	MaxResults             = 500
-	indexBatchSize         = 1000
+	indexBatchSize         = 5000
 	freshnessCheckInterval = 10 * time.Second
 	searchRequestTimeout   = 5 * time.Second
-	indexRequestTimeout    = 30 * time.Second
+	indexRequestTimeout    = 60 * time.Second
 	// Prefer a full rebuild when the delta is large enough that chunked
 	// upsert/delete commits would spend more time than a single replacement.
 	maxIncrementalRatio = 0.25
@@ -101,7 +104,7 @@ type worker struct {
 }
 
 type Engine struct {
-	gate       chan struct{}
+	gate       sync.RWMutex
 	worker     *worker
 	ready      atomic.Bool
 	building   atomic.Bool
@@ -116,9 +119,7 @@ func Available() bool {
 }
 
 func New() *Engine {
-	e := &Engine{gate: make(chan struct{}, 1)}
-	e.gate <- struct{}{}
-	return e
+	return &Engine{}
 }
 
 func (e *Engine) Ready() bool {
@@ -507,7 +508,9 @@ func (e *Engine) mediaFileDocument(ctx context.Context, mediaFile model.MediaFil
 		mediaFile.SortTitle, mediaFile.SortAlbumName, mediaFile.SortArtistName, mediaFile.SortAlbumArtistName}
 	secondary = append(secondary, mediaFile.Participants.AllNames()...)
 	ftsValues := append([]string{mediaFile.FullTitle(), mediaFile.Album, mediaFile.Artist, mediaFile.AlbumArtist}, secondary...)
-	if norm := e.normalizeFTS(ctx, ftsValues...); norm != "" {
+	if norm := mediaFile.SearchNormalized; norm != "" {
+		secondary = append(secondary, norm)
+	} else if norm := e.normalizeFTS(ctx, ftsValues...); norm != "" {
 		secondary = append(secondary, norm)
 	}
 	return document{
@@ -555,7 +558,9 @@ func (e *Engine) deltaAlbums(ctx context.Context, ds model.DataStore, since time
 func (e *Engine) albumDocument(ctx context.Context, album model.Album) document {
 	secondary := []string{album.AlbumArtist, album.SortAlbumName, album.SortAlbumArtistName,
 		album.CatalogNum, strings.Join(album.Participants.AllNames(), " ")}
-	if norm := e.normalizeFTS(ctx, album.Name, album.AlbumArtist); norm != "" {
+	if norm := album.SearchNormalized; norm != "" {
+		secondary = append(secondary, norm)
+	} else if norm := e.normalizeFTS(ctx, album.Name, album.AlbumArtist); norm != "" {
 		secondary = append(secondary, norm)
 	}
 	return document{
@@ -618,7 +623,9 @@ func (e *Engine) collectArtists(ctx context.Context, ds model.DataStore, librari
 
 func (e *Engine) artistDocument(ctx context.Context, artist model.Artist, libraryIDs []uint64) document {
 	secondary := []string{artist.SortArtistName, artist.OrderArtistName}
-	if norm := e.normalizeFTS(ctx, artist.Name); norm != "" {
+	if norm := artist.SearchNormalized; norm != "" {
+		secondary = append(secondary, norm)
+	} else if norm := e.normalizeFTS(ctx, artist.Name); norm != "" {
 		secondary = append(secondary, norm)
 	}
 	return document{
@@ -656,12 +663,14 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	if err := ctx.Err(); err != nil {
 		return response{}, err
 	}
-	select {
-	case <-e.gate:
-	case <-ctx.Done():
-		return response{}, ctx.Err()
+	readOnly := req.Op == "search_all" || req.Op == "normalize_fts"
+	if readOnly {
+		e.gate.RLock()
+		defer e.gate.RUnlock()
+	} else {
+		e.gate.Lock()
+		defer e.gate.Unlock()
 	}
-	defer func() { e.gate <- struct{}{} }()
 
 	w, err := e.ensureWorker()
 	if err != nil {
@@ -726,6 +735,9 @@ func (e *Engine) ensureWorker() (*worker, error) {
 		return nil, fmt.Errorf("resolving Rust search worker: %w", err)
 	}
 	cmd := exec.Command(binary) //nolint:gosec // administrator-configured or colocated binary
+	if indexPath := searchIndexPath(); indexPath != "" {
+		cmd.Env = append(os.Environ(), "NAVIDROME_SEARCH_INDEX_PATH="+indexPath)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -767,4 +779,12 @@ func (w *worker) kill() {
 	if w != nil && w.cmd.Process != nil {
 		_ = w.cmd.Process.Kill()
 	}
+}
+
+func searchIndexPath() string {
+	dataFolder, err := conf.Server.DataFolder.Path()
+	if err != nil || dataFolder == "" {
+		return ""
+	}
+	return filepath.Join(dataFolder, "rust-search-index")
 }

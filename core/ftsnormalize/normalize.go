@@ -7,10 +7,13 @@ import (
 	"github.com/navidrome/navidrome/log"
 )
 
-// NormalizeForFTS returns Rust-normalized FTS secondary tokens from the metadata worker.
+// NormalizeForFTS returns normalized FTS secondary tokens.
 func NormalizeForFTS(ctx context.Context, values ...string) string {
 	if len(values) == 0 {
 		return ""
+	}
+	if normalized := normalizeInProcess(values...); normalized != "" {
+		return normalized
 	}
 	normalized, err := metadataworker.PersistentNormalizeWorkers().Normalize(ctx, values...)
 	if err != nil {

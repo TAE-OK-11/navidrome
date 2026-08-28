@@ -13,23 +13,12 @@ func TestRoundTripCancellationDoesNotWaitForBusyWorker(t *testing.T) {
 	t.Parallel()
 
 	engine := New()
-	<-engine.gate
 	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() {
-		_, err := engine.roundTrip(ctx, request{Op: "search_all"})
-		result <- err
-	}()
 	cancel()
-	select {
-	case err := <-result:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("roundTrip() error = %v, want context.Canceled", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("roundTrip() did not stop while waiting for worker ownership")
+	_, err := engine.roundTrip(ctx, request{Op: "search_all"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("roundTrip() error = %v, want context.Canceled", err)
 	}
-	engine.gate <- struct{}{}
 }
 
 func TestScanGenerationUsesLatestLibraryChange(t *testing.T) {

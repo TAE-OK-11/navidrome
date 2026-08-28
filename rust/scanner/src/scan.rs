@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
@@ -23,6 +24,13 @@ const SPECIAL_DIRECTORIES: &[&str] = &[
 include!(concat!(env!("OUT_DIR"), "/media_extensions.rs"));
 const PLAYLIST_EXTENSIONS: &[&str] = &["m3u", "m3u8", "nsp"];
 
+static AUDIO_EXTENSION_SET: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| AUDIO_EXTENSIONS.iter().copied().collect());
+static IMAGE_EXTENSION_SET: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| IMAGE_EXTENSIONS.iter().copied().collect());
+static PLAYLIST_EXTENSION_SET: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| PLAYLIST_EXTENSIONS.iter().copied().collect());
+
 #[derive(Debug, Deserialize)]
 struct ScanRequest {
     root: PathBuf,
@@ -30,6 +38,12 @@ struct ScanRequest {
     targets: Vec<String>,
     follow_symlinks: bool,
     ignore_dot_folders: bool,
+    /// DB folder path -> content hash. Matching folders emit a lightweight summary.
+    #[serde(default)]
+    known_hashes: HashMap<String, String>,
+    /// Parallel walk threads (0 = single-threaded).
+    #[serde(default)]
+    walk_threads: usize,
 }
 
 fn deserialize_targets<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -62,9 +76,16 @@ pub struct FileEntry {
 }
 
 #[derive(Debug, Serialize)]
+struct FolderSummary {
+    path: String,
+    hash: String,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Event<'a> {
     Folder { folder: &'a Folder },
+    FolderSummary { folder: FolderSummary },
     Warning { message: &'a str },
     Error { message: &'a str },
     Done { folders: usize, files: usize },
@@ -96,6 +117,7 @@ pub fn run() -> Result<()> {
                     &Event::Error {
                         message: &format!("decoding scan request: {error}"),
                     },
+                    true,
                 )?;
                 continue;
             }
@@ -106,6 +128,7 @@ pub fn run() -> Result<()> {
                 &Event::Error {
                     message: &format!("{error:#}"),
                 },
+                true,
             )?;
             continue;
         }
@@ -115,6 +138,7 @@ pub fn run() -> Result<()> {
                 &Event::Error {
                     message: &format!("{error:#}"),
                 },
+                true,
             )?;
         }
     }
@@ -147,6 +171,7 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
 }
 
 fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
+    let known_hashes = request.known_hashes.clone();
     let (folders, warnings) = collect_scan(request)?;
     let file_count = folders
         .values()
@@ -160,10 +185,23 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
     });
 
     for warning in &warnings {
-        write_event(output, &Event::Warning { message: warning })?;
+        write_event(output, &Event::Warning { message: warning }, false)?;
     }
     for folder in ordered {
-        write_event(output, &Event::Folder { folder })?;
+        if known_hashes.get(&folder.path).is_some_and(|known| known == &folder.hash) {
+            write_event(
+                output,
+                &Event::FolderSummary {
+                    folder: FolderSummary {
+                        path: folder.path.clone(),
+                        hash: folder.hash.clone(),
+                    },
+                },
+                false,
+            )?;
+        } else {
+            write_event(output, &Event::Folder { folder }, false)?;
+        }
     }
     write_event(
         output,
@@ -171,6 +209,7 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
             folders: folders.len(),
             files: file_count,
         },
+        true,
     )?;
     Ok(())
 }
@@ -201,9 +240,21 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
             .add_custom_ignore_filename(IGNORE_FILE)
             .follow_links(request.follow_symlinks)
             .sort_by_file_name(|left, right| left.cmp(right));
+        if request.walk_threads > 1 {
+            builder.threads(request.walk_threads);
+        }
         let ignore_dot_folders = request.ignore_dot_folders;
         let follow_symlinks = request.follow_symlinks;
-        builder.filter_entry(move |entry| allow_entry(entry, ignore_dot_folders, follow_symlinks));
+        let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
+        let cache_for_filter = Arc::clone(&ignore_cache);
+        builder.filter_entry(move |entry| {
+            allow_entry(
+                entry,
+                ignore_dot_folders,
+                follow_symlinks,
+                &cache_for_filter,
+            )
+        });
 
         for result in builder.build() {
             let entry = match result {
@@ -213,7 +264,7 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
                     continue;
                 }
             };
-            if let Err(error) = collect_entry(&root, &entry, &mut folders) {
+            if let Err(error) = collect_entry(&root, &entry, &mut folders, &ignore_cache) {
                 warnings.push(format!("{}: {error:#}", entry.path().display()));
             }
         }
@@ -395,9 +446,14 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
     (y as i32, m, d)
 }
 
-fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool, follow_symlinks: bool) -> bool {
+fn allow_entry(
+    entry: &DirEntry,
+    ignore_dot_folders: bool,
+    follow_symlinks: bool,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
+) -> bool {
     if entry.depth() == 0 {
-        return !directory_has_empty_ignore(entry.path());
+        return !directory_has_empty_ignore(entry.path(), ignore_cache);
     }
     let Some(name) = entry.file_name().to_str() else {
         return false;
@@ -416,21 +472,28 @@ fn allow_entry(entry: &DirEntry, ignore_dot_folders: bool, follow_symlinks: bool
     if is_dot_entry(name) && (!is_dir || ignore_dot_folders) {
         return false;
     }
-    if is_dir && directory_has_empty_ignore(entry.path()) {
+    if is_dir && directory_has_empty_ignore(entry.path(), ignore_cache) {
         return false;
     }
     true
 }
 
-fn directory_has_empty_ignore(path: &Path) -> bool {
+fn directory_has_empty_ignore(path: &Path, ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>) -> bool {
+    if let Some(cached) = ignore_cache.lock().ok().and_then(|cache| cache.get(path).copied()) {
+        return cached;
+    }
     let ignore_path = path.join(IGNORE_FILE);
-    let Ok(contents) = fs::read_to_string(ignore_path) else {
-        return false;
+    let ignored = match fs::read_to_string(ignore_path) {
+        Ok(contents) => !contents
+            .lines()
+            .map(str::trim)
+            .any(|line| !line.is_empty() && !line.starts_with('#')),
+        Err(_) => false,
     };
-    !contents
-        .lines()
-        .map(str::trim)
-        .any(|line| !line.is_empty() && !line.starts_with('#'))
+    if let Ok(mut cache) = ignore_cache.lock() {
+        cache.insert(path.to_path_buf(), ignored);
+    }
+    ignored
 }
 
 fn is_dot_entry(name: &str) -> bool {
@@ -441,6 +504,7 @@ fn collect_entry(
     root: &Path,
     entry: &DirEntry,
     folders: &mut BTreeMap<String, Folder>,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
 ) -> Result<()> {
     let relative = entry
         .path()
@@ -455,6 +519,7 @@ fn collect_entry(
         let folder = folders.entry(relative_path.clone()).or_default();
         folder.path = relative_path;
         folder.mod_time_ns = folder.mod_time_ns.max(mod_time_ns);
+        let _ = ignore_cache;
         return Ok(());
     }
 
@@ -488,14 +553,14 @@ fn collect_entry(
     };
     folder.mod_time_ns = folder.mod_time_ns.max(mod_time_ns);
     match extension.as_str() {
-        extension if AUDIO_EXTENSIONS.contains(&extension) => {
+        extension if AUDIO_EXTENSION_SET.contains(extension) => {
             folder.audio_files.insert(source_name, file);
         }
-        extension if IMAGE_EXTENSIONS.contains(&extension) => {
+        extension if IMAGE_EXTENSION_SET.contains(extension) => {
             folder.images_updated_at_ns = folder.images_updated_at_ns.max(mod_time_ns);
             folder.image_files.insert(source_name, file);
         }
-        extension if PLAYLIST_EXTENSIONS.contains(&extension) => {
+        extension if PLAYLIST_EXTENSION_SET.contains(extension) => {
             folder.num_playlists += 1;
         }
         _ => {}
@@ -534,10 +599,12 @@ fn system_time_ns(value: SystemTime) -> i64 {
     }
 }
 
-fn write_event(output: &mut impl Write, event: &Event<'_>) -> Result<()> {
+fn write_event(output: &mut impl Write, event: &Event<'_>, flush: bool) -> Result<()> {
     serde_json::to_writer(&mut *output, event)?;
     output.write_all(b"\n")?;
-    output.flush()?;
+    if flush {
+        output.flush()?;
+    }
     Ok(())
 }
 
@@ -610,6 +677,8 @@ mod tests {
                 targets: vec!["Artist/Album".to_owned()],
                 follow_symlinks: false,
                 ignore_dot_folders: true,
+                known_hashes: HashMap::new(),
+                walk_threads: 0,
             })
             .is_ok()
         );
@@ -619,6 +688,8 @@ mod tests {
                 targets: vec!["../outside".to_owned()],
                 follow_symlinks: false,
                 ignore_dot_folders: true,
+                known_hashes: HashMap::new(),
+                walk_threads: 0,
             })
             .is_err()
         );
@@ -629,6 +700,14 @@ mod tests {
         assert!(is_dot_entry(".hidden"));
         assert!(!is_dot_entry("..Album"));
         assert!(!is_dot_entry("regular"));
+        let mut cache = HashMap::new();
+        let cache = Arc::new(Mutex::new(cache));
+        let root = temporary_music_root();
+        fs::create_dir_all(root.join("cached")).unwrap();
+        fs::write(root.join("cached/.ndignore"), b"\n").unwrap();
+        assert!(directory_has_empty_ignore(root.join("cached").as_path(), &cache));
+        assert!(cache.lock().unwrap().contains_key(&root.join("cached")));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -654,6 +733,8 @@ mod tests {
                 targets: vec![".".to_owned()],
                 follow_symlinks: false,
                 ignore_dot_folders: true,
+                known_hashes: HashMap::new(),
+                walk_threads: 0,
             },
             &mut output,
         )
@@ -699,6 +780,8 @@ mod tests {
             targets: vec![".".to_owned()],
             follow_symlinks: false,
             ignore_dot_folders: true,
+            known_hashes: HashMap::new(),
+            walk_threads: 0,
         })
         .unwrap();
 
@@ -723,6 +806,8 @@ mod tests {
                 targets: vec!["Artist".to_owned()],
                 follow_symlinks: true,
                 ignore_dot_folders: true,
+                known_hashes: HashMap::new(),
+                walk_threads: 0,
             })
             .unwrap();
             assert!(linked_warnings.is_empty(), "{linked_warnings:?}");

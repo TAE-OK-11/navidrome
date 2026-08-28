@@ -50,6 +50,7 @@ type Album struct {
 	ExplicitStatus       string   `structs:"explicit_status" json:"explicitStatus"`
 	RGAlbumGain          *float64 `structs:"rg_album_gain" json:"rgAlbumGain"`
 	RGAlbumPeak          *float64 `structs:"rg_album_peak" json:"rgAlbumPeak"`
+	SearchNormalized     string   `structs:"search_normalized" json:"-" hash:"ignore"`
 
 	// External metadata fields
 	Description           string     `structs:"description" json:"description,omitempty" hash:"ignore"`

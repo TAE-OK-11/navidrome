@@ -60,6 +60,7 @@ type scanJob struct {
 	localRoot     string
 	cw            artwork.CacheWarmer
 	lastUpdates   map[string]model.FolderUpdateInfo // Holds last update info for all (DB) folders in this library
+	knownHashes   map[string]string                 // folder path -> hash for Rust summary events
 	targetFolders []string                          // Specific folders to scan (including all descendants)
 	lock          sync.Mutex
 	numFolders    atomic.Int64
@@ -96,14 +97,36 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 		localRoot = localFS.RootPath()
 	}
 
+	knownHashes, err := loadKnownFolderHashes(ctx, ds, lib, targetFolders)
+	if err != nil {
+		return nil, fmt.Errorf("loading folder hashes: %w", err)
+	}
+
 	return &scanJob{
 		lib:           lib,
 		fs:            fsys,
 		localRoot:     localRoot,
 		cw:            cw,
 		lastUpdates:   lastUpdates,
+		knownHashes:   knownHashes,
 		targetFolders: targetFolders,
 	}, nil
+}
+
+func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Library, _ []string) (map[string]string, error) {
+	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{
+		Filters: squirrel.And{squirrel.Eq{"library_id": lib.ID}, squirrel.Eq{"missing": false}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	hashes := make(map[string]string, len(folders))
+	for _, folder := range folders {
+		if folder.Hash != "" {
+			hashes[folder.Path] = folder.Hash
+		}
+	}
+	return hashes, nil
 }
 
 // popLastUpdate retrieves and removes the last update info for the given folder ID
@@ -214,9 +237,10 @@ func (p *phaseFolders) measure(entry *folderEntry) func() time.Duration {
 }
 
 func (p *phaseFolders) stages() []ppl.Stage[*folderEntry] {
+	persistWorkers := min(max(int(conf.Server.DevScannerThreads)/2, 1), 3)
 	return []ppl.Stage[*folderEntry]{
 		ppl.NewStage(p.processFolder, ppl.Name("process folder"), ppl.Concurrency(conf.Server.DevScannerThreads)),
-		ppl.NewStage(p.persistChanges, ppl.Name("persist changes")),
+		ppl.NewStage(p.persistChanges, ppl.Name("persist changes"), ppl.Concurrency(uint(persistWorkers))),
 		ppl.NewStage(p.logFolder, ppl.Name("log results")),
 	}
 }
@@ -344,26 +368,29 @@ func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (ma
 		return nil, ctxErr
 	}
 
-	log.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files individually", "folder", entry.path, "files", len(paths), err)
-	result := make(map[string]metadata.Info, len(paths))
-	var failures []error
-	for _, filePath := range paths {
-		if ctxErr := p.ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		info, fileErr := readTags(filePath)
-		if fileErr != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", filePath, fileErr))
-			log.Warn(p.ctx, "Scanner: Skipping unreadable metadata file", "folder", entry.path, "file", filePath, fileErr)
-			p.state.sendWarning(fmt.Sprintf("Error extracting metadata from %s: %v", filePath, fileErr))
-			continue
-		}
-		for parsedPath, parsedInfo := range info {
-			result[parsedPath] = parsedInfo
-		}
+	log.Warn(p.ctx, "Scanner: Batch metadata extraction failed; retrying files in smaller batches", "folder", entry.path, "files", len(paths), err)
+	return p.readTagsBisect(readTags, paths)
+}
+
+func (p *phaseFolders) readTagsBisect(readTags func(...string) (map[string]metadata.Info, error), paths []string) (map[string]metadata.Info, error) {
+	if ctxErr := p.ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
+	info, err := readTags(paths...)
+	if err == nil {
+		return info, nil
+	}
+	if len(paths) <= 1 {
+		return nil, err
+	}
+	mid := len(paths) / 2
+	left, leftErr := p.readTagsBisect(readTags, paths[:mid])
+	right, rightErr := p.readTagsBisect(readTags, paths[mid:])
+	result := make(map[string]metadata.Info, len(paths))
+	maps.Copy(result, left)
+	maps.Copy(result, right)
 	if len(result) == 0 {
-		return nil, errors.Join(failures...)
+		return nil, errors.Join(leftErr, rightErr)
 	}
 	return result, nil
 }

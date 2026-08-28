@@ -19,8 +19,7 @@ import PropTypes from 'prop-types'
 import AlbumIcon from '@mui/icons-material/Album'
 import clsx from 'clsx'
 import { useDrag } from 'react-dnd'
-import Lightbox from 'react-image-lightbox'
-import 'react-image-lightbox/style.css'
+import ImageLightbox from './ImageLightbox'
 import { playTracks } from '../actions'
 import subsonic from '../subsonic'
 import { AlbumContextMenu } from '../common'
@@ -121,19 +120,14 @@ export const DiscSubtitleRow = forwardRef(
             )}
             {subtitle}
           </Typography>
-          {isLightboxOpen && !imageError && (
-            // Lightbox portals out of the row, but React still bubbles its
-            // events up this tree, where the row's onClick would play the disc.
-            <span onClick={(e) => e.stopPropagation()}>
-              <Lightbox
-                imagePadding={50}
-                animationDuration={200}
-                imageTitle={record.album + ' - ' + subtitle}
-                mainSrc={fullImageUrl}
-                onCloseRequest={handleCloseLightbox}
-              />
-            </span>
-          )}
+          <span onClick={(e) => e.stopPropagation()}>
+            <ImageLightbox
+              open={isLightboxOpen && !imageError}
+              imageUrl={fullImageUrl}
+              title={record.album + ' - ' + subtitle}
+              onClose={handleCloseLightbox}
+            />
+          </span>
         </TableCell>
         <TableCell>
           <AlbumContextMenu

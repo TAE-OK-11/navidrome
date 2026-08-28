@@ -1,11 +1,3 @@
-declare global {
-  interface Window {
-    global: typeof globalThis
-  }
-}
-
-window.global = window // fix "global is not defined" error in react-image-lightbox
-
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'

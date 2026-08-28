@@ -49,7 +49,7 @@ const renderRow = (onClick) =>
 
 const openLightbox = () => {
   fireEvent.click(document.querySelector('img'))
-  expect(document.querySelector('.ril__closeButton')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
 }
 
 describe('DiscSubtitleRow', () => {
@@ -73,7 +73,7 @@ describe('DiscSubtitleRow', () => {
     const onClick = vi.fn()
     renderRow(onClick)
     openLightbox()
-    fireEvent.click(document.querySelector('.ril__closeButton'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClick).not.toHaveBeenCalled()
   })
 
@@ -81,7 +81,7 @@ describe('DiscSubtitleRow', () => {
     const onClick = vi.fn()
     renderRow(onClick)
     openLightbox()
-    fireEvent.click(document.querySelector('.ril__inner'))
+    fireEvent.click(document.querySelector('.yarl__container'))
     expect(onClick).not.toHaveBeenCalled()
   })
 })

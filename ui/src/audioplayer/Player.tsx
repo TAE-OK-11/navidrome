@@ -9,7 +9,7 @@ import {
   StyledEngineProvider,
 } from '@mui/material/styles'
 import { useAuthState, useDataProvider, useTranslate } from 'react-admin'
-import ReactGA from 'react-ga'
+import ReactGA from 'react-ga4'
 import { GlobalHotKeys } from 'react-hotkeys'
 import ReactJkMusicPlayer from 'navidrome-music-player'
 import 'navidrome-music-player/assets/index.css'

@@ -1,6 +1,6 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useMemo } from 'react'
-import ReactGA from 'react-ga'
+import ReactGA from 'react-ga4'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
 import { createTheme } from '@mui/material/styles'
@@ -52,7 +52,8 @@ import modernizeTheme from './themes/modernizeTheme'
 
 if (config.gaTrackingId) {
   ReactGA.initialize(config.gaTrackingId)
-  const trackPage = () => ReactGA.pageview(window.location.hash || '/')
+  const trackPage = () =>
+    ReactGA.send({ hitType: 'pageview', page: window.location.hash || '/' })
   trackPage()
   window.addEventListener('hashchange', trackPage)
 }

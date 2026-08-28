@@ -153,43 +153,16 @@ func (p Participants) AllArtists() []Artist {
 	for _, roleArtists := range p {
 		totalArtists += len(roleArtists)
 	}
-	flat := make(Artists, 0, totalArtists)
+	artists := make(Artists, 0, totalArtists)
 	for _, roleArtists := range p {
-		flat = append(flat, slice.Map(roleArtists, func(p Participant) Artist { return p.Artist })...)
+		artists = append(artists, slice.Map(roleArtists, func(p Participant) Artist { return p.Artist })...)
 	}
-	slices.SortStableFunc(flat, func(a1, a2 Artist) int {
+	slices.SortStableFunc(artists, func(a1, a2 Artist) int {
 		return cmp.Compare(a1.ID, a2.ID)
 	})
-	if len(flat) == 0 {
-		return nil
-	}
-	merged := make(Artists, 0, len(flat))
-	current := flat[0]
-	for _, artist := range flat[1:] {
-		if artist.ID == current.ID {
-			current = mergeArtistFields(current, artist)
-			continue
-		}
-		merged = append(merged, current)
-		current = artist
-	}
-	return append(merged, current)
-}
-
-func mergeArtistFields(primary, other Artist) Artist {
-	if primary.Name == "" {
-		primary.Name = other.Name
-	}
-	if primary.SortArtistName == "" {
-		primary.SortArtistName = other.SortArtistName
-	}
-	if primary.OrderArtistName == "" {
-		primary.OrderArtistName = other.OrderArtistName
-	}
-	if primary.MbzArtistID == "" {
-		primary.MbzArtistID = other.MbzArtistID
-	}
-	return primary
+	return slices.CompactFunc(artists, func(a1, a2 Artist) bool {
+		return a1.ID == a2.ID
+	})
 }
 
 // AllIDs returns all artist IDs found in the Participants.

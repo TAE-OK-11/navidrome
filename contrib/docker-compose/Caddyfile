@@ -1,3 +1,7 @@
+# Caddy terminates TLS for HTTP/1.1 and HTTP/2 only. Navidrome HTTP/3 (QUIC) is
+# served directly by navidrome-h3 on UDP 4533 when ND_ENABLEHTTP3=true, so expose
+# 4533/udp on the navidrome service (see docker-compose-caddy.yml) and point
+# clients at that port for QUIC after Alt-Svc discovery over HTTPS.
 https://your.website {
   reverse_proxy * navidrome:4533 {
     header_up Host {http.reverse_proxy.upstream.hostport}

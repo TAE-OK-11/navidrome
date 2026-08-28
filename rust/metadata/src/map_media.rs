@@ -173,7 +173,10 @@ fn map_participants(
         "musicbrainz_albumartistid",
     );
     if album_artists.is_empty() {
-        album_artists.push(scan_artist(display_album_artist, "", ""));
+        album_artists.push(fallback_album_artist(
+            display_album_artist,
+            out.get("artist").map(Vec::as_slice).unwrap_or(&[]),
+        ));
     }
     out.insert("albumartist".to_owned(), album_artists);
 
@@ -246,6 +249,21 @@ fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
         mbz_artist_id: mbid.to_owned(),
         sub_role: String::new(),
     }
+}
+
+fn fallback_album_artist(display_album_artist: &str, artist_role: &[ScanArtist]) -> ScanArtist {
+    for artist in artist_role {
+        if artist.name == display_album_artist {
+            return ScanArtist {
+                name: display_album_artist.to_owned(),
+                sort_artist_name: artist.sort_artist_name.clone(),
+                order_artist_name: artist.order_artist_name.clone(),
+                mbz_artist_id: artist.mbz_artist_id.clone(),
+                sub_role: String::new(),
+            };
+        }
+    }
+    scan_artist(display_album_artist, "", "")
 }
 
 fn display_artist(tags: &HashMap<String, Vec<String>>) -> String {
@@ -533,6 +551,23 @@ mod tests {
         );
         let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
         assert!(json.contains(r#""artist":"Artist A • Artist B""#));
+    }
+
+    #[test]
+    fn inherits_artist_mbid_for_albumartist_fallback() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Help!".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Help!".to_owned()]);
+        tags.insert("artist".to_owned(), vec!["The Beatles".to_owned()]);
+        tags.insert("artistsort".to_owned(), vec!["Beatles, The".to_owned()]);
+        tags.insert(
+            "musicbrainz_artistid".to_owned(),
+            vec!["18220d3d-16d4-402f-95b3-cd08acb043f1".to_owned()],
+        );
+        let json = map_to_json(&tags, Path::new("music/help.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""mbzArtistId":"18220d3d-16d4-402f-95b3-cd08acb043f1""#));
+        assert!(json.contains(r#""sortArtistName":"Beatles, The""#));
+        assert!(json.contains(r#""albumartist""#));
     }
 
     #[test]

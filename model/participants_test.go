@@ -163,26 +163,6 @@ var _ = Describe("Participants", func() {
 					Artist{ID: "5", Name: "Producer", SortArtistName: "SortProducerName"},
 				))
 			})
-
-			It("merges tagged fields when the same artist appears in multiple roles", func() {
-				participants := Participants{
-					RoleAlbumArtist: []Participant{{Artist: Artist{ID: "shared", Name: "The Beatles"}}},
-					RoleArtist: []Participant{{Artist: Artist{
-						ID:             "shared",
-						Name:           "The Beatles",
-						MbzArtistID:    "mbid-beatles",
-						SortArtistName: "Beatles, The",
-					}}},
-				}
-				artists := participants.AllArtists()
-				Expect(artists).To(HaveLen(1))
-				Expect(artists[0]).To(Equal(Artist{
-					ID:             "shared",
-					Name:           "The Beatles",
-					MbzArtistID:    "mbid-beatles",
-					SortArtistName: "Beatles, The",
-				}))
-			})
 		})
 
 		Describe("AllIDs", func() {

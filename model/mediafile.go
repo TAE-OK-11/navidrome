@@ -88,6 +88,7 @@ type MediaFile struct {
 	RGAlbumPeak          *float64 `structs:"rg_album_peak" json:"rgAlbumPeak"`
 	RGTrackGain          *float64 `structs:"rg_track_gain" json:"rgTrackGain"`
 	RGTrackPeak          *float64 `structs:"rg_track_peak" json:"rgTrackPeak"`
+	SearchNormalized     string   `structs:"search_normalized" json:"-" hash:"ignore"`
 
 	Tags         Tags         `structs:"tags" json:"tags,omitempty" hash:"ignore"`       // All imported tags from the original file
 	Participants Participants `structs:"participants" json:"participants" hash:"ignore"` // All artists that participated in this track

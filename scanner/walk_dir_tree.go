@@ -25,35 +25,46 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 		results := make(chan *folderEntry)
 		go func() {
 			defer close(results)
-			folders, warnings, err := collectRustFolders(ctx, job, targetFolders)
-			if err != nil {
-				log.Error(ctx, "Rust filesystem traversal failed; falling back to Go walker",
-					"lib", job.lib.Name, "root", job.localRoot, err)
-				goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
-				if goErr != nil {
-					log.Error(ctx, "Go filesystem traversal failed", goErr)
-					return
-				}
-				for folder := range goResults {
+			folderCh, errCh := streamRustFolders(ctx, job, targetFolders)
+			for folderCh != nil || errCh != nil {
+				select {
+				case source, ok := <-folderCh:
+					if !ok {
+						folderCh = nil
+						continue
+					}
+					entry, convertErr := folderEntryFromRust(job, source)
+					if convertErr != nil {
+						log.Error(ctx, "Rust scanner returned invalid folder", convertErr)
+						return
+					}
 					select {
-					case results <- folder:
+					case results <- entry:
 					case <-ctx.Done():
 						return
 					}
-				}
-				return
-			}
-			for _, warning := range warnings {
-				log.Warn(ctx, "Rust scanner traversal warning", "warning", warning)
-			}
-			for _, source := range folders {
-				entry, convertErr := folderEntryFromRust(job, source)
-				if convertErr != nil {
-					log.Error(ctx, "Rust scanner returned invalid folder", convertErr)
-					return
-				}
-				select {
-				case results <- entry:
+				case err, ok := <-errCh:
+					if !ok {
+						errCh = nil
+						continue
+					}
+					if err != nil {
+						log.Error(ctx, "Rust filesystem traversal failed; falling back to Go walker",
+							"lib", job.lib.Name, "root", job.localRoot, err)
+						goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
+						if goErr != nil {
+							log.Error(ctx, "Go filesystem traversal failed", goErr)
+							return
+						}
+						for folder := range goResults {
+							select {
+							case results <- folder:
+							case <-ctx.Done():
+								return
+							}
+						}
+					}
+					errCh = nil
 				case <-ctx.Done():
 					return
 				}

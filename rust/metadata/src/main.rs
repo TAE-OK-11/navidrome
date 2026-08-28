@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use rayon::prelude::*;
 use lofty::aac::AacFile;
 use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, FileType, TaggedFile, TaggedFileExt};
@@ -52,6 +53,7 @@ struct Response {
 
 #[derive(Debug, Serialize)]
 struct Metadata {
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     tags: HashMap<String, Vec<String>>,
     file_info: FileInfo,
     duration_ns: u64,
@@ -251,13 +253,18 @@ fn handle_request(request: Request) -> Response {
         };
     }
 
-    for input in request.files {
-        match parse_file(&input.path) {
+    let parsed: Vec<(String, Result<Metadata>)> = request
+        .files
+        .par_iter()
+        .map(|input| (input.key.clone(), parse_file(&input.path)))
+        .collect();
+    for (key, outcome) in parsed {
+        match outcome {
             Ok(metadata) => {
-                results.insert(input.key, metadata);
+                results.insert(key, metadata);
             }
             Err(error) => {
-                errors.insert(input.key, format!("{error:#}"));
+                errors.insert(key, format!("{error:#}"));
             }
         }
     }

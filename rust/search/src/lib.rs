@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::path::Path;
+use std::sync::RwLock;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,7 @@ const MAX_RESULTS: usize = 500;
 const MAX_SEARCH_GROUPS: usize = 8;
 const MAX_QUERY_CHARS: usize = 256;
 const WRITER_MEMORY_BYTES: usize = 32 * 1024 * 1024;
+const MAX_NGRAM_CONJUNCTS: usize = 12;
 const NGRAM_TOKENIZER: &str = "navidrome_ngram";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,7 +133,7 @@ impl Engine {
         let secondary = schema.add_text_field("secondary", ngram_options);
         let schema = schema.build();
 
-        let index = Index::create_in_ram(schema);
+        let index = open_index(&schema)?;
         let analyzer = TextAnalyzer::builder(NgramTokenizer::new(2, 3, false)?)
             .filter(LowerCaser)
             .build();
@@ -383,6 +386,9 @@ impl Engine {
         if tokens.is_empty() {
             bail!("query produced no searchable n-grams");
         }
+        if tokens.len() > MAX_NGRAM_CONJUNCTS {
+            tokens.truncate(MAX_NGRAM_CONJUNCTS);
+        }
         let mut terms = Vec::with_capacity(tokens.len());
         for text in tokens {
             terms.push((
@@ -497,29 +503,30 @@ pub fn run() -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut output = BufWriter::with_capacity(64 * 1024, stdout.lock());
-    let mut engine: Option<Engine> = None;
+    let engine: RwLock<Option<Engine>> = RwLock::new(None);
 
     for line in BufReader::with_capacity(256 * 1024, stdin.lock()).lines() {
         let line = line.context("reading search request")?;
         if line.trim().is_empty() {
             continue;
         }
-        let indexed = engine.as_ref().map(|engine| engine.indexed).unwrap_or(0);
+        let indexed = engine
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|engine| engine.indexed))
+            .unwrap_or(0);
         let response = match serde_json::from_str::<Request>(&line) {
-            Ok(request) => match ensure_engine(&mut engine) {
-                Ok(engine) => handle_request(engine, request).unwrap_or_else(|error| Response {
-                    protocol: PROTOCOL_VERSION,
-                    ok: false,
-                    groups: Vec::new(),
-                    indexed: engine.indexed,
-                    error: Some(format!("{error:#}")),
-                    normalized: None,
-                }),
+            Ok(request) => match handle_request_locked(&engine, request) {
+                Ok(response) => response,
                 Err(error) => Response {
                     protocol: PROTOCOL_VERSION,
                     ok: false,
                     groups: Vec::new(),
-                    indexed,
+                    indexed: engine
+                        .read()
+                        .ok()
+                        .and_then(|guard| guard.as_ref().map(|engine| engine.indexed))
+                        .unwrap_or(indexed),
                     error: Some(format!("{error:#}")),
                     normalized: None,
                 },
@@ -540,37 +547,45 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn ensure_engine(engine: &mut Option<Engine>) -> Result<&mut Engine> {
-    if engine.is_none() {
-        *engine = Some(Engine::new()?);
+fn open_index(schema: &Schema) -> Result<Index> {
+    if let Ok(path) = std::env::var("NAVIDROME_SEARCH_INDEX_PATH") {
+        if !path.is_empty() {
+            let path = Path::new(&path);
+            std::fs::create_dir_all(path).with_context(|| format!("creating {}", path.display()))?;
+            if path.join("meta.json").is_file() {
+                return Index::open_in_dir(path).with_context(|| format!("opening {}", path.display()));
+            }
+            return Index::create_in_dir(path, schema.clone())
+                .with_context(|| format!("creating {}", path.display()));
+        }
     }
-    Ok(engine.as_mut().expect("engine initialized above"))
+    Ok(Index::create_in_ram(schema.clone()))
 }
 
-fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
+fn handle_request_locked(engine: &RwLock<Option<Engine>>, request: Request) -> Result<Response> {
+    let read_only = matches!(request, Request::SearchAll { .. } | Request::NormalizeFts { .. });
+    if read_only {
+        let guard = engine
+            .read()
+            .map_err(|error| anyhow::anyhow!("locking search engine for read: {error}"))?;
+        let engine = guard
+            .as_ref()
+            .context("search engine is not initialized")?;
+        return handle_read_request(engine, request);
+    }
+    let mut guard = engine
+        .write()
+        .map_err(|error| anyhow::anyhow!("locking search engine for write: {error}"))?;
+    if guard.is_none() {
+        *guard = Some(Engine::new()?);
+    }
+    let engine = guard.as_mut().expect("engine initialized above");
+    handle_request(engine, request)
+}
+
+fn handle_read_request(engine: &Engine, request: Request) -> Result<Response> {
     let mut groups = Vec::new();
     match request {
-        Request::BeginReplace => {
-            engine.begin_replace()?;
-        }
-        Request::Append { documents } => {
-            engine.append(documents)?;
-        }
-        Request::CommitReplace => {
-            engine.commit_replace()?;
-        }
-        Request::AbortReplace => {
-            engine.abort_replace()?;
-        }
-        Request::Upsert { documents } => {
-            engine.upsert(documents)?;
-        }
-        Request::Delete { keys } => {
-            engine.delete(keys)?;
-        }
-        Request::Commit => {
-            engine.commit()?;
-        }
         Request::SearchAll {
             query,
             library_ids,
@@ -608,6 +623,45 @@ fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
                 error: None,
                 normalized: Some(fts_normalize::normalize_for_fts(&values)),
             });
+        }
+        _ => bail!("unsupported read-only search request"),
+    }
+    Ok(Response {
+        protocol: PROTOCOL_VERSION,
+        ok: true,
+        groups,
+        indexed: engine.indexed,
+        error: None,
+        normalized: None,
+    })
+}
+
+fn handle_request(engine: &mut Engine, request: Request) -> Result<Response> {
+    let groups = Vec::new();
+    match request {
+        Request::BeginReplace => {
+            engine.begin_replace()?;
+        }
+        Request::Append { documents } => {
+            engine.append(documents)?;
+        }
+        Request::CommitReplace => {
+            engine.commit_replace()?;
+        }
+        Request::AbortReplace => {
+            engine.abort_replace()?;
+        }
+        Request::Upsert { documents } => {
+            engine.upsert(documents)?;
+        }
+        Request::Delete { keys } => {
+            engine.delete(keys)?;
+        }
+        Request::Commit => {
+            engine.commit()?;
+        }
+        Request::SearchAll { .. } | Request::NormalizeFts { .. } => {
+            bail!("read-only search requests must use handle_read_request");
         }
     }
     Ok(Response {
@@ -792,7 +846,7 @@ mod tests {
             document("artist:1", "artist-1", "artist", 2, "Blue Monday"),
         ])?;
 
-        let response = handle_request(&mut engine, Request::SearchAll {
+        let response = handle_read_request(&engine, Request::SearchAll {
             query: "Blue".to_owned(),
             library_ids: vec![1],
             searches: vec![

@@ -9,6 +9,8 @@ import (
 	"github.com/navidrome/navidrome/core/rustworker"
 )
 
+const maxNormalizeWorkers = 8
+
 type normalizeWorkerRequest struct {
 	Values []string `json:"values"`
 }
@@ -38,7 +40,7 @@ type normalizeWorkerPool struct {
 var persistentNormalizeWorkers = newNormalizeWorkerPool()
 
 func newNormalizeWorkerPool() *normalizeWorkerPool {
-	size := min(max(runtime.GOMAXPROCS(0)/2, 1), maxLyricsWorkers)
+	size := min(max(runtime.GOMAXPROCS(0), 1), maxNormalizeWorkers)
 	return &normalizeWorkerPool{
 		limit: make(chan struct{}, size),
 		idle:  make(chan *normalizeWorkerSlot, size),

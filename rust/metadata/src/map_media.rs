@@ -1,6 +1,6 @@
 //! Maps Lofty tag maps into scan-ready MediaFile JSON for the Go scanner hot path.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use serde::Serialize;
@@ -229,7 +229,13 @@ fn artists_from_tags(
                 mbids.and_then(|values| values.get(idx)).map(String::as_str).unwrap_or_default(),
             )
         })
-        .collect()
+        .fold(Vec::new(), |mut artists, artist| {
+            if artists.iter().any(|existing| existing.name == artist.name) {
+                return artists;
+            }
+            artists.push(artist);
+            artists
+        })
 }
 
 fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
@@ -243,27 +249,43 @@ fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
 }
 
 fn display_artist(tags: &HashMap<String, Vec<String>>) -> String {
-    let values = filtered_value_refs(tags, "artists");
+    let values = unique_non_empty_refs(filtered_value_refs(tags, "artists"));
     let values = if values.is_empty() {
-        filtered_value_refs(tags, "artist")
+        unique_non_empty_refs(filtered_value_refs(tags, "artist"))
     } else {
         values
     };
-    values.join("; ")
+    join_artists(&values)
 }
 
 fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
-    let values = filtered_value_refs(tags, "albumartists");
+    let values = unique_non_empty_refs(filtered_value_refs(tags, "albumartists"));
     let values = if values.is_empty() {
-        filtered_value_refs(tags, "albumartist")
+        unique_non_empty_refs(filtered_value_refs(tags, "albumartist"))
     } else {
         values
     };
-    let joined = values.join("; ");
+    let joined = join_artists(&values);
     if !joined.is_empty() {
         return joined;
     }
     display_artist(tags)
+}
+
+fn join_artists(values: &[&str]) -> String {
+    values.join(" • ")
+}
+
+fn unique_non_empty_refs(values: Vec<&str>) -> Vec<&str> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for value in values {
+        if value.is_empty() || !seen.insert(value) {
+            continue;
+        }
+        out.push(value);
+    }
+    out
 }
 
 fn filtered_value_refs<'a>(tags: &'a HashMap<String, Vec<String>>, key: &str) -> Vec<&'a str> {
@@ -472,6 +494,45 @@ mod tests {
         tags.insert("originaldate".to_owned(), vec!["2019-02-10".to_owned()]);
         let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
         assert!(json.contains(r#""releaseDate":"2020-05-15""#));
+    }
+
+    #[test]
+    fn deduplicates_repeated_artist_values() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert(
+            "artist".to_owned(),
+            vec!["Taylor Swift".to_owned(), "Taylor Swift".to_owned()],
+        );
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""artist":"Taylor Swift""#));
+        assert!(!json.contains("Taylor Swift; Taylor Swift"));
+        assert!(!json.contains("Taylor Swift • Taylor Swift"));
+    }
+
+    #[test]
+    fn prefers_plural_artist_tags_without_duplicating_singular() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("artist".to_owned(), vec!["Taylor Swift".to_owned()]);
+        tags.insert("artists".to_owned(), vec!["Taylor Swift".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""artist":"Taylor Swift""#));
+    }
+
+    #[test]
+    fn joins_multiple_artists_with_nav_joiner() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert(
+            "artists".to_owned(),
+            vec!["Artist A".to_owned(), "Artist B".to_owned()],
+        );
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""artist":"Artist A • Artist B""#));
     }
 
     #[test]

@@ -8,7 +8,7 @@ import {
   useSidebarState,
 } from 'react-admin'
 import { styled } from '@mui/material/styles'
-import { HotKeys } from 'react-hotkeys'
+import { useAppHotkey } from '../hooks/useAppHotkey'
 import Menu from './Menu'
 import AppBar from './AppBar'
 import Notification from './Notification'
@@ -50,17 +50,17 @@ const Layout = (props) => {
     [sidebarOpen, setSidebarOpen],
   )
 
+  useAppHotkey('TOGGLE_MENU', toggleMenu)
+
   return (
-    <HotKeys handlers={{ TOGGLE_MENU: toggleMenu }}>
-      <StyledLayout
-        {...props}
-        addPadding={queue.length > 0}
-        menu={Menu}
-        appBar={AppBar}
-        error={ClientError}
-        notification={Notification}
-      />
-    </HotKeys>
+    <StyledLayout
+      {...props}
+      addPadding={queue.length > 0}
+      menu={Menu}
+      appBar={AppBar}
+      error={ClientError}
+      notification={Notification}
+    />
   )
 }
 

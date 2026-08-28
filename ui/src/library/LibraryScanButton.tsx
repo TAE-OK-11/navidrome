@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import PropTypes from 'prop-types'
 import {
   Button,
   useNotify,
@@ -77,12 +76,6 @@ const LibraryScanButton = ({
       {icon}
     </Button>
   )
-}
-
-LibraryScanButton.propTypes = {
-  fullScan: PropTypes.bool.isRequired,
-  selectedIds: PropTypes.array,
-  className: PropTypes.string,
 }
 
 export default LibraryScanButton

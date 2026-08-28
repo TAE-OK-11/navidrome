@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useEffect } from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch, useSelector } from 'react-redux'
 import { setOmittedFields, setToggleableFields } from '../actions'
 
@@ -72,13 +71,6 @@ export const useSelectedFields = ({
   return React.Children.toArray(filteredComponents)
 }
 
-useSelectedFields.propTypes = {
-  resource: PropTypes.string,
-  columns: PropTypes.object,
-  omittedColumns: PropTypes.arrayOf(PropTypes.string),
-  defaultOff: PropTypes.arrayOf(PropTypes.string),
-}
-
 export const useSetToggleableFields = (
   resource,
   toggleableColumns,
@@ -101,10 +93,4 @@ export const useSetToggleableFields = (
       dispatch(setOmittedFields({ [resource]: defaultOff }))
     }
   }, [resource, toggleableColumns, dispatch, current, defaultOff])
-}
-
-useSetToggleableFields.propTypes = {
-  resource: PropTypes.string,
-  toggleableColumns: PropTypes.arrayOf(PropTypes.string),
-  defaultOff: PropTypes.arrayOf(PropTypes.string),
 }

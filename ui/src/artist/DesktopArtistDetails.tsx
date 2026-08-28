@@ -12,7 +12,7 @@ import {
   ImageUploadOverlay,
   useImageLoadingState,
 } from '../common'
-import Lightbox from 'react-image-lightbox'
+import ImageLightbox from '../common/ImageLightbox'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import AlbumInfo from '../album/AlbumInfo'
 import subsonic from '../subsonic'
@@ -158,15 +158,12 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
             )}
           </Typography>
         </Box>
-        {isLightboxOpen && !imageError && (
-          <Lightbox
-            imagePadding={50}
-            animationDuration={200}
-            imageTitle={record.name}
-            mainSrc={subsonic.getCoverArtUrl(record)}
-            onCloseRequest={handleCloseLightbox}
-          />
-        )}
+        <ImageLightbox
+          open={isLightboxOpen && !imageError}
+          imageUrl={subsonic.getCoverArtUrl(record)}
+          title={record.name}
+          onClose={handleCloseLightbox}
+        />
       </Card>
       <ExpandInfoDialog content={<AlbumInfo />} />
     </Box>

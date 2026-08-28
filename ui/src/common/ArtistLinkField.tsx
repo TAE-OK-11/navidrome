@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { Link, useRecordContext } from 'react-admin'
 import { useGetHandleArtistClick } from './useGetHandleArtistClick'
 import { intersperse } from '../utils/index'
@@ -166,11 +165,4 @@ export const ArtistLinkField = ({
   }
 
   return <>{intersperse(artistsList, ' • ')}</>
-}
-
-ArtistLinkField.propTypes = {
-  limit: PropTypes.number,
-  record: PropTypes.object,
-  className: PropTypes.string,
-  source: PropTypes.string,
 }

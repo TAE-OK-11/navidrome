@@ -3,7 +3,6 @@ import { Button, useDataProvider, useNotify, useTranslate } from 'react-admin'
 import { useDispatch } from 'react-redux'
 import ShuffleIcon from '@mui/icons-material/Shuffle'
 import { playTracks } from '../actions'
-import PropTypes from 'prop-types'
 
 type ShuffleAllButtonProps = {
   filters?: Record<string, unknown>
@@ -43,8 +42,4 @@ export const ShuffleAllButton = ({ filters = {} }: ShuffleAllButtonProps) => {
       <ShuffleIcon />
     </Button>
   )
-}
-
-ShuffleAllButton.propTypes = {
-  filters: PropTypes.object,
 }

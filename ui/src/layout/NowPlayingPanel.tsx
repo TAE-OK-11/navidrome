@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import PropTypes from 'prop-types'
 import { useSelector, useDispatch } from 'react-redux'
 import { useTranslate, Link, useNotify } from 'react-admin'
 import {
@@ -64,11 +63,6 @@ const NowPlayingButton = React.memo(({ count, onClick }) => {
 })
 
 NowPlayingButton.displayName = 'NowPlayingButton'
-
-NowPlayingButton.propTypes = {
-  count: PropTypes.number.isRequired,
-  onClick: PropTypes.func.isRequired,
-}
 
 const NowPlayingItem = React.memo(
   ({ nowPlayingEntry, onLinkClick, getArtistLink, now }) => {
@@ -247,29 +241,6 @@ const NowPlayingItem = React.memo(
 
 NowPlayingItem.displayName = 'NowPlayingItem'
 
-NowPlayingItem.propTypes = {
-  nowPlayingEntry: PropTypes.shape({
-    playerId: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
-      .isRequired,
-    albumId: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
-      .isRequired,
-    albumArtistId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    artistId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    albumArtist: PropTypes.string,
-    artist: PropTypes.string,
-    title: PropTypes.string.isRequired,
-    username: PropTypes.string.isRequired,
-    playerName: PropTypes.string,
-    album: PropTypes.string,
-    state: PropTypes.string,
-    positionMs: PropTypes.number,
-    duration: PropTypes.number,
-  }).isRequired,
-  onLinkClick: PropTypes.func.isRequired,
-  getArtistLink: PropTypes.func.isRequired,
-  now: PropTypes.number.isRequired,
-}
-
 // NowPlayingList component - handles the popover content
 const NowPlayingList = React.memo(
   ({ anchorEl, open, onClose, entries, onLinkClick, getArtistLink, now }) => {
@@ -324,16 +295,6 @@ const NowPlayingList = React.memo(
 )
 
 NowPlayingList.displayName = 'NowPlayingList'
-
-NowPlayingList.propTypes = {
-  anchorEl: PropTypes.object,
-  open: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-  entries: PropTypes.arrayOf(PropTypes.object).isRequired,
-  onLinkClick: PropTypes.func.isRequired,
-  getArtistLink: PropTypes.func.isRequired,
-  now: PropTypes.number.isRequired,
-}
 
 // Main NowPlayingPanel component
 const NowPlayingPanel = () => {
@@ -462,7 +423,5 @@ const NowPlayingPanel = () => {
     </Box>
   )
 }
-
-NowPlayingPanel.propTypes = {}
 
 export default NowPlayingPanel

@@ -6,4 +6,4 @@ publish = false
 
 [dependencies]
 deunicode = "1.6.2"
-regex = "1.11.1"
+regex = "1.13.1"

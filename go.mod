@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/andybalholm/brotli v1.2.2
+	github.com/andybalholm/brotli v1.2.3
 	github.com/andybalholm/cascadia v1.3.4
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/deluan/rest v0.0.0-20211102003136-6260bc399cbf
@@ -41,7 +41,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mileusna/useragent v1.3.5
 	github.com/onsi/ginkgo/v2 v2.32.1
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/gomega v1.43.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/pocketbase/dbx v1.12.0
@@ -51,7 +51,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	github.com/sirupsen/logrus v1.10.1
+	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1

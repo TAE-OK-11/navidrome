@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types'
 import React from 'react'
 import { usePermissions, useRecordContext } from 'react-admin'
 import config from '../config'
@@ -28,8 +27,4 @@ export const PathField = (props: PathFieldProps) => {
   }
 
   return <span>{path}</span>
-}
-
-PathField.propTypes = {
-  record: PropTypes.object,
 }

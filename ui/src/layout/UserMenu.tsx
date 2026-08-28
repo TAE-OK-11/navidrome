@@ -7,7 +7,6 @@ import {
   useEffect,
   useState,
 } from 'react'
-import PropTypes from 'prop-types'
 import { useTranslate, useGetIdentity } from 'react-admin'
 import {
   Tooltip,
@@ -119,12 +118,6 @@ const UserMenu = ({
       </Popover>
     </Box>
   )
-}
-
-UserMenu.propTypes = {
-  children: PropTypes.node,
-  label: PropTypes.string,
-  icon: PropTypes.node,
 }
 
 export default UserMenu

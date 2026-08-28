@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Button } from '@mui/material'
-import PropTypes from 'prop-types'
 import React, { useCallback } from 'react'
 import { useRecordContext } from 'react-admin'
 import { useDispatch } from 'react-redux'
@@ -29,12 +28,6 @@ export const StreamField = (props) => {
       <PlayArrowIcon />
     </Button>
   )
-}
-
-StreamField.propTypes = {
-  label: PropTypes.string,
-  record: PropTypes.object,
-  source: PropTypes.string.isRequired,
 }
 
 StreamField.defaultProps = {

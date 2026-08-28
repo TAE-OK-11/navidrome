@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import Avatar from '@mui/material/Avatar'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -146,27 +145,4 @@ export const SimpleList = ({
       </List>
     )
   )
-}
-
-SimpleList.propTypes = {
-  basePath: PropTypes.string,
-  className: PropTypes.string,
-  classes: PropTypes.object,
-  data: PropTypes.object,
-  hasBulkActions: PropTypes.bool.isRequired,
-  ids: PropTypes.array,
-  leftAvatar: PropTypes.func,
-  leftIcon: PropTypes.func,
-  linkType: PropTypes.oneOfType([
-    PropTypes.string,
-    PropTypes.bool,
-    PropTypes.func,
-  ]).isRequired,
-  onToggleItem: PropTypes.func,
-  primaryText: PropTypes.func,
-  rightAvatar: PropTypes.func,
-  rightIcon: PropTypes.func,
-  secondaryText: PropTypes.func,
-  selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
-  tertiaryText: PropTypes.func,
 }

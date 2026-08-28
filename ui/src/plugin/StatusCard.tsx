@@ -1,5 +1,4 @@
 import React from 'react'
-import PropTypes from 'prop-types'
 import { Card, CardContent, Typography } from '@mui/material'
 import ToggleEnabledSwitch from './ToggleEnabledSwitch'
 
@@ -14,10 +13,4 @@ export const StatusCard = ({ classes, translate, manifest }) => {
       </CardContent>
     </Card>
   )
-}
-
-StatusCard.propTypes = {
-  classes: PropTypes.object.isRequired,
-  translate: PropTypes.func.isRequired,
-  manifest: PropTypes.object,
 }

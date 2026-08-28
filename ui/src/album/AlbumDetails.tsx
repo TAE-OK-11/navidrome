@@ -17,9 +17,8 @@ import {
   useRecordContext,
   useTranslate,
 } from 'react-admin'
-import Lightbox from 'react-image-lightbox'
+import ImageLightbox from '../common/ImageLightbox'
 import config from '../config'
-import 'react-image-lightbox/style.css'
 import subsonic from '../subsonic'
 import {
   ArtistLinkField,
@@ -395,15 +394,12 @@ const AlbumDetails = (props) => {
           </Collapse>
         </Box>
       )}
-      {isLightboxOpen && !imageError && (
-        <Lightbox
-          imagePadding={50}
-          animationDuration={200}
-          imageTitle={record.name}
-          mainSrc={fullImageUrl}
-          onCloseRequest={handleCloseLightbox}
-        />
-      )}
+      <ImageLightbox
+        open={isLightboxOpen && !imageError}
+        imageUrl={fullImageUrl}
+        title={record.name}
+        onClose={handleCloseLightbox}
+      />
     </Card>
   )
 }

@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { useSelector } from 'react-redux'
 import { FunctionField, useRecordContext } from 'react-admin'
 import Box from '@mui/material/Box'
@@ -78,9 +77,4 @@ export const SongTitleField = ({
       />
     </>
   )
-}
-
-SongTitleField.propTypes = {
-  record: PropTypes.object,
-  showTrackNumbers: PropTypes.bool,
 }

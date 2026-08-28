@@ -16,7 +16,6 @@ import CheckBoxIcon from '@mui/icons-material/CheckBox'
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import Alert from '@mui/material/Alert'
 import { useGetList, useTranslate } from 'react-admin'
-import PropTypes from 'prop-types'
 
 export const UsersPermissionCard = ({
   manifest,
@@ -160,13 +159,4 @@ export const UsersPermissionCard = ({
       </CardContent>
     </Card>
   )
-}
-
-UsersPermissionCard.propTypes = {
-  manifest: PropTypes.object,
-  classes: PropTypes.object.isRequired,
-  selectedUsers: PropTypes.array.isRequired,
-  allUsers: PropTypes.bool.isRequired,
-  onSelectedUsersChange: PropTypes.func.isRequired,
-  onAllUsersChange: PropTypes.func.isRequired,
 }

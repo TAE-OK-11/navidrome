@@ -2,13 +2,13 @@
 import React, { useCallback } from 'react'
 import { useDispatch } from 'react-redux'
 import { useGetOne } from 'react-admin'
-import { GlobalHotKeys } from 'react-hotkeys'
 import IconButton from '@mui/material/IconButton'
 import { Box, useMediaQuery } from '@mui/material'
 import { RiSaveLine } from 'react-icons/ri'
 import { LoveButton, useToggleLove } from '../common'
 import { openSaveQueueDialog } from '../actions'
-import { keyMap } from '../hotkeys'
+import { useAppHotkey } from '../hooks/useAppHotkey'
+import config from '../config'
 
 const desktopItemSx = {
   display: 'flex',
@@ -61,9 +61,11 @@ const PlayerToolbar = ({ id, isRadio }) => {
   const [toggleLove, toggling] = useToggleLove('song', data)
   const isDesktop = useMediaQuery('(min-width:810px)')
 
-  const handlers = {
-    TOGGLE_LOVE: useCallback(() => toggleLove(), [toggleLove]),
-  }
+  useAppHotkey(
+    'TOGGLE_LOVE',
+    useCallback(() => toggleLove(), [toggleLove]),
+    { enabled: config.enableFavourites },
+  )
 
   const handleSaveQueue = useCallback(
     (e) => {
@@ -99,24 +101,19 @@ const PlayerToolbar = ({ id, isRadio }) => {
     />
   )
 
-  return (
+  return isDesktop ? (
+    <Box component="li" className="toolbar item" sx={desktopItemSx}>
+      {saveQueueButton}
+      {loveButton}
+    </Box>
+  ) : (
     <>
-      <GlobalHotKeys keyMap={keyMap} handlers={handlers} allowChanges />
-      {isDesktop ? (
-        <Box component="li" className="toolbar item" sx={desktopItemSx}>
-          {saveQueueButton}
-          {loveButton}
-        </Box>
-      ) : (
-        <>
-          <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
-            {saveQueueButton}
-          </Box>
-          <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
-            {loveButton}
-          </Box>
-        </>
-      )}
+      <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
+        {saveQueueButton}
+      </Box>
+      <Box component="li" className="mobileListItem item" sx={mobileItemSx}>
+        {loveButton}
+      </Box>
     </>
   )
 }

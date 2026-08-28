@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemAvatar from '@mui/material/ListItemAvatar'
@@ -70,15 +69,6 @@ const ArtistSimpleList = ({
       </List>
     )
   )
-}
-
-ArtistSimpleList.propTypes = {
-  className: PropTypes.string,
-  classes: PropTypes.object,
-  data: PropTypes.object,
-  hasBulkActions: PropTypes.bool.isRequired,
-  ids: PropTypes.array,
-  selectedIds: PropTypes.arrayOf(PropTypes.any).isRequired,
 }
 
 export default ArtistSimpleList

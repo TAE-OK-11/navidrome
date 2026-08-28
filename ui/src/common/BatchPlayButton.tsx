@@ -1,5 +1,4 @@
 import React from 'react'
-import PropTypes from 'prop-types'
 import {
   Button,
   useDataProvider,
@@ -52,10 +51,4 @@ export const BatchPlayButton = ({
       {icon}
     </Button>
   )
-}
-
-BatchPlayButton.propTypes = {
-  action: PropTypes.func.isRequired,
-  label: PropTypes.string.isRequired,
-  icon: PropTypes.object.isRequired,
 }

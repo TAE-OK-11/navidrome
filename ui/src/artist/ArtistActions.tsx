@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import { useMediaQuery, CircularProgress } from '@mui/material'
 import {
@@ -170,11 +169,6 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
       )}
     </TopToolbar>
   )
-}
-
-ArtistActions.propTypes = {
-  className: PropTypes.string,
-  record: PropTypes.object.isRequired,
 }
 
 export default ArtistActions

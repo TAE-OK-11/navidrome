@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
-import PropTypes from 'prop-types'
 import Rating from '@mui/material/Rating'
 import { isDateSet } from '../utils/validations'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
@@ -62,10 +61,4 @@ export const RatingField = ({
       />
     </span>
   )
-}
-RatingField.propTypes = {
-  resource: PropTypes.string.isRequired,
-  record: PropTypes.object,
-  visible: PropTypes.bool,
-  size: PropTypes.string,
 }

@@ -27,7 +27,6 @@ import {
   openShareMenu,
 } from '../actions'
 import { M3U_MIME_TYPE, REST_URL } from '../consts'
-import PropTypes from 'prop-types'
 import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
@@ -162,11 +161,6 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
       </Box>
     </TopToolbar>
   )
-}
-
-PlaylistActions.propTypes = {
-  record: PropTypes.object.isRequired,
-  selectedIds: PropTypes.arrayOf(PropTypes.number),
 }
 
 export default PlaylistActions

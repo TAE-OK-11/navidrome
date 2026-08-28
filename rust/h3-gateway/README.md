@@ -55,6 +55,22 @@ cover requests arriving through H3. When the companion is unavailable,
 H1/H2 stay up and emit `Alt-Svc: clear`; unexpected companion exits are
 restarted with bounded exponential backoff.
 
+## Docker and reverse proxies
+
+`Dockerfile.jbs` exposes both `4533/tcp` and `4533/udp`. HTTP/3 clients connect
+to the **UDP** port on the same number as HTTPS; the Rust companion terminates
+QUIC there. The internal HTTP/2 bridge to Go is not visible on the public
+network.
+
+When using Caddy, Traefik, or nginx in front of Navidrome:
+
+- Map **TCP** for HTTPS (H1/H2) through the proxy as usual.
+- Map **UDP 4533** directly to Navidrome (or disable `EnableHTTP3` and let the
+  proxy own HTTP/3). A TCP-only reverse proxy cannot carry QUIC.
+
+The `contrib/docker-compose/` examples publish both `4533/tcp` and `4533/udp`
+on the navidrome service for direct H3 access alongside proxied H1/H2.
+
 ## Validation and rollout
 
 The Rust unit tests cover header sanitization, CONNECT detection, congestion

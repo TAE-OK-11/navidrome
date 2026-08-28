@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
-import PropTypes from 'prop-types'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import IconButton from '@mui/material/IconButton'
@@ -68,14 +67,4 @@ export const LoveButton = ({
       )}
     </Button>
   )
-}
-
-LoveButton.propTypes = {
-  resource: PropTypes.string.isRequired,
-  record: PropTypes.object,
-  visible: PropTypes.bool,
-  color: PropTypes.string,
-  size: PropTypes.string,
-  component: PropTypes.object,
-  disabled: PropTypes.bool,
 }

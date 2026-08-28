@@ -411,7 +411,7 @@ impl<'a> TtmlParser<'a> {
                     }
                 }
                 Event::Text(text) => {
-                    let raw = text.unescape().ok()?.into_owned();
+                    let raw = text.into_inner().into_owned();
                     pieces.push(Piece {
                         raw,
                         cue: None,
@@ -419,7 +419,7 @@ impl<'a> TtmlParser<'a> {
                     });
                 }
                 Event::CData(text) => {
-                    let raw = text.decode().ok()?.into_owned();
+                    let raw = text.into_inner().into_owned();
                     pieces.push(Piece {
                         raw,
                         cue: None,
@@ -503,7 +503,7 @@ impl<'a> TtmlParser<'a> {
                     return Some(pieces);
                 }
                 Event::Text(text) => {
-                    let raw = text.unescape().ok()?.into_owned();
+                    let raw = text.into_inner().into_owned();
                     pieces.push(Piece {
                         raw,
                         cue: None,
@@ -511,7 +511,7 @@ impl<'a> TtmlParser<'a> {
                     });
                 }
                 Event::CData(text) => {
-                    let raw = text.decode().ok()?.into_owned();
+                    let raw = text.into_inner().into_owned();
                     pieces.push(Piece {
                         raw,
                         cue: None,
@@ -539,10 +539,10 @@ impl<'a> TtmlParser<'a> {
                     }
                 }
                 Event::Text(t) => {
-                    text.push_str(&t.unescape().ok()?.into_owned());
+                    text.push_str(&t.into_inner().into_owned());
                 }
                 Event::CData(t) => {
-                    text.push_str(&t.decode().ok()?.into_owned());
+                    text.push_str(&t.into_inner().into_owned());
                 }
                 Event::Eof => return None,
                 _ => {}
@@ -1413,10 +1413,7 @@ fn attr_value(start: &BytesStart<'_>, key: &str) -> Option<String> {
     for attr in start.attributes().flatten() {
         let local = local_name(attr.key.as_ref());
         if local.eq_ignore_ascii_case(key) {
-            return attr
-                .unescape_value()
-                .ok()
-                .map(|v| v.trim().to_owned());
+            return Some(attr.value.trim().to_owned());
         }
     }
     None
@@ -1426,12 +1423,11 @@ fn attr_or_empty(start: &BytesStart<'_>, key: &str) -> String {
     attr_value(start, key).unwrap_or_default()
 }
 
-fn local_name(qname: &[u8]) -> String {
-    let name = std::str::from_utf8(qname).unwrap_or_default();
-    name.rsplit(':').next().unwrap_or(name).to_ascii_lowercase()
+fn local_name(qname: &str) -> String {
+    qname.rsplit(':').next().unwrap_or(qname).to_ascii_lowercase()
 }
 
-fn names_match(end: &[u8], start: &[u8]) -> bool {
+fn names_match(end: &str, start: &str) -> bool {
     local_name(end) == local_name(start)
 }
 

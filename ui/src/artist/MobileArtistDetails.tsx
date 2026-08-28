@@ -10,7 +10,7 @@ import {
   ImageUploadOverlay,
   useImageLoadingState,
 } from '../common'
-import Lightbox from 'react-image-lightbox'
+import ImageLightbox from '../common/ImageLightbox'
 import subsonic from '../subsonic'
 import { SafeHTML } from '../common/SafeHTML'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
@@ -165,15 +165,12 @@ const MobileArtistDetails = ({ artistInfo, biography, record }) => {
           </Typography>
         </Collapse>
       </Box>
-      {isLightboxOpen && !imageError && (
-        <Lightbox
-          imagePadding={50}
-          animationDuration={200}
-          imageTitle={record.name}
-          mainSrc={img}
-          onCloseRequest={handleCloseLightbox}
-        />
-      )}
+      <ImageLightbox
+        open={isLightboxOpen && !imageError}
+        imageUrl={img}
+        title={record.name}
+        onClose={handleCloseLightbox}
+      />
     </>
   )
 }

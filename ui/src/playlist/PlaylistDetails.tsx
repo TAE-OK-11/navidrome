@@ -8,8 +8,7 @@ import {
   Box,
 } from '@mui/material'
 import { useTranslate } from 'react-admin'
-import Lightbox from 'react-image-lightbox'
-import 'react-image-lightbox/style.css'
+import ImageLightbox from '../common/ImageLightbox'
 import {
   CollapsibleComment,
   DurationField,
@@ -179,15 +178,12 @@ const PlaylistDetails = (props) => {
           </CardContent>
         </Box>
       </Box>
-      {isLightboxOpen && !imageError && (
-        <Lightbox
-          imagePadding={50}
-          animationDuration={200}
-          imageTitle={record.name}
-          mainSrc={fullImageUrl}
-          onCloseRequest={handleCloseLightbox}
-        />
-      )}
+      <ImageLightbox
+        open={isLightboxOpen && !imageError}
+        imageUrl={fullImageUrl}
+        title={record.name}
+        onClose={handleCloseLightbox}
+      />
     </Card>
   )
 }

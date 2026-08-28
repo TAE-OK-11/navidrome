@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useCallback } from 'react'
-import PropTypes from 'prop-types'
 import { Field, Form } from 'react-final-form'
 import { useDispatch } from 'react-redux'
 import { useLocation } from 'react-router-dom'
@@ -389,11 +388,6 @@ const Login = () => {
       loading={loading}
     />
   )
-}
-
-Login.propTypes = {
-  authProvider: PropTypes.func,
-  previousRoute: PropTypes.string,
 }
 
 // Keep the login tree under the selected theme so its sx callbacks resolve

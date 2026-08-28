@@ -29,6 +29,7 @@ var _ = Describe("AlbumRepository", func() {
 			album, err := albumRepo.Get(id)
 			if album != nil {
 				album.ImportedAt = time.Time{}
+				album.SearchNormalized = ""
 			}
 			return album, err
 		}
@@ -72,6 +73,7 @@ var _ = Describe("AlbumRepository", func() {
 			albums, err := albumRepo.GetAll(opts...)
 			for i := range albums {
 				albums[i].ImportedAt = time.Time{}
+				albums[i].SearchNormalized = ""
 			}
 			return albums, err
 		}

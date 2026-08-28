@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
-import PropTypes from 'prop-types'
 import { JsonForms } from '@jsonforms/react'
 import { materialRenderers, materialCells } from '@jsonforms/material-renderers'
 import { Box, Typography } from '@mui/material'
@@ -31,11 +30,6 @@ class SchemaErrorBoundary extends React.Component {
     }
     return this.props.children
   }
-}
-
-SchemaErrorBoundary.propTypes = {
-  children: PropTypes.node.isRequired,
-  fallback: PropTypes.func.isRequired,
 }
 
 // Custom AJV instance that fixes "required" error paths for JSONForms.
@@ -244,12 +238,4 @@ export const SchemaConfigEditor = ({
       </SchemaErrorBoundary>
     </Box>
   )
-}
-
-SchemaConfigEditor.propTypes = {
-  schema: PropTypes.object,
-  uiSchema: PropTypes.object,
-  data: PropTypes.object,
-  onChange: PropTypes.func,
-  readOnly: PropTypes.bool,
 }

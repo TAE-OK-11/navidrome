@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import PropTypes from 'prop-types'
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
@@ -93,10 +92,4 @@ export const ToggleFieldsMenu = ({
       </Menu>
     </Box>
   )
-}
-
-ToggleFieldsMenu.propTypes = {
-  resource: PropTypes.string.isRequired,
-  topbarComponent: PropTypes.elementType,
-  hideColumns: PropTypes.bool,
 }

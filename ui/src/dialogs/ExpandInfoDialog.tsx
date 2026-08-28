@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch, useSelector } from 'react-redux'
 import { RecordContextProvider, useTranslate } from 'react-admin'
 import {
@@ -47,11 +46,6 @@ const ExpandInfoDialog = ({ title, content }) => {
       </DialogActions>
     </Dialog>
   )
-}
-
-ExpandInfoDialog.propTypes = {
-  title: PropTypes.string,
-  content: PropTypes.object.isRequired,
 }
 
 export default ExpandInfoDialog

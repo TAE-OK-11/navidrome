@@ -10,7 +10,7 @@ import {
 } from '@mui/material/styles'
 import { useAuthState, useDataProvider, useTranslate } from 'react-admin'
 import ReactGA from 'react-ga4'
-import { GlobalHotKeys } from 'react-hotkeys'
+import { useAppHotkey } from '../hooks/useAppHotkey'
 import ReactJkMusicPlayer from 'navidrome-music-player'
 import 'navidrome-music-player/assets/index.css'
 import useCurrentTheme from '../themes/useCurrentTheme'
@@ -29,7 +29,6 @@ import PlayerToolbar from './PlayerToolbar'
 import { sendNotification } from '../utils'
 import subsonic from '../subsonic'
 import locale from './locale'
-import { keyMap } from '../hotkeys'
 import keyHandlers from './keyHandlers'
 import { calculateGain } from '../utils/calculateReplayGain'
 import { detectBrowserProfile, decisionService } from '../transcode'
@@ -447,6 +446,13 @@ const Player = () => {
     [audioInstance, playerQueue, playerCurrent],
   )
 
+  useAppHotkey('TOGGLE_PLAY', handlers.TOGGLE_PLAY)
+  useAppHotkey('VOL_UP', handlers.VOL_UP)
+  useAppHotkey('VOL_DOWN', handlers.VOL_DOWN)
+  useAppHotkey('PREV_SONG', handlers.PREV_SONG)
+  useAppHotkey('NEXT_SONG', handlers.NEXT_SONG)
+  useAppHotkey('CURRENT_SONG', handlers.CURRENT_SONG)
+
   useEffect(() => {
     if (isMobilePlayer && audioInstance) {
       audioInstance.volume = 1
@@ -556,7 +562,6 @@ const Player = () => {
             getAudioInstance={setAudioInstance}
           />
         </Box>
-        <GlobalHotKeys handlers={handlers} keyMap={keyMap} allowChanges />
       </ThemeProvider>
       )
     </StyledEngineProvider>

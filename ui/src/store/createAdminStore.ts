@@ -4,7 +4,7 @@ import {
   compose,
   legacy_createStore as createStore,
 } from 'redux'
-import throttle from 'lodash.throttle'
+import throttle from '../utils/throttle'
 import { loadState, saveState } from './persistState'
 
 const createAdminStore = ({ customReducers = {} }) => {

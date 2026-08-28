@@ -1,5 +1,4 @@
 import React from 'react'
-import PropTypes from 'prop-types'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { IconButton } from '@mui/material'
 import type { IconButtonProps } from '@mui/material'
@@ -67,10 +66,4 @@ export const PlayButton = ({
       <PlayArrowIcon fontSize={size} />
     </IconButton>
   )
-}
-
-PlayButton.propTypes = {
-  record: PropTypes.object.isRequired,
-  size: PropTypes.string,
-  className: PropTypes.string,
 }

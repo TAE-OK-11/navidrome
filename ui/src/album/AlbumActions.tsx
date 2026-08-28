@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import {
   Button,
@@ -138,11 +137,6 @@ const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
       </Box>
     </TopToolbar>
   )
-}
-
-AlbumActions.propTypes = {
-  record: PropTypes.object.isRequired,
-  selectedIds: PropTypes.arrayOf(PropTypes.number),
 }
 
 export default AlbumActions

@@ -1,7 +1,6 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useMemo } from 'react'
 import { Link } from '@mui/material'
-import PropTypes from 'prop-types'
 
 const Linkify = ({ text, ...rest }) => {
   const linkify = useCallback((text) => {
@@ -51,10 +50,6 @@ const Linkify = ({ text, ...rest }) => {
   const parsedText = useMemo(() => parse(), [parse])
 
   return <>{parsedText}</>
-}
-
-Linkify.propTypes = {
-  text: PropTypes.string,
 }
 
 export default React.memo(Linkify)

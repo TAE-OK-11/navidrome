@@ -4,7 +4,7 @@ import ReactGA from 'react-ga4'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
 import { createTheme } from '@mui/material/styles'
-import { HotKeys } from 'react-hotkeys'
+import { DndProvider } from 'react-dnd'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
 import { Layout, Login } from './layout'
@@ -40,12 +40,10 @@ import {
 import createAdminStore from './store/createAdminStore'
 import { i18nProvider } from './i18n'
 import config, { shareInfo } from './config'
-import { keyMap } from './hotkeys'
 import useChangeThemeColor from './useChangeThemeColor'
 import useCurrentTheme from './themes/useCurrentTheme'
 import SharePlayer from './share/SharePlayer'
 import { HTML5Backend } from 'react-dnd-html5-backend'
-import { DndProvider } from 'react-dnd'
 import missing from './missing/index'
 import ClientError from './layout/ClientError'
 import modernizeTheme from './themes/modernizeTheme'
@@ -181,11 +179,9 @@ const AppWithHotkeys = () => {
     return <SharePlayer />
   }
   return (
-    <HotKeys keyMap={keyMap}>
-      <DndProvider backend={HTML5Backend}>
-        <App />
-      </DndProvider>
-    </HotKeys>
+    <DndProvider backend={HTML5Backend}>
+      <App />
+    </DndProvider>
   )
 }
 

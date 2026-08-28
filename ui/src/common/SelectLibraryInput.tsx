@@ -12,7 +12,6 @@ import {
   Box,
 } from '@mui/material'
 import { useGetList, useTranslate } from 'react-admin'
-import PropTypes from 'prop-types'
 
 const EmptyLibraryMessage = () => {
   return (
@@ -185,16 +184,4 @@ export const SelectLibraryInput = ({
       </List>
     </Box>
   )
-}
-
-SelectLibraryInput.propTypes = {
-  onChange: PropTypes.func.isRequired,
-  value: PropTypes.array,
-  isNewUser: PropTypes.bool,
-}
-
-LibraryListItem.propTypes = {
-  library: PropTypes.object.isRequired,
-  isSelected: PropTypes.bool.isRequired,
-  onToggle: PropTypes.func.isRequired,
 }

@@ -37,5 +37,3 @@ export const BatchShareButton = ({ resource, selectedIds, className, sx }) => {
     </Button>
   )
 }
-
-BatchShareButton.propTypes = {}

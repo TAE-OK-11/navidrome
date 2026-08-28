@@ -10,7 +10,6 @@ import {
 } from 'react-admin'
 import Switch from '@mui/material/Switch'
 import { Tooltip, FormControlLabel } from '@mui/material'
-import PropTypes from 'prop-types'
 
 const enabledSwitchSx = (theme) => {
   const color = theme.palette.success?.main || theme.palette.primary.main
@@ -180,12 +179,6 @@ const ToggleEnabledSwitch = ({
       <span>{switchElement}</span>
     </Tooltip>
   )
-}
-
-ToggleEnabledSwitch.propTypes = {
-  showLabel: PropTypes.bool,
-  size: PropTypes.oneOf(['small', 'medium']),
-  manifest: PropTypes.object,
 }
 
 export default ToggleEnabledSwitch

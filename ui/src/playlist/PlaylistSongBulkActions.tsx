@@ -6,7 +6,6 @@ import {
   ResourceContextProvider,
 } from 'react-admin'
 import { MdOutlinePlaylistRemove } from 'react-icons/md'
-import PropTypes from 'prop-types'
 
 // Replace original resource with "fake" one for removing tracks from playlist
 const PlaylistSongBulkActions = ({
@@ -34,10 +33,6 @@ const PlaylistSongBulkActions = ({
       </Fragment>
     </ResourceContextProvider>
   )
-}
-
-PlaylistSongBulkActions.propTypes = {
-  playlistId: PropTypes.string.isRequired,
 }
 
 export default PlaylistSongBulkActions

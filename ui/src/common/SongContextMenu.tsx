@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import {
   useNotify,
@@ -306,11 +305,4 @@ export const SongContextMenu = ({
       </Menu>
     </Box>
   )
-}
-
-SongContextMenu.propTypes = {
-  resource: PropTypes.string.isRequired,
-  record: PropTypes.object.isRequired,
-  onAddToPlaylist: PropTypes.func,
-  showLove: PropTypes.bool,
 }

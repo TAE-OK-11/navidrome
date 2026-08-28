@@ -1,5 +1,5 @@
 import type { Dispatch } from 'redux'
-import throttle from 'lodash.throttle'
+import throttle from './utils/throttle'
 import { processEvent, serverDown, streamReconnected } from './actions'
 import config from './config'
 import { REST_URL } from './consts'
@@ -30,8 +30,7 @@ const eventHandler =
 
 const throttledEventHandler = (
   dispatchFn: Dispatch,
-): ((event: Event) => void) =>
-  throttle(eventHandler(dispatchFn), 100, { trailing: true })
+): ((event: Event) => void) => throttle(eventHandler(dispatchFn), 100)
 
 const scheduleReconnect = (dispatchFn: Dispatch): void => {
   if (reconnectTimer !== null) return

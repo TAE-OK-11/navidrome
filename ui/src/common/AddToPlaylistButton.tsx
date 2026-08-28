@@ -1,5 +1,4 @@
 import React from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import { Button, useTranslate, useUnselectAll } from 'react-admin'
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
@@ -36,9 +35,4 @@ export const AddToPlaylistButton = ({
       <PlaylistAddIcon />
     </Button>
   )
-}
-
-AddToPlaylistButton.propTypes = {
-  resource: PropTypes.string.isRequired,
-  selectedIds: PropTypes.arrayOf(PropTypes.string).isRequired,
 }

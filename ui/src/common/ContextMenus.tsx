@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
-import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
@@ -251,13 +250,6 @@ export const AlbumContextMenu = ({
   ) : null
 }
 
-AlbumContextMenu.propTypes = {
-  record: PropTypes.object,
-  discNumber: PropTypes.number,
-  color: PropTypes.string,
-  showLove: PropTypes.bool,
-}
-
 export const ArtistContextMenu = ({
   showLove = true,
   record: recordOverride,
@@ -281,10 +273,4 @@ export const ArtistContextMenu = ({
       }}
     />
   ) : null
-}
-
-ArtistContextMenu.propTypes = {
-  record: PropTypes.object,
-  color: PropTypes.string,
-  showLove: PropTypes.bool,
 }

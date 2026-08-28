@@ -15,7 +15,6 @@ import {
   useTranslate,
 } from 'react-admin'
 import { Box, TableCell, TableRow, Typography } from '@mui/material'
-import PropTypes from 'prop-types'
 import AlbumIcon from '@mui/icons-material/Album'
 import clsx from 'clsx'
 import { useDrag } from 'react-dnd'
@@ -222,14 +221,6 @@ export const SongDatagridRow = ({
   )
 }
 
-SongDatagridRow.propTypes = {
-  record: PropTypes.object,
-  children: PropTypes.node,
-  firstTracksOfDiscs: PropTypes.instanceOf(Set),
-  contextAlwaysVisible: PropTypes.bool,
-  onClickSubset: PropTypes.func,
-}
-
 const SongDatagridBody = ({
   contextAlwaysVisible,
   showDiscSubtitles,
@@ -348,10 +339,4 @@ export const SongDatagrid = ({
       }
     />
   )
-}
-
-SongDatagrid.propTypes = {
-  contextAlwaysVisible: PropTypes.bool,
-  showDiscSubtitles: PropTypes.bool,
-  classes: PropTypes.object,
 }

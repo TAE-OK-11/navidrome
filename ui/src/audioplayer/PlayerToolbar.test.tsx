@@ -38,8 +38,8 @@ vi.mock('../actions', () => ({
   openSaveQueueDialog: vi.fn(),
 }))
 
-vi.mock('react-hotkeys', () => ({
-  GlobalHotKeys: () => <div data-testid="global-hotkeys" />,
+vi.mock('../hooks/useAppHotkey', () => ({
+  useAppHotkey: vi.fn(),
 }))
 
 describe('<PlayerToolbar />', () => {
@@ -144,19 +144,6 @@ describe('<PlayerToolbar />', () => {
   })
 
   describe('Common behavior', () => {
-    it('renders global hotkeys in both layouts', () => {
-      // Test desktop layout
-      useMediaQuery.mockReturnValue(true)
-      render(<PlayerToolbar id="song-1" />)
-      expect(screen.getByTestId('global-hotkeys')).toBeInTheDocument()
-
-      // Cleanup and test mobile layout
-      cleanup()
-      useMediaQuery.mockReturnValue(false)
-      render(<PlayerToolbar id="song-1" />)
-      expect(screen.getByTestId('global-hotkeys')).toBeInTheDocument()
-    })
-
     it('disables buttons when id is not provided', () => {
       render(<PlayerToolbar />)
 

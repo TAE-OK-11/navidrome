@@ -1,6 +1,5 @@
 // @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useEffect, useState } from 'react'
-import PropTypes from 'prop-types'
 import Link from '@mui/material/Link'
 import Dialog from '@mui/material/Dialog'
 import IconButton from '@mui/material/IconButton'
@@ -472,11 +471,6 @@ const AboutDialog = ({ open, onClose }) => {
       </DialogContent>
     </Dialog>
   )
-}
-
-AboutDialog.propTypes = {
-  open: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
 }
 
 export { AboutDialog, LinkToVersion }

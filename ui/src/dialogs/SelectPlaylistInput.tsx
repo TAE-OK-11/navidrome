@@ -16,7 +16,6 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
-import PropTypes from 'prop-types'
 import { isWritable } from '../common'
 
 const PlaylistSearchField = ({
@@ -307,50 +306,4 @@ export const SelectPlaylistInput = ({ onChange }) => {
   )
 }
 
-SelectPlaylistInput.propTypes = {
-  onChange: PropTypes.func.isRequired,
-}
-
 // PropTypes for sub-components
-PlaylistSearchField.propTypes = {
-  searchText: PropTypes.string.isRequired,
-  onSearchChange: PropTypes.func.isRequired,
-  onCreateNew: PropTypes.func.isRequired,
-  onKeyDown: PropTypes.func.isRequired,
-  canCreateNew: PropTypes.bool.isRequired,
-}
-
-EmptyPlaylistMessage.propTypes = {
-  searchText: PropTypes.string.isRequired,
-  canCreateNew: PropTypes.bool.isRequired,
-}
-
-PlaylistListItem.propTypes = {
-  playlist: PropTypes.object.isRequired,
-  isSelected: PropTypes.bool.isRequired,
-  onToggle: PropTypes.func.isRequired,
-}
-
-CreatePlaylistItem.propTypes = {
-  searchText: PropTypes.string.isRequired,
-  onCreateNew: PropTypes.func.isRequired,
-}
-
-PlaylistList.propTypes = {
-  filteredOptions: PropTypes.array.isRequired,
-  selectedPlaylists: PropTypes.array.isRequired,
-  onPlaylistToggle: PropTypes.func.isRequired,
-  searchText: PropTypes.string.isRequired,
-  canCreateNew: PropTypes.bool.isRequired,
-  onCreateNew: PropTypes.func.isRequired,
-}
-
-SelectedPlaylistChip.propTypes = {
-  playlist: PropTypes.object.isRequired,
-  onRemove: PropTypes.func.isRequired,
-}
-
-SelectedPlaylistsDisplay.propTypes = {
-  selectedPlaylists: PropTypes.array.isRequired,
-  onRemoveSelected: PropTypes.func.isRequired,
-}

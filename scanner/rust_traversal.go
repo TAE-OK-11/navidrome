@@ -92,7 +92,7 @@ func collectRustFolders(ctx context.Context, job *scanJob, targets []string) ([]
 	}
 	request := rustScanRequest{
 		Root:             job.localRoot,
-		Targets:          targets,
+		Targets:          append([]string(nil), targets...),
 		FollowSymlinks:   conf.Server.Scanner.FollowSymlinks,
 		IgnoreDotFolders: conf.Server.Scanner.IgnoreDotFolders,
 	}

@@ -26,9 +26,17 @@ const PLAYLIST_EXTENSIONS: &[&str] = &["m3u", "m3u8", "nsp"];
 #[derive(Debug, Deserialize)]
 struct ScanRequest {
     root: PathBuf,
+    #[serde(default, deserialize_with = "deserialize_targets")]
     targets: Vec<String>,
     follow_symlinks: bool,
     ignore_dot_folders: bool,
+}
+
+fn deserialize_targets<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<Vec<String>>::deserialize(deserializer).map(|targets| targets.unwrap_or_default())
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -577,6 +585,16 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn accepts_null_targets() {
+        let request = serde_json::from_str::<ScanRequest>(
+            r#"{"root":"/music","targets":null,"follow_symlinks":false,"ignore_dot_folders":true}"#,
+        )
+        .expect("null targets should deserialize as empty");
+        assert!(request.targets.is_empty());
+        assert!(validate_request(&request).is_ok());
     }
 
     #[test]

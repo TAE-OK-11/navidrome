@@ -636,6 +636,18 @@ func (e *Engine) artistDocument(ctx context.Context, artist model.Artist, librar
 }
 
 func (e *Engine) normalizeFTS(ctx context.Context, values ...string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	if e.ready.Load() {
+		resp, err := e.roundTrip(ctx, request{Op: "normalize_fts", Values: values})
+		if err == nil && resp.Normalized != "" {
+			return resp.Normalized
+		}
+		if err != nil {
+			log.Trace(ctx, "Rust search normalize_fts unavailable; falling back to metadata worker", err)
+		}
+	}
 	return ftsnormalize.NormalizeForFTS(ctx, values...)
 }
 

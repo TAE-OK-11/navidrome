@@ -17,16 +17,17 @@ const (
 )
 
 type imageWorkerRequest struct {
-	InputSize   int    `json:"input_size,omitempty"`
-	InputSizes  []int  `json:"input_sizes,omitempty"`
-	Mosaic      bool   `json:"mosaic,omitempty"`
-	Sniff       bool   `json:"sniff,omitempty"`
-	Size        int    `json:"size"`
-	Square      bool   `json:"square"`
-	Fill        bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
-	AnimatedGIF bool   `json:"animated_gif,omitempty"`
-	Quality     int    `json:"quality"`
-	Format      string `json:"format,omitempty"`
+	InputSize    int    `json:"input_size,omitempty"`
+	InputSizes   []int  `json:"input_sizes,omitempty"`
+	Mosaic       bool   `json:"mosaic,omitempty"`
+	Sniff        bool   `json:"sniff,omitempty"`
+	Size         int    `json:"size"`
+	Square       bool   `json:"square"`
+	Fill         bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
+	AnimatedGIF  bool   `json:"animated_gif,omitempty"`
+	AnimatedWebP bool   `json:"animated_webp,omitempty"`
+	Quality      int    `json:"quality"`
+	Format       string `json:"format,omitempty"`
 }
 
 type imageAnimationFlags struct {
@@ -86,6 +87,15 @@ func (p *imageWorkerPool) resizeAnimatedGIF(ctx context.Context, data []byte, si
 		Size:        size,
 		AnimatedGIF: true,
 		Quality:     quality,
+	})
+}
+
+func (p *imageWorkerPool) resizeAnimatedWebP(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
+		InputSize:    len(data),
+		Size:         size,
+		AnimatedWebP: true,
+		Quality:      quality,
 	})
 }
 

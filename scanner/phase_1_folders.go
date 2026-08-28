@@ -113,7 +113,7 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 	}, nil
 }
 
-func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Library, _ []string) (map[string]string, error) {
+func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Library, targetFolders []string) (map[string]string, error) {
 	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{
 		Filters: squirrel.And{squirrel.Eq{"library_id": lib.ID}, squirrel.Eq{"missing": false}},
 	})
@@ -122,11 +122,24 @@ func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Li
 	}
 	hashes := make(map[string]string, len(folders))
 	for _, folder := range folders {
-		if folder.Hash != "" {
-			hashes[folder.Path] = folder.Hash
+		if folder.Hash == "" || !folderHashInScanTargets(folder.Path, targetFolders) {
+			continue
 		}
+		hashes[folder.Path] = folder.Hash
 	}
 	return hashes, nil
+}
+
+func folderHashInScanTargets(folderPath string, targetFolders []string) bool {
+	if len(targetFolders) == 0 {
+		return true
+	}
+	for _, target := range targetFolders {
+		if folderPath == target || strings.HasPrefix(folderPath, target+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // popLastUpdate retrieves and removes the last update info for the given folder ID

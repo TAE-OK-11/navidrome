@@ -31,9 +31,11 @@ struct ImageRequest {
     square: bool,
     #[serde(default)]
     fill: bool,
-    #[serde(default)]
-    animated_gif: bool,
-    #[serde(default = "default_quality")]
+	#[serde(default)]
+	animated_gif: bool,
+	#[serde(default)]
+	animated_webp: bool,
+	#[serde(default = "default_quality")]
     quality: u8,
     #[serde(default)]
     format: OutputFormat,
@@ -275,6 +277,9 @@ fn decode_rgba(encoded: &[u8]) -> Result<image::RgbaImage> {
 fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     if request.animated_gif && is_animated_gif(encoded) {
         return resize_animated_gif(encoded, request);
+    }
+    if request.animated_webp && is_animated_webp(encoded) {
+        return resize_animated_webp(encoded, request);
     }
     let dimensions_reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
@@ -596,6 +601,61 @@ fn resize_animated_gif(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>
         );
     }
     Ok(output)
+}
+
+fn resize_animated_webp(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let scale = format!(
+        "scale='min({0},iw)':'min({0},ih)':force_original_aspect_ratio=decrease",
+        request.size
+    );
+    let quality = request.quality.to_string();
+    let mut child = Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-vf",
+            &scale,
+            "-loop",
+            "0",
+            "-c:v",
+            "libwebp_anim",
+            "-quality",
+            &quality,
+            "-f",
+            "webp",
+            "pipe:1",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("starting ffmpeg for animated WebP resize")?;
+    {
+        let mut stdin = child.stdin.take().context("ffmpeg stdin unavailable")?;
+        stdin
+            .write_all(encoded)
+            .context("writing animated WebP to ffmpeg")?;
+    }
+    let output = child
+        .wait_with_output()
+        .context("waiting for ffmpeg animated WebP resize")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("ffmpeg animated WebP resize failed: {stderr}");
+    }
+    if output.stdout.is_empty() || output.stdout.len() > MAX_OUTPUT_BYTES {
+        bail!(
+            "encoded animated WebP size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
+            output.stdout.len()
+        );
+    }
+    Ok(output.stdout)
 }
 
 fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {

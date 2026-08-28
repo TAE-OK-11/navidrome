@@ -8,7 +8,12 @@ type ImageLightboxProps = {
   onClose: () => void
 }
 
-const ImageLightbox = ({ open, imageUrl, title, onClose }: ImageLightboxProps) => (
+const ImageLightbox = ({
+  open,
+  imageUrl,
+  title,
+  onClose,
+}: ImageLightboxProps) => (
   <Lightbox
     open={open}
     close={onClose}

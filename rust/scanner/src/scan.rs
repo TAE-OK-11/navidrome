@@ -164,7 +164,7 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
             files: file_count,
         },
     )?;
-    output.flush().context("flushing scan response")
+    Ok(())
 }
 
 fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<String>)> {
@@ -529,6 +529,7 @@ fn system_time_ns(value: SystemTime) -> i64 {
 fn write_event(output: &mut impl Write, event: &Event<'_>) -> Result<()> {
     serde_json::to_writer(&mut *output, event)?;
     output.write_all(b"\n")?;
+    output.flush()?;
     Ok(())
 }
 
@@ -620,6 +621,29 @@ mod tests {
             "Artist/Album"
         );
         assert_eq!(parent_path("Artist/Album"), "Artist");
+    }
+
+    #[test]
+    fn run_scan_emits_done_event() {
+        let root = temporary_music_root();
+        fs::create_dir_all(root.join("Album")).unwrap();
+        fs::write(root.join("Album/track.mp3"), b"audio").unwrap();
+
+        let mut output = Vec::new();
+        run_scan(
+            ScanRequest {
+                root: root.clone(),
+                targets: vec![".".to_owned()],
+                follow_symlinks: false,
+                ignore_dot_folders: true,
+            },
+            &mut output,
+        )
+        .unwrap();
+
+        let text = String::from_utf8(output).expect("utf8 scan output");
+        assert!(text.contains("\"kind\":\"done\""));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

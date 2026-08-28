@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/navidrome/navidrome/conf"
@@ -71,9 +72,44 @@ func getPIDAttr(mf model.MediaFile, md Metadata, attr string, prependLibId bool,
 	case "title":
 		return mf.Title
 	case "album":
-		return str.Clear(strings.ToLower(md.String(model.TagAlbum)))
+		album := pidTagValue(mf, md, model.TagAlbum)
+		return str.Clear(strings.ToLower(album))
 	}
-	return md.String(model.TagName(attr))
+	return pidTagValue(mf, md, model.TagName(attr))
+}
+
+func pidTagValue(mf model.MediaFile, md Metadata, tag model.TagName) string {
+	if v := md.String(tag); v != "" {
+		return v
+	}
+	if values := mf.Tags[tag]; len(values) > 0 && values[0] != "" {
+		return values[0]
+	}
+	switch tag {
+	case model.TagAlbum:
+		return mf.Album
+	case model.TagTitle:
+		return mf.Title
+	case model.TagTrackNumber, model.TagName("tracknumber"):
+		if mf.TrackNumber > 0 {
+			return strconv.Itoa(mf.TrackNumber)
+		}
+	case model.TagDiscNumber, model.TagName("discnumber"):
+		if mf.DiscNumber > 0 {
+			return strconv.Itoa(mf.DiscNumber)
+		}
+	case model.TagMusicBrainzRecordingID:
+		return mf.MbzRecordingID
+	case model.TagMusicBrainzTrackID:
+		return mf.MbzReleaseTrackID
+	case model.TagMusicBrainzAlbumID:
+		return mf.MbzAlbumID
+	case model.TagAlbumVersion:
+		return mf.MbzAlbumComment
+	case model.TagReleaseDate:
+		return mf.ReleaseDate
+	}
+	return ""
 }
 
 func (md Metadata) trackPID(mf model.MediaFile) string {

@@ -1535,7 +1535,7 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
 COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
-COPY --link --chown=1000:1000 --chmod=750 --from=scanner-builder /out/navidrome-scanner-portable /app/navidrome-scanner
+COPY --link --chown=1000:1000 --chmod=750 --from=scanner-builder /out/navidrome-scanner /app/navidrome-scanner
 COPY --link --chown=1000:1000 --chmod=750 --from=search-builder /out/navidrome-search /app/navidrome-search
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
@@ -1953,6 +1953,18 @@ check_runtime_paths() {
     fi
 }
 
+check_rust_workers() {
+    for worker in \
+        "${ND_SCANNERWORKERPATH:-/app/navidrome-scanner}" \
+        "${ND_METADATAWORKERPATH:-/app/navidrome-metadata}" \
+        "${ND_SEARCHWORKERPATH:-/app/navidrome-search}"; do
+        if [ ! -x "$worker" ]; then
+            echo "[entrypoint] fatal: Rust worker is missing or not executable: $worker" >&2
+            exit 1
+        fi
+    done
+}
+
 run_optional() {
     enabled="$1"
     shift
@@ -2078,6 +2090,7 @@ ffmpeg_fallback_preflight() {
 
 autotune_resources
 check_runtime_paths
+check_rust_workers
 
 if is_true "${JBS_FFMPEG_PREFLIGHT:-false}"; then
     if [ -x /usr/local/bin/jbs-ffmpeg-preflight ]; then

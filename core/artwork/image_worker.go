@@ -26,6 +26,7 @@ type imageWorkerRequest struct {
 	Fill         bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
 	AnimatedGIF  bool   `json:"animated_gif,omitempty"`
 	AnimatedWebP bool   `json:"animated_webp,omitempty"`
+	AnimatedPNG  bool   `json:"animated_png,omitempty"`
 	Quality      int    `json:"quality"`
 	Format       string `json:"format,omitempty"`
 }
@@ -96,6 +97,15 @@ func (p *imageWorkerPool) resizeAnimatedWebP(ctx context.Context, data []byte, s
 		Size:         size,
 		AnimatedWebP: true,
 		Quality:      quality,
+	})
+}
+
+func (p *imageWorkerPool) resizeAnimatedPNG(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
+		InputSize:   len(data),
+		Size:        size,
+		AnimatedPNG: true,
+		Quality:     quality,
 	})
 }
 

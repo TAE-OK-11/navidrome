@@ -126,6 +126,12 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 			log.Debug(ctx, "Rust animated WebP resize unavailable; returning original bytes", "error", err)
 			return bytes.NewReader(data), 0, nil
 		} else if flags.AnimatedPNG {
+			if resized, err := persistentImageWorkers.resizeAnimatedPNG(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			log.Debug(ctx, "Rust animated PNG resize unavailable; returning original bytes", "error", err)
 			return bytes.NewReader(data), 0, nil
 		}
 	} else if ctx.Err() != nil {

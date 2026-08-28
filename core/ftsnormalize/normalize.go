@@ -17,7 +17,7 @@ func NormalizeForFTS(ctx context.Context, values ...string) string {
 		return normalized
 	}
 	if err != nil {
-		log.Trace(ctx, "Rust FTS normalize worker unavailable; using in-process fallback", err)
+		log.Trace(ctx, "Rust FTS normalize worker unavailable", err)
 	}
-	return normalizeInProcess(values...)
+	return ""
 }

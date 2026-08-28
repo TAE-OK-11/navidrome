@@ -33,9 +33,11 @@ struct ImageRequest {
     fill: bool,
     #[serde(default)]
     animated_gif: bool,
-    #[serde(default)]
-    animated_webp: bool,
-    #[serde(default = "default_quality")]
+	#[serde(default)]
+	animated_webp: bool,
+	#[serde(default)]
+	animated_png: bool,
+	#[serde(default = "default_quality")]
     quality: u8,
     #[serde(default)]
     format: OutputFormat,
@@ -280,6 +282,9 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     }
     if request.animated_webp && is_animated_webp(encoded) {
         return resize_animated_webp(encoded, request);
+    }
+    if request.animated_png && is_animated_png(encoded) {
+        return resize_animated_png(encoded, request);
     }
     let dimensions_reader = ImageReader::new(Cursor::new(encoded))
         .with_guessed_format()
@@ -658,6 +663,56 @@ fn resize_animated_webp(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8
     Ok(output.stdout)
 }
 
+fn resize_animated_png(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let scale = format!(
+        "scale='min({0},iw)':'min({0},ih)':force_original_aspect_ratio=decrease",
+        request.size
+    );
+    let mut child = Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-vf",
+            &scale,
+            "-plays",
+            "0",
+            "-f",
+            "apng",
+            "pipe:1",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("starting ffmpeg for animated PNG resize")?;
+    {
+        let mut stdin = child.stdin.take().context("ffmpeg stdin unavailable")?;
+        stdin
+            .write_all(encoded)
+            .context("writing animated PNG to ffmpeg")?;
+    }
+    let output = child
+        .wait_with_output()
+        .context("waiting for ffmpeg animated PNG resize")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("ffmpeg animated PNG resize failed: {stderr}");
+    }
+    if output.stdout.is_empty() || output.stdout.len() > MAX_OUTPUT_BYTES {
+        bail!(
+            "encoded animated PNG size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
+            output.stdout.len()
+        );
+    }
+    Ok(output.stdout)
+}
+
 fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
     serde_json::to_writer(
         &mut *output,
@@ -720,6 +775,7 @@ mod tests {
                 fill: false,
                 animated_gif: false,
                 animated_webp: false,
+                animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -743,6 +799,7 @@ mod tests {
                 fill: false,
                 animated_gif: false,
                 animated_webp: false,
+                animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -768,6 +825,7 @@ mod tests {
                 fill: true,
                 animated_gif: false,
                 animated_webp: false,
+                animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -800,6 +858,7 @@ mod tests {
                 fill: false,
                 animated_gif: false,
                 animated_webp: false,
+                animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -826,6 +885,7 @@ mod tests {
                 fill: false,
                 animated_gif: false,
                 animated_webp: false,
+                animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },

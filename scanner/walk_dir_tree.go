@@ -49,20 +49,9 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 						continue
 					}
 					if err != nil {
-						log.Error(ctx, "Rust filesystem traversal failed; falling back to Go walker",
+						log.Error(ctx, "Rust filesystem traversal failed",
 							"lib", job.lib.Name, "root", job.localRoot, err)
-						goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
-						if goErr != nil {
-							log.Error(ctx, "Go filesystem traversal failed", goErr)
-							return
-						}
-						for folder := range goResults {
-							select {
-							case results <- folder:
-							case <-ctx.Done():
-								return
-							}
-						}
+						return
 					}
 					errCh = nil
 				case <-ctx.Done():

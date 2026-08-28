@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -336,6 +337,8 @@ func Load(noConfigDump bool) {
 	mapDeprecatedOption("SimilarSongsMatchThreshold", "Matcher.FuzzyThreshold")
 	mapDeprecatedOption("EnableTranscodingCancellation", "Transcoding.EnableCancellation")
 
+	resolveAutoDevScannerThreads()
+
 	err := viper.Unmarshal(&Server, viper.DecodeHook(
 		mapstructure.ComposeDecodeHookFunc(
 			mapstructure.TextUnmarshallerHookFunc(),
@@ -489,6 +492,20 @@ func Load(noConfigDump bool) {
 	for _, hook := range hooks {
 		hook()
 	}
+}
+
+func resolveAutoDevScannerThreads() {
+	raw := strings.TrimSpace(viper.GetString("devscannerthreads"))
+	if !strings.EqualFold(raw, "auto") {
+		return
+	}
+	threads := runtime.NumCPU()
+	if gmp := strings.TrimSpace(os.Getenv("GOMAXPROCS")); gmp != "" {
+		if n, err := strconv.Atoi(gmp); err == nil && n > 0 {
+			threads = n
+		}
+	}
+	viper.Set("devscannerthreads", min(5, max(1, uint(threads))))
 }
 
 func logDeprecatedOptions(oldName, newName string) {

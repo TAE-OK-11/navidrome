@@ -83,6 +83,15 @@ var _ = Describe("Configuration", func() {
 		})
 	})
 
+	Describe("DevScannerThreads", func() {
+		It("resolves auto to a positive thread count", func() {
+			viper.Set("devscannerthreads", "auto")
+			conf.Load(true)
+			Expect(conf.Server.DevScannerThreads).To(BeNumerically(">=", 1))
+			Expect(conf.Server.DevScannerThreads).To(BeNumerically("<=", 5))
+		})
+	})
+
 	Describe("ValidateURL", func() {
 		It("accepts a valid http URL", func() {
 			fn := conf.ValidateURL("TestOption", "http://example.com/path")

@@ -86,6 +86,8 @@ func (p *scannerWorkerPool) ensure() {
 func collectRustFolders(ctx context.Context, job *scanJob, targets []string) ([]rustScanFolder, []string, error) {
 	binary, err := scannerworker.Resolve()
 	if err != nil {
+		log.Error(ctx, "Rust scanner worker binary not found",
+			"lib", job.lib.Name, "root", job.localRoot, err)
 		return nil, nil, err
 	}
 	request := rustScanRequest{
@@ -111,9 +113,12 @@ func collectRustFolders(ctx context.Context, job *scanJob, targets []string) ([]
 				return nil, nil, ctx.Err()
 			}
 			lastErr = err
-			log.Debug(ctx, "Rust scanner worker request failed; restarting", "attempt", attempt+1, err)
+			log.Warn(ctx, "Rust scanner worker request failed; restarting",
+				"attempt", attempt+1, "binary", binary, "lib", job.lib.Name, "root", request.Root, err)
 			slot.stop()
 		}
+		log.Error(ctx, "Rust scanner worker failed after restart",
+			"binary", binary, "lib", job.lib.Name, "root", request.Root, "targets", targets, lastErr)
 		return nil, nil, fmt.Errorf("persistent Rust scanner failed after restart: %w", lastErr)
 	}
 }
@@ -121,6 +126,7 @@ func collectRustFolders(ctx context.Context, job *scanJob, targets []string) ([]
 func (s *scannerWorkerSlot) roundTrip(ctx context.Context, binary string, request rustScanRequest) ([]rustScanFolder, []string, error) {
 	worker, err := s.ensure(binary)
 	if err != nil {
+		log.Error(ctx, "Rust scanner worker failed to start", "binary", binary, err)
 		return nil, nil, err
 	}
 	cancelDone := make(chan struct{})

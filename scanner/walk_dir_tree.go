@@ -27,7 +27,8 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 			defer close(results)
 			folders, warnings, err := collectRustFolders(ctx, job, targetFolders)
 			if err != nil {
-				log.Warn(ctx, "Rust filesystem traversal failed; falling back to Go walker", err)
+				log.Error(ctx, "Rust filesystem traversal failed; falling back to Go walker",
+					"lib", job.lib.Name, "root", job.localRoot, err)
 				goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
 				if goErr != nil {
 					log.Error(ctx, "Go filesystem traversal failed", goErr)

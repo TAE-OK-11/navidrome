@@ -1547,6 +1547,7 @@ RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
 RUN test -x /app/navidrome && \
     test -x /app/navidrome-h3 && \
     test -x /app/navidrome-metadata && \
+    test -x /app/navidrome-scanner && \
     test -x /app/navidrome-search && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
@@ -1952,6 +1953,18 @@ check_runtime_paths() {
     fi
 }
 
+check_rust_workers() {
+    for worker in \
+        "${ND_SCANNERWORKERPATH:-/app/navidrome-scanner}" \
+        "${ND_METADATAWORKERPATH:-/app/navidrome-metadata}" \
+        "${ND_SEARCHWORKERPATH:-/app/navidrome-search}"; do
+        if [ ! -x "$worker" ]; then
+            echo "[entrypoint] fatal: Rust worker is missing or not executable: $worker" >&2
+            exit 1
+        fi
+    done
+}
+
 run_optional() {
     enabled="$1"
     shift
@@ -2077,6 +2090,7 @@ ffmpeg_fallback_preflight() {
 
 autotune_resources
 check_runtime_paths
+check_rust_workers
 
 if is_true "${JBS_FFMPEG_PREFLIGHT:-false}"; then
     if [ -x /usr/local/bin/jbs-ffmpeg-preflight ]; then
@@ -2162,6 +2176,7 @@ ENV TZ=Asia/Seoul \
     ND_HTTP3GATEWAYPATH=/app/navidrome-h3 \
     ND_FFMPEGPATH=/usr/local/bin/ffmpeg \
     ND_METADATAWORKERPATH=/app/navidrome-metadata \
+    ND_SCANNERWORKERPATH=/app/navidrome-scanner \
     ND_SEARCHWORKERPATH=/app/navidrome-search \
     ND_MUSICFOLDER=/music \
     ND_DATAFOLDER=/data \

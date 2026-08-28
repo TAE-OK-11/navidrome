@@ -446,7 +446,10 @@ fn generic_tags(file: &TaggedFile) -> HashMap<String, Vec<String>> {
             if key.is_empty() {
                 continue;
             }
-            output.entry(key).or_default().push(value.to_owned());
+            let values = output.entry(key).or_default();
+            if !values.iter().any(|existing| existing == value) {
+                values.push(value.to_owned());
+            }
         }
     }
     output
@@ -456,8 +459,10 @@ fn normalized_key(key: &ItemKey, _tag: &Tag) -> Option<String> {
     let value = match key {
         ItemKey::TrackTitle => "title",
         ItemKey::AlbumTitle => "album",
-        ItemKey::TrackArtist | ItemKey::TrackArtists => "artist",
-        ItemKey::AlbumArtist | ItemKey::AlbumArtists => "albumartist",
+        ItemKey::TrackArtist => "artist",
+        ItemKey::TrackArtists => "artists",
+        ItemKey::AlbumArtist => "albumartist",
+        ItemKey::AlbumArtists => "albumartists",
         ItemKey::TrackNumber => "tracknumber",
         ItemKey::TrackTotal => "tracktotal",
         ItemKey::DiscNumber => "discnumber",

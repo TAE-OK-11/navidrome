@@ -237,10 +237,9 @@ func (p *phaseFolders) measure(entry *folderEntry) func() time.Duration {
 }
 
 func (p *phaseFolders) stages() []ppl.Stage[*folderEntry] {
-	persistWorkers := min(max(int(conf.Server.DevScannerThreads)/2, 1), 3)
 	return []ppl.Stage[*folderEntry]{
 		ppl.NewStage(p.processFolder, ppl.Name("process folder"), ppl.Concurrency(conf.Server.DevScannerThreads)),
-		ppl.NewStage(p.persistChanges, ppl.Name("persist changes"), ppl.Concurrency(uint(persistWorkers))),
+		ppl.NewStage(p.persistChanges, ppl.Name("persist changes")),
 		ppl.NewStage(p.logFolder, ppl.Name("log results")),
 	}
 }
@@ -389,10 +388,11 @@ func (p *phaseFolders) readTagsBisect(readTags func(...string) (map[string]metad
 	result := make(map[string]metadata.Info, len(paths))
 	maps.Copy(result, left)
 	maps.Copy(result, right)
-	if len(result) == 0 {
-		return nil, errors.Join(leftErr, rightErr)
+	joined := errors.Join(leftErr, rightErr)
+	if len(result) < len(paths) {
+		return result, errors.Join(joined, fmt.Errorf("metadata extraction incomplete: got %d of %d files", len(result), len(paths)))
 	}
-	return result, nil
+	return result, joined
 }
 
 func (p *phaseFolders) probeMissingAudioProperties(track *model.MediaFile, libPath, filePath string, audioProbe ffmpeg.FFmpeg) {

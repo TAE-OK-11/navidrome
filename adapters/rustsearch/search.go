@@ -111,6 +111,7 @@ type Engine struct {
 	generation atomic.Int64
 	nextCheck  atomic.Int64
 	indexed    atomic.Uint64
+	ftsCache   sync.Map
 }
 
 func Available() bool {
@@ -229,6 +230,7 @@ func (e *Engine) RefreshIncremental(ctx context.Context, ds model.DataStore, sin
 		return nil
 	}
 	defer e.building.Store(false)
+	e.ftsCache.Clear()
 	if !e.ready.Load() || sinceGeneration <= 0 {
 		return ErrNotReady
 	}
@@ -404,6 +406,7 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 
 func (e *Engine) rebuildLocked(ctx context.Context, ds model.DataStore, libraries model.Libraries) error {
 	wasReady := e.ready.Load()
+	e.ftsCache.Clear()
 	if _, err := e.roundTrip(ctx, request{Op: "begin_replace"}); err != nil {
 		return err
 	}
@@ -639,16 +642,26 @@ func (e *Engine) normalizeFTS(ctx context.Context, values ...string) string {
 	if len(values) == 0 {
 		return ""
 	}
+	cacheKey := strings.Join(values, "\x00")
+	if cached, ok := e.ftsCache.Load(cacheKey); ok {
+		return cached.(string)
+	}
+	normalized := ""
 	if e.ready.Load() {
 		resp, err := e.roundTrip(ctx, request{Op: "normalize_fts", Values: values})
 		if err == nil && resp.Normalized != "" {
-			return resp.Normalized
-		}
-		if err != nil {
+			normalized = resp.Normalized
+		} else if err != nil {
 			log.Trace(ctx, "Rust search normalize_fts unavailable; falling back to metadata worker", err)
 		}
 	}
-	return ftsnormalize.NormalizeForFTS(ctx, values...)
+	if normalized == "" {
+		normalized = ftsnormalize.NormalizeForFTS(ctx, values...)
+	}
+	if normalized != "" {
+		e.ftsCache.Store(cacheKey, normalized)
+	}
+	return normalized
 }
 
 func scanGeneration(libraries model.Libraries) int64 {

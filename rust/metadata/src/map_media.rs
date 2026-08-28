@@ -82,6 +82,9 @@ struct ScanMediaFile {
     rg_track_gain: Option<f64>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     participants: HashMap<String, Vec<ScanArtist>>,
+    /// Album-level tags persisted on media files (mirrors Go TagMainMappings album:true).
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    tags: HashMap<String, Vec<String>>,
 }
 
 pub fn map_to_json(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: Option<&str>) -> Option<String> {
@@ -152,7 +155,89 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
             first_ref(tags, "r128_track_gain"),
         ),
         participants: map_participants(tags, &artist, &album_artist),
+        tags: map_album_tags(tags),
     })
+}
+
+/// Extracts album-level tags that Go would keep after `clean()` + `TagMainMappings` filtering.
+fn map_album_tags(tags: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
+    let mut out = HashMap::new();
+    insert_album_tag(
+        &mut out,
+        "albumversion",
+        collect_tag_values(tags, &["albumversion", "musicbrainz_albumcomment"]),
+    );
+    insert_album_tag(&mut out, "genre", split_tag_values(tags, "genre", &[";", "/", ","]));
+    insert_album_tag(&mut out, "mood", split_tag_values(tags, "mood", &[";", "/", ","]));
+    insert_album_tag(
+        &mut out,
+        "tracktotal",
+        collect_tag_values(tags, &["tracktotal", "totaltracks"]),
+    );
+    insert_album_tag(
+        &mut out,
+        "disctotal",
+        collect_tag_values(tags, &["disctotal", "totaldiscs"]),
+    );
+    insert_album_tag(
+        &mut out,
+        "releasetype",
+        split_tag_values(tags, "releasetype", &[","]),
+    );
+    out
+}
+
+fn insert_album_tag(out: &mut HashMap<String, Vec<String>>, key: &str, values: Vec<String>) {
+    if !values.is_empty() {
+        out.insert(key.to_owned(), values);
+    }
+}
+
+fn collect_tag_values(tags: &HashMap<String, Vec<String>>, keys: &[&str]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut values = Vec::new();
+    for key in keys {
+        if let Some(raw) = tags.get(*key) {
+            for value in raw {
+                let value = value.trim();
+                if value.is_empty() || !seen.insert(value.to_owned()) {
+                    continue;
+                }
+                values.push(value.to_owned());
+            }
+        }
+    }
+    values
+}
+
+fn split_tag_values(
+    tags: &HashMap<String, Vec<String>>,
+    key: &str,
+    separators: &[&str],
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut values = Vec::new();
+    let Some(raw) = tags.get(key) else {
+        return values;
+    };
+    for value in raw {
+        let mut parts = vec![value.as_str()];
+        for separator in separators {
+            let mut next = Vec::new();
+            for part in parts {
+                next.extend(part.split(separator));
+            }
+            parts = next;
+        }
+        for part in parts {
+            let part = part.trim();
+            if part.is_empty() || !seen.insert(part.to_owned()) {
+                continue;
+            }
+            values.push(part.to_owned());
+        }
+    }
+    values
 }
 
 fn map_participants(
@@ -568,6 +653,20 @@ mod tests {
         assert!(json.contains(r#""mbzArtistId":"18220d3d-16d4-402f-95b3-cd08acb043f1""#));
         assert!(json.contains(r#""sortArtistName":"Beatles, The""#));
         assert!(json.contains(r#""albumartist""#));
+    }
+
+    #[test]
+    fn maps_album_tags_for_persistence() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("genre".to_owned(), vec!["Rock; Pop".to_owned()]);
+        tags.insert("mood".to_owned(), vec!["Happy".to_owned()]);
+        tags.insert("tracktotal".to_owned(), vec!["12".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""genre":["Rock","Pop"]"#), "json={json}");
+        assert!(json.contains(r#""mood":["Happy"]"#));
+        assert!(json.contains(r#""tracktotal":["12"]"#));
     }
 
     #[test]

@@ -31,11 +31,11 @@ struct ImageRequest {
     square: bool,
     #[serde(default)]
     fill: bool,
-	#[serde(default)]
-	animated_gif: bool,
-	#[serde(default)]
-	animated_webp: bool,
-	#[serde(default = "default_quality")]
+    #[serde(default)]
+    animated_gif: bool,
+    #[serde(default)]
+    animated_webp: bool,
+    #[serde(default = "default_quality")]
     quality: u8,
     #[serde(default)]
     format: OutputFormat,
@@ -719,6 +719,7 @@ mod tests {
                 square: false,
                 fill: false,
                 animated_gif: false,
+                animated_webp: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -741,6 +742,7 @@ mod tests {
                 square: true,
                 fill: false,
                 animated_gif: false,
+                animated_webp: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -765,6 +767,7 @@ mod tests {
                 square: false,
                 fill: true,
                 animated_gif: false,
+                animated_webp: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -796,6 +799,7 @@ mod tests {
                 square: false,
                 fill: false,
                 animated_gif: false,
+                animated_webp: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },
@@ -821,6 +825,7 @@ mod tests {
                 square: false,
                 fill: false,
                 animated_gif: false,
+                animated_webp: false,
                 quality: 80,
                 format: OutputFormat::Png,
             },

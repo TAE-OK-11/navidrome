@@ -52,10 +52,7 @@ vi.mock('react-admin', () => ({
 
 type LibraryRecord = { id: string; name: string; defaultNewUsers?: boolean }
 
-const mockLibrariesResponse = (
-  libraries: LibraryRecord[],
-  isLoading = false,
-) =>
+const mockLibrariesResponse = (libraries: LibraryRecord[], isLoading = false) =>
   vi.mocked(useGetList).mockReturnValue({
     data: libraries,
     isLoading,
@@ -108,10 +105,7 @@ describe('<SelectLibraryInput />', () => {
 
     mockLibrariesResponse(mockLibraries)
     render(
-      <SelectLibraryInput
-        onChange={mockOnChange}
-        value={['1'] as string[]}
-      />,
+      <SelectLibraryInput onChange={mockOnChange} value={['1'] as string[]} />,
     )
 
     const library1ButtonDeselect = screen
@@ -129,10 +123,7 @@ describe('<SelectLibraryInput />', () => {
     mockLibrariesResponse(mockLibraries)
 
     render(
-      <SelectLibraryInput
-        onChange={mockOnChange}
-        value={['1'] as string[]}
-      />,
+      <SelectLibraryInput onChange={mockOnChange} value={['1'] as string[]} />,
     )
 
     const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
@@ -223,10 +214,7 @@ describe('<SelectLibraryInput />', () => {
     mockLibrariesResponse(mockLibraries)
 
     render(
-      <SelectLibraryInput
-        onChange={mockOnChange}
-        value={['1'] as string[]}
-      />,
+      <SelectLibraryInput onChange={mockOnChange} value={['1'] as string[]} />,
     )
 
     const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]

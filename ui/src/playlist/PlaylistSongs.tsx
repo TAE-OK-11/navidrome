@@ -60,7 +60,13 @@ const ReorderableList = ({
   if (readOnly) {
     return children
   }
-  return <ReactDragListView {...(rest as React.ComponentProps<typeof ReactDragListView>)}>{children}</ReactDragListView>
+  return (
+    <ReactDragListView
+      {...(rest as React.ComponentProps<typeof ReactDragListView>)}
+    >
+      {children}
+    </ReactDragListView>
+  )
 }
 
 type PlaylistSongsProps = {
@@ -224,7 +230,7 @@ const PlaylistSongs = ({
           </ReorderableList>
         </Card>
       </Box>
-      <ExpandInfoDialog content={<SongInfo /> as React.ReactElement} />
+      <ExpandInfoDialog content={(<SongInfo />) as React.ReactElement} />
       {props.pagination &&
         React.cloneElement(
           props.pagination,

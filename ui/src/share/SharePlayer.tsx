@@ -1,5 +1,11 @@
 import ReactJkMusicPlayer from 'navidrome-music-player'
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+} from 'react'
 import config, { shareInfo } from '../config'
 import { shareCoverUrl, shareDownloadUrl, shareStreamUrl } from '../utils'
 import Box from '@mui/material/Box'
@@ -21,8 +27,7 @@ const SharePlayer = () => {
     [],
   )
 
-  const list =
-    shareInfo?.tracks.map((s) => {
+  const list = shareInfo?.tracks.map((s) => {
     return {
       name: s.title,
       musicSrc: shareStreamUrl(s.id),

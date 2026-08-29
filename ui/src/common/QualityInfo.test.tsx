@@ -90,14 +90,18 @@ describe('<QualityInfo />', () => {
   it('shows transcode arrow when transcodeStream is provided', () => {
     const info = { suffix: 'FLAC', bitRate: 1008 }
     const transcodeStream = { codec: 'opus', audioBitrate: 128000 }
-    render(<QualityInfo record={info as any} transcodeStream={transcodeStream} />)
+    render(
+      <QualityInfo record={info as any} transcodeStream={transcodeStream} />,
+    )
     expect(screen.getByText('FLAC → OPUS 128')).toBeInTheDocument()
   })
 
   it('shows transcode with lossy source including bitrate', () => {
     const info = { suffix: 'FLAC', bitRate: 1008 }
     const transcodeStream = { codec: 'mp3', audioBitrate: 320000 }
-    render(<QualityInfo record={info as any} transcodeStream={transcodeStream} />)
+    render(
+      <QualityInfo record={info as any} transcodeStream={transcodeStream} />,
+    )
     expect(screen.getByText('FLAC → MP3 320')).toBeInTheDocument()
   })
 

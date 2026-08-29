@@ -40,10 +40,11 @@ import { componentStyleOverride } from '../themes/componentStyleOverride'
 import type { Theme } from '@mui/material/styles'
 import type { AlbumRecord } from '../types/records'
 
-const albumDetailsSx = (slot: string, styles: (theme: Theme) => object) => (theme: Theme) => ({
-  ...styles(theme),
-  ...componentStyleOverride(theme, 'NDAlbumDetails', slot),
-})
+const albumDetailsSx =
+  (slot: string, styles: (theme: Theme) => object) => (theme: Theme) => ({
+    ...styles(theme),
+    ...componentStyleOverride(theme, 'NDAlbumDetails', slot),
+  })
 
 const notesSx = albumDetailsSx('notes', () => ({
   display: 'inline-block',

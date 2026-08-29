@@ -37,35 +37,37 @@ type NowPlayingButtonProps = {
 }
 
 // NowPlayingButton component - handles the button with badge
-const NowPlayingButton = React.memo(({ count, onClick }: NowPlayingButtonProps) => {
-  const translate = useTranslate()
+const NowPlayingButton = React.memo(
+  ({ count, onClick }: NowPlayingButtonProps) => {
+    const translate = useTranslate()
 
-  return (
-    <Tooltip title={translate('nowPlaying.title')}>
-      <IconButton
-        sx={{ color: 'inherit' }}
-        onClick={onClick}
-        aria-label={translate('nowPlaying.title')}
-        aria-haspopup="true"
-        size="large"
-      >
-        <Badge
-          badgeContent={count}
-          color="primary"
-          overlap="rectangular"
-          sx={(theme) => ({
-            '& .MuiBadge-badge': {
-              backgroundColor: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-            },
-          })}
+    return (
+      <Tooltip title={translate('nowPlaying.title')}>
+        <IconButton
+          sx={{ color: 'inherit' }}
+          onClick={onClick}
+          aria-label={translate('nowPlaying.title')}
+          aria-haspopup="true"
+          size="large"
         >
-          <FaRegCirclePlay size={20} />
-        </Badge>
-      </IconButton>
-    </Tooltip>
-  )
-})
+          <Badge
+            badgeContent={count}
+            color="primary"
+            overlap="rectangular"
+            sx={(theme) => ({
+              '& .MuiBadge-badge': {
+                backgroundColor: theme.palette.primary.main,
+                color: theme.palette.primary.contrastText,
+              },
+            })}
+          >
+            <FaRegCirclePlay size={20} />
+          </Badge>
+        </IconButton>
+      </Tooltip>
+    )
+  },
+)
 
 NowPlayingButton.displayName = 'NowPlayingButton'
 
@@ -77,7 +79,12 @@ type NowPlayingItemProps = {
 }
 
 const NowPlayingItem = React.memo(
-  ({ nowPlayingEntry, onLinkClick, getArtistLink, now }: NowPlayingItemProps) => {
+  ({
+    nowPlayingEntry,
+    onLinkClick,
+    getArtistLink,
+    now,
+  }: NowPlayingItemProps) => {
     const isPaused = nowPlayingEntry.state === 'paused'
     const isPlaying =
       nowPlayingEntry.state === 'playing' ||
@@ -353,9 +360,12 @@ const NowPlayingPanel = () => {
   const [now, setNow] = useState(Date.now())
   const open = Boolean(anchorEl)
 
-  const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    setAnchorEl(event.currentTarget)
-  }, [])
+  const handleMenuOpen = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      setAnchorEl(event.currentTarget)
+    },
+    [],
+  )
 
   const handleMenuClose = useCallback(() => {
     setAnchorEl(null)

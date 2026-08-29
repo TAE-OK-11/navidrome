@@ -26,7 +26,11 @@ import DeleteUserButton from './DeleteUserButton'
 import { LibrarySelectionField } from './LibrarySelectionField'
 import { validateUserForm } from './userValidation'
 
-const UserTitle = ({ record: recordOverride }: { record?: { name?: string } }) => {
+const UserTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.user.name', { smart_count: 1 })

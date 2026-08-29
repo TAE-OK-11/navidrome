@@ -12,7 +12,10 @@ import { closeDownloadMenu, DOWNLOAD_MENU_ARTIST } from '../actions'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from '../common/artist'
 import { useTranscodingOptions } from './useTranscodingOptions'
-import type { NavidromeRootState, DownloadMenuDialogState } from '../types/redux'
+import type {
+  NavidromeRootState,
+  DownloadMenuDialogState,
+} from '../types/redux'
 
 type DownloadRecord = NonNullable<DownloadMenuDialogState['record']>
 

@@ -23,7 +23,9 @@ describe('activityReducer', () => {
   }
 
   it('returns the initial state when no action is specified', () => {
-    expect(activityReducer(undefined, { type: 'UNKNOWN' })).toEqual(initialState)
+    expect(activityReducer(undefined, { type: 'UNKNOWN' })).toEqual(
+      initialState,
+    )
   })
 
   it('handles EVENT_SCAN_STATUS action with elapsedTime field', () => {

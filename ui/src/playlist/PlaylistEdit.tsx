@@ -69,10 +69,7 @@ const PlaylistEditForm = ({ record }: { record?: PlaylistRecord }) => {
       ) : (
         <TextField source="ownerName" />
       )}
-      <BooleanInput
-        source="public"
-        disabled={!isWritable(record?.ownerId)}
-      />
+      <BooleanInput source="public" disabled={!isWritable(record?.ownerId)} />
       <FormDataConsumer>
         {(formDataProps) => <SyncFragment {...formDataProps} />}
       </FormDataConsumer>

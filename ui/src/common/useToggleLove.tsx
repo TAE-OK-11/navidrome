@@ -48,9 +48,7 @@ export const useToggleLove = (resource: string, record: LoveRecord = {}) => {
 
     // If we have a mediaFileId, also refresh the song
     if (record.mediaFileId) {
-      promises.push(
-        dataProvider.getOne('song', { id: record.mediaFileId }),
-      )
+      promises.push(dataProvider.getOne('song', { id: record.mediaFileId }))
     }
 
     return Promise.all(promises)

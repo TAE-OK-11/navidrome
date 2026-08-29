@@ -23,7 +23,10 @@ const PlaylistListActions = ({
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
       {rest.filters &&
-        cloneElement(rest.filters, { context: 'button' } as Record<string, unknown>)}
+        cloneElement(rest.filters, { context: 'button' } as Record<
+          string,
+          unknown
+        >)}
       <CreateButton>{translate('ra.action.create')}</CreateButton>
       {isNotSmall && <ToggleFieldsMenu resource="playlist" />}
     </TopToolbar>

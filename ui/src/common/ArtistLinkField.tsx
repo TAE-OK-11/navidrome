@@ -91,7 +91,9 @@ export const ArtistLinkField = ({
   limit = 3,
   source = 'albumArtist',
 }: ArtistLinkFieldProps) => {
-  const record = useRecordContext<ParticipantsRecord>({ record: recordOverride })
+  const record = useRecordContext<ParticipantsRecord>({
+    record: recordOverride,
+  })
   if (!record) {
     return null
   }

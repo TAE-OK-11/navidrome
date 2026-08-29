@@ -144,7 +144,8 @@ describe('useRating', () => {
       const { result } = renderHook(() => useRating('playlistTrack', record))
 
       // Simulate RatingField component behavior: uses mediaFileId || record.id
-      const targetId = (record as { mediaFileId?: string }).mediaFileId || record.id
+      const targetId =
+        (record as { mediaFileId?: string }).mediaFileId || record.id
       await act(async () => {
         await result.current[0](4, targetId)
       })
@@ -157,7 +158,8 @@ describe('useRating', () => {
       const { result } = renderHook(() => useRating('song', record))
 
       // Simulate RatingField component behavior: uses mediaFileId || record.id
-      const targetId = (record as { mediaFileId?: string }).mediaFileId || record.id
+      const targetId =
+        (record as { mediaFileId?: string }).mediaFileId || record.id
       await act(async () => {
         await result.current[0](5, targetId)
       })

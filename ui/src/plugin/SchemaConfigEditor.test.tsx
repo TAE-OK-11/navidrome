@@ -46,14 +46,24 @@ describe('SchemaConfigEditor', () => {
 
   it('renders nothing when schema is null', () => {
     const { container } = renderWithProviders(
-      <SchemaConfigEditor schema={null} data={{}} uiSchema={{}} onChange={vi.fn()} />,
+      <SchemaConfigEditor
+        schema={null}
+        data={{}}
+        uiSchema={{}}
+        onChange={vi.fn()}
+      />,
     )
     expect(container.firstChild).toBeNull()
   })
 
   it('renders the component wrapper with valid schema', () => {
     const { container } = renderWithProviders(
-      <SchemaConfigEditor schema={basicSchema} data={{}} uiSchema={basicUiSchema} onChange={vi.fn()} />,
+      <SchemaConfigEditor
+        schema={basicSchema}
+        data={{}}
+        uiSchema={basicUiSchema}
+        onChange={vi.fn()}
+      />,
     )
     // Check that the wrapper div is rendered (class name is generated)
     expect(

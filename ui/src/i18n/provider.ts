@@ -54,7 +54,9 @@ const removeEmpty = (obj: Record<string, unknown>) => {
   }
 }
 
-const prepareLanguage = (lang: Record<string, unknown>): TranslationMessages => {
+const prepareLanguage = (
+  lang: Record<string, unknown>,
+): TranslationMessages => {
   removeEmpty(lang)
   // Make "albumSong" and "playlistTrack" resource use the same translations as "song"
   const resources = lang.resources as Record<string, unknown>

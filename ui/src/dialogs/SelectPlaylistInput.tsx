@@ -213,9 +213,9 @@ export const SelectPlaylistInput = ({
   onChange: (selection: PlaylistSelection[]) => void
 }) => {
   const [searchText, setSearchText] = useState('')
-  const [selectedPlaylists, setSelectedPlaylists] = useState<PlaylistSelection[]>(
-    [],
-  )
+  const [selectedPlaylists, setSelectedPlaylists] = useState<
+    PlaylistSelection[]
+  >([])
 
   const { data = [] } = useGetList('playlist', {
     pagination: { page: 1, perPage: -1 },

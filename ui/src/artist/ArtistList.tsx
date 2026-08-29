@@ -45,18 +45,17 @@ const ArtistFilter = (props) => {
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
   const rolesObj = en?.resources?.artist?.roles
-  const roles = Object.keys(rolesObj).reduce<Array<{ id: string; name: string }>>(
-    (acc, role) => {
-      acc.push({
-        id: role,
-        name: translate(`resources.artist.roles.${role}`, {
-          smart_count: 2,
-        }),
-      })
-      return acc
-    },
-    [],
-  )
+  const roles = Object.keys(rolesObj).reduce<
+    Array<{ id: string; name: string }>
+  >((acc, role) => {
+    acc.push({
+      id: role,
+      name: translate(`resources.artist.roles.${role}`, {
+        smart_count: 2,
+      }),
+    })
+    return acc
+  }, [])
   roles?.sort((a, b) => a.name.localeCompare(b.name))
   return (
     <Filter {...props}>
@@ -158,7 +157,8 @@ const ArtistListView = ({
     if (!record) return undefined
     return role ? record?.stats?.[role]?.[counter] : record?.[counter]
   }
-  const getAlbumCount = (record: ArtistRecord) => getCounter(record, 'albumCount')
+  const getAlbumCount = (record: ArtistRecord) =>
+    getCounter(record, 'albumCount')
   const getSongCount = (record: ArtistRecord) => getCounter(record, 'songCount')
   const getSize = (record: ArtistRecord) => {
     const size = getCounter(record, 'size')

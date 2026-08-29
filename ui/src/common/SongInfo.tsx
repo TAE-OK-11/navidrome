@@ -62,19 +62,13 @@ export const SongInfo = (props: SongInfoProps) => {
     ),
     discSubtitle: <TextField source="discSubtitle" />,
     albumArtist: (
-      <ArtistLinkField
-        source="albumArtist"
-        record={record}
-        limit={Infinity}
-      />
+      <ArtistLinkField source="albumArtist" record={record} limit={Infinity} />
     ),
     artist: (
       <ArtistLinkField source="artist" record={record} limit={Infinity} />
     ),
     genre: (
-      <FunctionField
-        render={(r) => r.genres?.map((g) => g.name).join(' • ')}
-      />
+      <FunctionField render={(r) => r.genres?.map((g) => g.name).join(' • ')} />
     ),
     compilation: <BooleanField source="compilation" />,
     bitRate: <BitrateField source="bitRate" />,

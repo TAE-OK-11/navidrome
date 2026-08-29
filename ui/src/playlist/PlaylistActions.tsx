@@ -54,7 +54,12 @@ const PlaylistActions = ({
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
 
   const getAllSongsAndDispatch = React.useCallback(
-    (action: (trackData: Record<string, SongRecord>, trackIds?: Identifier[]) => { type: string }) => {
+    (
+      action: (
+        trackData: Record<string, SongRecord>,
+        trackIds?: Identifier[],
+      ) => { type: string },
+    ) => {
       if (ids?.length === record?.songCount && data) {
         return dispatch(action(data, ids))
       }

@@ -5,9 +5,10 @@ import type { StoreEnhancer } from 'redux'
 
 declare global {
   interface Window {
-    __REDUX_DEVTOOLS_EXTENSION_COMPOSE__?: (
-      options?: { trace?: boolean; traceLimit?: number },
-    ) => StoreEnhancer
+    __REDUX_DEVTOOLS_EXTENSION_COMPOSE__?: (options?: {
+      trace?: boolean
+      traceLimit?: number
+    }) => StoreEnhancer
   }
 }
 

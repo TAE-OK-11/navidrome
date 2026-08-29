@@ -1,7 +1,13 @@
 import React, { useCallback, useMemo } from 'react'
 import { Link } from '@mui/material'
 
-const Linkify = ({ text, ...rest }: { text: string; [key: string]: unknown }) => {
+const Linkify = ({
+  text,
+  ...rest
+}: {
+  text: string
+  [key: string]: unknown
+}) => {
   const linkify = useCallback((input: string) => {
     const urlRegex =
       /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#/%?=~_|!:,.;]*[-A-Z0-9+&@#/%=~_|])/gi

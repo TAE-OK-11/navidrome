@@ -14,8 +14,7 @@ export const mockUseInputValue = (
   }> = {},
 ): UseInputValue => {
   const onChange = overrides.onChange ?? vi.fn()
-  const value =
-    'value' in overrides ? overrides.value : []
+  const value = 'value' in overrides ? overrides.value : []
   return {
     id: 'test-input',
     isRequired: false,

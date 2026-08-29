@@ -31,40 +31,40 @@ type AboutMenuItemProps = {
 
 const AboutMenuItem = forwardRef<HTMLLIElement, AboutMenuItemProps>(
   ({ onClick, ...rest }, ref) => {
-  const translate = useTranslate()
-  const [open, setOpen] = React.useState(false)
+    const translate = useTranslate()
+    const [open, setOpen] = React.useState(false)
 
-  const handleOpen = () => setOpen(true)
-  const handleClose = () => {
-    onClick?.()
-    setOpen(false)
-  }
-  const label = translate('menu.about')
+    const handleOpen = () => setOpen(true)
+    const handleClose = () => {
+      onClick?.()
+      setOpen(false)
+    }
+    const label = translate('menu.about')
 
-  return (
-    <>
-      <MenuItem
-        ref={ref}
-        onClick={handleOpen}
-        sx={[
-          menuItemSx,
-          (theme) => componentStyleOverride(theme, 'NDAppBar', 'root'),
-        ]}
-      >
-        <ListItemIcon
+    return (
+      <>
+        <MenuItem
+          ref={ref}
+          onClick={handleOpen}
           sx={[
-            { minWidth: 5 },
-            (theme) => componentStyleOverride(theme, 'NDAppBar', 'icon'),
+            menuItemSx,
+            (theme) => componentStyleOverride(theme, 'NDAppBar', 'root'),
           ]}
         >
-          <MdInfo title={label} size={24} />
-        </ListItemIcon>
-        {label}
-      </MenuItem>
-      <AboutDialog onClose={handleClose} open={open} />
-    </>
-  )
-},
+          <ListItemIcon
+            sx={[
+              { minWidth: 5 },
+              (theme) => componentStyleOverride(theme, 'NDAppBar', 'icon'),
+            ]}
+          >
+            <MdInfo title={label} size={24} />
+          </ListItemIcon>
+          {label}
+        </MenuItem>
+        <AboutDialog onClose={handleClose} open={open} />
+      </>
+    )
+  },
 )
 
 AboutMenuItem.displayName = 'AboutMenuItem'

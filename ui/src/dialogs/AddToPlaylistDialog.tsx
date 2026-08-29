@@ -28,8 +28,13 @@ import type { PlaylistSelection } from '../types/records'
 import type { Identifier } from 'react-admin'
 
 export const AddToPlaylistDialog = () => {
-  const { open, selectedIds = [], onSuccess, duplicateSong, duplicateIds = [] } =
-    useSelector((state: NavidromeRootState) => state.addToPlaylistDialog)
+  const {
+    open,
+    selectedIds = [],
+    onSuccess,
+    duplicateSong,
+    duplicateIds = [],
+  } = useSelector((state: NavidromeRootState) => state.addToPlaylistDialog)
   const dispatch = useDispatch()
   const translate = useTranslate()
   const notify = useNotify()

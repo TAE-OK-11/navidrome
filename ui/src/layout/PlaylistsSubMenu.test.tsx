@@ -121,7 +121,9 @@ describe('<PlaylistsSubMenu />', () => {
   it('toggles the setting when the heart action is clicked', () => {
     const store = renderMenu()
     fireEvent.click(screen.getByTitle('menu.onlyFavourites'))
-    expect((store.getState() as any).settings.sidebarPlaylistsOnlyFavourites).toBe(true)
+    expect(
+      (store.getState() as any).settings.sidebarPlaylistsOnlyFavourites,
+    ).toBe(true)
     expect(lastQuery().filter).toEqual({ starred: true })
   })
 

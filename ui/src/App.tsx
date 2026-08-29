@@ -112,17 +112,25 @@ const Admin = (props) => {
             {...(album as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'albumList' }}
           />
-          <Resource name="artist" {...(artist as unknown as Omit<ResourceProps, 'name'>)} />
-          <Resource name="song" {...(song as unknown as Omit<ResourceProps, 'name'>)} />
+          <Resource
+            name="artist"
+            {...(artist as unknown as Omit<ResourceProps, 'name'>)}
+          />
+          <Resource
+            name="song"
+            {...(song as unknown as Omit<ResourceProps, 'name'>)}
+          />
           <Resource
             name="radio"
-            {...((permissions === 'admin' ? radio.admin : radio.all) as unknown as Omit<
-              ResourceProps,
-              'name'
-            >)}
+            {...((permissions === 'admin'
+              ? radio.admin
+              : radio.all) as unknown as Omit<ResourceProps, 'name'>)}
           />
           {config.enableSharing && (
-            <Resource name="share" {...(share as unknown as Omit<ResourceProps, 'name'>)} />
+            <Resource
+              name="share"
+              {...(share as unknown as Omit<ResourceProps, 'name'>)}
+            />
           )}
           <Resource
             name="playlist"

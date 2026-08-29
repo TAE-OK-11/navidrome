@@ -145,7 +145,10 @@ const AlbumSongs = (props: {
         {...(props as Record<string, unknown>)}
       />
       <Box sx={{ display: 'flex' }}>
-        <Card sx={contentSx((props.selectedIds?.length ?? 0) > 0)} key={version}>
+        <Card
+          sx={contentSx((props.selectedIds?.length ?? 0) > 0)}
+          key={version}
+        >
           <BulkActionsToolbar {...props} label={bulkActionsLabel}>
             <SongBulkActions />
           </BulkActionsToolbar>
@@ -173,7 +176,7 @@ const AlbumSongs = (props: {
           </SongDatagrid>
         </Card>
       </Box>
-      <ExpandInfoDialog content={<SongInfo /> as React.ReactElement} />
+      <ExpandInfoDialog content={(<SongInfo />) as React.ReactElement} />
     </>
   )
 }

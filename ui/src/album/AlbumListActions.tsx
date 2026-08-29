@@ -19,47 +19,48 @@ type AlbumViewTogglerProps = {
   fullWidth?: boolean
 }
 
-const AlbumViewToggler = React.forwardRef<HTMLDivElement, AlbumViewTogglerProps>(
-  ({ showTitle = true }, ref) => {
-    const dispatch = useDispatch()
-    const albumView = useSelector((state: AppState) => state.albumView)
-    const translate = useTranslate()
-    return (
-      <Box ref={ref}>
-        {showTitle && (
-          <Typography sx={{ m: '1rem' }}>
-            {translate('ra.toggleFieldsMenu.layout')}
-          </Typography>
-        )}
-        <ButtonGroup
-          variant="text"
-          color="primary"
-          aria-label="text primary button group"
-          sx={{ width: '100%', justifyContent: 'center' }}
+const AlbumViewToggler = React.forwardRef<
+  HTMLDivElement,
+  AlbumViewTogglerProps
+>(({ showTitle = true }, ref) => {
+  const dispatch = useDispatch()
+  const albumView = useSelector((state: AppState) => state.albumView)
+  const translate = useTranslate()
+  return (
+    <Box ref={ref}>
+      {showTitle && (
+        <Typography sx={{ m: '1rem' }}>
+          {translate('ra.toggleFieldsMenu.layout')}
+        </Typography>
+      )}
+      <ButtonGroup
+        variant="text"
+        color="primary"
+        aria-label="text primary button group"
+        sx={{ width: '100%', justifyContent: 'center' }}
+      >
+        <Button
+          size="small"
+          sx={{ pr: '0.5rem' }}
+          label={translate('ra.toggleFieldsMenu.grid')}
+          color={albumView.grid ? 'primary' : 'secondary'}
+          onClick={() => dispatch(albumViewGrid())}
         >
-          <Button
-            size="small"
-            sx={{ pr: '0.5rem' }}
-            label={translate('ra.toggleFieldsMenu.grid')}
-            color={albumView.grid ? 'primary' : 'secondary'}
-            onClick={() => dispatch(albumViewGrid())}
-          >
-            <ViewModuleIcon fontSize="inherit" />
-          </Button>
-          <Button
-            size="small"
-            sx={{ pl: '0.5rem' }}
-            label={translate('ra.toggleFieldsMenu.table')}
-            color={albumView.grid ? 'secondary' : 'primary'}
-            onClick={() => dispatch(albumViewTable())}
-          >
-            <ViewHeadlineIcon fontSize="inherit" />
-          </Button>
-        </ButtonGroup>
-      </Box>
-    )
-  },
-)
+          <ViewModuleIcon fontSize="inherit" />
+        </Button>
+        <Button
+          size="small"
+          sx={{ pl: '0.5rem' }}
+          label={translate('ra.toggleFieldsMenu.table')}
+          color={albumView.grid ? 'secondary' : 'primary'}
+          onClick={() => dispatch(albumViewTable())}
+        >
+          <ViewHeadlineIcon fontSize="inherit" />
+        </Button>
+      </ButtonGroup>
+    </Box>
+  )
+})
 
 AlbumViewToggler.displayName = 'AlbumViewToggler'
 

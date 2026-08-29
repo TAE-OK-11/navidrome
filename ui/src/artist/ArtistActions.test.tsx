@@ -171,7 +171,9 @@ describe('ArtistActions', () => {
     })
 
     it('handles API rejection', async () => {
-      vi.mocked(subsonic.getTopSongs).mockRejectedValue(new Error('Network error'))
+      vi.mocked(subsonic.getTopSongs).mockRejectedValue(
+        new Error('Network error'),
+      )
 
       renderArtistActions()
       clickActionButton('topSongs')

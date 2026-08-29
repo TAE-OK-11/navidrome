@@ -83,9 +83,12 @@ describe('useImageUrl', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.imgUrl).toBe('blob:mock-url')
     expect(result.current.error).toBe(false)
-    expect(globalThis.fetch).toHaveBeenCalledWith('http://example.com/img.jpg', {
-      signal: expect.anything(),
-    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://example.com/img.jpg',
+      {
+        signal: expect.anything(),
+      },
+    )
   })
 
   it('should set error on HTTP failure', async () => {

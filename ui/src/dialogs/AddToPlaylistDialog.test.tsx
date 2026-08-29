@@ -72,7 +72,9 @@ describe('AddToPlaylistDialog', () => {
 
   it('adds distinct songs to already existing playlists', async () => {
     const dataProvider = await import('../dataProvider')
-    vi.spyOn(dataProvider, 'httpClient').mockResolvedValue({ data: mockData } as any)
+    vi.spyOn(dataProvider, 'httpClient').mockResolvedValue({
+      data: mockData,
+    } as any)
 
     const mockDataProvider = {
       getList: vi

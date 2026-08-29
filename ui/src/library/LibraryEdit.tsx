@@ -20,7 +20,11 @@ import DeleteLibraryButton from './DeleteLibraryButton'
 import { Title } from '../common'
 import { formatBytes, formatDuration2 } from '../utils/index'
 
-const LibraryTitle = ({ record: recordOverride }: { record?: { name?: string } }) => {
+const LibraryTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.library.name', { smart_count: 1 })

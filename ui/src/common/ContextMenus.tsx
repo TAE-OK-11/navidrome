@@ -118,7 +118,9 @@ const ContextMenu = ({
         needData: false,
         label: translate('ra.action.share'),
         action: (record) =>
-          dispatch(openShareMenu([record.id], resource, record.name, undefined)),
+          dispatch(
+            openShareMenu([record.id], resource, record.name, undefined),
+          ),
       },
     }),
     download: {

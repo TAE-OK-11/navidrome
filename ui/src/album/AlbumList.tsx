@@ -41,12 +41,7 @@ import { withWidth, type Width } from '../themes/useWidth'
 import type { AppState } from '../types/redux'
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
-const ScrollRestorer = ({
-  children,
-  ...rest
-}: {
-  children: ReactElement
-}) => {
+const ScrollRestorer = ({ children, ...rest }: { children: ReactElement }) => {
   const { isPending, total } = useListContext()
   useScrollRestoration(!isPending && (total ?? 0) > 0)
   return cloneElement(children, rest)
@@ -268,7 +263,10 @@ const AlbumList = (props: { width?: Width }) => {
       >
         <ScrollRestorer>
           {albumView.grid ? (
-            <AlbumGridView albumListType={albumListType} {...(props as Record<string, unknown>)} />
+            <AlbumGridView
+              albumListType={albumListType}
+              {...(props as Record<string, unknown>)}
+            />
           ) : (
             <AlbumTableView {...(props as Record<string, unknown>)} />
           )}

@@ -87,10 +87,7 @@ const AlbumInfo = (props: AlbumInfoProps) => {
       />
     ),
     mood: (
-      <FunctionField
-        source={'mood'}
-        render={(r) => r.tags?.mood?.join(', ')}
-      />
+      <FunctionField source={'mood'} render={(r) => r.tags?.mood?.join(', ')} />
     ),
     compilation: <BooleanField source={'compilation'} />,
     updatedAt: <DateField source={'updatedAt'} showTime />,

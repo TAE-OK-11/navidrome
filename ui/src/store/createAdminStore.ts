@@ -32,10 +32,12 @@ const createAdminStore = ({ customReducers = {} }: CreateAdminStoreOptions) => {
 
   let enhancer: StoreEnhancer | undefined
   if (import.meta.env.DEV && typeof window !== 'undefined' && devToolsCompose) {
-    enhancer = (devToolsCompose({
-      trace: true,
-      traceLimit: 25,
-    }) as unknown as () => StoreEnhancer)()
+    enhancer = (
+      devToolsCompose({
+        trace: true,
+        traceLimit: 25,
+      }) as unknown as () => StoreEnhancer
+    )()
   }
 
   const persistedState = loadState()
@@ -47,8 +49,7 @@ const createAdminStore = ({ customReducers = {} }: CreateAdminStoreOptions) => {
   }
 
   const preloadedState = persistedState as unknown as
-    | NavidromeRootState
-    | undefined
+    NavidromeRootState | undefined
 
   const store = enhancer
     ? createStore(reducer, preloadedState, enhancer)

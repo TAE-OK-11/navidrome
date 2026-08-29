@@ -20,7 +20,8 @@ export * from '../../node_modules/@mui/material/index.mjs'
 type SlotPropValue = unknown
 
 const mergeSlotProp = (
-  legacyProps: Record<string, unknown> | InputHTMLAttributes<HTMLInputElement> | undefined,
+  legacyProps:
+    Record<string, unknown> | InputHTMLAttributes<HTMLInputElement> | undefined,
   slotProp: SlotPropValue,
 ): SlotPropValue => {
   if (!legacyProps) return slotProp
@@ -85,19 +86,19 @@ export const TextField = forwardRef<HTMLDivElement, TextFieldProps>(
       <MuiTextField
         {...props}
         ref={ref}
-      slotProps={
-        {
-          ...slotProps,
-          formHelperText: mergeSlotProp(
-            FormHelperTextProps,
-            slotProps.formHelperText,
-          ),
-          htmlInput: mergeSlotProp(inputProps, slotProps.htmlInput),
-          input: mergeSlotProp(InputProps, slotProps.input),
-          inputLabel: mergeSlotProp(InputLabelProps, slotProps.inputLabel),
-          select: mergeSlotProp(SelectProps, slotProps.select),
-        } as MuiTextFieldProps['slotProps']
-      }
+        slotProps={
+          {
+            ...slotProps,
+            formHelperText: mergeSlotProp(
+              FormHelperTextProps,
+              slotProps.formHelperText,
+            ),
+            htmlInput: mergeSlotProp(inputProps, slotProps.htmlInput),
+            input: mergeSlotProp(InputProps, slotProps.input),
+            inputLabel: mergeSlotProp(InputLabelProps, slotProps.inputLabel),
+            select: mergeSlotProp(SelectProps, slotProps.select),
+          } as MuiTextFieldProps['slotProps']
+        }
       />
     )
   },
@@ -112,13 +113,13 @@ export const Snackbar = forwardRef<HTMLDivElement, SnackbarProps>(
       <MuiSnackbar
         {...props}
         ref={ref}
-      slotProps={
-        {
-          ...slotProps,
-          content: mergeSlotProp(ContentProps, slotProps.content),
-          transition: mergeSlotProp(TransitionProps, slotProps.transition),
-        } as MuiSnackbarProps['slotProps']
-      }
+        slotProps={
+          {
+            ...slotProps,
+            content: mergeSlotProp(ContentProps, slotProps.content),
+            transition: mergeSlotProp(TransitionProps, slotProps.transition),
+          } as MuiSnackbarProps['slotProps']
+        }
       />
     )
   },
@@ -130,15 +131,15 @@ export const Checkbox = forwardRef<HTMLButtonElement, CheckboxProps>(
       <MuiCheckbox
         {...props}
         ref={ref}
-      slotProps={
-        {
-          ...slotProps,
-          input: mergeSlotProp(
-            { ...inputProps, ref: inputRef },
-            slotProps.input,
-          ),
-        } as CheckboxProps['slotProps']
-      }
+        slotProps={
+          {
+            ...slotProps,
+            input: mergeSlotProp(
+              { ...inputProps, ref: inputRef },
+              slotProps.input,
+            ),
+          } as CheckboxProps['slotProps']
+        }
       />
     )
   },

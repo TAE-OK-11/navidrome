@@ -46,7 +46,9 @@ describe('<AudioTitle />', () => {
 
   it('links to playlist when playlistId is provided', () => {
     const audioInfo = { trackId: 'track-1', song: baseSong }
-    render(<AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />)
+    render(
+      <AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />,
+    )
     const link = screen.getByRole('link')
     expect(link.getAttribute('href')).toBe('/playlist/playlist-1/show')
   })
@@ -56,7 +58,9 @@ describe('<AudioTitle />', () => {
       trackId: 'track-1',
       song: { ...baseSong, playlistId: undefined },
     }
-    render(<AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />)
+    render(
+      <AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />,
+    )
     const link = screen.getByRole('link')
     expect(link.getAttribute('href')).toBe('/album/album-1/show')
   })

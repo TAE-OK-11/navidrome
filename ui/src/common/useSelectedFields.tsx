@@ -27,9 +27,9 @@ export const useSelectedFields = ({
     (state: NavidromeRootState) => state.settings.omittedFields,
   )?.[resource]
 
-  const [filteredComponents, setFilteredComponents] = useState<React.ReactNode[]>(
-    [],
-  )
+  const [filteredComponents, setFilteredComponents] = useState<
+    React.ReactNode[]
+  >([])
 
   useEffect(() => {
     if (

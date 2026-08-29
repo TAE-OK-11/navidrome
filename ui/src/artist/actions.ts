@@ -25,11 +25,7 @@ export const playTopSongs = async (dispatch, notify, artistName) => {
 import type { Identifier } from 'react-admin'
 import type { SongRecord } from '../types/records'
 
-export const playShuffle = async (
-  dataProvider,
-  dispatch,
-  id: Identifier,
-) => {
+export const playShuffle = async (dataProvider, dispatch, id: Identifier) => {
   const res = await dataProvider.getList('song', {
     pagination: { page: 1, perPage: 500 },
     sort: { field: 'random', order: 'ASC' },

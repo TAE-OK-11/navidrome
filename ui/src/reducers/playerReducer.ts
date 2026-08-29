@@ -74,9 +74,7 @@ const formatSyncedLyrics = (lyrics: unknown): string => {
   return output.length > 0 ? `${output.join('\n')}\n` : ''
 }
 
-const makeMusicSrc = (
-  trackId: string,
-): string | (() => Promise<string>) =>
+const makeMusicSrc = (trackId: string): string | (() => Promise<string>) =>
   decisionService.getProfile()
     ? () =>
         decisionService
@@ -97,8 +95,7 @@ const mapToAudioLists = (item: TrackSource): AudioListItem => {
       uuid: uuidv4(),
       name: typeof item.name === 'string' ? item.name : undefined,
       song: item,
-      musicSrc:
-        typeof item.streamUrl === 'string' ? item.streamUrl : undefined,
+      musicSrc: typeof item.streamUrl === 'string' ? item.streamUrl : undefined,
       cover: typeof item.cover === 'string' ? item.cover : undefined,
       isRadio: true,
     }
@@ -256,8 +253,7 @@ const reduceCurrent = (
     playIndex: pending ? state.playIndex : undefined,
     clear: pending ? state.clear : false,
     savedPlayIndex: pending ? state.savedPlayIndex : savedPlayIndex,
-    volume:
-      typeof payload.volume === 'number' ? payload.volume : state.volume,
+    volume: typeof payload.volume === 'number' ? payload.volume : state.volume,
   }
 }
 

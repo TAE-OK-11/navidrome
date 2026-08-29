@@ -55,7 +55,9 @@ const PlaylistShowLayout = (props: PlaylistShowLayoutProps) => {
           <PlaylistSongs
             {...props}
             readOnly={!canChangeTracks(record)}
-            actions={<FullWidthPlaylistActions record={record as PlaylistRecord} />}
+            actions={
+              <FullWidthPlaylistActions record={record as PlaylistRecord} />
+            }
             resource={'playlistTrack'}
             exporter={false}
             pagination={

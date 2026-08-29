@@ -228,7 +228,9 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record as any} source="artist" limit={3} />)
+      render(
+        <ArtistLinkField record={record as any} source="artist" limit={3} />,
+      )
 
       expect(screen.getByText('Artist 1')).toBeInTheDocument()
       expect(screen.getByText('Artist 2')).toBeInTheDocument()

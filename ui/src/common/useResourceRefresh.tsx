@@ -86,8 +86,7 @@ export const useResourceRefresh = (...visibleResources) => {
       (resources['*'] === '*' ||
         Object.values(resources).some(
           (values) =>
-            values === '*' ||
-            (Array.isArray(values) && values.includes('*')),
+            values === '*' || (Array.isArray(values) && values.includes('*')),
         ))
     ) {
       refresh()

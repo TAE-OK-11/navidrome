@@ -31,7 +31,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as light in auto mode', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}
+          >
             {children}
           </Provider>
         ),
@@ -41,7 +43,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as dark', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -52,7 +56,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as light', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -81,7 +87,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as dark in auto mode', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}
+          >
             {children}
           </Provider>
         ),
@@ -92,7 +100,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as dark', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -103,7 +113,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as light', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -132,7 +144,9 @@ describe('useCurrentTheme', () => {
     it('sets body background for dark theme', () => {
       renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -143,7 +157,9 @@ describe('useCurrentTheme', () => {
     it('sets body background for light theme', () => {
       renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer as any, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),

@@ -39,7 +39,11 @@ const renderRow = (onClick) =>
       <ThemeProvider theme={createTheme()}>
         <table>
           <tbody>
-            <DiscSubtitleRow record={record as any} onClick={onClick} colSpan={3} />
+            <DiscSubtitleRow
+              record={record as any}
+              onClick={onClick}
+              colSpan={3}
+            />
           </tbody>
         </table>
       </ThemeProvider>

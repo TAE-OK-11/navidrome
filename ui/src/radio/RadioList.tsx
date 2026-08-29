@@ -74,7 +74,11 @@ type CoverArtRecord = RaRecord<Identifier> & {
   name?: string
 }
 
-const CoverArtField = ({ record: recordOverride }: { record?: CoverArtRecord }) => {
+const CoverArtField = ({
+  record: recordOverride,
+}: {
+  record?: CoverArtRecord
+}) => {
   const record = useRecordContext<CoverArtRecord>({ record: recordOverride })
   const directUrl = record?.uploadedImage
     ? subsonic.getCoverArtUrl(record, 40, true)

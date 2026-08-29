@@ -15,7 +15,10 @@ describe('useTranscodingOptions', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('handles the initial react-admin 5 loading state', () => {
-    vi.mocked(useGetList).mockReturnValue({ data: undefined, isPending: true } as any)
+    vi.mocked(useGetList).mockReturnValue({
+      data: undefined,
+      isPending: true,
+    } as any)
 
     expect(() => renderHook(() => useTranscodingOptions())).not.toThrow()
     expect(useGetList).toHaveBeenCalledWith('transcoding', {

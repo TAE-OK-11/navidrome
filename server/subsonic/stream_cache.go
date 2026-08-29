@@ -110,9 +110,16 @@ func (c *streamMediaCache) store(key string, mediaFile model.MediaFile, now time
 			}
 		}
 		if len(c.entries) >= c.limit {
-			for existingKey := range c.entries {
-				delete(c.entries, existingKey)
-				break
+			oldestKey := ""
+			var oldestExpiry time.Time
+			for existingKey, entry := range c.entries {
+				if oldestKey == "" || entry.expires.Before(oldestExpiry) {
+					oldestKey = existingKey
+					oldestExpiry = entry.expires
+				}
+			}
+			if oldestKey != "" {
+				delete(c.entries, oldestKey)
 			}
 		}
 	}

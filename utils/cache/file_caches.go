@@ -19,6 +19,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/utils/ioutils"
 )
 
 // Item represents an item that can be cached. It must implement the Key method that returns a unique key for a
@@ -270,7 +271,7 @@ func getFinalCachedSize(r fscache.ReadAtCloser) int64 {
 	return -1
 }
 
-const directFileStreamMinSize = 64 << 10
+const directFileStreamMinSize = 16 << 10
 
 func directFileStream(r fscache.ReadAtCloser, size int64) (*os.File, io.Closer, bool) {
 	if size < directFileStreamMinSize {
@@ -306,7 +307,7 @@ func (c joinedCloser) Close() error {
 
 // copyAndClose marks the entry complete before closing w, so EOF implies the entry is settled on disk.
 func (fc *fileCache) copyAndClose(ctx context.Context, key string, w io.WriteCloser, r io.Reader) error {
-	_, err := io.Copy(w, r)
+	_, err := ioutils.Copy(w, r)
 	if err != nil {
 		err = fmt.Errorf("copying data to cache: %w", err)
 	}

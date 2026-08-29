@@ -57,7 +57,9 @@ const ADMISSION_SHARDS: usize = 16;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
-const BRIDGE_RESPONSE_BODY_TIMEOUT: Duration = Duration::from_secs(120);
+// Stall protection for inherited HTTP/2 bodies. Idle (not total) so long media
+// streams can run for hours while still closing wedged upstream responses.
+const BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const API_COMPRESSION_MIN_SIZE: usize = 256;
 const LARGE_COMPRESSED_RESPONSE_SIZE: usize = 16 * 1024;
 const HUGE_COMPRESSED_RESPONSE_SIZE: usize = 256 * 1024;
@@ -709,12 +711,14 @@ async fn proxy_request_inner(
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
     drop(request_permit);
-    tokio::time::timeout(
-        BRIDGE_RESPONSE_BODY_TIMEOUT,
-        forward_response(response, &mut send, &context.alt_svc, compression),
+    forward_response(
+        response,
+        &mut send,
+        &context.alt_svc,
+        compression,
+        BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT,
     )
     .await
-    .context("timed out streaming inherited HTTP/2 response body")?
 }
 
 fn is_connect_request(headers: &[h3::Header]) -> bool {
@@ -1053,6 +1057,7 @@ async fn forward_response(
     send: &mut OutboundFrameSender,
     alt_svc: &HeaderValue,
     compression: Option<CompressionProfile>,
+    body_idle_timeout: Duration,
 ) -> Result<()> {
     let (mut parts, mut body) = response.into_parts();
     let mut prefix = VecDeque::new();
@@ -1103,9 +1108,9 @@ async fn forward_response(
     }
     send.send(OutboundFrame::Headers(headers, None)).await?;
     if let Some(profile) = compress {
-        forward_compressed_body(body, prefix, send, profile).await?;
+        forward_compressed_body(body, prefix, send, profile, body_idle_timeout).await?;
     } else {
-        forward_raw_body(&mut body, prefix, send).await?;
+        forward_raw_body(&mut body, prefix, send, body_idle_timeout).await?;
     }
     send.send(OutboundFrame::Body(Bytes::new(), true)).await?;
     Ok(())
@@ -1206,41 +1211,58 @@ async fn forward_raw_body(
     body: &mut hyper::body::Incoming,
     mut prefix: VecDeque<Bytes>,
     send: &mut OutboundFrameSender,
+    idle_timeout: Duration,
 ) -> Result<()> {
     while let Some(data) = prefix.pop_front() {
         send.send(OutboundFrame::Body(data, false)).await?;
     }
-    while let Some(frame) = body.frame().await {
-        if let Ok(data) = frame?.into_data()
+    loop {
+        let frame = tokio::time::timeout(idle_timeout, body.frame())
+            .await
+            .context("response body idle timeout")?
+            .context("failed to read inherited HTTP/2 response body")?;
+        let Some(frame) = frame else {
+            return Ok(());
+        };
+        if let Ok(data) = frame.into_data()
             && !data.is_empty()
         {
             send.send(OutboundFrame::Body(data, false)).await?;
         }
     }
-    Ok(())
 }
 
 fn response_data_stream(
     body: hyper::body::Incoming,
     prefix: VecDeque<Bytes>,
+    idle_timeout: Duration,
 ) -> impl futures::Stream<Item = std::io::Result<Bytes>> + Send {
-    stream::unfold((body, prefix), |(mut body, mut prefix)| async move {
+    stream::unfold((body, prefix, idle_timeout), |(mut body, mut prefix, idle_timeout)| async move {
         if let Some(data) = prefix.pop_front() {
-            return Some((Ok(data), (body, prefix)));
+            return Some((Ok(data), (body, prefix, idle_timeout)));
         }
         loop {
-            match body.frame().await {
-                Some(Ok(frame)) => {
+            match tokio::time::timeout(idle_timeout, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
                     if let Ok(data) = frame.into_data()
                         && !data.is_empty()
                     {
-                        return Some((Ok(data), (body, prefix)));
+                        return Some((Ok(data), (body, prefix, idle_timeout)));
                     }
                 }
-                Some(Err(error)) => {
-                    return Some((Err(std::io::Error::other(error)), (body, prefix)));
+                Ok(Some(Err(error))) => {
+                    return Some((Err(std::io::Error::other(error)), (body, prefix, idle_timeout)));
                 }
-                None => return None,
+                Ok(None) => return None,
+                Err(_) => {
+                    return Some((
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "response body idle timeout",
+                        )),
+                        (body, prefix, idle_timeout),
+                    ));
+                }
             }
         }
     })
@@ -1251,9 +1273,10 @@ async fn forward_compressed_body(
     prefix: VecDeque<Bytes>,
     send: &mut OutboundFrameSender,
     profile: CompressionProfile,
+    idle_timeout: Duration,
 ) -> Result<()> {
     let reader = TokioBufReader::new(StreamReader::new(Box::pin(response_data_stream(
-        body, prefix,
+        body, prefix, idle_timeout,
     ))));
     let quality = Level::Precise(profile.level);
     let mut encoder: Pin<Box<dyn AsyncRead + Send>> = match profile.encoding {

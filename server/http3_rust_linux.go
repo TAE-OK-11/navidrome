@@ -32,20 +32,20 @@ import (
 )
 
 const (
-	rustHTTP3ControlFD          = 3
-	rustHTTP3BridgeFD           = 4
-	rustHTTP3TokenHeader        = "X-Navidrome-H3-Token" //nolint:gosec // header name only; token value is generated at runtime
-	rustHTTP3AuthorityHeader    = "X-Navidrome-H3-Authority"
-	rustHTTP3RemoteAddrHeader   = "X-Navidrome-H3-Remote-Addr"
-	rustHTTP3StartupTimeout     = 15 * time.Second
-	rustHTTP3RestartMinDelay    = 100 * time.Millisecond
-	rustHTTP3RestartMaxDelay    = 5 * time.Second
-	rustHTTP3ControlMaxLineSize = 64 * 1024
-	rustHTTP3BridgeSocketBuffer = 4 << 20
-	rustHTTP3BridgeMaxBodyBytes = 32 << 20
+	rustHTTP3ControlFD           = 3
+	rustHTTP3BridgeFD            = 4
+	rustHTTP3TokenHeader         = "X-Navidrome-H3-Token" //nolint:gosec // header name only; token value is generated at runtime
+	rustHTTP3AuthorityHeader     = "X-Navidrome-H3-Authority"
+	rustHTTP3RemoteAddrHeader    = "X-Navidrome-H3-Remote-Addr"
+	rustHTTP3StartupTimeout      = 15 * time.Second
+	rustHTTP3RestartMinDelay     = 100 * time.Millisecond
+	rustHTTP3RestartMaxDelay     = 5 * time.Second
+	rustHTTP3ControlMaxLineSize  = 64 * 1024
+	rustHTTP3BridgeSocketBuffer  = 4 << 20
+	rustHTTP3BridgeMaxBodyBytes  = 32 << 20
 	rustHTTP3MaxRestartsInWindow = 5
-	rustHTTP3RestartWindow        = 2 * time.Minute
-	rustHTTP3CircuitCooldown      = 5 * time.Minute
+	rustHTTP3RestartWindow       = 2 * time.Minute
+	rustHTTP3CircuitCooldown     = 5 * time.Minute
 )
 
 type rustHTTP3Config struct {
@@ -82,9 +82,9 @@ type rustHTTP3Runtime struct {
 	cmd      *exec.Cmd
 	control  net.Conn
 
-	restartMu          sync.Mutex
-	restartTimes       []time.Time
-	circuitOpenUntil   time.Time
+	restartMu        sync.Mutex
+	restartTimes     []time.Time
+	circuitOpenUntil time.Time
 }
 
 func newRustHTTP3Runtime(
@@ -115,7 +115,6 @@ func newRustHTTP3Runtime(
 	protocols.SetUnencryptedHTTP2(true)
 	internalServer := &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
-		WriteTimeout:      serverH2WriteByteTimeout,
 		IdleTimeout:       serverH3BridgeIdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,

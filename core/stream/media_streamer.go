@@ -20,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/cache"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -75,8 +76,6 @@ func (j *streamJob) Key() string {
 	b.WriteString(strconv.Itoa(j.channels))
 	b.WriteByte('.')
 	b.WriteString(j.format)
-	b.WriteByte('.')
-	b.WriteString(strconv.Itoa(j.offset))
 	return b.String()
 }
 
@@ -133,15 +132,29 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 		channels:   req.Channels,
 		offset:     req.Offset,
 	}
-	r, err := ms.cache.Get(ctx, job)
-	if err != nil {
-		// Rate-limit rejections are already logged at warn level by the
-		// producer; treating them as cache failures here would both
-		// double-log and mask actual cache problems.
-		if !errors.Is(err, ErrTooManyTranscodes) {
-			log.Error(ctx, "Error accessing transcoding cache", "id", mf.ID, err)
+	var r *cache.CachedStream
+	if req.Offset > 0 {
+		// Offset seeks produce one-off transcodes that rarely hit cache again.
+		reader, err := ms.openTranscodeReader(ctx, job)
+		if err != nil {
+			if !errors.Is(err, ErrTooManyTranscodes) {
+				log.Error(ctx, "Error starting offset transcode", "id", mf.ID, err)
+			}
+			return nil, err
 		}
-		return nil, err
+		r = &cache.CachedStream{Reader: reader}
+	} else {
+		var err error
+		r, err = ms.cache.Get(ctx, job)
+		if err != nil {
+			// Rate-limit rejections are already logged at warn level by the
+			// producer; treating them as cache failures here would both
+			// double-log and mask actual cache problems.
+			if !errors.Is(err, ErrTooManyTranscodes) {
+				log.Error(ctx, "Error accessing transcoding cache", "id", mf.ID, err)
+			}
+			return nil, err
+		}
 	}
 	cached = r.Cached
 
@@ -173,14 +186,7 @@ type Stream struct {
 // companion. Transcoded streams are not seekable, so this is their hot copy
 // path; 64 KiB halves Go-level writes versus io.Copy's 32 KiB default without
 // retaining large per-request buffers.
-const streamCopyBufferSize = 64 * 1024
-
-var streamCopyBufferPool = sync.Pool{
-	New: func() any {
-		buf := make([]byte, streamCopyBufferSize)
-		return &buf
-	},
-}
+const streamCopyBufferSize = ioutils.DefaultCopyBufferSize
 
 func (s *Stream) Seekable() bool    { return s.Seeker != nil }
 func (s *Stream) Duration() float32 { return s.mf.Duration }
@@ -240,10 +246,7 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	}
 
 	id := s.mf.ID
-	bufPtr := streamCopyBufferPool.Get().(*[]byte)
-	defer streamCopyBufferPool.Put(bufPtr)
-
-	c, err := io.CopyBuffer(w, s, *bufPtr)
+	c, err := ioutils.Copy(w, s)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)
@@ -295,61 +298,64 @@ func NewTranscodingCache() TranscodingCache {
 	return cache.NewFileCache("Transcoding", conf.Server.TranscodingCacheSize,
 		consts.TranscodingCacheDir, consts.DefaultTranscodingCacheMaxItems,
 		func(ctx context.Context, arg cache.Item) (io.Reader, error) {
-			job := arg.(*streamJob)
-			command := newTranscodeLookupWithCache(ctx, job.ms.ds, job.ms.profiles).commandFor(job.format)
-			if command == "" {
-				log.Error(ctx, "No transcoding command available", "format", job.format)
-				return nil, os.ErrInvalid
-			}
-
-			release, err := job.ms.limiter.Acquire(ctx, limiterKey(ctx))
-			if err != nil {
-				log.Warn(ctx, "Refusing transcode: concurrent transcode limit reached",
-					"id", job.mf.ID, "user", userName(ctx),
-					"maxConcurrent", conf.Server.Transcoding.MaxConcurrent,
-					"maxPerUser", conf.Server.Transcoding.MaxConcurrentPerUser)
-				return nil, err
-			}
-
-			// Choose the context that drives the ffmpeg process.
-			//
-			// When the limiter is enabled, force the request context so a
-			// client disconnect cancels ffmpeg and frees the slot promptly.
-			// Otherwise a client could open many transcodes, disconnect
-			// immediately, and still leave the configured cap's worth of
-			// ffmpeg processes draining in the background — which is exactly
-			// the DoS the limiter is meant to prevent.
-			//
-			// When the limiter is disabled, preserve the legacy behavior
-			// governed by Transcoding.EnableCancellation so unchanged configs
-			// keep their previous observable behavior.
-			var transcodingCtx context.Context
-			if job.ms.limiter.Enabled() || conf.Server.Transcoding.EnableCancellation {
-				transcodingCtx = ctx
-			} else {
-				transcodingCtx = request.AddValues(context.Background(), ctx)
-			}
-
-			out, err := job.ms.transcoder.Transcode(transcodingCtx, ffmpeg.TranscodeOptions{
-				Command:    command,
-				Format:     job.format,
-				FilePath:   job.filePath,
-				BitRate:    job.bitRate,
-				SampleRate: job.sampleRate,
-				BitDepth:   job.bitDepth,
-				Channels:   job.channels,
-				Offset:     job.offset,
-			})
-			if err != nil {
-				release()
-				log.Error(ctx, "Error starting transcoder", "id", job.mf.ID, err)
-				return nil, os.ErrInvalid
-			}
-			// Tie the slot to the ffmpeg process: copyAndClose calls Close
-			// on this reader after io.Copy returns, which is exactly when
-			// ffmpeg has exited (either EOF or context cancellation).
-			return &releasingReadCloser{ReadCloser: out, release: release}, nil
+			return arg.(*streamJob).ms.openTranscodeReader(ctx, arg.(*streamJob))
 		})
+}
+
+func (ms *mediaStreamer) openTranscodeReader(ctx context.Context, job *streamJob) (io.ReadCloser, error) {
+	command := newTranscodeLookupWithCache(ctx, job.ms.ds, job.ms.profiles).commandFor(job.format)
+	if command == "" {
+		log.Error(ctx, "No transcoding command available", "format", job.format)
+		return nil, os.ErrInvalid
+	}
+
+	release, err := job.ms.limiter.Acquire(ctx, limiterKey(ctx))
+	if err != nil {
+		log.Warn(ctx, "Refusing transcode: concurrent transcode limit reached",
+			"id", job.mf.ID, "user", userName(ctx),
+			"maxConcurrent", conf.Server.Transcoding.MaxConcurrent,
+			"maxPerUser", conf.Server.Transcoding.MaxConcurrentPerUser)
+		return nil, err
+	}
+
+	// Choose the context that drives the ffmpeg process.
+	//
+	// When the limiter is enabled, force the request context so a
+	// client disconnect cancels ffmpeg and frees the slot promptly.
+	// Otherwise a client could open many transcodes, disconnect
+	// immediately, and still leave the configured cap's worth of
+	// ffmpeg processes draining in the background — which is exactly
+	// the DoS the limiter is meant to prevent.
+	//
+	// When the limiter is disabled, preserve the legacy behavior
+	// governed by Transcoding.EnableCancellation so unchanged configs
+	// keep their previous observable behavior.
+	var transcodingCtx context.Context
+	if job.ms.limiter.Enabled() || conf.Server.Transcoding.EnableCancellation {
+		transcodingCtx = ctx
+	} else {
+		transcodingCtx = request.AddValues(context.Background(), ctx)
+	}
+
+	out, err := job.ms.transcoder.Transcode(transcodingCtx, ffmpeg.TranscodeOptions{
+		Command:    command,
+		Format:     job.format,
+		FilePath:   job.filePath,
+		BitRate:    job.bitRate,
+		SampleRate: job.sampleRate,
+		BitDepth:   job.bitDepth,
+		Channels:   job.channels,
+		Offset:     job.offset,
+	})
+	if err != nil {
+		release()
+		log.Error(ctx, "Error starting transcoder", "id", job.mf.ID, err)
+		return nil, os.ErrInvalid
+	}
+	// Tie the slot to the ffmpeg process: copyAndClose calls Close
+	// on this reader after io.Copy returns, which is exactly when
+	// ffmpeg has exited (either EOF or context cancellation).
+	return &releasingReadCloser{ReadCloser: out, release: release}, nil
 }
 
 // userName extracts the username from the context for logging purposes.

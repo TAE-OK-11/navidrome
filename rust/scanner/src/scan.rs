@@ -1070,7 +1070,14 @@ mod tests {
                 );
             }
         }
-        assert_eq!(folder_paths, vec!["Artist/Album".to_owned(), "Artist".to_owned()]);
+        assert_eq!(
+            folder_paths,
+            vec![
+                "Artist/Album".to_owned(),
+                "Artist".to_owned(),
+                ".".to_owned(),
+            ]
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

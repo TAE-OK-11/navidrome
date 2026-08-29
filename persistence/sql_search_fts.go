@@ -1,14 +1,17 @@
 package persistence
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/sanitize"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 )
@@ -190,6 +193,32 @@ func buildFTS5Query(userInput string) (string, bool) {
 	return result, ftsQueryDegraded(userInput, prefixQuery)
 }
 
+type cachedFTS5Query struct {
+	query    string
+	degraded bool
+}
+
+var ftsQueryCache sync.Map
+
+func buildFTS5QueryCached(userInput string) (string, bool) {
+	if cached, ok := ftsQueryCache.Load(userInput); ok {
+		entry := cached.(cachedFTS5Query)
+		return entry.query, entry.degraded
+	}
+	query, degraded := buildFTS5QueryRust(context.Background(), userInput)
+	ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
+	return query, degraded
+}
+
+func buildFTS5QueryRust(ctx context.Context, userInput string) (string, bool) {
+	result, err := metadataworker.PersistentBuildFTS5QueryWorkers().Build(ctx, userInput)
+	if err != nil {
+		log.Trace(ctx, "Rust FTS5 query builder unavailable; using Go fallback", err)
+		return buildFTS5Query(userInput)
+	}
+	return result.Query, result.Degraded
+}
+
 // ftsColumn pairs an FTS5 column name with its BM25 relevance weight.
 type ftsColumn struct {
 	Name   string
@@ -359,7 +388,7 @@ func ftsQueryDegraded(original, ftsQuery string) bool {
 // tokenization stripped significant content from the query (e.g., "1+" → "1*").
 // Returns nil when the query produces no searchable tokens at all.
 func newFTSSearch(tableName, query string) searchStrategy {
-	q, degraded := buildFTS5Query(query)
+	q, degraded := buildFTS5QueryCached(query)
 	if q == "" || degraded {
 		// Fallback: try LIKE search with the raw query
 		cleaned := strings.TrimSpace(strings.ReplaceAll(query, `"`, ""))

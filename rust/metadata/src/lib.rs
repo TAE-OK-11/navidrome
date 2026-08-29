@@ -1,4 +1,7 @@
+pub mod compute_pid;
+pub mod id_hash;
 pub mod map_media;
+pub mod tag_clean;
 
 pub mod bench_support {
     use std::collections::HashMap;

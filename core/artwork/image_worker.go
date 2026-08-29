@@ -29,6 +29,7 @@ type imageWorkerRequest struct {
 	AnimatedPNG  bool   `json:"animated_png,omitempty"`
 	Quality      int    `json:"quality"`
 	Format       string `json:"format,omitempty"`
+	Path         string `json:"path,omitempty"`
 }
 
 type imageAnimationFlags struct {
@@ -82,9 +83,28 @@ func (p *imageWorkerPool) resize(ctx context.Context, data []byte, size, quality
 	})
 }
 
+func (p *imageWorkerPool) resizePath(ctx context.Context, path string, size, quality int, square bool, format string) ([]byte, error) {
+	return p.resizeRequest(ctx, nil, imageWorkerRequest{
+		Path:    path,
+		Size:    size,
+		Square:  square,
+		Quality: quality,
+		Format:  format,
+	})
+}
+
 func (p *imageWorkerPool) resizeAnimatedGIF(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
 	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
 		InputSize:   len(data),
+		Size:        size,
+		AnimatedGIF: true,
+		Quality:     quality,
+	})
+}
+
+func (p *imageWorkerPool) resizeAnimatedGIFPath(ctx context.Context, path string, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, nil, imageWorkerRequest{
+		Path:        path,
 		Size:        size,
 		AnimatedGIF: true,
 		Quality:     quality,
@@ -100,9 +120,27 @@ func (p *imageWorkerPool) resizeAnimatedWebP(ctx context.Context, data []byte, s
 	})
 }
 
+func (p *imageWorkerPool) resizeAnimatedWebPPath(ctx context.Context, path string, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, nil, imageWorkerRequest{
+		Path:         path,
+		Size:         size,
+		AnimatedWebP: true,
+		Quality:      quality,
+	})
+}
+
 func (p *imageWorkerPool) resizeAnimatedPNG(ctx context.Context, data []byte, size, quality int) ([]byte, error) {
 	return p.resizeRequest(ctx, [][]byte{data}, imageWorkerRequest{
 		InputSize:   len(data),
+		Size:        size,
+		AnimatedPNG: true,
+		Quality:     quality,
+	})
+}
+
+func (p *imageWorkerPool) resizeAnimatedPNGPath(ctx context.Context, path string, size, quality int) ([]byte, error) {
+	return p.resizeRequest(ctx, nil, imageWorkerRequest{
+		Path:        path,
 		Size:        size,
 		AnimatedPNG: true,
 		Quality:     quality,
@@ -160,6 +198,66 @@ func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imag
 			Sniff:     true,
 			InputSize: len(data),
 		}, [][]byte{data})
+		if roundErr != nil {
+			var resizeErr *imageResizeError
+			if errors.As(roundErr, &resizeErr) {
+				return roundErr
+			}
+		}
+		return roundErr
+	})
+	if err != nil {
+		var resizeErr *imageResizeError
+		if errors.As(err, &resizeErr) {
+			return flags, err
+		}
+		return flags, rustworker.FailAfterRestarts("image", err)
+	}
+	if response.AnimatedGIF != nil {
+		flags.AnimatedGIF = *response.AnimatedGIF
+	}
+	if response.AnimatedWebP != nil {
+		flags.AnimatedWebP = *response.AnimatedWebP
+	}
+	if response.AnimatedPNG != nil {
+		flags.AnimatedPNG = *response.AnimatedPNG
+	}
+	return flags, nil
+}
+
+func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (imageAnimationFlags, error) {
+	var flags imageAnimationFlags
+	binary, err := metadataworker.Resolve()
+	if err != nil {
+		return flags, err
+	}
+
+	select {
+	case p.limit <- struct{}{}:
+	case <-ctx.Done():
+		return flags, ctx.Err()
+	}
+	defer func() { <-p.limit }()
+
+	var slot *imageWorkerSlot
+	select {
+	case slot = <-p.idle:
+	default:
+		slot = &imageWorkerSlot{}
+	}
+	defer func() { p.idle <- slot }()
+
+	var response imageWorkerResponse
+	err = rustworker.Run(ctx, rustworker.DefaultRestartAttempts, func() { slot.stop() }, func() error {
+		worker, ensureErr := slot.ensure(binary)
+		if ensureErr != nil {
+			return ensureErr
+		}
+		var roundErr error
+		response, roundErr = worker.roundTripHeader(imageWorkerRequest{
+			Sniff: true,
+			Path:  path,
+		}, nil)
 		if roundErr != nil {
 			var resizeErr *imageResizeError
 			if errors.As(roundErr, &resizeErr) {

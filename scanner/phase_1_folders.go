@@ -21,6 +21,7 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/ffmpeg"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -367,8 +368,9 @@ func (p *phaseFolders) loadTagsFromFiles(entry *folderEntry, toImport map[string
 
 func (p *phaseFolders) readTagsResilient(entry *folderEntry, paths []string) (map[string]metadata.Info, error) {
 	readTags := func(paths ...string) (map[string]metadata.Info, error) {
+		ctx := metadataworker.WithLibraryID(p.ctx, entry.job.lib.ID)
 		if reader, ok := entry.job.fs.(storage.ContextMusicFS); ok {
-			return reader.ReadTagsContext(p.ctx, paths...)
+			return reader.ReadTagsContext(ctx, paths...)
 		}
 		return entry.job.fs.ReadTags(paths...)
 	}

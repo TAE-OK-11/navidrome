@@ -1,3 +1,5 @@
+mod fts5_query;
+
 use std::collections::HashSet;
 
 use regex::Regex;
@@ -35,6 +37,8 @@ pub fn normalize_for_fts(values: &[String]) -> String {
     }
     result.join(" ")
 }
+
+pub use fts5_query::{build_fts5_query, fts_query_degraded, Fts5Query};
 
 #[cfg(test)]
 mod tests {

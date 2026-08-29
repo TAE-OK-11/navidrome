@@ -27,6 +27,8 @@ type Info struct {
 	LyricsJSON string
 	// MediaFileJSON is optional pre-mapped scan fields from the Rust Lofty worker.
 	MediaFileJSON string
+	// CleanedTags is optional Rust-cleaned tag map from the Lofty worker.
+	CleanedTags model.Tags
 }
 
 type FileInfo interface {
@@ -72,10 +74,16 @@ func NewPair(key, value string) string {
 }
 
 func New(filePath string, info Info) Metadata {
+	var tags model.Tags
+	if len(info.CleanedTags) > 0 {
+		tags = info.CleanedTags
+	} else {
+		tags = clean(filePath, info.Tags)
+	}
 	return Metadata{
 		filePath:      filePath,
 		fileInfo:      info.FileInfo,
-		tags:          clean(filePath, info.Tags),
+		tags:          tags,
 		audioProps:    info.AudioProperties,
 		hasPicture:    info.HasPicture,
 		lyricsJSON:    info.LyricsJSON,

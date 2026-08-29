@@ -1,4 +1,6 @@
+use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Cursor, Read, Write};
+use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use fast_image_resize as fir;
@@ -41,6 +43,10 @@ struct ImageRequest {
     quality: u8,
     #[serde(default)]
     format: OutputFormat,
+    /// When set, the worker reads image bytes from this local file path instead
+    /// of the framed stdin payload (`input_size` must be 0).
+    #[serde(default)]
+    path: Option<String>,
 }
 
 fn default_quality() -> u8 {
@@ -108,10 +114,7 @@ pub fn run() -> Result<()> {
             .context("invalid image request; closing worker to resynchronize framing")?;
 
         let result = if request.sniff {
-            let mut encoded = vec![0; request.input_size];
-            input
-                .read_exact(&mut encoded)
-                .context("reading framed sniff payload")?;
+            let encoded = read_input_bytes(&request, &mut input)?;
             Ok(SniffResult::Animation(sniff_animation(&encoded)))
         } else if request.mosaic {
             let mut payloads = Vec::with_capacity(request.input_sizes.len());
@@ -124,10 +127,7 @@ pub fn run() -> Result<()> {
             }
             compose_mosaic(&payloads, &request).map(SniffResult::Bytes)
         } else {
-            let mut encoded = vec![0; request.input_size];
-            input
-                .read_exact(&mut encoded)
-                .context("reading framed image payload")?;
+            let encoded = read_input_bytes(&request, &mut input)?;
             resize(&encoded, &request).map(SniffResult::Bytes)
         };
 
@@ -140,8 +140,46 @@ pub fn run() -> Result<()> {
     }
 }
 
+fn uses_path(request: &ImageRequest) -> bool {
+    request
+        .path
+        .as_ref()
+        .is_some_and(|path| !path.trim().is_empty())
+}
+
+fn read_input_bytes(request: &ImageRequest, input: &mut impl Read) -> Result<Vec<u8>> {
+    if let Some(path) = request.path.as_ref().filter(|path| !path.trim().is_empty()) {
+        return read_image_file(path);
+    }
+    let mut encoded = vec![0; request.input_size];
+    input
+        .read_exact(&mut encoded)
+        .context("reading framed image payload")?;
+    Ok(encoded)
+}
+
+fn read_image_file(path: &str) -> Result<Vec<u8>> {
+    let path = Path::new(path);
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("reading image file {}", path.display()))?;
+    if !metadata.is_file() {
+        bail!("image path {} is not a regular file", path.display());
+    }
+    let len = metadata.len() as usize;
+    if len == 0 || len > MAX_INPUT_BYTES {
+        bail!("image file size {len} is outside the allowed range 1..={MAX_INPUT_BYTES}");
+    }
+    fs::read(path).with_context(|| format!("reading image file {}", path.display()))
+}
+
 fn validate_request(request: &ImageRequest) -> Result<()> {
+    if request.mosaic && uses_path(request) {
+        bail!("mosaic requests cannot use path mode");
+    }
     if request.sniff {
+        if uses_path(request) {
+            return Ok(());
+        }
         if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
             bail!(
                 "sniff input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
@@ -169,6 +207,8 @@ fn validate_request(request: &ImageRequest) -> Result<()> {
         if total > MAX_INPUT_BYTES {
             bail!("combined mosaic payload {total} exceeds {MAX_INPUT_BYTES}");
         }
+    } else if uses_path(request) {
+        // Path mode reads the file in Rust; no stdin payload is required.
     } else if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
         bail!(
             "input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
@@ -761,6 +801,68 @@ mod tests {
     }
 
     #[test]
+    fn reads_image_from_path() {
+        let dir = std::env::temp_dir().join(format!(
+            "navidrome-image-path-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("source.png");
+        let input = source_png(120, 120);
+        std::fs::write(&path, &input).unwrap();
+
+        let output = resize(
+            &std::fs::read(&path).unwrap(),
+            &ImageRequest {
+                input_size: input.len(),
+                input_sizes: Vec::new(),
+                mosaic: false,
+                sniff: false,
+                size: 60,
+                square: false,
+                fill: false,
+                animated_gif: false,
+                animated_webp: false,
+                animated_png: false,
+                quality: 80,
+                format: OutputFormat::Png,
+                path: None,
+            },
+        )
+        .unwrap();
+        let decoded = image::load_from_memory(&output).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (60, 60));
+
+        let output_from_path = {
+            let encoded = read_image_file(path.to_str().unwrap()).unwrap();
+            resize(
+                &encoded,
+                &ImageRequest {
+                    input_size: 0,
+                    input_sizes: Vec::new(),
+                    mosaic: false,
+                    sniff: false,
+                    size: 60,
+                    square: false,
+                    fill: false,
+                    animated_gif: false,
+                    animated_webp: false,
+                    animated_png: false,
+                    quality: 80,
+                    format: OutputFormat::Png,
+                    path: Some(path.to_str().unwrap().to_owned()),
+                },
+            )
+            .unwrap()
+        };
+        let decoded = image::load_from_memory(&output_from_path).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (60, 60));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn passthrough_returns_original_when_dimensions_and_format_match() {
         let input = source_png(120, 120);
         let output = resize(
@@ -778,6 +880,7 @@ mod tests {
                 animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
+                path: None,
             },
         )
         .unwrap();
@@ -802,6 +905,7 @@ mod tests {
                 animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
+                path: None,
             },
         )
         .unwrap();
@@ -828,6 +932,7 @@ mod tests {
                 animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
+                path: None,
             },
         )
         .unwrap();
@@ -861,6 +966,7 @@ mod tests {
                 animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
+                path: None,
             },
         )
         .unwrap();
@@ -888,6 +994,7 @@ mod tests {
                 animated_png: false,
                 quality: 80,
                 format: OutputFormat::Png,
+                path: None,
             },
         )
         .unwrap();

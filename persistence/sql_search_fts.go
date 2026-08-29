@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/sanitize"
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 )
@@ -203,9 +205,18 @@ func buildFTS5QueryCached(userInput string) (string, bool) {
 		entry := cached.(cachedFTS5Query)
 		return entry.query, entry.degraded
 	}
-	query, degraded := buildFTS5Query(userInput)
+	query, degraded := buildFTS5QueryRust(context.Background(), userInput)
 	ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
 	return query, degraded
+}
+
+func buildFTS5QueryRust(ctx context.Context, userInput string) (string, bool) {
+	result, err := metadataworker.PersistentBuildFTS5QueryWorkers().Build(ctx, userInput)
+	if err != nil {
+		log.Trace(ctx, "Rust FTS5 query builder unavailable; using Go fallback", err)
+		return buildFTS5Query(userInput)
+	}
+	return result.Query, result.Degraded
 }
 
 // ftsColumn pairs an FTS5 column name with its BM25 relevance weight.

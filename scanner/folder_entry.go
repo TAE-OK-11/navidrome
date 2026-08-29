@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/chrono"
 )
@@ -84,13 +83,7 @@ func (f *folderEntry) toFolder() *model.Folder {
 	return folder
 }
 
-func (f *folderEntry) hash() string {
-	if f.rustHash != "" {
-		return f.rustHash
-	}
-	if f.job.localRoot != "" {
-		log.Warn("Scanner: folder hash missing from Rust scanner on local library path", "path", f.path)
-	}
+func (f *folderEntry) hashGo() string {
 	h := md5.New()
 	_, _ = fmt.Fprintf(
 		h,

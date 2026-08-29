@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use navidrome_metadata::map_media;
 
+mod build_fts5_query_worker;
 mod image_worker;
 mod lyrics;
 mod lyricsfile;
@@ -114,6 +115,12 @@ fn main() -> Result<()> {
                 bail!("--normalize-fts-worker accepts no arguments");
             }
             return normalize_fts_worker::run();
+        }
+        if command == "--build-fts5-query-worker" {
+            if args.next().is_some() {
+                bail!("--build-fts5-query-worker accepts no arguments");
+            }
+            return build_fts5_query_worker::run();
         }
         if command == "--map-media-worker" {
             if args.next().is_some() {

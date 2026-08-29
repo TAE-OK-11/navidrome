@@ -68,8 +68,9 @@ pub struct Folder {
     hash: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
+    #[serde(default)]
     name: String,
     size: u64,
     mod_time_ns: i64,
@@ -304,6 +305,37 @@ pub fn folder_content_hash(folder: &Folder) -> String {
         hash_file_entry(&mut hasher, name, file);
     }
     hex::encode(hasher.finalize())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FolderHashInput {
+    #[serde(default)]
+    pub path: String,
+    pub mod_time_ns: i64,
+    #[serde(default)]
+    pub images_updated_at_ns: i64,
+    #[serde(default)]
+    pub num_playlists: usize,
+    #[serde(default)]
+    pub num_subfolders: usize,
+    #[serde(default)]
+    pub audio_files: BTreeMap<String, FileEntry>,
+    #[serde(default)]
+    pub image_files: BTreeMap<String, FileEntry>,
+}
+
+pub fn folder_hash_from_input(input: &FolderHashInput) -> String {
+    let folder = Folder {
+        path: input.path.clone(),
+        mod_time_ns: input.mod_time_ns,
+        images_updated_at_ns: input.images_updated_at_ns,
+        num_playlists: input.num_playlists,
+        num_subfolders: input.num_subfolders,
+        audio_files: input.audio_files.clone(),
+        image_files: input.image_files.clone(),
+        hash: String::new(),
+    };
+    folder_content_hash(&folder)
 }
 
 fn hash_folder_header(hasher: &mut Md5, folder: &Folder) {

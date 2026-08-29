@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/server"
 )
@@ -37,7 +36,14 @@ func TestHealthHandler(t *testing.T) {
 	if response.HTTP3.CompanionReady {
 		t.Fatal("companionReady should be false when HTTP/3 is disabled in tests")
 	}
-	if conf.HTTP3Enabled() && response.HTTP3.Provider != "tokio-quiche" {
-		t.Fatalf("provider=%q, want tokio-quiche", response.HTTP3.Provider)
+}
+
+func TestHealthBodyForUsesCache(t *testing.T) {
+	t.Parallel()
+
+	first := healthBodyFor(false)
+	second := healthBodyFor(false)
+	if string(first) != string(second) {
+		t.Fatal("expected cached health body")
 	}
 }

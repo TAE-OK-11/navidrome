@@ -192,7 +192,13 @@ func validateLogin(userRepo model.UserRepository, userName, password string) (*m
 }
 
 func JWTVerifier(next http.Handler) http.Handler {
-	return jwtauth.Verify(auth.TokenAuth, tokenFromHeader, jwtauth.TokenFromCookie, jwtauth.TokenFromQuery)(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isProbeRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		jwtauth.Verify(auth.TokenAuth, tokenFromHeader, jwtauth.TokenFromCookie, jwtauth.TokenFromQuery)(next).ServeHTTP(w, r)
+	})
 }
 
 func tokenFromHeader(r *http.Request) string {

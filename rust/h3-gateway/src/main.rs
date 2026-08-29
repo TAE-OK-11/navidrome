@@ -57,10 +57,15 @@ const ADMISSION_SHARDS: usize = 16;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+const BRIDGE_RESPONSE_BODY_TIMEOUT: Duration = Duration::from_secs(120);
+const API_COMPRESSION_MIN_SIZE: usize = 256;
+const LARGE_COMPRESSED_RESPONSE_SIZE: usize = 16 * 1024;
+const HUGE_COMPRESSED_RESPONSE_SIZE: usize = 256 * 1024;
+const BROTLI_LARGE_LEVEL: i32 = 5;
+const BROTLI_HUGE_LEVEL: i32 = 6;
 const BRIDGE_MAX_FRAME_SIZE: u32 = 64 * 1024;
 const BRIDGE_STREAM_WINDOW: u32 = 512 * 1024;
 const BRIDGE_CONNECTION_WINDOW: u32 = 4 * 1024 * 1024;
-const API_COMPRESSION_MIN_SIZE: usize = 256;
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
@@ -620,7 +625,7 @@ fn is_safe_early_data_request(headers: &[h3::Header]) -> bool {
 async fn proxy_request(
     incoming: IncomingH3Headers,
     context: Arc<ConnectionContext>,
-    _request_permit: tokio::sync::OwnedSemaphorePermit,
+    request_permit: tokio::sync::OwnedSemaphorePermit,
 ) {
     let IncomingH3Headers {
         headers,
@@ -629,7 +634,9 @@ async fn proxy_request(
         read_fin,
         ..
     } = incoming;
-    if let Err(error) = proxy_request_inner(headers, send, recv, read_fin, &context).await {
+    if let Err(error) =
+        proxy_request_inner(headers, send, recv, read_fin, &context, request_permit).await
+    {
         if peer_closed_stream(&error) {
             log::debug!("HTTP/3 stream closed by peer={}: {error:#}", context.peer);
         } else {
@@ -653,6 +660,7 @@ async fn proxy_request_inner(
     recv: tokio_quiche::http3::driver::InboundFrameStream,
     read_fin: bool,
     context: &ConnectionContext,
+    request_permit: tokio::sync::OwnedSemaphorePermit,
 ) -> Result<()> {
     if is_connect_request(&headers) {
         send_error(
@@ -700,7 +708,13 @@ async fn proxy_request_inner(
             .await
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
-    forward_response(response, &mut send, &context.alt_svc, compression).await
+    drop(request_permit);
+    tokio::time::timeout(
+        BRIDGE_RESPONSE_BODY_TIMEOUT,
+        forward_response(response, &mut send, &context.alt_svc, compression),
+    )
+    .await
+    .context("timed out streaming inherited HTTP/2 response body")?
 }
 
 fn is_connect_request(headers: &[h3::Header]) -> bool {
@@ -822,6 +836,22 @@ fn select_request_compression(
         level: selected.level(),
         identity_forbidden: accepted.identity.is_some_and(|quality| quality <= 0.0),
     })
+}
+
+fn refine_compression_for_size(profile: CompressionProfile, size: usize) -> CompressionProfile {
+    if size < LARGE_COMPRESSED_RESPONSE_SIZE {
+        return profile;
+    }
+    let level = if size >= HUGE_COMPRESSED_RESPONSE_SIZE {
+        BROTLI_HUGE_LEVEL
+    } else {
+        BROTLI_LARGE_LEVEL
+    };
+    CompressionProfile {
+        encoding: CompressionEncoding::Brotli,
+        level,
+        identity_forbidden: profile.identity_forbidden,
+    }
 }
 
 fn parse_accept_encoding(value: &str) -> AcceptedEncodings {
@@ -1029,6 +1059,11 @@ async fn forward_response(
     let mut compress = compression.filter(|_| response_supports_compression(&parts));
     if let Some(profile) = compress
         && let Some(length) = response_content_length(&parts.headers)
+    {
+        compress = Some(refine_compression_for_size(profile, length));
+    }
+    if let Some(profile) = compress
+        && let Some(length) = response_content_length(&parts.headers)
         && length < API_COMPRESSION_MIN_SIZE
         && !profile.identity_forbidden
     {
@@ -1039,6 +1074,9 @@ async fn forward_response(
         let (bytes, finished) = buffer_response_prefix(&mut body, API_COMPRESSION_MIN_SIZE).await?;
         let buffered = bytes.iter().map(Bytes::len).sum::<usize>();
         prefix = bytes;
+        if finished {
+            compress = Some(refine_compression_for_size(profile, buffered));
+        }
         if finished && buffered < API_COMPRESSION_MIN_SIZE && !profile.identity_forbidden {
             compress = None;
         }
@@ -1437,6 +1475,21 @@ mod tests {
             })
         );
         assert!(!decoded.headers.contains_key("x-real-ip"));
+    }
+
+    #[test]
+    fn compression_profile_escalates_for_large_payloads() {
+        let base = CompressionProfile {
+            encoding: CompressionEncoding::Zstd,
+            level: 1,
+            identity_forbidden: false,
+        };
+        let large = refine_compression_for_size(base, LARGE_COMPRESSED_RESPONSE_SIZE);
+        assert_eq!(large.encoding, CompressionEncoding::Brotli);
+        assert_eq!(large.level, BROTLI_LARGE_LEVEL);
+        let huge = refine_compression_for_size(base, HUGE_COMPRESSED_RESPONSE_SIZE);
+        assert_eq!(huge.encoding, CompressionEncoding::Brotli);
+        assert_eq!(huge.level, BROTLI_HUGE_LEVEL);
     }
 
     #[test]

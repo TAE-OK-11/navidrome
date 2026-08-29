@@ -42,6 +42,10 @@ const (
 	rustHTTP3RestartMaxDelay    = 5 * time.Second
 	rustHTTP3ControlMaxLineSize = 64 * 1024
 	rustHTTP3BridgeSocketBuffer = 4 << 20
+	rustHTTP3BridgeMaxBodyBytes = 32 << 20
+	rustHTTP3MaxRestartsInWindow = 5
+	rustHTTP3RestartWindow        = 2 * time.Minute
+	rustHTTP3CircuitCooldown      = 5 * time.Minute
 )
 
 type rustHTTP3Config struct {
@@ -77,6 +81,10 @@ type rustHTTP3Runtime struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
 	control  net.Conn
+
+	restartMu          sync.Mutex
+	restartTimes       []time.Time
+	circuitOpenUntil   time.Time
 }
 
 func newRustHTTP3Runtime(
@@ -107,6 +115,7 @@ func newRustHTTP3Runtime(
 	protocols.SetUnencryptedHTTP2(true)
 	internalServer := &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
+		WriteTimeout:      serverH2WriteByteTimeout,
 		IdleTimeout:       serverH3BridgeIdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,
@@ -118,7 +127,7 @@ func newRustHTTP3Runtime(
 			PingTimeout:                   serverH2PingTimeout,
 			WriteByteTimeout:              serverH2WriteByteTimeout,
 		},
-		Handler: authenticatedHTTP3Bridge(token, handler),
+		Handler: authenticatedHTTP3Bridge(token, http.MaxBytesHandler(handler, rustHTTP3BridgeMaxBodyBytes)),
 	}
 
 	runtimeCtx, cancel := context.WithCancel(ctx)
@@ -376,12 +385,19 @@ func (r *rustHTTP3Runtime) serve() error {
 
 		log.Error(r.ctx, "Tokio-quiche HTTP/3 companion stopped; H1/H2 remain available", err)
 		http3CompanionRestarts.Inc()
+		if r.shouldOpenRestartCircuit() {
+			log.Warn(r.ctx, "Tokio-quiche HTTP/3 companion restart circuit opened; H3 stays disabled until cooldown elapses")
+			return nil
+		}
 		for !r.stopping.Load() && r.ctx.Err() == nil {
 			timer := time.NewTimer(delay)
 			select {
 			case <-timer.C:
 			case <-r.ctx.Done():
 				timer.Stop()
+				return nil
+			}
+			if r.restartCircuitOpen() {
 				return nil
 			}
 			if err := r.startChild(); err == nil {
@@ -427,4 +443,34 @@ func (r *rustHTTP3Runtime) shutdown(ctx context.Context) error {
 	listenerErr := r.bridgeListener.Close()
 	r.cancel()
 	return errors.Join(serverErr, listenerErr)
+}
+
+func (r *rustHTTP3Runtime) shouldOpenRestartCircuit() bool {
+	now := time.Now()
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+	if now.Before(r.circuitOpenUntil) {
+		return true
+	}
+	r.restartTimes = append(r.restartTimes, now)
+	cutoff := now.Add(-rustHTTP3RestartWindow)
+	filtered := r.restartTimes[:0]
+	for _, restartAt := range r.restartTimes {
+		if restartAt.After(cutoff) {
+			filtered = append(filtered, restartAt)
+		}
+	}
+	r.restartTimes = filtered
+	if len(r.restartTimes) < rustHTTP3MaxRestartsInWindow {
+		return false
+	}
+	r.circuitOpenUntil = now.Add(rustHTTP3CircuitCooldown)
+	r.restartTimes = nil
+	return true
+}
+
+func (r *rustHTTP3Runtime) restartCircuitOpen() bool {
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+	return time.Now().Before(r.circuitOpenUntil)
 }

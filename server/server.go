@@ -204,6 +204,7 @@ func newHTTPServer(handler http.Handler) *http.Server {
 
 	return &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,
+		WriteTimeout:      serverH2WriteByteTimeout,
 		IdleTimeout:       serverIdleTimeout,
 		MaxHeaderBytes:    serverMaxHeaderBytes,
 		Protocols:         protocols,

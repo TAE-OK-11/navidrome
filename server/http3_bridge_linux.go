@@ -20,7 +20,7 @@ type inheritedConnListener struct {
 
 func newInheritedConnListener() *inheritedConnListener {
 	return &inheritedConnListener{
-		conns: make(chan net.Conn, 4),
+		conns: make(chan net.Conn, 1),
 		done:  make(chan struct{}),
 	}
 }

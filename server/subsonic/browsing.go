@@ -33,16 +33,20 @@ type genreResponseCacheEntry struct {
 }
 
 type genreResponseCache struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	entries map[string]genreResponseCacheEntry
 }
 
 func (c *genreResponseCache) get(key string, now time.Time) (*responses.Genres, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
 	entry, ok := c.entries[key]
+	c.mu.RUnlock()
 	if !ok || !now.Before(entry.expires) {
-		delete(c.entries, key)
+		if ok {
+			c.mu.Lock()
+			delete(c.entries, key)
+			c.mu.Unlock()
+		}
 		return nil, false
 	}
 	return entry.value, true

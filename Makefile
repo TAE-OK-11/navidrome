@@ -21,6 +21,7 @@ PLATFORMS ?= $(SUPPORTED_PLATFORMS)
 DOCKER_TAG ?= deluan/navidrome:develop
 
 GOLANGCI_LINT_VERSION ?= v2.13.2
+GORELEASER_VERSION ?= v2.18.0
 
 UI_SRC_FILES := $(shell find ui -type f -not -path "ui/build/*" -not -path "ui/node_modules/*")
 
@@ -30,7 +31,7 @@ setup: check_env download-deps install-golangci-lint setup-git ##@1_Run_First In
 .PHONY: setup
 
 dev: check_env   ##@Development Start Navidrome in development mode, with hot-reload for both frontend and backend
-	bunx foreman -j Procfile.dev -p 4533 start
+	bunx foreman@3.0.1 -j Procfile.dev -p 4533 start
 .PHONY: dev
 
 server: check_go_env buildjs ##@Development Start the backend in development mode
@@ -126,12 +127,12 @@ snapshots: ##@Development Update (GoLang) Snapshot tests
 
 migration-sql: ##@Development Create an empty SQL migration file
 	@if [ -z "${name}" ]; then echo "Usage: make migration-sql name=name_of_migration_file"; exit 1; fi
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir db/migrations create ${name} sql
+	go run github.com/pressly/goose/v3/cmd/goose@v3.27.3 -dir db/migrations create ${name} sql
 .PHONY: migration
 
 migration-go: ##@Development Create an empty Go migration file
 	@if [ -z "${name}" ]; then echo "Usage: make migration-go name=name_of_migration_file"; exit 1; fi
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir db/migrations create ${name}
+	go run github.com/pressly/goose/v3/cmd/goose@v3.27.3 -dir db/migrations create ${name}
 .PHONY: migration
 
 setup-dev: setup
@@ -214,7 +215,7 @@ docker-run: ##@Development Run a Navidrome Docker image. Usage: make docker-run 
 .PHONY: docker-run
 
 package: docker-build ##@Cross_Compilation Create binaries and packages for ALL supported platforms
-	@if [ -z `which goreleaser` ]; then echo "Please install goreleaser first: https://goreleaser.com/install/"; exit 1; fi
+	@if [ -z `which goreleaser` ]; then echo "Please install goreleaser $(GORELEASER_VERSION) first: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; fi
 	goreleaser release -f release/goreleaser.yml --clean --skip=publish --snapshot
 .PHONY: package
 

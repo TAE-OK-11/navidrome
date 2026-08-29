@@ -25,7 +25,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nd-pdk = { path = "../../pdk/rust/nd-pdk" }
-extism-pdk = "1.2"
+extism-pdk = "1.4.1"
 ```
 
 ### Implementing a Scrobbler (Required-All Pattern)

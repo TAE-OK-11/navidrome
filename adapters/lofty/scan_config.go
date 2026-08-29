@@ -29,7 +29,3 @@ func workerScanConfig(libraryID int) metadataworker.WorkerScanConfig {
 		LibraryID: libraryID,
 	}
 }
-
-func exportTagMappings() map[string]metadataworker.TagMappingExport {
-	return workerScanConfig(0).TagMappings
-}

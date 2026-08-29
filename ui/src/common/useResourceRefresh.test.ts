@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { renderHook } from '@testing-library/react'
 import { vi } from 'vitest'
 import * as Redux from 'react-redux'
@@ -26,7 +25,7 @@ describe('useResourceRefresh', () => {
 
   beforeEach(() => {
     vi.mocked(RA.useRefresh).mockReturnValue(refresh)
-    vi.mocked(RA.useDataProvider).mockReturnValue({ getMany })
+    vi.mocked(RA.useDataProvider).mockReturnValue({ getMany } as any)
     vi.mocked(Redux.useSelector).mockImplementation((selector) =>
       selector({ activity: { refresh: refreshData } }),
     )

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import Linkify from './Linkify'
@@ -8,7 +7,7 @@ const URL = 'http://www.example.com'
 const expectLink = (url) => {
   const linkEl = screen.getByRole('link')
   expect(linkEl).not.toBeNull()
-  expect(linkEl?.href).toBe(url)
+  expect((linkEl as HTMLAnchorElement).href).toBe(url)
 }
 
 describe('<Linkify />', () => {

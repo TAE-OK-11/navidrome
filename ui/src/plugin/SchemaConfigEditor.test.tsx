@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -43,14 +42,14 @@ describe('SchemaConfigEditor', () => {
 
   it('renders nothing when schema is null', () => {
     const { container } = renderWithProviders(
-      <SchemaConfigEditor schema={null} data={{}} onChange={vi.fn()} />,
+      <SchemaConfigEditor schema={null} data={{}} uiSchema={{}} onChange={vi.fn()} />,
     )
     expect(container.firstChild).toBeNull()
   })
 
   it('renders the component wrapper with valid schema', () => {
     const { container } = renderWithProviders(
-      <SchemaConfigEditor schema={basicSchema} data={{}} onChange={vi.fn()} />,
+      <SchemaConfigEditor schema={basicSchema} data={{}} uiSchema={{}} onChange={vi.fn()} />,
     )
     // Check that the wrapper div is rendered (class name is generated)
     expect(
@@ -64,6 +63,7 @@ describe('SchemaConfigEditor', () => {
       <SchemaConfigEditor
         schema={basicSchema}
         data={{ name: 'Test' }}
+        uiSchema={{}}
         onChange={onChange}
       />,
     )
@@ -79,6 +79,7 @@ describe('SchemaConfigEditor', () => {
       <SchemaConfigEditor
         schema={basicSchema}
         data={initialData}
+        uiSchema={{}}
         onChange={onChange}
       />,
     )

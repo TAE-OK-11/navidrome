@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { Fragment } from 'react'
 import ExpandMore from '@mui/icons-material/ExpandMore'
 import ArrowRightOutlined from '@mui/icons-material/ArrowRightOutlined'

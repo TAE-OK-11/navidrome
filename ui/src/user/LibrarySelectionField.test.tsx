@@ -1,10 +1,10 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
 import { LibrarySelectionField } from './LibrarySelectionField'
 import { useInput, useTranslate, useRecordContext } from 'react-admin'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { SelectLibraryInput } from '../common/SelectLibraryInput'
+import { mockFn, mockUseInputValue } from '../test-utils/vitest'
 
 // Mock the react-admin hooks
 vi.mock('react-admin', () => ({
@@ -19,25 +19,19 @@ vi.mock('../common/SelectLibraryInput', () => ({
 }))
 
 describe('<LibrarySelectionField />', () => {
-  const defaultProps = {
-    input: {
-      name: 'libraryIds',
-      value: [],
-      onChange: vi.fn(),
-    },
-    meta: {
-      touched: false,
-      error: undefined,
-    },
-  }
+  const mockOnChange = vi.fn()
+  const defaultProps = mockUseInputValue({
+    value: [],
+    onChange: mockOnChange,
+  })
 
   const mockTranslate = vi.fn((key) => key)
 
   beforeEach(() => {
-    useInput.mockReturnValue(defaultProps)
-    useTranslate.mockReturnValue(mockTranslate)
-    useRecordContext.mockReturnValue({})
-    SelectLibraryInput.mockClear()
+    mockFn(useInput).mockReturnValue(defaultProps)
+    mockFn(useTranslate).mockReturnValue(mockTranslate)
+    mockFn(useRecordContext).mockReturnValue({})
+    vi.mocked(SelectLibraryInput).mockClear()
   })
 
   afterEach(cleanup)
@@ -59,47 +53,48 @@ describe('<LibrarySelectionField />', () => {
     expect(screen.getByTestId('select-library-input')).not.toBeNull()
     expect(SelectLibraryInput).toHaveBeenCalledWith(
       expect.objectContaining({
-        onChange: defaultProps.input.onChange,
-        value: defaultProps.input.value,
+        onChange: mockOnChange,
+        value: [],
       }),
       undefined,
     )
   })
 
   it('should render error message when touched and has error', () => {
-    useInput.mockReturnValue({
-      ...defaultProps,
-      meta: {
-        touched: true,
+    mockFn(useInput).mockReturnValue(
+      mockUseInputValue({
+        value: [],
+        onChange: mockOnChange,
         error: 'This field is required',
-      },
-    })
+        isTouched: true,
+      }),
+    )
 
     render(<LibrarySelectionField />)
     expect(screen.getByText('This field is required')).not.toBeNull()
   })
 
   it('should not render error message when not touched', () => {
-    useInput.mockReturnValue({
-      ...defaultProps,
-      meta: {
-        touched: false,
+    mockFn(useInput).mockReturnValue(
+      mockUseInputValue({
+        value: [],
+        onChange: mockOnChange,
         error: 'This field is required',
-      },
-    })
+        isTouched: false,
+      }),
+    )
 
     render(<LibrarySelectionField />)
     expect(screen.queryByText('This field is required')).toBeNull()
   })
 
   it('should initialize with empty array when value is null', () => {
-    useInput.mockReturnValue({
-      ...defaultProps,
-      input: {
-        ...defaultProps.input,
+    mockFn(useInput).mockReturnValue(
+      mockUseInputValue({
         value: null,
-      },
-    })
+        onChange: mockOnChange,
+      }),
+    )
 
     render(<LibrarySelectionField />)
     expect(SelectLibraryInput).toHaveBeenCalledWith(
@@ -111,57 +106,51 @@ describe('<LibrarySelectionField />', () => {
   })
 
   it('should extract library IDs from record libraries array when editing user', () => {
-    // Mock a record with libraries array (from backend during edit)
-    useRecordContext.mockReturnValue({
+    mockFn(useRecordContext).mockReturnValue({
       id: 'user123',
       name: 'John Doe',
       libraries: [
-        { id: 1, name: 'Music Library 1', path: '/music1' },
-        { id: 3, name: 'Music Library 3', path: '/music3' },
+        { id: '1', name: 'Music Library 1', path: '/music1' },
+        { id: '3', name: 'Music Library 3', path: '/music3' },
       ],
     })
 
-    // Mock input without libraryIds (edit mode scenario)
-    useInput.mockReturnValue({
-      ...defaultProps,
-      input: {
-        ...defaultProps.input,
+    mockFn(useInput).mockReturnValue(
+      mockUseInputValue({
         value: undefined,
-      },
-    })
+        onChange: mockOnChange,
+      }),
+    )
 
     render(<LibrarySelectionField />)
     expect(SelectLibraryInput).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: [1, 3], // Should extract IDs from libraries array
+        value: ['1', '3'],
       }),
       undefined,
     )
   })
 
   it('should prefer libraryIds when both libraryIds and libraries are present', () => {
-    // Mock a record with libraries array
-    useRecordContext.mockReturnValue({
+    mockFn(useRecordContext).mockReturnValue({
       id: 'user123',
       libraries: [
-        { id: 1, name: 'Music Library 1', path: '/music1' },
-        { id: 3, name: 'Music Library 3', path: '/music3' },
+        { id: '1', name: 'Music Library 1', path: '/music1' },
+        { id: '3', name: 'Music Library 3', path: '/music3' },
       ],
     })
 
-    // Mock input with explicit libraryIds (create mode or already transformed)
-    useInput.mockReturnValue({
-      ...defaultProps,
-      input: {
-        ...defaultProps.input,
-        value: [2, 4], // Different IDs than in libraries
-      },
-    })
+    mockFn(useInput).mockReturnValue(
+      mockUseInputValue({
+        value: ['2', '4'],
+        onChange: mockOnChange,
+      }),
+    )
 
     render(<LibrarySelectionField />)
     expect(SelectLibraryInput).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: [2, 4], // Should prefer libraryIds over libraries
+        value: ['2', '4'],
       }),
       undefined,
     )

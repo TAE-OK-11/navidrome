@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { TestContext } from '../test/TestContext'
 import {
@@ -73,7 +72,7 @@ describe('AddToPlaylistDialog', () => {
 
   it('adds distinct songs to already existing playlists', async () => {
     const dataProvider = await import('../dataProvider')
-    vi.spyOn(dataProvider, 'httpClient').mockResolvedValue({ data: mockData })
+    vi.spyOn(dataProvider, 'httpClient').mockResolvedValue({ data: mockData } as any)
 
     const mockDataProvider = {
       getList: vi

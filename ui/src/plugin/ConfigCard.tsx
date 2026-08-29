@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useState, useMemo } from 'react'
 import { Card, CardContent, Typography, Box } from '@mui/material'
 import Alert from '@mui/material/Alert'

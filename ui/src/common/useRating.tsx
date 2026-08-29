@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDataProvider, useNotify, useRefresh } from 'react-admin'
 import subsonic from '../subsonic'

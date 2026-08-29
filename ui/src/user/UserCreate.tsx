@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import {
   BooleanInput,
@@ -13,6 +12,7 @@ import {
   useNotify,
   useRedirect,
   useTranslate,
+  type HttpError,
 } from 'react-admin'
 import { Typography } from '@mui/material'
 import { Title } from '../common'
@@ -38,8 +38,9 @@ const UserCreate = (props) => {
         })
         redirect('/user')
       } catch (error) {
-        if (error.body.errors) {
-          return error.body.errors
+        const httpError = error as HttpError
+        if (httpError.body?.errors) {
+          return httpError.body.errors
         }
       }
     },
@@ -56,7 +57,7 @@ const UserCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props}>
-      <SimpleForm save={save} validate={validateUserForm}>
+      <SimpleForm onSubmit={save} validate={validateUserForm}>
         <TextInput
           spellCheck={false}
           source="userName"

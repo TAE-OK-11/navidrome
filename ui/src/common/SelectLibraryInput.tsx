@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import Checkbox from '@mui/material/Checkbox'
 import CheckBoxIcon from '@mui/icons-material/CheckBox'
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
@@ -13,6 +12,20 @@ import {
 } from '@mui/material'
 import { useGetList, useTranslate } from 'react-admin'
 
+type LibraryRecord = {
+  id: string
+  name: string
+  defaultNewUsers?: boolean
+}
+
+type LibraryValue = string | { id: string }
+
+type SelectLibraryInputProps = {
+  onChange: (value: string[]) => void
+  value?: LibraryValue[]
+  isNewUser?: boolean
+}
+
 const EmptyLibraryMessage = () => {
   return (
     <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
@@ -21,7 +34,15 @@ const EmptyLibraryMessage = () => {
   )
 }
 
-const LibraryListItem = ({ library, isSelected, onToggle }) => {
+const LibraryListItem = ({
+  library,
+  isSelected,
+  onToggle,
+}: {
+  library: LibraryRecord
+  isSelected: boolean
+  onToggle: (library: LibraryRecord) => void
+}) => {
   return (
     <ListItemButton sx={{ py: 0 }} onClick={() => onToggle(library)} dense>
       <ListItemIcon>
@@ -42,28 +63,21 @@ export const SelectLibraryInput = ({
   onChange,
   value = [],
   isNewUser = false,
-}) => {
+}: SelectLibraryInputProps) => {
   const translate = useTranslate()
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState([])
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([])
   const [hasInitialized, setHasInitialized] = useState(false)
 
   const {
-    data = [],
-    ids,
+    data: options = [],
     isPending,
     isLoading,
-  } = useGetList('library', {
+  } = useGetList<LibraryRecord>('library', {
     pagination: { page: 1, perPage: -1 },
     sort: { field: 'name', order: 'ASC' },
     filter: {},
   })
   const loading = isPending ?? isLoading ?? false
-
-  const options = useMemo(
-    () =>
-      Array.isArray(data) ? data : (ids && ids.map((id) => data[id])) || [],
-    [ids, data],
-  )
 
   // Reset initialization state when isNewUser changes
   useEffect(() => {
@@ -108,15 +122,13 @@ export const SelectLibraryInput = ({
         typeof item === 'object' ? item.id : item,
       )
       setSelectedLibraryIds(libraryIds)
-    } else if (value.length === 0) {
-      // Handle case where value is explicitly set to empty array (for existing users)
-      setSelectedLibraryIds([])
     }
   }, [value, isNewUser, hasInitialized])
 
-  const isLibrarySelected = (library) => selectedLibraryIds.includes(library.id)
+  const isLibrarySelected = (library: LibraryRecord) =>
+    selectedLibraryIds.includes(library.id)
 
-  const handleLibraryToggle = (library) => {
+  const handleLibraryToggle = (library: LibraryRecord) => {
     const isSelected = selectedLibraryIds.includes(library.id)
     let newSelection
 

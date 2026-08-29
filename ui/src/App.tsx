@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useMemo } from 'react'
 import ReactGA from 'react-ga4'
 import { Provider } from 'react-redux'

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 /* eslint-disable react-refresh/only-export-components */
 import React, { useState } from 'react'
 import {

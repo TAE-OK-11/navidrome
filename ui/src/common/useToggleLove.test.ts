@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { renderHook, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { useToggleLove } from './useToggleLove'
@@ -28,7 +27,7 @@ describe('useToggleLove', () => {
   let getOne
   beforeEach(() => {
     getOne = vi.fn(() => Promise.resolve())
-    useDataProvider.mockReturnValue({ getOne })
+    vi.mocked(useDataProvider).mockReturnValue({ getOne } as any)
     refresh.mockClear()
     vi.clearAllMocks()
   })

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
@@ -8,7 +7,7 @@ import { List } from './List'
 // everything else, including our own Pagination/perPageStore wiring, stays real
 // so a bad import (the bug this test guards against) throws on render.
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     List: ({ children }) => <div data-testid="ra-list">{children}</div>,

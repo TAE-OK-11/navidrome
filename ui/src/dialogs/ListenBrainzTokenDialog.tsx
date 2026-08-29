@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { createRef, useCallback, useState } from 'react'
 import {
   Button,

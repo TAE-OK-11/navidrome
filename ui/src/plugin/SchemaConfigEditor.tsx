@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { JsonForms } from '@jsonforms/react'
 import { materialRenderers, materialCells } from '@jsonforms/material-renderers'

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Avatar, useMediaQuery } from '@mui/material'
 import React, { cloneElement } from 'react'
 import {

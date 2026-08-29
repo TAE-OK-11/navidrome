@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { Chip, Dialog } from '@mui/material'

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, beforeEach, vi } from 'vitest'
@@ -20,7 +19,7 @@ vi.mock('../subsonic', () => ({
 const mockUseMediaQuery = vi.fn()
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   const redux = await import('react-redux')
   return {
     ...actual,
@@ -58,7 +57,7 @@ describe('<NowPlayingPanel />', () => {
       },
     }
     return createStore(
-      combineReducers({ activity: activityReducer }),
+      combineReducers({ activity: activityReducer as any }),
       defaultState,
     )
   }
@@ -72,7 +71,7 @@ describe('<NowPlayingPanel />', () => {
     vi.clearAllMocks()
     mockUseMediaQuery.mockReturnValue(false) // Default to large screen
 
-    subsonic.getNowPlaying.mockResolvedValue({
+    vi.mocked(subsonic.getNowPlaying).mockResolvedValue({
       json: {
         'subsonic-response': {
           status: 'ok',
@@ -92,7 +91,7 @@ describe('<NowPlayingPanel />', () => {
           },
         },
       },
-    })
+    } as any)
   })
 
   it('fetches and displays entries when opened', async () => {
@@ -132,7 +131,7 @@ describe('<NowPlayingPanel />', () => {
   })
 
   it('handles entries without player name', async () => {
-    subsonic.getNowPlaying.mockResolvedValue({
+    vi.mocked(subsonic.getNowPlaying).mockResolvedValue({
       json: {
         'subsonic-response': {
           status: 'ok',
@@ -151,7 +150,7 @@ describe('<NowPlayingPanel />', () => {
           },
         },
       },
-    })
+    } as any)
 
     const store = createMockStore()
     render(
@@ -169,11 +168,11 @@ describe('<NowPlayingPanel />', () => {
   })
 
   it('shows empty message when no entries', async () => {
-    subsonic.getNowPlaying.mockResolvedValue({
+    vi.mocked(subsonic.getNowPlaying).mockResolvedValue({
       json: {
         'subsonic-response': { status: 'ok', nowPlaying: { entry: [] } },
       },
-    })
+    } as any)
     const store = createMockStore({ nowPlayingCount: 0 })
     render(
       <Provider store={store}>

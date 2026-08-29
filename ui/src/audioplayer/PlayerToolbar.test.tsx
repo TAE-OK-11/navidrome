@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { useMediaQuery } from '@mui/material'
@@ -49,21 +48,21 @@ describe('<PlayerToolbar />', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    useGetOne.mockReturnValue({ data: mockSongData, isPending: false })
-    useToggleLove.mockReturnValue([mockToggleLove, false])
-    useDispatch.mockReturnValue(mockDispatch)
-    openSaveQueueDialog.mockReturnValue({ type: 'OPEN_SAVE_QUEUE_DIALOG' })
+    vi.mocked(useGetOne).mockReturnValue({ data: mockSongData, isPending: false } as any)
+    vi.mocked(useToggleLove).mockReturnValue([mockToggleLove, false, false] as any)
+    vi.mocked(useDispatch).mockReturnValue(mockDispatch)
+    vi.mocked(openSaveQueueDialog).mockReturnValue({ type: 'OPEN_SAVE_QUEUE_DIALOG' } as any)
   })
 
   afterEach(cleanup)
 
   describe('Desktop layout', () => {
     beforeEach(() => {
-      useMediaQuery.mockReturnValue(true) // isDesktop = true
+      vi.mocked(useMediaQuery).mockReturnValue(true) // isDesktop = true
     })
 
     it('renders desktop toolbar with both buttons', () => {
-      render(<PlayerToolbar id="song-1" />)
+      render(<PlayerToolbar id="song-1" isRadio={false} />)
 
       // Both buttons should be in a single list item
       const listItems = screen.getAllByRole('listitem')
@@ -85,16 +84,16 @@ describe('<PlayerToolbar />', () => {
     })
 
     it('disables love button when conditions are met', () => {
-      useGetOne.mockReturnValue({ data: mockSongData, isPending: true })
+      vi.mocked(useGetOne).mockReturnValue({ data: mockSongData, isPending: true } as any)
 
-      render(<PlayerToolbar id="song-1" />)
+      render(<PlayerToolbar id="song-1" isRadio={false} />)
 
       const loveButton = screen.getByTestId('love-button')
       expect(loveButton).toBeDisabled()
     })
 
     it('opens save queue dialog when save button is clicked', () => {
-      render(<PlayerToolbar id="song-1" />)
+      render(<PlayerToolbar id="song-1" isRadio={false} />)
 
       const saveQueueButton = screen.getByTestId('save-queue-button')
       fireEvent.click(saveQueueButton)
@@ -107,11 +106,11 @@ describe('<PlayerToolbar />', () => {
 
   describe('Mobile layout', () => {
     beforeEach(() => {
-      useMediaQuery.mockReturnValue(false) // isDesktop = false
+      vi.mocked(useMediaQuery).mockReturnValue(false) // isDesktop = false
     })
 
     it('renders mobile toolbar with buttons in separate list items', () => {
-      render(<PlayerToolbar id="song-1" />)
+      render(<PlayerToolbar id="song-1" isRadio={false} />)
 
       // Each button should be in its own list item
       const listItems = screen.getAllByRole('listitem')
@@ -134,9 +133,9 @@ describe('<PlayerToolbar />', () => {
     })
 
     it('disables love button when conditions are met', () => {
-      useGetOne.mockReturnValue({ data: mockSongData, isPending: true })
+      vi.mocked(useGetOne).mockReturnValue({ data: mockSongData, isPending: true } as any)
 
-      render(<PlayerToolbar id="song-1" />)
+      render(<PlayerToolbar id="song-1" isRadio={false} />)
 
       const loveButton = screen.getByTestId('love-button')
       expect(loveButton).toBeDisabled()
@@ -145,7 +144,7 @@ describe('<PlayerToolbar />', () => {
 
   describe('Common behavior', () => {
     it('disables buttons when id is not provided', () => {
-      render(<PlayerToolbar />)
+      render(<PlayerToolbar id={undefined} isRadio={false} />)
 
       const loveButton = screen.getByTestId('love-button')
       expect(loveButton).toBeDisabled()

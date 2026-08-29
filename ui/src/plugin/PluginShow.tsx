@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useCallback, useMemo } from 'react'
 import {
   ShowContextProvider,

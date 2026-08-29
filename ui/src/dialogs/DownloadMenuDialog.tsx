@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { SimpleForm, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import {

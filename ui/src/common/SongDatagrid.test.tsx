@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, fireEvent, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -40,7 +39,7 @@ const renderRow = (onClick) =>
       <ThemeProvider theme={createTheme()}>
         <table>
           <tbody>
-            <DiscSubtitleRow record={record} onClick={onClick} colSpan={3} />
+            <DiscSubtitleRow record={record as any} onClick={onClick} colSpan={3} />
           </tbody>
         </table>
       </ThemeProvider>
@@ -48,7 +47,7 @@ const renderRow = (onClick) =>
   )
 
 const openLightbox = () => {
-  fireEvent.click(document.querySelector('img'))
+  fireEvent.click(document.querySelector('img')!)
   expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
 }
 
@@ -81,7 +80,7 @@ describe('DiscSubtitleRow', () => {
     const onClick = vi.fn()
     renderRow(onClick)
     openLightbox()
-    fireEvent.click(document.querySelector('.yarl__container'))
+    fireEvent.click(document.querySelector('.yarl__container')!)
     expect(onClick).not.toHaveBeenCalled()
   })
 })
@@ -111,7 +110,7 @@ describe('SongDatagrid', () => {
     render(
       <AdminContext>
         <ResourceContextProvider value="song">
-          <ListContextProvider value={listContext}>
+          <ListContextProvider value={listContext as any}>
             <SongDatagrid bulkActionButtons={false} rowClick={rowClick}>
               <TextField source="title" />
             </SongDatagrid>

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -33,7 +32,7 @@ describe('App startup', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 401,
       statusText: 'Unauthorized',
-    })
+    } as Response)
     render(<App />)
 
     expect(
@@ -47,7 +46,7 @@ describe('App startup', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
-    const request = fetchSpy.mock.calls[0][0]
+    const request = fetchSpy.mock.calls[0][0] as Request
     await expect(request.json()).resolves.toEqual({
       username: 'listener',
       password: 'secret',
@@ -79,19 +78,23 @@ describe('App startup', () => {
     window.location.hash = '#/album/recent?initial=1'
 
     window.EventSource = class {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSED = 2
       addEventListener() {}
       close() {}
-    }
+    } as unknown as typeof EventSource
     window.ResizeObserver = class {
       observe() {}
       disconnect() {}
-    }
+      unobserve() {}
+    } as unknown as typeof ResizeObserver
 
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation((input) => {
         const url = String(input)
-        let body = []
+        let body: Record<string, unknown> | unknown[] = []
         if (/\/api\/user\/admin-id(?:\?|$)/.test(url)) {
           body = { id: 'admin-id', libraries: [] }
         } else if (url.includes('/rest/getScanStatus')) {

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import TextField from '@mui/material/TextField'
 import Checkbox from '@mui/material/Checkbox'

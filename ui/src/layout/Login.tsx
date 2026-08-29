@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useCallback } from 'react'
 import { Field, Form } from 'react-final-form'
 import { useDispatch } from 'react-redux'

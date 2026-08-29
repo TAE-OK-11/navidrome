@@ -43,7 +43,7 @@ export const useLibraryFilter = () => {
 /**
  * Hook to check if a specific library is currently selected
  */
-export const useIsLibrarySelected = (libraryId: string) => {
+export const useIsLibrarySelected = (libraryId?: string | null) => {
   const selectedLibraryIds = useSelectedLibraries()
-  return selectedLibraryIds.includes(libraryId)
+  return libraryId != null && selectedLibraryIds.includes(libraryId)
 }

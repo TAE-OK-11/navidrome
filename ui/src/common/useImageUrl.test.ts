@@ -1,45 +1,44 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { renderHook, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import type { useImageUrl as UseImageUrlFn } from './useImageUrl'
 
-// Helper to flush all pending promises
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-// We need a fresh module for each test to reset the module-level cache
-let useImageUrl
+let useImageUrl: typeof UseImageUrlFn
 
 describe('useImageUrl', () => {
-  let abortSpy
-  let OriginalAbortController
-  let originalCreateObjectURL
-  let originalRevokeObjectURL
-  let originalFetch
+  let abortSpy: ReturnType<typeof vi.fn>
+  let OriginalAbortController: typeof AbortController
+  let originalCreateObjectURL: typeof URL.createObjectURL
+  let originalRevokeObjectURL: typeof URL.revokeObjectURL
+  let originalFetch: typeof fetch
 
   beforeEach(async () => {
-    // Reset module to clear the cache
     vi.resetModules()
     const mod = await import('./useImageUrl')
     useImageUrl = mod.useImageUrl
 
     abortSpy = vi.fn()
-    OriginalAbortController = global.AbortController
-    originalCreateObjectURL = global.URL.createObjectURL
-    originalRevokeObjectURL = global.URL.revokeObjectURL
-    originalFetch = global.fetch
+    OriginalAbortController = globalThis.AbortController
+    originalCreateObjectURL = globalThis.URL.createObjectURL
+    originalRevokeObjectURL = globalThis.URL.revokeObjectURL
+    originalFetch = globalThis.fetch
 
-    global.AbortController = function () {
-      this.signal = 'mock-signal'
-      this.abort = abortSpy
+    class MockAbortController {
+      signal = { aborted: false } as AbortSignal
+      abort = abortSpy
     }
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
-    global.URL.revokeObjectURL = vi.fn()
+    globalThis.AbortController =
+      MockAbortController as unknown as typeof AbortController
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    globalThis.URL.revokeObjectURL = vi.fn()
   })
 
   afterEach(() => {
-    global.AbortController = OriginalAbortController
-    global.URL.createObjectURL = originalCreateObjectURL
-    global.URL.revokeObjectURL = originalRevokeObjectURL
-    global.fetch = originalFetch
+    globalThis.AbortController = OriginalAbortController
+    globalThis.URL.createObjectURL = originalCreateObjectURL
+    globalThis.URL.revokeObjectURL = originalRevokeObjectURL
+    globalThis.fetch = originalFetch
     vi.restoreAllMocks()
   })
 
@@ -52,7 +51,9 @@ describe('useImageUrl', () => {
   })
 
   it('should return loading state initially', () => {
-    global.fetch = vi.fn(() => new Promise(() => {}))
+    globalThis.fetch = vi.fn(
+      () => new Promise(() => {}),
+    ) as unknown as typeof fetch
     const { result } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
     )
@@ -64,12 +65,12 @@ describe('useImageUrl', () => {
 
   it('should fetch image and return blob URL on success', async () => {
     const mockBlob = new Blob(['image-data'], { type: 'image/png' })
-    global.fetch = vi.fn(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve({
         ok: true,
         blob: () => Promise.resolve(mockBlob),
       }),
-    )
+    ) as unknown as typeof fetch
 
     const { result } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
@@ -82,13 +83,15 @@ describe('useImageUrl', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.imgUrl).toBe('blob:mock-url')
     expect(result.current.error).toBe(false)
-    expect(global.fetch).toHaveBeenCalledWith('http://example.com/img.jpg', {
-      signal: 'mock-signal',
+    expect(globalThis.fetch).toHaveBeenCalledWith('http://example.com/img.jpg', {
+      signal: expect.anything(),
     })
   })
 
   it('should set error on HTTP failure', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }))
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 404 }),
+    ) as unknown as typeof fetch
 
     const { result } = renderHook(() =>
       useImageUrl('http://example.com/missing.jpg'),
@@ -104,7 +107,9 @@ describe('useImageUrl', () => {
   })
 
   it('should abort fetch on unmount', async () => {
-    global.fetch = vi.fn(() => new Promise(() => {}))
+    globalThis.fetch = vi.fn(
+      () => new Promise(() => {}),
+    ) as unknown as typeof fetch
 
     const { unmount } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
@@ -120,21 +125,26 @@ describe('useImageUrl', () => {
   })
 
   it('should abort previous fetch when URL changes', async () => {
-    const abortSpies = []
-    global.AbortController = function () {
-      const spy = vi.fn()
-      abortSpies.push(spy)
-      this.signal = `signal-${abortSpies.length}`
-      this.abort = spy
+    const abortSpies: Array<ReturnType<typeof vi.fn>> = []
+    class ChangingAbortController {
+      signal = { aborted: false } as AbortSignal
+      abort: ReturnType<typeof vi.fn>
+      constructor() {
+        const spy = vi.fn()
+        abortSpies.push(spy)
+        this.abort = spy
+      }
     }
+    globalThis.AbortController =
+      ChangingAbortController as unknown as typeof AbortController
 
     const mockBlob = new Blob(['data'], { type: 'image/png' })
-    global.fetch = vi.fn(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve({
         ok: true,
         blob: () => Promise.resolve(mockBlob),
       }),
-    )
+    ) as unknown as typeof fetch
 
     const { rerender } = renderHook(({ url }) => useImageUrl(url), {
       initialProps: { url: 'http://example.com/img1.jpg' },
@@ -144,7 +154,6 @@ describe('useImageUrl', () => {
       await flushPromises()
     })
 
-    // Change URL - should abort the first controller
     rerender({ url: 'http://example.com/img2.jpg' })
 
     expect(abortSpies[0]).toHaveBeenCalled()
@@ -152,7 +161,9 @@ describe('useImageUrl', () => {
 
   it('should not set error on AbortError', async () => {
     const abortError = new DOMException('Aborted', 'AbortError')
-    global.fetch = vi.fn(() => Promise.reject(abortError))
+    globalThis.fetch = vi.fn(() =>
+      Promise.reject(abortError),
+    ) as unknown as typeof fetch
 
     const { result } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
@@ -167,14 +178,13 @@ describe('useImageUrl', () => {
 
   it('should use cached blob URL on remount without re-fetching', async () => {
     const mockBlob = new Blob(['data'], { type: 'image/png' })
-    global.fetch = vi.fn(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve({
         ok: true,
         blob: () => Promise.resolve(mockBlob),
       }),
-    )
+    ) as unknown as typeof fetch
 
-    // First mount — fetches and caches
     const { unmount } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
     )
@@ -183,12 +193,10 @@ describe('useImageUrl', () => {
       await flushPromises()
     })
 
-    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
 
-    // Unmount (simulates React Admin refresh)
     unmount()
 
-    // Remount with same URL — should use cache
     const { result: result2 } = renderHook(() =>
       useImageUrl('http://example.com/img.jpg'),
     )
@@ -197,16 +205,16 @@ describe('useImageUrl', () => {
       await flushPromises()
     })
 
-    // Should NOT have fetched again
-    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     expect(result2.current.imgUrl).toBe('blob:mock-url')
     expect(result2.current.loading).toBe(false)
   })
 
   it('should cache errors and not re-fetch broken URLs', async () => {
-    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404 }))
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 404 }),
+    ) as unknown as typeof fetch
 
-    // First mount — fetch fails and error is cached
     const { unmount } = renderHook(() =>
       useImageUrl('http://example.com/broken.jpg'),
     )
@@ -215,10 +223,9 @@ describe('useImageUrl', () => {
       await flushPromises()
     })
 
-    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     unmount()
 
-    // Remount with same URL — should use cached error, not re-fetch
     const { result: result2 } = renderHook(() =>
       useImageUrl('http://example.com/broken.jpg'),
     )
@@ -227,7 +234,7 @@ describe('useImageUrl', () => {
       await flushPromises()
     })
 
-    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     expect(result2.current.error).toBe(true)
     expect(result2.current.imgUrl).toBeNull()
     expect(result2.current.loading).toBe(false)

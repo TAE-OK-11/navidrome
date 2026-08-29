@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { alpha } from '@mui/material/styles'

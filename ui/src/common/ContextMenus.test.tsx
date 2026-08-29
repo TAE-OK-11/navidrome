@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, fireEvent, screen } from '@testing-library/react'
 import { AdminContext as TestContext } from 'react-admin'
@@ -23,7 +22,7 @@ const { mockConfig } = vi.hoisted(() => ({
 vi.mock('../config', () => ({ default: mockConfig }))
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useNotify: () => vi.fn(),
@@ -38,7 +37,7 @@ describe('ContextMenus', () => {
       <TestContext>
         <StyledEngineProvider injectFirst>
           <ThemeProvider theme={createTheme()}>
-            <Menu record={record} />
+            <Menu record={record as any} />
           </ThemeProvider>
         </StyledEngineProvider>
       </TestContext>,

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect } from 'vitest'
 import {
   formatTomlValue,

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Children, cloneElement, isValidElement } from 'react'
 import { isWritable } from './playlistUtils'
 import { useRecordContext } from 'react-admin'

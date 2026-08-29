@@ -42,11 +42,11 @@ describe('modernizeTheme', () => {
       },
     })
 
-    expect(theme.components.MuiSwitch.styleOverrides.colorSecondary).toEqual({
+    expect(theme.components.MuiSwitch!.styleOverrides!.colorSecondary).toEqual({
       '&.Mui-checked': { color: '#f00' },
       '&.Mui-checked + .MuiSwitch-track': { backgroundColor: '#0f0' },
     })
-    expect(theme.components.MuiOutlinedInput.styleOverrides.root).toEqual({
+    expect(theme.components.MuiOutlinedInput!.styleOverrides!.root).toEqual({
       '& .MuiOutlinedInput-notchedOutline': { borderColor: '#111' },
       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
         borderColor: '#222',

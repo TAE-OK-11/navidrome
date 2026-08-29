@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Box, useMediaQuery } from '@mui/material'
 import { Link } from 'react-router-dom'

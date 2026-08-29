@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useInput, useTranslate, useRecordContext } from 'react-admin'
 import { Box, FormControl, FormLabel, Typography } from '@mui/material'
 import { SelectLibraryInput } from '../common/SelectLibraryInput'
@@ -9,8 +8,8 @@ export const LibrarySelectionField = () => {
   const record = useRecordContext()
 
   const {
-    input: { name, onChange, value },
-    meta: { error, touched },
+    field: { onChange, value },
+    fieldState: { error, isTouched },
   } = useInput({ source: 'libraryIds' })
 
   // Extract library IDs from either 'libraries' array or 'libraryIds' array
@@ -32,7 +31,7 @@ export const LibrarySelectionField = () => {
   const isNewUser = !record?.id
 
   return (
-    <FormControl error={!!(touched && error)} fullWidth margin="normal">
+    <FormControl error={!!(isTouched && error)} fullWidth margin="normal">
       <FormLabel component="legend">
         {translate('resources.user.fields.libraries')}
       </FormLabel>
@@ -48,9 +47,9 @@ export const LibrarySelectionField = () => {
           isNewUser={isNewUser}
         />
       </Box>
-      {touched && error && (
+      {isTouched && error && (
         <Typography color="error" variant="caption">
-          {error}
+          {typeof error === 'string' ? error : String(error.message ?? error)}
         </Typography>
       )}
       <Typography variant="caption" color="textSecondary">

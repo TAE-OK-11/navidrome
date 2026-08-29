@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { Fragment, useEffect } from 'react'
 import { useUnselectAll } from 'react-admin'
 import { addTracks, playNext, playTracks } from '../actions'

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AUTO_THEME_ID, AUTO_THEME_CONFIG_VALUE } from '../consts'
 

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 /* eslint-disable */
 
 import { createNavigationHandler } from './swNavigation'

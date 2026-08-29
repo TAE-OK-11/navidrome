@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import ReactJkMusicPlayer from 'navidrome-music-player'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import config, { shareInfo } from '../config'

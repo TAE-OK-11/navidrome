@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render } from '@testing-library/react'
 import { PathField } from './PathField'
@@ -25,11 +24,11 @@ describe('PathField', () => {
 
   it('renders path without libraryPath for non-admin users', () => {
     // Setup
-    usePermissions.mockReturnValue({ permissions: 'user' })
-    useRecordContext.mockReturnValue({
+    vi.mocked(usePermissions).mockReturnValue({ permissions: 'user' } as any)
+    vi.mocked(useRecordContext).mockReturnValue({
       path: 'music/song.mp3',
       libraryPath: '/data/media',
-    })
+    } as any)
 
     // Act
     const { container } = render(<PathField />)
@@ -41,11 +40,11 @@ describe('PathField', () => {
 
   it('renders combined path for admin users when libraryPath does not end with separator', () => {
     // Setup
-    usePermissions.mockReturnValue({ permissions: 'admin' })
-    useRecordContext.mockReturnValue({
+    vi.mocked(usePermissions).mockReturnValue({ permissions: 'admin' } as any)
+    vi.mocked(useRecordContext).mockReturnValue({
       path: 'music/song.mp3',
       libraryPath: '/data/media',
-    })
+    } as any)
 
     // Act
     const { container } = render(<PathField />)
@@ -56,11 +55,11 @@ describe('PathField', () => {
 
   it('renders combined path for admin users when libraryPath ends with separator', () => {
     // Setup
-    usePermissions.mockReturnValue({ permissions: 'admin' })
-    useRecordContext.mockReturnValue({
+    vi.mocked(usePermissions).mockReturnValue({ permissions: 'admin' } as any)
+    vi.mocked(useRecordContext).mockReturnValue({
       path: 'music/song.mp3',
       libraryPath: '/data/media/',
-    })
+    } as any)
 
     // Act
     const { container } = render(<PathField />)
@@ -72,11 +71,11 @@ describe('PathField', () => {
   it('works with a different separator from config', () => {
     // Setup
     config.separator = '\\'
-    usePermissions.mockReturnValue({ permissions: 'admin' })
-    useRecordContext.mockReturnValue({
+    vi.mocked(usePermissions).mockReturnValue({ permissions: 'admin' } as any)
+    vi.mocked(useRecordContext).mockReturnValue({
       path: 'music\\song.mp3',
       libraryPath: 'C:\\data',
-    })
+    } as any)
 
     // Act
     const { container } = render(<PathField />)

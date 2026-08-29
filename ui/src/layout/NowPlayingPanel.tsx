@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useTranslate, Link, useNotify } from 'react-admin'

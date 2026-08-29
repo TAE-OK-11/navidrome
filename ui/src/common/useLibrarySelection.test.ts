@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { renderHook } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
@@ -29,7 +28,7 @@ describe('Library Selection Hooks', () => {
 
   const setupSelector = (
     userLibraries = mockLibraries,
-    selectedLibraries = [],
+    selectedLibraries: string[] = [],
   ) => {
     mockUseSelector.mockImplementation((selector) =>
       selector({

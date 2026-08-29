@@ -49,6 +49,10 @@ type SongContextMenuProps = {
   onAddToPlaylist?: (id?: Identifier) => void
   className?: string
   sx?: unknown
+  source?: string
+  sortable?: boolean
+  sortByOrder?: string
+  label?: React.ReactNode
 }
 
 type MoreButtonProps = {

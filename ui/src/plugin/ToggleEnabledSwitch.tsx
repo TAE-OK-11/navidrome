@@ -25,22 +25,45 @@ const errorSwitchSx = {
   '& .MuiSwitch-track': { bgcolor: 'warning.light', opacity: 0.7 },
 }
 
+import type { RaRecord } from 'react-admin'
+
+type PluginRecord = RaRecord & {
+  id?: string
+  enabled?: boolean
+  lastError?: string
+  users?: string
+  allUsers?: boolean
+  libraries?: string
+  allLibraries?: boolean
+}
+
+type PluginManifest = {
+  permissions?: {
+    users?: boolean
+    library?: boolean
+  }
+}
+
 /**
  * Shared toggle switch for enabling/disabling plugins.
  * Used in both PluginList (compact) and PluginShow (with label).
  *
  * @param {Object} props
  * @param {boolean} [props.showLabel=false] - Whether to show the enable/disable label
- * @param {string} [props.size='small'] - Switch size ('small' or 'medium')
+ * @param {'small' | 'medium'} [props.size='small'] - Switch size
  * @param {Object} [props.manifest=null] - Parsed manifest object for permission checking
  */
 const ToggleEnabledSwitch = ({
   showLabel = false,
   size = 'small',
   manifest = null,
+}: {
+  showLabel?: boolean
+  size?: 'small' | 'medium'
+  manifest?: PluginManifest | null
 }) => {
   const resource = useResourceContext()
-  const record = useRecordContext()
+  const record = useRecordContext<PluginRecord>()
   const notify = useNotify()
   const refresh = useRefresh()
   const translate = useTranslate()

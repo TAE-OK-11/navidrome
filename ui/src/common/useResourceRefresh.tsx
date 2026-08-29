@@ -1,6 +1,7 @@
 import { useSelector } from 'react-redux'
 import { useEffect, useRef } from 'react'
 import { useRefresh, useDataProvider } from 'react-admin'
+import type { NavidromeRootState } from '../types/redux'
 
 /**
  * A hook that automatically refreshes react-admin managed resources when refresh events are received via SSE.
@@ -69,7 +70,9 @@ export const useResourceRefresh = (...visibleResources) => {
   visibleResourcesRef.current = visibleResources
   const refresh = useRefresh()
   const dataProvider = useDataProvider()
-  const refreshData = useSelector((state) => state.activity?.refresh)
+  const refreshData = useSelector(
+    (state: NavidromeRootState) => state.activity?.refresh,
+  )
 
   useEffect(() => {
     const { resources, lastReceived = 0 } = refreshData || {}
@@ -81,7 +84,11 @@ export const useResourceRefresh = (...visibleResources) => {
     if (
       resources &&
       (resources['*'] === '*' ||
-        Object.values(resources).some((values) => values?.includes('*')))
+        Object.values(resources).some(
+          (values) =>
+            values === '*' ||
+            (Array.isArray(values) && values.includes('*')),
+        ))
     ) {
       refresh()
       return
@@ -90,8 +97,9 @@ export const useResourceRefresh = (...visibleResources) => {
       Object.keys(resources).forEach((resource) => {
         const watched = visibleResourcesRef.current
         if (watched.length === 0 || watched.includes(resource)) {
-          if (resources[resource]?.length > 0) {
-            dataProvider.getMany(resource, { ids: resources[resource] })
+          const ids = resources[resource]
+          if (Array.isArray(ids) && ids.length > 0) {
+            dataProvider.getMany(resource, { ids })
           }
         }
       })

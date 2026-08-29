@@ -9,6 +9,7 @@ import {
   useDataProvider,
   useNotify,
   useRedirect,
+  type HttpError,
 } from 'react-admin'
 import { Title } from '../common'
 
@@ -32,14 +33,15 @@ const LibraryCreate = (props) => {
         })
         redirect('/library')
       } catch (error) {
+        const httpError = error as HttpError
         // Handle validation errors with proper field mapping
-        if (error.body && error.body.errors) {
-          return error.body.errors
+        if (httpError.body && httpError.body.errors) {
+          return httpError.body.errors
         }
 
         // Handle other structured errors from the server
-        if (error.body && error.body.error) {
-          const errorMsg = error.body.error
+        if (httpError.body && httpError.body.error) {
+          const errorMsg = httpError.body.error as string
 
           // Handle database constraint violations
           if (errorMsg.includes('UNIQUE constraint failed: library.name')) {
@@ -56,7 +58,7 @@ const LibraryCreate = (props) => {
 
         // Fallback for unexpected error formats
         const fallbackMessage =
-          error.message ||
+          httpError.message ||
           (typeof error === 'string' ? error : 'An unexpected error occurred')
         notify(fallbackMessage, { type: 'error' })
       }
@@ -66,7 +68,7 @@ const LibraryCreate = (props) => {
 
   return (
     <Create title={<Title subTitle={title} />} {...props}>
-      <SimpleForm save={save}>
+      <SimpleForm onSubmit={save}>
         <TextInput source="name" validate={[required()]} />
         <TextInput source="path" validate={[required()]} fullWidth />
         <BooleanInput source="defaultNewUsers" />

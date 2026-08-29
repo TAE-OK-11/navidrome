@@ -1,9 +1,9 @@
-import { vi, type Mock } from 'vitest'
+import { vi } from 'vitest'
 import type { UseInputValue } from 'react-admin'
+import type { FieldError } from 'react-hook-form'
 
-export const mockFn = <T extends (...args: never[]) => unknown>(
-  fn: T,
-): Mock<Parameters<T>, ReturnType<T>> => vi.mocked(fn)
+export const mockFn = <T extends (...args: never[]) => unknown>(fn: T) =>
+  vi.mocked(fn)
 
 export const mockUseInputValue = (
   overrides: Partial<{
@@ -28,10 +28,13 @@ export const mockUseInputValue = (
     },
     formState: {} as UseInputValue['formState'],
     fieldState: {
-      error: overrides.error,
+      error: overrides.error
+        ? ({ message: overrides.error, type: 'manual' } as FieldError)
+        : undefined,
       invalid: Boolean(overrides.error),
       isDirty: false,
       isTouched: overrides.isTouched ?? false,
+      isValidating: false,
     },
   }
 }

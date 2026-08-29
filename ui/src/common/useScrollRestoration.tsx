@@ -3,7 +3,7 @@ import { useLocation, useNavigationType } from 'react-router-dom'
 
 // Keyed on the route because hash history assigns no location.key, so every page would
 // otherwise share one slot and overwrite the offset we came back for.
-const positions = new Map()
+const positions = new Map<string, number>()
 const MAX_ENTRIES = 50
 const MAX_FRAMES = 60
 
@@ -11,7 +11,7 @@ export const useScrollRestoration = (ready = true) => {
   const { pathname, search } = useLocation()
   const navigationType = useNavigationType()
   const key = pathname + search
-  const handled = useRef(null)
+  const handled = useRef<string | null>(null)
   const latest = useRef(0)
 
   useEffect(() => {
@@ -30,7 +30,10 @@ export const useScrollRestoration = (ready = true) => {
       positions.delete(key)
       positions.set(key, latest.current)
       if (positions.size > MAX_ENTRIES) {
-        positions.delete(positions.keys().next().value)
+        const oldestKey = positions.keys().next().value
+        if (oldestKey !== undefined) {
+          positions.delete(oldestKey)
+        }
       }
     },
     [key],

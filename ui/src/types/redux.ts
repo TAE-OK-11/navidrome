@@ -66,7 +66,7 @@ export type SettingsState = {
 
 export type ActivityRefresh = {
   lastReceived: number
-  resources: Record<string, string[]>
+  resources: Record<string, string[] | string>
 }
 
 export type TrackSource = Record<string, unknown>
@@ -123,19 +123,26 @@ export type AddToPlaylistDialogState = {
   open: boolean
   duplicateSong: boolean
   selectedIds?: string[]
-  onSuccess?: () => void
+  onSuccess?: (value?: unknown, len?: number) => void
   duplicateIds?: string[]
 }
 
 export type DownloadMenuDialogState = {
   open: boolean
-  record?: unknown
+  record?: {
+    id?: string | number
+    mediaFileId?: string | number
+    name?: string
+    title?: string
+    size?: number
+    duration?: number
+  }
   recordType?: string
 }
 
 export type ExpandInfoDialogState = {
   open: boolean
-  record?: unknown
+  record?: Record<string, unknown>
 }
 
 export type ListenBrainzTokenDialogState = {

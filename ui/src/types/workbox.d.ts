@@ -2,14 +2,16 @@
 
 declare function importScripts(...urls: string[]): void
 
+interface WorkboxNetworkOnly {
+  handle(options: { request: Request }): Promise<Response>
+}
+
 interface WorkboxModule {
   core: {
     clientsClaim(): void
   }
   strategies: {
-    new NetworkOnly(): {
-      handle(options: { request: Request }): Promise<Response>
-    }
+    NetworkOnly: new () => WorkboxNetworkOnly
   }
   routing: {
     NavigationRoute: new (handler: unknown) => unknown
@@ -28,5 +30,3 @@ interface ServiceWorkerGlobalScope {
   __WB_MANIFEST: unknown
   skipWaiting(): Promise<void>
 }
-
-declare const self: ServiceWorkerGlobalScope

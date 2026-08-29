@@ -28,7 +28,7 @@ import { LoveButton } from './LoveButton'
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from './artist'
-import type { Identifier } from 'react-admin'
+import type { Identifier, RaRecord } from 'react-admin'
 import type { SongRecord } from '../types/records'
 
 const MoreButton = ({ record, onClick, info, ...rest }) => {
@@ -60,6 +60,16 @@ const ContextMenu = ({
   songQueryParams,
   hideShare = false,
   hideInfo = false,
+}: {
+  resource: string
+  showLove: boolean
+  record: Record<string, unknown>
+  color?: string
+  className?: string
+  sx?: unknown
+  songQueryParams: Record<string, unknown>
+  hideShare?: boolean
+  hideInfo?: boolean
 }) => {
   const dataProvider = useDataProvider()
   const dispatch = useDispatch()
@@ -226,8 +236,6 @@ const ContextMenu = ({
     </Box>
   )
 }
-
-import type { Identifier, RaRecord } from 'react-admin'
 
 type ContextMenuProps = {
   record?: RaRecord<Identifier>

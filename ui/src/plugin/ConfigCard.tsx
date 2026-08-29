@@ -13,7 +13,7 @@ const formatError = (error, schema) => {
   // Navigate schema to find field title, build bracket-notation path
   let currentSchema = schema
   let fieldName = parts[parts.length - 1]
-  const pathParts = []
+  const pathParts: string[] = []
 
   for (const part of parts) {
     if (/^\d+$/.test(part)) {
@@ -43,7 +43,9 @@ export const ConfigCard = ({
   classes,
   translate,
 }) => {
-  const [validationErrors, setValidationErrors] = useState([])
+  const [validationErrors, setValidationErrors] = useState<
+    Array<Record<string, unknown>>
+  >([])
 
   // Handle changes from JSONForms
   const handleChange = useCallback(

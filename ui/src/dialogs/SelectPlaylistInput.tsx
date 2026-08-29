@@ -230,7 +230,7 @@ export const SelectPlaylistInput = ({
   // Filter playlists based on search text
   const filteredOptions =
     options?.filter((option) =>
-      option.name.toLowerCase().includes(searchText.toLowerCase()),
+      (option.name ?? '').toLowerCase().includes(searchText.toLowerCase()),
     ) || []
 
   const handlePlaylistToggle = (playlist: PlaylistSelection) => {
@@ -275,7 +275,8 @@ export const SelectPlaylistInput = ({
   const canCreateNew = Boolean(
     searchText.trim() &&
     !filteredOptions.some(
-      (option) => option.name.toLowerCase() === searchText.toLowerCase().trim(),
+      (option) =>
+        (option.name ?? '').toLowerCase() === searchText.toLowerCase().trim(),
     ) &&
     !selectedPlaylists.some((p) => p.name === searchText.trim()),
   )

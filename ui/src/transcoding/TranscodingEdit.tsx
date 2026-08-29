@@ -12,7 +12,11 @@ import { Title } from '../common'
 import { TranscodingNote } from './TranscodingNote'
 import { BITRATE_CHOICES } from '../consts'
 
-const TranscodingTitle = ({ record: recordOverride }) => {
+const TranscodingTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.transcoding.name', {

@@ -25,7 +25,7 @@ const deleteButtonSx = (theme) => ({
 const DeleteMissingFilesButton = (props) => {
   const { selectedIds, className, deleteAll = false } = props
   const [open, setOpen] = useState(false)
-  const unselectAll = useUnselectAll()
+  const unselectAll = useUnselectAll('missing')
   const refresh = useRefresh()
   const notify = useNotify()
 
@@ -37,7 +37,7 @@ const DeleteMissingFilesButton = (props) => {
       onSuccess: () => {
         notify('resources.missing.notifications.removed')
         refresh()
-        unselectAll('missing')
+        unselectAll()
       },
       onError: () =>
         notify('Error: missing files not deleted', { type: 'warning' }),

@@ -29,9 +29,13 @@ const useManifest = () => {
 }
 
 const EnabledOrErrorField = () => {
-  const record = useRecordContext()
+  const record = useRecordContext<{ lastError?: string; enabled?: boolean }>()
   const translate = useTranslate()
   const manifest = useManifest()
+
+  if (!record) {
+    return null
+  }
 
   if (record.lastError) {
     return (
@@ -51,10 +55,10 @@ const EnabledOrErrorField = () => {
     )
   }
 
-  return <ToggleEnabledSwitch source={'enabled'} manifest={manifest} />
+  return <ToggleEnabledSwitch manifest={manifest} />
 }
 
-const ManifestField = ({ source }) => {
+const ManifestField = ({ source }: { source: string }) => {
   const manifest = useManifest()
 
   if (!manifest) {
@@ -138,7 +142,7 @@ const PluginList = (props) => {
           primaryText={(record) => record.id}
           secondaryText={(record) => {
             try {
-              const manifest = JSON.parse(record.manifest)
+              const manifest = JSON.parse(String(record.manifest))
               return manifest.description || ''
             } catch {
               return ''
@@ -157,7 +161,7 @@ const PluginList = (props) => {
           <ManifestField source="name" />
           {!isXsmall && <ManifestField source="description" />}
           <ManifestField source="version" />
-          <EnabledOrErrorField source={'enabled'} />
+          <EnabledOrErrorField />
           <DateField source="updatedAt" sortByOrder={'DESC'} />
         </Datagrid>
       )}

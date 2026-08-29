@@ -1,5 +1,10 @@
 import React, { cloneElement } from 'react'
-import { sanitizeListRestProps, TopToolbar, CreateButton } from 'react-admin'
+import {
+  sanitizeListRestProps,
+  TopToolbar,
+  CreateButton,
+  type ListActionsProps,
+} from 'react-admin'
 import LibraryScanButton from './LibraryScanButton'
 
 const LibraryListActions = ({
@@ -10,7 +15,7 @@ const LibraryListActions = ({
   displayedFilters,
   filterValues,
   ...rest
-}) => {
+}: ListActionsProps) => {
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
       {filters &&

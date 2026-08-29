@@ -10,11 +10,19 @@ export const DOWNLOAD_FEEDBACK_MS = 5000
 
 const SharePlayer = () => {
   const [downloading, setDownloading] = useState(false)
-  const timer = useRef(null)
+  const timer = useRef<number | null>(null)
 
-  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(
+    () => () => {
+      if (timer.current !== null) {
+        window.clearTimeout(timer.current)
+      }
+    },
+    [],
+  )
 
-  const list = shareInfo?.tracks.map((s) => {
+  const list =
+    shareInfo?.tracks.map((s) => {
     return {
       name: s.title,
       musicSrc: shareStreamUrl(s.id),
@@ -34,14 +42,14 @@ const SharePlayer = () => {
     document.body.removeChild(link)
 
     setDownloading(true)
-    clearTimeout(timer.current)
-    timer.current = setTimeout(
+    clearTimeout(timer.current ?? undefined)
+    timer.current = window.setTimeout(
       () => setDownloading(false),
       DOWNLOAD_FEEDBACK_MS,
     )
   }, [])
   const options = {
-    audioLists: list,
+    audioLists: list ?? [],
     mode: 'full',
     toggleMode: false,
     mobileMediaQuery: '',
@@ -78,7 +86,10 @@ const SharePlayer = () => {
         },
       }}
     >
-      <ReactJkMusicPlayer {...options} customDownloader={customDownloader} />
+      <ReactJkMusicPlayer
+        {...(options as React.ComponentProps<typeof ReactJkMusicPlayer>)}
+        customDownloader={customDownloader}
+      />
     </Box>
   )
 }

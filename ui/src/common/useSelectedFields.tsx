@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { setOmittedFields, setToggleableFields } from '../actions'
-import type { AppState } from '../types/redux'
+import type { NavidromeRootState } from '../types/redux'
 
 type ToggleableColumns = Record<string, React.ReactNode>
 
@@ -21,10 +21,10 @@ export const useSelectedFields = ({
 }: UseSelectedFieldsParams) => {
   const dispatch = useDispatch()
   const resourceFields = useSelector(
-    (state: AppState) => state.settings.toggleableFields,
+    (state: NavidromeRootState) => state.settings.toggleableFields,
   )?.[resource]
   const omittedFields = useSelector(
-    (state: AppState) => state.settings.omittedFields,
+    (state: NavidromeRootState) => state.settings.omittedFields,
   )?.[resource]
 
   const [filteredComponents, setFilteredComponents] = useState<React.ReactNode[]>(
@@ -88,7 +88,7 @@ export const useSetToggleableFields = (
   defaultOff: string[] = [],
 ) => {
   const current = useSelector(
-    (state: AppState) => state.settings.toggleableFields,
+    (state: NavidromeRootState) => state.settings.toggleableFields,
   )?.album
   const dispatch = useDispatch()
   useEffect(() => {

@@ -10,7 +10,7 @@ export const ListenBrainzScrobbleToggle = () => {
   const dispatch = useDispatch()
   const notify = useNotify()
   const translate = useTranslate()
-  const [linked, setLinked] = useState(null)
+  const [linked, setLinked] = useState<boolean | null>(null)
 
   const toggleScrobble = () => {
     if (linked) {

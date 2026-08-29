@@ -1,8 +1,23 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDataProvider, useNotify, useRefresh } from 'react-admin'
 import subsonic from '../subsonic'
+import type { Identifier } from 'react-admin'
 
-export const useRating = (resource, record) => {
+type RatingRecord = {
+  id?: Identifier
+  rating?: number
+  mediaFileId?: Identifier
+  playlistId?: Identifier
+}
+
+export const useRating = (
+  resource: string,
+  record: RatingRecord,
+): readonly [
+  (val: number, id: Identifier) => Promise<void>,
+  number,
+  boolean,
+] => {
   const [loading, setLoading] = useState(false)
   const [rating, setRating] = useState(record.rating || 0)
   const notify = useNotify()
@@ -68,15 +83,17 @@ export const useRating = (resource, record) => {
     resource,
   ])
 
-  const rate = (val, id) => {
+  const rate = (val: number, id: Identifier): Promise<void> => {
     if (loading || !id) return Promise.resolve()
 
     const previousRating = rating
     setLoading(true)
     setRating(val)
     return subsonic
-      .setRating(id, val)
-      .then(refreshRating)
+      .setRating(String(id), val)
+      .then(() => {
+        void refreshRating()
+      })
       .catch((e) => {
         // eslint-disable-next-line no-console
         console.log('Error setting star rating: ', e)
@@ -86,7 +103,8 @@ export const useRating = (resource, record) => {
           setLoading(false)
         }
       })
+      .then(() => undefined)
   }
 
-  return [rate, rating, loading]
+  return [rate, rating, loading] as const
 }

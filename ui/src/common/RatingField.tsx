@@ -39,11 +39,14 @@ export const RatingField = ({
   ...rest
 }: RatingFieldProps) => {
   const record = useRecordContext<RatingRecord>(rest)
+  const [setSongRating, currentRating, isLoading] = useRating(
+    resource,
+    record ?? {},
+  )
+
   if (!record) {
     return null
   }
-
-  const [rate, rating, loading] = useRating(resource, record)
 
   const stopPropagation = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -52,9 +55,11 @@ export const RatingField = ({
   const handleRating = useCallback(
     (_e: React.SyntheticEvent, val: number | null) => {
       const targetId = record.mediaFileId || record.id
-      rate(val ?? 0, targetId)
+      if (targetId !== undefined) {
+        void setSongRating(val ?? 0, targetId)
+      }
     },
-    [rate, record.mediaFileId, record.id],
+    [setSongRating, record.mediaFileId, record.id],
   )
 
   return (
@@ -74,14 +79,14 @@ export const RatingField = ({
             color,
             visibility: visible === false ? 'hidden' : 'inherit',
           },
-          rating > 0
+          currentRating > 0
             ? { visibility: 'visible !important' }
             : { visibility: 'hidden' },
           ...(Array.isArray(sx) ? sx : [sx]),
         ]}
-        value={rating}
+        value={currentRating}
         size={size}
-        disabled={Boolean(record.missing) || loading}
+        disabled={Boolean(record.missing) || isLoading}
         emptyIcon={<StarBorderIcon fontSize="inherit" />}
         onChange={handleRating}
       />

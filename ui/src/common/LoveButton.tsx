@@ -74,7 +74,7 @@ export const LoveButton = ({
       aria-label={translate('message.toggle_love')}
       aria-pressed={loved}
       title={
-        isDateSet(record.starredAt)
+        record.starredAt && isDateSet(record.starredAt)
           ? new Date(record.starredAt).toLocaleString()
           : undefined
       }

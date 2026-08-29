@@ -124,7 +124,7 @@ const OutlinedTextControl = (props) => {
   const { path, handleChange, schema, config, uischema } = props
   const appliedUiSchemaOptions = merge({}, config, uischema?.options)
 
-  const inputProps = {}
+  const inputProps: Record<string, unknown> = {}
   if (appliedUiSchemaOptions.restrict && schema?.maxLength) {
     inputProps.maxLength = schema.maxLength
   }
@@ -144,7 +144,7 @@ const OutlinedNumberControl = (props) => {
   const { path, handleChange, schema } = props
   const { minimum, maximum } = schema || {}
 
-  const inputProps = {}
+  const inputProps: Record<string, unknown> = {}
   if (minimum !== undefined) inputProps.min = minimum
   if (maximum !== undefined) inputProps.max = maximum
 

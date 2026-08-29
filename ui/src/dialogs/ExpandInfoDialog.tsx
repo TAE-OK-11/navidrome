@@ -42,7 +42,7 @@ const ExpandInfoDialog = ({
       </DialogTitle>
       <DialogContent>
         {record && (
-          <RecordContextProvider value={record}>
+          <RecordContextProvider value={record as Record<string, unknown>}>
             {content}
           </RecordContextProvider>
         )}

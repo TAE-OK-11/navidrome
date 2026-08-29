@@ -1,13 +1,13 @@
 module github.com/navidrome/navidrome/plugins/cmd/ndpgen
 
-go 1.25.0
+go 1.27
 
 require (
 	github.com/extism/go-pdk v1.1.3
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	golang.org/x/tools v0.48.0
+	golang.org/x/tools v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

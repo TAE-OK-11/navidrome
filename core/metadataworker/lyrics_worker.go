@@ -202,7 +202,7 @@ func EnsureTestBinary() error {
 			_ = os.Setenv(EnvPath, candidate)
 			return
 		}
-		cmd := exec.Command("cargo", "+1.97.0", "build", "--release", "--locked")
+		cmd := exec.Command("cargo", "+1.98.0", "build", "--release", "--locked")
 		cmd.Dir = filepath.Join(root, "rust", "metadata")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

@@ -1,6 +1,6 @@
 module test-library
 
-go 1.25
+go 1.27
 
 require github.com/navidrome/navidrome/plugins/pdk/go v0.0.0
 

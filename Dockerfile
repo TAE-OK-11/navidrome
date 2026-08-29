@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM ghcr.io/crazy-max/osxcross:14.5-debian AS osxcros
 
 ########################################################################################################################
 ### Build xx (original image: tonistiigi/xx)
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/alpine:3.24 AS xx-build
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/alpine:3.24.1 AS xx-build
 
 # v1.9.0
 ENV XX_VERSION=a5592eab7a57895e8d385394ff12241bc65ecd50
@@ -156,7 +156,7 @@ COPY --from=build /out /
 
 ########################################################################################################################
 ### Build Final Image
-FROM mirror.gcr.io/library/alpine:3.24 AS final
+FROM mirror.gcr.io/library/alpine:3.24.1 AS final
 LABEL maintainer="deluan@navidrome.org"
 LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
 

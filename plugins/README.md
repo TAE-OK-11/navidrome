@@ -961,7 +961,7 @@ zip -j my-plugin.ndp manifest.json target/wasm32-wasip1/release/plugin.wasm
 # Cargo.toml
 [dependencies]
 nd-pdk = { path = "../../pdk/rust/nd-pdk" }
-extism-pdk = "1.2"
+extism-pdk = "1.4.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```

@@ -7,6 +7,8 @@ type SizeFieldProps = {
   label?: string
   record?: Record<string, unknown>
   addLabel?: boolean
+  sortable?: boolean
+  sortByOrder?: string
 }
 
 export const SizeField = ({ source, ...rest }: SizeFieldProps) => {

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useMemo } from 'react'
 import {
   BulkActionsToolbar,
@@ -31,6 +30,8 @@ import config from '../config'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { removeAlbumCommentsFromSongs } from './utils'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { AppState } from '../types/redux'
+import type { AlbumRecord, SongRecord } from '../types/records'
 
 const contentSx = (bulkActionsDisplayed) => (theme) => ({
   mt: bulkActionsDisplayed ? -8 : 0,
@@ -44,7 +45,14 @@ const contentSx = (bulkActionsDisplayed) => (theme) => ({
     : {}),
 })
 
-const AlbumSongs = (props) => {
+const AlbumSongs = (props: {
+  data?: SongRecord[]
+  actions?: React.ReactElement
+  album?: AlbumRecord
+  selectedIds?: string[]
+  resource?: string
+  exporter?: boolean
+}) => {
   const records = props.data || []
   const ids = records.map((record) => record.id)
   const dataById = Object.fromEntries(
@@ -53,7 +61,7 @@ const AlbumSongs = (props) => {
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const dispatch = useDispatch()
   const version = useSelector(
-    (state) => state.activity?.refresh?.lastReceived || 0,
+    (state: AppState) => state.activity?.refresh?.lastReceived || 0,
   )
   useResourceRefresh('song', 'album')
 
@@ -133,11 +141,11 @@ const AlbumSongs = (props) => {
     <>
       <ListToolbar
         sx={{ justifyContent: 'flex-start' }}
-        actions={props.actions}
-        {...props}
+        actions={props.actions ?? undefined}
+        {...(props as Record<string, unknown>)}
       />
       <Box sx={{ display: 'flex' }}>
-        <Card sx={contentSx(props.selectedIds.length > 0)} key={version}>
+        <Card sx={contentSx((props.selectedIds?.length ?? 0) > 0)} key={version}>
           <BulkActionsToolbar {...props} label={bulkActionsLabel}>
             <SongBulkActions />
           </BulkActionsToolbar>
@@ -165,18 +173,28 @@ const AlbumSongs = (props) => {
           </SongDatagrid>
         </Card>
       </Box>
-      <ExpandInfoDialog content={<SongInfo />} />
+      <ExpandInfoDialog content={<SongInfo /> as React.ReactElement} />
     </>
   )
 }
 
-const SanitizedAlbumSongs = (props) => {
+const SanitizedAlbumSongs = (props: {
+  actions?: React.ReactElement
+  album?: AlbumRecord
+  resource?: string
+  exporter?: boolean
+}) => {
   const context = useListContext()
   removeAlbumCommentsFromSongs({ album: props.album, data: context.data })
   return (
     <>
       {!context.isPending && (
-        <AlbumSongs {...context} actions={props.actions} album={props.album} />
+        <AlbumSongs
+          data={context.data}
+          selectedIds={context.selectedIds}
+          actions={props.actions}
+          album={props.album}
+        />
       )}
     </>
   )

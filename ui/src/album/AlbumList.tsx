@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import { cloneElement } from 'react'
+import { cloneElement, type ReactElement } from 'react'
 import { useSelector } from 'react-redux'
 import { Navigate, useLocation } from 'react-router-dom'
 import {
@@ -38,12 +37,18 @@ import config from '../config'
 import AlbumInfo from './AlbumInfo'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import { humanize } from 'inflection'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type Width } from '../themes/useWidth'
+import type { AppState } from '../types/redux'
 
 // Waits for rows: restoring into an unrendered list leaves the page too short to hold the offset.
-const ScrollRestorer = ({ children, ...rest }) => {
+const ScrollRestorer = ({
+  children,
+  ...rest
+}: {
+  children: ReactElement
+}) => {
   const { isPending, total } = useListContext()
-  useScrollRestoration(!isPending && total > 0)
+  useScrollRestoration(!isPending && (total ?? 0) > 0)
   return cloneElement(children, rest)
 }
 
@@ -191,13 +196,13 @@ const AlbumListPagination = ({ albumListType, ...rest }) => {
 
 const randomStartingSeed = Math.random().toString()
 
-const AlbumList = (props) => {
+const AlbumList = (props: { width?: Width }) => {
   const { width } = props
-  const albumView = useSelector((state) => state.albumView)
+  const albumView = useSelector((state: AppState) => state.albumView)
   const [perPage, perPageOptions] = useAlbumsPerPage(width)
   const location = useLocation()
   const refreshVersion = useSelector(
-    (state) => state.activity?.refresh?.lastReceived || 0,
+    (state: AppState) => state.activity?.refresh?.lastReceived || 0,
   )
   const refresh = useRefresh()
   useResourceRefresh('album')
@@ -263,9 +268,9 @@ const AlbumList = (props) => {
       >
         <ScrollRestorer>
           {albumView.grid ? (
-            <AlbumGridView albumListType={albumListType} {...props} />
+            <AlbumGridView albumListType={albumListType} {...(props as Record<string, unknown>)} />
           ) : (
-            <AlbumTableView {...props} />
+            <AlbumTableView {...(props as Record<string, unknown>)} />
           )}
         </ScrollRestorer>
       </List>

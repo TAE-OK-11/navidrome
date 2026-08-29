@@ -1,5 +1,6 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useMemo } from 'react'
+import type { Identifier } from 'react-admin'
+import type { SongRecord } from '../types/records'
 import {
   AutocompleteArrayInput,
   Filter,
@@ -111,7 +112,11 @@ const SongList = (props) => {
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   useResourceRefresh('song')
 
-  const handleRowClick = (id, basePath, record) => {
+  const handleRowClick = (
+    _id: Identifier,
+    _basePath: string,
+    record: SongRecord,
+  ) => {
     dispatch(setTrack(record))
   }
 

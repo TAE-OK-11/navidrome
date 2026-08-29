@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useTranslate } from 'react-admin'
 import { Box, IconButton, Tooltip, Link } from '@mui/material'
@@ -7,15 +6,30 @@ import { ImLastfm2 } from 'react-icons/im'
 import MusicBrainz from '../icons/MusicBrainz'
 import { intersperse, isLastFmURL } from '../utils'
 import config from '../config'
+import type { ArtistRecord } from '../types/records'
 
-const ArtistExternalLinks = ({ artistInfo, record }) => {
+type ArtistInfo = {
+  biography?: string
+  lastFmUrl?: string
+  musicBrainzId?: string
+}
+
+type ArtistExternalLinksProps = {
+  artistInfo?: ArtistInfo
+  record: ArtistRecord
+}
+
+const ArtistExternalLinks = ({
+  artistInfo,
+  record,
+}: ArtistExternalLinksProps) => {
   const translate = useTranslate()
-  let linkButtons = []
+  const linkButtons: React.ReactNode[] = []
   const lastFMlink = artistInfo?.biography?.match(
     /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/,
   )
 
-  const addLink = (url, title, icon) => {
+  const addLink = (url: string, title: string, icon: React.ReactNode) => {
     const translatedTitle = translate(title)
     const link = (
       <Link href={url} target="_blank" rel="noopener noreferrer">
@@ -39,7 +53,7 @@ const ArtistExternalLinks = ({ artistInfo, record }) => {
       )
     } else if (isLastFmURL(artistInfo?.lastFmUrl)) {
       addLink(
-        artistInfo?.lastFmUrl,
+        artistInfo?.lastFmUrl!,
         'message.openIn.lastfm',
         <ImLastfm2 className="lastfm-icon" />,
       )

@@ -23,7 +23,7 @@ export const LoveButton = ({
   resource: string
   color?: string
   visible?: boolean
-  size?: 'small' | 'medium' | 'large'
+  size?: 'small' | 'medium' | 'large' | 'default'
   component?: typeof IconButton
   addLabel?: boolean
   disabled?: boolean

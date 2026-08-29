@@ -1,7 +1,7 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useDispatch } from 'react-redux'
 import { useMediaQuery, CircularProgress } from '@mui/material'
+import type { SxProps, Theme } from '@mui/material/styles'
 import {
   Button,
   TopToolbar,
@@ -25,6 +25,7 @@ import {
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from '../common/artist'
+import type { ArtistRecord } from '../types/records'
 
 const toolbarSx = {
   minHeight: 'auto',
@@ -47,19 +48,52 @@ const buttonSx = (theme) => ({
   },
 })
 
-const LoadingButton = ({ loading, icon, ...rest }) => (
-  <Button {...rest}>
+type LoadingButtonProps = {
+  loading?: boolean
+  icon?: React.ReactNode
+  onClick?: () => void
+  label?: string
+  sx?: SxProps<Theme>
+  size?: 'small' | 'medium' | 'large'
+  disabled?: boolean
+}
+
+const LoadingButton = ({
+  loading,
+  icon,
+  onClick,
+  label,
+  sx,
+  size,
+  disabled,
+}: LoadingButtonProps) => (
+  <Button
+    onClick={onClick}
+    label={label}
+    sx={sx}
+    size={size}
+    disabled={disabled}
+  >
     {loading ? <CircularProgress size={20} color="inherit" /> : icon}
   </Button>
 )
 
-const ArtistActions = ({ className = '', record, ...rest }) => {
+type ArtistActionsProps = {
+  className?: string
+  record: ArtistRecord
+}
+
+const ArtistActions = ({
+  className = '',
+  record,
+  ...rest
+}: ArtistActionsProps) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const dataProvider = useDataProvider()
   const notify = useNotify()
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'))
-  const [loadingAction, setLoadingAction] = React.useState(null)
+  const [loadingAction, setLoadingAction] = React.useState<string | null>(null)
   const isLoading = !!loadingAction
 
   const albumArtistSize = artistDownloadSize(record)
@@ -68,7 +102,7 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
   const handlePlay = React.useCallback(async () => {
     setLoadingAction('play')
     try {
-      await playTopSongs(dispatch, notify, record.name)
+      await playTopSongs(dispatch, notify, record.name!)
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Error fetching top songs for artist:', e)
@@ -76,7 +110,7 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
     } finally {
       setLoadingAction(null)
     }
-  }, [dispatch, notify, record])
+  }, [dispatch, notify, record.name])
 
   const handleShuffle = React.useCallback(async () => {
     setLoadingAction('shuffle')
@@ -89,12 +123,12 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
     } finally {
       setLoadingAction(null)
     }
-  }, [dataProvider, dispatch, record, notify])
+  }, [dataProvider, dispatch, record.id, notify])
 
   const handleRadio = React.useCallback(async () => {
     setLoadingAction('radio')
     try {
-      await playSimilar(dispatch, notify, record.id)
+      await playSimilar(dispatch, notify, String(record.id))
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Error starting radio for artist:', e)
@@ -102,10 +136,10 @@ const ArtistActions = ({ className = '', record, ...rest }) => {
     } finally {
       setLoadingAction(null)
     }
-  }, [dispatch, notify, record])
+  }, [dispatch, notify, record.id])
 
   const handleShare = React.useCallback(() => {
-    dispatch(openShareMenu([record.id], 'artist', record.name))
+    dispatch(openShareMenu([record.id], 'artist', record.name, record.name))
   }, [dispatch, record])
 
   const handleDownload = React.useCallback(() => {

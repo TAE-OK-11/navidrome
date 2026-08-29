@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { Fragment, useEffect } from 'react'
 import {
   BulkDeleteButton,
@@ -6,17 +5,24 @@ import {
   ResourceContextProvider,
 } from 'react-admin'
 import { MdOutlinePlaylistRemove } from 'react-icons/md'
+import type { Identifier } from 'react-admin'
 
-// Replace original resource with "fake" one for removing tracks from playlist
+type PlaylistSongBulkActionsProps = {
+  playlistId?: Identifier
+  resource?: string
+  onUnselectItems?: () => void
+  readOnly?: boolean
+}
+
 const PlaylistSongBulkActions = ({
   playlistId,
   resource,
   onUnselectItems,
   ...rest
-}) => {
-  const unselectAll = useUnselectAll()
+}: PlaylistSongBulkActionsProps) => {
+  const unselectAll = useUnselectAll('playlistTrack')
   useEffect(() => {
-    unselectAll('playlistTrack')
+    unselectAll()
   }, [unselectAll])
 
   const mappedResource = `playlist/${playlistId}/tracks`

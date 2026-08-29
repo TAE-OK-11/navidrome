@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useDispatch } from 'react-redux'
 import {
@@ -29,20 +28,39 @@ import {
 import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
+import type { AlbumRecord, SongRecord } from '../types/records'
 
-const AlbumButton = ({ children, ...rest }) => {
-  const record = useRecordContext(rest) || {}
+type AlbumButtonProps = {
+  children?: React.ReactNode
+  disabled?: boolean
+  onClick?: () => void
+  label?: string
+}
+
+const AlbumButton = ({ children, ...rest }: AlbumButtonProps) => {
+  const record = useRecordContext<SongRecord>(rest)
   return (
-    <Button {...rest} disabled={record.missing}>
+    <Button {...rest} disabled={record?.missing}>
       {children}
     </Button>
   )
 }
 
-const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
+type AlbumActionsProps = {
+  className?: string
+  record?: AlbumRecord
+  permanentFilter?: Record<string, unknown>
+}
+
+const AlbumActions = ({
+  className,
+  record,
+  permanentFilter,
+  ...rest
+}: AlbumActionsProps) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
-  const { data: records = [] } = useListContext()
+  const { data: records = [] } = useListContext<SongRecord>()
   const ids = records.map((song) => song.id)
   const data = Object.fromEntries(records.map((song) => [song.id, song]))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
@@ -65,15 +83,17 @@ const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
   }, [dispatch, data, ids])
 
   const handleAddToPlaylist = React.useCallback(() => {
-    const selectedIds = ids.filter((id) => !data[id].missing)
-    dispatch(openAddToPlaylist({ selectedIds }))
+    const selectedIds = ids.filter((id) => !data[id]?.missing)
+    dispatch(openAddToPlaylist({ selectedIds, onSuccess: undefined }))
   }, [dispatch, data, ids])
 
   const handleShare = React.useCallback(() => {
-    dispatch(openShareMenu([record.id], 'album', record.name))
+    if (!record?.id) return
+    dispatch(openShareMenu([record.id], 'album', record.name, undefined))
   }, [dispatch, record])
 
   const handleDownload = React.useCallback(() => {
+    if (!record) return
     dispatch(openDownloadMenu(record, DOWNLOAD_MENU_ALBUM))
   }, [dispatch, record])
 
@@ -126,7 +146,7 @@ const AlbumActions = ({ className, record = {}, permanentFilter, ...rest }) => {
               onClick={handleDownload}
               label={
                 translate('ra.action.download') +
-                (isDesktop ? ` (${formatBytes(record.size)})` : '')
+                (isDesktop ? ` (${formatBytes(record?.size ?? 0)})` : '')
               }
             >
               <CloudDownloadOutlinedIcon />

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import IconButton from '@mui/material/IconButton'
@@ -225,11 +224,27 @@ const ContextMenu = ({
   )
 }
 
+import type { Identifier, RaRecord } from 'react-admin'
+
+type ContextMenuProps = {
+  record?: RaRecord<Identifier>
+  showLove?: boolean
+  resource?: string
+  className?: string
+  sx?: unknown
+  source?: string
+  sortable?: boolean
+  sortByOrder?: string
+  label?: React.ReactNode
+  discNumber?: number
+  [key: string]: unknown
+}
+
 export const AlbumContextMenu = ({
   showLove = true,
   record: recordOverride,
   ...props
-}) => {
+}: ContextMenuProps) => {
   const record = useRecordContext({ record: recordOverride })
   return record ? (
     <ContextMenu
@@ -254,7 +269,7 @@ export const ArtistContextMenu = ({
   showLove = true,
   record: recordOverride,
   ...props
-}) => {
+}: ContextMenuProps) => {
   const record = useRecordContext({ record: recordOverride })
   return record ? (
     <ContextMenu

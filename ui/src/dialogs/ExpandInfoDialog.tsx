@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { RecordContextProvider, useTranslate } from 'react-admin'
@@ -11,7 +10,13 @@ import {
 } from '@mui/material'
 import { closeExtendedInfoDialog } from '../actions'
 
-const ExpandInfoDialog = ({ title, content }) => {
+const ExpandInfoDialog = ({
+  title,
+  content,
+}: {
+  title?: string
+  content: React.ReactNode
+}) => {
   const { open, record } = useSelector((state) => state.expandInfoDialog)
   const dispatch = useDispatch()
   const translate = useTranslate()

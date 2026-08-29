@@ -23,7 +23,7 @@ type RatingFieldProps = {
   label?: React.ReactNode
   visible?: boolean
   className?: string
-  size?: 'small' | 'medium' | 'large'
+  size?: 'small' | 'medium' | 'large' | 'default'
   color?: string
   sx?: SxProps<Theme>
   record?: RatingRecord

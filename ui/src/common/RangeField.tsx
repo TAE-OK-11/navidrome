@@ -7,6 +7,9 @@ type RangeFieldProps = {
   source: string
   record?: Record<string, string | number | null | undefined>
   label?: string
+  sortBy?: string
+  sortByOrder?: string
+  sortable?: boolean
 }
 
 export const RangeField = ({ className, source, ...rest }: RangeFieldProps) => {

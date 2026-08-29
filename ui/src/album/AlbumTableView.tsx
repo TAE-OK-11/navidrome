@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useMemo } from 'react'
 import {
   Datagrid,
@@ -25,6 +24,7 @@ import {
 } from '../common'
 import config from '../config'
 import { DraggableTypes } from '../consts'
+import type { AlbumRecord } from '../types/records'
 
 const hoverRevealSx = {
   '&:hover .album-context-menu, &:hover .album-rating-field': {
@@ -32,7 +32,11 @@ const hoverRevealSx = {
   },
 }
 
-const AlbumDatagridRow = (props) => {
+const AlbumDatagridRow = (props: {
+  record?: AlbumRecord
+  className?: string
+  sx?: unknown
+}) => {
   const { record, className } = props
   const [, dragAlbumRef] = useDrag(
     () => ({
@@ -44,12 +48,12 @@ const AlbumDatagridRow = (props) => {
   )
   return (
     <DatagridRow
-      ref={dragAlbumRef}
+      ref={dragAlbumRef as unknown as React.Ref<HTMLTableRowElement>}
       {...props}
       className={className}
       sx={[
         hoverRevealSx,
-        record.missing && { opacity: 0.3 },
+        record?.missing && { opacity: 0.3 },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}
     />
@@ -65,11 +69,17 @@ const AlbumDatagrid = (props) => (
 )
 
 const AlbumTableView = ({
-  hasShow,
-  hasEdit,
-  hasList,
-  syncWithLocation,
+  hasShow: _hasShow,
+  hasEdit: _hasEdit,
+  hasList: _hasList,
+  syncWithLocation: _syncWithLocation,
   ...rest
+}: {
+  hasShow?: boolean
+  hasEdit?: boolean
+  hasList?: boolean
+  syncWithLocation?: boolean
+  [key: string]: unknown
 }) => {
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
@@ -116,10 +126,10 @@ const AlbumTableView = ({
 
   return isXsmall ? (
     <SimpleList
-      primaryText={(r) => r.name}
-      secondaryText={(r) => (
+      primaryText={(r: AlbumRecord) => r.name ?? ''}
+      secondaryText={(r: AlbumRecord) => (
         <>
-          {r.albumArtist}
+          {r.albumArtist as React.ReactNode}
           {config.enableStarRating && (
             <>
               <br />
@@ -134,9 +144,13 @@ const AlbumTableView = ({
           )}
         </>
       )}
-      tertiaryText={(r) => (
+      tertiaryText={(r: AlbumRecord) => (
         <>
-          <RangeField record={r} source={'year'} sortBy={'max_year'} />
+          <RangeField
+            record={r as Record<string, string | number | null | undefined>}
+            source={'year'}
+            sortBy={'max_year'}
+          />
           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
         </>
       )}

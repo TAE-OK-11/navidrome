@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, fireEvent, waitFor, screen } from '@testing-library/react'
 import { AdminContext as TestContext } from 'react-admin'
@@ -32,7 +31,7 @@ const mockNotify = vi.fn()
 const mockGetList = vi.fn().mockResolvedValue({ data: [{ id: 's1' }] })
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useNotify: () => mockNotify,
@@ -54,7 +53,7 @@ describe('ArtistActions', () => {
       <TestContext>
         <StyledEngineProvider injectFirst>
           <ThemeProvider theme={theme}>
-            <ArtistActions record={record} />
+            <ArtistActions record={record as any} />
           </ThemeProvider>
         </StyledEngineProvider>
       </TestContext>,
@@ -82,22 +81,22 @@ describe('ArtistActions', () => {
       },
     }
 
-    subsonic.getSimilarSongs2.mockResolvedValue({
+    vi.mocked(subsonic.getSimilarSongs2).mockResolvedValue({
       json: {
         'subsonic-response': {
           status: 'ok',
           similarSongs2: { song: [songWithReplayGain] },
         },
       },
-    })
-    subsonic.getTopSongs.mockResolvedValue({
+    } as any)
+    vi.mocked(subsonic.getTopSongs).mockResolvedValue({
       json: {
         'subsonic-response': {
           status: 'ok',
           topSongs: { song: [songWithReplayGain] },
         },
       },
-    })
+    } as any)
   })
 
   describe('Shuffle action', () => {
@@ -172,7 +171,7 @@ describe('ArtistActions', () => {
     })
 
     it('handles API rejection', async () => {
-      subsonic.getTopSongs.mockRejectedValue(new Error('Network error'))
+      vi.mocked(subsonic.getTopSongs).mockRejectedValue(new Error('Network error'))
 
       renderArtistActions()
       clickActionButton('topSongs')
@@ -187,14 +186,14 @@ describe('ArtistActions', () => {
     })
 
     it('handles failed API response', async () => {
-      subsonic.getTopSongs.mockResolvedValue({
+      vi.mocked(subsonic.getTopSongs).mockResolvedValue({
         json: {
           'subsonic-response': {
             status: 'failed',
             error: { code: 40, message: 'Wrong username or password' },
           },
         },
-      })
+      } as any)
 
       renderArtistActions()
       clickActionButton('topSongs')
@@ -209,14 +208,14 @@ describe('ArtistActions', () => {
     })
 
     it('handles empty song list', async () => {
-      subsonic.getTopSongs.mockResolvedValue({
+      vi.mocked(subsonic.getTopSongs).mockResolvedValue({
         json: {
           'subsonic-response': {
             status: 'ok',
             topSongs: { song: [] },
           },
         },
-      })
+      } as any)
 
       renderArtistActions()
       clickActionButton('topSongs')
@@ -231,14 +230,14 @@ describe('ArtistActions', () => {
     })
 
     it('handles missing topSongs property', async () => {
-      subsonic.getTopSongs.mockResolvedValue({
+      vi.mocked(subsonic.getTopSongs).mockResolvedValue({
         json: {
           'subsonic-response': {
             status: 'ok',
             // topSongs property is missing
           },
         },
-      })
+      } as any)
 
       renderArtistActions()
       clickActionButton('topSongs')
@@ -258,7 +257,7 @@ describe('ArtistActions', () => {
       renderArtistActions()
       fireEvent.click(screen.getByText('ra.action.share'))
       expect(mockDispatch).toHaveBeenCalledWith(
-        openShareMenu(['ar1'], 'artist', 'Artist'),
+        openShareMenu(['ar1'], 'artist', 'Artist', 'Artist'),
       )
     })
 
@@ -288,13 +287,13 @@ describe('ArtistActions', () => {
 
   describe('Album-artist gating', () => {
     it('hides Share and Download for artists with no album-artist content', () => {
-      renderArtistActions({ id: 'ar1', name: 'Artist', stats: {} })
+      renderArtistActions({ id: 'ar1', name: 'Artist', stats: {} } as any)
       expect(screen.queryByText('ra.action.share')).not.toBeInTheDocument()
       expect(screen.queryByText(/ra\.action\.download/)).not.toBeInTheDocument()
     })
 
     it('hides Share and Download for a missing artist', () => {
-      renderArtistActions({ ...defaultRecord, missing: true })
+      renderArtistActions({ ...defaultRecord, missing: true } as any)
       expect(screen.queryByText('ra.action.share')).not.toBeInTheDocument()
       expect(screen.queryByText(/ra\.action\.download/)).not.toBeInTheDocument()
     })

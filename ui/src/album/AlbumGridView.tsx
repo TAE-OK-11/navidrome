@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import React from 'react'
+import React, { type Ref } from 'react'
 import { Box, Typography, ImageListItemBar, useMediaQuery } from '@mui/material'
 import { Link } from 'react-router-dom'
 import { useListContext, Loading } from 'react-admin'
@@ -16,8 +15,9 @@ import {
 import config from '../config'
 import { DraggableTypes } from '../consts'
 import { AlbumDatesField } from './AlbumDatesField'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type Width } from '../themes/useWidth'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { AlbumRecord } from '../types/records'
 
 const albumTextSx = (slot) => (theme) => ({
   fontSize: 12,
@@ -36,7 +36,7 @@ const getColsForWidth = (width) => {
   return 9
 }
 
-const Cover = ({ record }) => {
+const Cover = ({ record }: { record: AlbumRecord }) => {
   const [, dragAlbumRef] = useDrag(
     () => ({
       type: DraggableTypes.ALBUM,
@@ -59,7 +59,10 @@ const Cover = ({ record }) => {
         backgroundColor: theme.palette.action.hover,
       })}
     >
-      <Box ref={dragAlbumRef} sx={{ width: '100%', height: '100%' }}>
+      <Box
+        ref={dragAlbumRef as unknown as Ref<HTMLDivElement>}
+        sx={{ width: '100%', height: '100%' }}
+      >
         <Box
           component="img"
           src={imgUrl || undefined}
@@ -241,7 +244,15 @@ const LoadedAlbumGrid = ({ records, basePath = '/album', width }) => {
   )
 }
 
-const AlbumGridView = ({ albumListType, basePath, width }) => {
+const AlbumGridView = ({
+  albumListType,
+  basePath,
+  width,
+}: {
+  albumListType?: string
+  basePath?: string
+  width?: Width
+}) => {
   const { data = [], isPending } = useListContext()
   const hide = isPending && albumListType === 'random'
   return hide ? (

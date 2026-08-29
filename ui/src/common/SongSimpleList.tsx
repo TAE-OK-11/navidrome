@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -17,6 +16,10 @@ export const SongSimpleList = ({
   classes: classesOverride,
   hasBulkActions = false,
   ...rest
+}: {
+  className?: string
+  classes?: { listItem?: string; title?: string; rightIcon?: string }
+  hasBulkActions?: boolean
 }) => {
   const dispatch = useDispatch()
   const { data = [], isPending, total = 0 } = useListContext()

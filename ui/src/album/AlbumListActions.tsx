@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { cloneElement } from 'react'
 import {
   Button,
@@ -12,11 +11,18 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useDispatch, useSelector } from 'react-redux'
 import { albumViewGrid, albumViewTable } from '../actions'
 import { ToggleFieldsMenu } from '../common'
+import type { AppState } from '../types/redux'
 
-const AlbumViewToggler = React.forwardRef(
-  ({ showTitle = true, disableElevation, fullWidth }, ref) => {
+type AlbumViewTogglerProps = {
+  showTitle?: boolean
+  disableElevation?: boolean
+  fullWidth?: boolean
+}
+
+const AlbumViewToggler = React.forwardRef<HTMLDivElement, AlbumViewTogglerProps>(
+  ({ showTitle = true }, ref) => {
     const dispatch = useDispatch()
-    const albumView = useSelector((state) => state.albumView)
+    const albumView = useSelector((state: AppState) => state.albumView)
     const translate = useTranslate()
     return (
       <Box ref={ref}>
@@ -57,26 +63,35 @@ const AlbumViewToggler = React.forwardRef(
 
 AlbumViewToggler.displayName = 'AlbumViewToggler'
 
+type AlbumListActionsProps = {
+  currentSort?: unknown
+  className?: string
+  resource?: string
+  filters?: React.ReactElement
+  displayedFilters?: unknown
+  filterValues?: unknown
+  permanentFilter?: unknown
+  exporter?: unknown
+  basePath?: string
+  selectedIds?: string[]
+  onUnselectItems?: () => void
+  showFilter?: boolean
+  maxResults?: number
+  total?: number
+  fullWidth?: boolean
+}
+
 const AlbumListActions = ({
-  currentSort,
   className,
   resource,
   filters,
   displayedFilters,
   filterValues,
-  permanentFilter,
-  exporter,
-  basePath,
-  selectedIds = [],
-  onUnselectItems = () => null,
   showFilter,
-  maxResults,
-  total,
-  fullWidth,
   ...rest
-}) => {
+}: AlbumListActionsProps) => {
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
-  const albumView = useSelector((state) => state.albumView)
+  const albumView = useSelector((state: AppState) => state.albumView)
   return (
     <TopToolbar className={className} {...sanitizeListRestProps(rest)}>
       {filters &&
@@ -86,7 +101,7 @@ const AlbumListActions = ({
           displayedFilters,
           filterValues,
           context: 'button',
-        })}
+        } as Record<string, unknown>)}
       {isNotSmall ? (
         <ToggleFieldsMenu
           resource="album"

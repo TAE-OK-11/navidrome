@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import { humanize, underscore } from 'inflection'
@@ -22,11 +21,19 @@ import {
   ParticipantsInfo,
   RangeField,
 } from '../common'
+import type { AlbumRecord } from '../types/records'
 
-const AlbumInfo = (props) => {
+type AlbumInfoProps = {
+  record?: AlbumRecord
+}
+
+const AlbumInfo = (props: AlbumInfoProps) => {
   const translate = useTranslate()
-  const record = useRecordContext(props)
-  const data = {
+  const record = useRecordContext<AlbumRecord>(props)
+
+  if (!record) return null
+
+  const data: Record<string, React.ReactNode> = {
     name: <TextField source={'name'} />,
     libraryName: <TextField source="libraryName" />,
     albumArtist: (
@@ -56,32 +63,32 @@ const AlbumInfo = (props) => {
     recordLabel: (
       <FunctionField
         source={'recordLabel'}
-        render={(record) => record.tags?.recordlabel?.join(', ')}
+        render={(r) => r.tags?.recordlabel?.join(', ')}
       />
     ),
     catalogNum: <TextField source={'catalogNum'} />,
     releaseType: (
       <FunctionField
         source={'releaseType'}
-        render={(record) => record.tags?.releasetype?.join(', ')}
+        render={(r) => r.tags?.releasetype?.join(', ')}
       />
     ),
     media: (
       <FunctionField
         source={'media'}
-        render={(record) => record.tags?.media?.join(', ')}
+        render={(r) => r.tags?.media?.join(', ')}
       />
     ),
     grouping: (
       <FunctionField
         source={'grouping'}
-        render={(record) => record.tags?.grouping?.join(', ')}
+        render={(r) => r.tags?.grouping?.join(', ')}
       />
     ),
     mood: (
       <FunctionField
         source={'mood'}
-        render={(record) => record.tags?.mood?.join(', ')}
+        render={(r) => r.tags?.mood?.join(', ')}
       />
     ),
     compilation: <BooleanField source={'compilation'} />,

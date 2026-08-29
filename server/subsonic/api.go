@@ -90,6 +90,7 @@ type Router struct {
 	transcodeDecision stream.TranscodeDecider
 	sonic             *sonicsvc.Sonic
 	genreCache        genreResponseCache
+	musicFoldersCache musicFoldersResponseCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
 }

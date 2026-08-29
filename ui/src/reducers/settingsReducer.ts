@@ -29,7 +29,7 @@ export const settingsReducer = (
         ...previousState,
         toggleableFields: {
           ...previousState.toggleableFields,
-          ...((data ?? {}) as Record<string, unknown>),
+          ...(data as Record<string, Record<string, boolean>>),
         },
       }
     case SET_OMITTED_FIELDS:
@@ -37,7 +37,7 @@ export const settingsReducer = (
         ...previousState,
         omittedFields: {
           ...previousState.omittedFields,
-          ...((data ?? {}) as Record<string, unknown>),
+          ...(data as Record<string, string[]>),
         },
       }
     case SET_SIDEBAR_PLAYLISTS_FAVOURITES:

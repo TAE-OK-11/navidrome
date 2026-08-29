@@ -1,5 +1,5 @@
 import ReactJkMusicPlayer from 'navidrome-music-player'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react'
 import config, { shareInfo } from '../config'
 import { shareCoverUrl, shareDownloadUrl, shareStreamUrl } from '../utils'
 import Box from '@mui/material/Box'
@@ -87,7 +87,7 @@ const SharePlayer = () => {
       }}
     >
       <ReactJkMusicPlayer
-        {...(options as React.ComponentProps<typeof ReactJkMusicPlayer>)}
+        {...(options as ComponentProps<typeof ReactJkMusicPlayer>)}
         customDownloader={customDownloader}
       />
     </Box>

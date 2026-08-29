@@ -9,6 +9,7 @@ import { DndProvider } from 'react-dnd'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
 import { Layout, Login } from './layout'
+import Notification from './layout/Notification'
 import transcoding from './transcoding'
 import player from './player'
 import user from './user'
@@ -100,6 +101,7 @@ const Admin = (props) => {
       layout={Layout}
       loginPage={Login}
       error={ClientError}
+      notification={Notification}
       theme={theme}
       {...props}
     >
@@ -107,40 +109,40 @@ const Admin = (props) => {
         <>
           <Resource
             name="album"
-            {...(album as Omit<ResourceProps, 'name'>)}
+            {...(album as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'albumList' }}
           />
-          <Resource name="artist" {...(artist as Omit<ResourceProps, 'name'>)} />
-          <Resource name="song" {...(song as Omit<ResourceProps, 'name'>)} />
+          <Resource name="artist" {...(artist as unknown as Omit<ResourceProps, 'name'>)} />
+          <Resource name="song" {...(song as unknown as Omit<ResourceProps, 'name'>)} />
           <Resource
             name="radio"
-            {...((permissions === 'admin' ? radio.admin : radio.all) as Omit<
+            {...((permissions === 'admin' ? radio.admin : radio.all) as unknown as Omit<
               ResourceProps,
               'name'
             >)}
           />
           {config.enableSharing && (
-            <Resource name="share" {...(share as Omit<ResourceProps, 'name'>)} />
+            <Resource name="share" {...(share as unknown as Omit<ResourceProps, 'name'>)} />
           )}
           <Resource
             name="playlist"
-            {...(playlist as Omit<ResourceProps, 'name'>)}
+            {...(playlist as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'playlist' }}
           />
           <Resource
             name="user"
-            {...(user as Omit<ResourceProps, 'name'>)}
+            {...(user as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'settings' }}
           />
           <Resource
             name="player"
-            {...(player as Omit<ResourceProps, 'name'>)}
+            {...(player as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'settings' }}
           />
           {permissions === 'admin' ? (
             <Resource
               name="transcoding"
-              {...(transcoding as Omit<ResourceProps, 'name'>)}
+              {...(transcoding as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           ) : (
@@ -149,21 +151,21 @@ const Admin = (props) => {
           {permissions === 'admin' && (
             <Resource
               name="library"
-              {...(library as Omit<ResourceProps, 'name'>)}
+              {...(library as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && (
             <Resource
               name="missing"
-              {...(missing as Omit<ResourceProps, 'name'>)}
+              {...(missing as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && config.pluginsEnabled && (
             <Resource
               name="plugin"
-              {...(plugin as Omit<ResourceProps, 'name'>)}
+              {...(plugin as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}

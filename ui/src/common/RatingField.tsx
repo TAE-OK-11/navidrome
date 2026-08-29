@@ -44,6 +44,16 @@ export const RatingField = ({
     record ?? {},
   )
 
+  const handleRating = useCallback(
+    (_e: React.SyntheticEvent, val: number | null) => {
+      const targetId = record?.mediaFileId || record?.id
+      if (targetId !== undefined) {
+        void setSongRating(val ?? 0, targetId)
+      }
+    },
+    [setSongRating, record?.mediaFileId, record?.id],
+  )
+
   if (!record) {
     return null
   }
@@ -51,16 +61,6 @@ export const RatingField = ({
   const stopPropagation = (e: React.MouseEvent) => {
     e.stopPropagation()
   }
-
-  const handleRating = useCallback(
-    (_e: React.SyntheticEvent, val: number | null) => {
-      const targetId = record.mediaFileId || record.id
-      if (targetId !== undefined) {
-        void setSongRating(val ?? 0, targetId)
-      }
-    },
-    [setSongRating, record.mediaFileId, record.id],
-  )
 
   return (
     <span

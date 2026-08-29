@@ -47,17 +47,17 @@ const SubMenu = ({
   const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))
   const [, setSidebarOpen] = useSidebarState()
 
-  const handleOnClick = (e) => {
+  const handleOnClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onAction(e)
+    onAction?.(e)
     if (isSmall) {
       setSidebarOpen(false)
     }
   }
 
-  const handleSecondaryClick = (e) => {
+  const handleSecondaryClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onSecondaryAction(e)
+    onSecondaryAction?.(e)
   }
 
   const header = (

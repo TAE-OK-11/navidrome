@@ -13,6 +13,10 @@ import ReactGA from 'react-ga4'
 import { useAppHotkey } from '../hooks/useAppHotkey'
 import ReactJkMusicPlayer from 'navidrome-music-player'
 import 'navidrome-music-player/assets/index.css'
+
+const NavidromeMusicPlayer = ReactJkMusicPlayer as unknown as React.ComponentType<
+  Record<string, unknown>
+>
 import useCurrentTheme from '../themes/useCurrentTheme'
 import config from '../config'
 import AudioTitle from './AudioTitle'
@@ -552,7 +556,7 @@ const Player = () => {
             (theme) => componentStyleOverride(theme, 'NDAudioPlayer', 'player'),
           ]}
         >
-          <ReactJkMusicPlayer
+          <NavidromeMusicPlayer
             {...options}
             onAudioListsChange={onAudioListsChange}
             onAudioVolumeChange={onAudioVolumeChange}
@@ -564,7 +568,7 @@ const Player = () => {
             onAudioEnded={onAudioEnded}
             onCoverClick={onCoverClick}
             onAudioError={onAudioError}
-            onBeforeDestroy={onBeforeDestroy}
+            onBeforeDestroy={onBeforeDestroy as () => Promise<void>}
             getAudioInstance={setAudioInstance}
           />
         </Box>

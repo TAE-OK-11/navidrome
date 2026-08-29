@@ -1,5 +1,5 @@
-/// <reference path="./types/workbox.d.ts" />
 /* eslint-disable */
+/// <reference path="./types/workbox.d.ts" />
 
 import { createNavigationHandler } from './swNavigation'
 

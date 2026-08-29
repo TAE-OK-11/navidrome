@@ -115,7 +115,10 @@ const NowPlayingItem = React.memo(
                 borderRadius: 0.5,
                 '&:hover': { opacity: 0.8 },
               }}
-              src={subsonic.getCoverArtUrl(nowPlayingEntry, 80)}
+              src={subsonic.getCoverArtUrl(
+                { ...nowPlayingEntry, id: nowPlayingEntry.albumId ?? '' },
+                80,
+              )}
               variant="square"
               alt={`${nowPlayingEntry.album} cover art`}
             />

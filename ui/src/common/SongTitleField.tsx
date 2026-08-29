@@ -24,11 +24,11 @@ export const SongTitleField = ({
   ...props
 }: SongTitleFieldProps) => {
   const record = useRecordContext<SongRecord>({ record: recordOverride })
-  if (!record) return null
   const theme = useTheme()
   const currentTrack = useSelector(
     (state: AppState) => state?.player?.current || {},
   )
+  if (!record) return null
   const currentId = currentTrack.trackId
   const paused = currentTrack.paused
   const isCurrent =

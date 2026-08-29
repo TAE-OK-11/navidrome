@@ -55,7 +55,7 @@ export const activityReducer = (
         ...previousState,
         refresh: {
           lastReceived: Date.now(),
-          resources: data,
+          resources: data as Record<string, string[] | string>,
         },
       }
     case EVENT_NOW_PLAYING_COUNT: {

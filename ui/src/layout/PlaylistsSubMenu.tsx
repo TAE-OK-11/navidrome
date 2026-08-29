@@ -48,7 +48,7 @@ const PlaylistMenuItemLink = ({ pls, sidebarIsOpen }) => {
       to={`/playlist/${pls.id}/show`}
       primaryText={
         <OverflowTooltip title={pls.name} placement="right">
-          <Box component="span" ref={dropRef} sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Box component="span" ref={dropRef as unknown as React.Ref<HTMLSpanElement>} sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             <Typography variant="inherit" component="span" noWrap>
               {pls.name}
             </Typography>

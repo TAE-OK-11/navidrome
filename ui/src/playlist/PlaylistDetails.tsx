@@ -155,7 +155,7 @@ const PlaylistDetails = (props: PlaylistDetailsProps) => {
                 ]}
                 record={record}
                 resource={'playlist'}
-                size={isDesktop ? 'default' : 'small'}
+                size={isDesktop ? 'medium' : 'small'}
                 aria-label="love"
                 color="primary"
               />

@@ -109,7 +109,7 @@ export const downloadMenuDialogReducer = (
           return {
             ...previousState,
             open: true,
-            record: payload.record,
+            record: payload.record as DownloadMenuDialogState['record'],
             recordType: String(payload.recordType),
           }
         }
@@ -117,7 +117,7 @@ export const downloadMenuDialogReducer = (
           return {
             ...previousState,
             open: true,
-            record: payload.record,
+            record: payload.record as DownloadMenuDialogState['record'],
             recordType: undefined,
           }
         }
@@ -148,7 +148,7 @@ export const expandInfoDialogReducer = (
       return {
         ...previousState,
         open: true,
-        record: payload.record,
+        record: payload.record as ExpandInfoDialogState['record'],
       }
     case EXTENDED_INFO_CLOSE:
       return {

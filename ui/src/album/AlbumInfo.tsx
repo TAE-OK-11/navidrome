@@ -1,4 +1,5 @@
 import Table from '@mui/material/Table'
+import type { ReactNode } from 'react'
 import TableBody from '@mui/material/TableBody'
 import { humanize, underscore } from 'inflection'
 import TableCell from '@mui/material/TableCell'
@@ -33,7 +34,7 @@ const AlbumInfo = (props: AlbumInfoProps) => {
 
   if (!record) return null
 
-  const data: Record<string, React.ReactNode> = {
+  const data: Record<string, ReactNode> = {
     name: <TextField source={'name'} />,
     libraryName: <TextField source="libraryName" />,
     albumArtist: (

@@ -176,12 +176,12 @@ export const ArtistLinkField = ({
     } else {
       const position = seen.get(artist.id)!
       const existing = dedupedArtists[position]
-      if (
-        artist.subRole &&
-        existing.subroles &&
-        !existing.subroles.includes(artist.subRole)
-      ) {
-        existing.subroles.push(artist.subRole)
+      if (artist.subRole) {
+        if (!existing.subroles) {
+          existing.subroles = [artist.subRole]
+        } else if (!existing.subroles.includes(artist.subRole)) {
+          existing.subroles.push(artist.subRole)
+        }
       }
     }
   }

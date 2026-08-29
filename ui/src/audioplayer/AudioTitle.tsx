@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, useMediaQuery } from '@mui/material'
+import type { Theme } from '@mui/material/styles'
 import { Link } from 'react-router-dom'
 import { QualityInfo } from '../common'
 import { decisionService } from '../transcode'
@@ -9,7 +10,7 @@ import { componentStyleOverride } from '../themes/componentStyleOverride'
 import type { ReplayGainState } from '../types/redux'
 import type { SongRecord } from '../types/records'
 
-const audioOverride = (slot: string) => (theme: object) =>
+const audioOverride = (slot: string) => (theme: Theme) =>
   componentStyleOverride(theme, 'NDAudioPlayer', slot)
 
 type AudioInfo = {
@@ -50,10 +51,12 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }: AudioTitleProp
     rgTrackPeak: song.rgTrackPeak,
   }
 
-  const decision = decisionService.getCachedDecision(audioInfo.trackId)
+  const decision = audioInfo.trackId
+    ? decisionService.getCachedDecision(audioInfo.trackId)
+    : undefined
   const transcodeProps = decision
     ? {
-        transcodeStream: decision.transcodeStream || null,
+        transcodeStream: decision.transcodeStream ?? undefined,
         isDirectPlay: decision.canDirectPlay,
       }
     : {}
@@ -69,7 +72,7 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }: AudioTitleProp
 
   return (
     <Box
-      ref={dragSongRef}
+      ref={dragSongRef as unknown as React.Ref<HTMLDivElement>}
       sx={[
         { textDecoration: 'none', color: 'primary.dark' },
         audioOverride('audioTitle'),

@@ -124,7 +124,7 @@ const DesktopArtistDetails = ({
                 sx={[{ top: -0.2, left: 0.5 }, desktopOverride('loveButton')]}
                 record={record}
                 resource={'artist'}
-                size={'default'}
+                size={'medium'}
                 aria-label="artist context menu"
                 color="primary"
               />

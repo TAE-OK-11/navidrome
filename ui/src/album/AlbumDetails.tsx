@@ -302,7 +302,7 @@ const AlbumDetails = (props: AlbumDetailsProps) => {
                 }))}
                 record={record}
                 resource={'album'}
-                size={isDesktop ? 'default' : 'small'}
+                size={isDesktop ? 'medium' : 'small'}
                 aria-label="love"
                 color="primary"
               />

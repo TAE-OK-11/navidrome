@@ -51,9 +51,9 @@ const ArtistExternalLinks = ({
         'message.openIn.lastfm',
         <ImLastfm2 className="lastfm-icon" />,
       )
-    } else if (isLastFmURL(artistInfo?.lastFmUrl)) {
+    } else if (artistInfo?.lastFmUrl && isLastFmURL(artistInfo.lastFmUrl)) {
       addLink(
-        artistInfo?.lastFmUrl!,
+        artistInfo.lastFmUrl,
         'message.openIn.lastfm',
         <ImLastfm2 className="lastfm-icon" />,
       )

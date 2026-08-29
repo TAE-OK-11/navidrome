@@ -5,7 +5,7 @@ const Linkify = ({ text, ...rest }: { text: string; [key: string]: unknown }) =>
   const linkify = useCallback((input: string) => {
     const urlRegex =
       /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#/%?=~_|!:,.;]*[-A-Z0-9+&@#/%=~_|])/gi
-    return [...text.matchAll(urlRegex)]
+    return [...input.matchAll(urlRegex)]
   }, [])
 
   const parse = useCallback(() => {

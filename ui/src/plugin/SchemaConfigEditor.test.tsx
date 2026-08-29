@@ -1,27 +1,23 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   ThemeProvider,
   StyledEngineProvider,
   createTheme,
 } from '@mui/material/styles'
-import { Provider } from 'react-redux'
-import { createStore } from 'redux'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { SchemaConfigEditor } from './SchemaConfigEditor'
+import { TestContext } from '../test/TestContext'
 
 const theme = createTheme()
 
-// JSONForms requires Redux
-const mockStore = createStore(() => ({}))
-
 const renderWithProviders = (component) => {
   return render(
-    <Provider store={mockStore}>
+    <TestContext>
       <StyledEngineProvider injectFirst>
         <ThemeProvider theme={theme}>{component}</ThemeProvider>
       </StyledEngineProvider>
-    </Provider>,
+    </TestContext>,
   )
 }
 
@@ -40,6 +36,14 @@ describe('SchemaConfigEditor', () => {
     },
   }
 
+  const basicUiSchema = {
+    type: 'VerticalLayout',
+    elements: [
+      { type: 'Control', scope: '#/properties/name' },
+      { type: 'Control', scope: '#/properties/enabled' },
+    ],
+  }
+
   it('renders nothing when schema is null', () => {
     const { container } = renderWithProviders(
       <SchemaConfigEditor schema={null} data={{}} uiSchema={{}} onChange={vi.fn()} />,
@@ -49,7 +53,7 @@ describe('SchemaConfigEditor', () => {
 
   it('renders the component wrapper with valid schema', () => {
     const { container } = renderWithProviders(
-      <SchemaConfigEditor schema={basicSchema} data={{}} uiSchema={{}} onChange={vi.fn()} />,
+      <SchemaConfigEditor schema={basicSchema} data={{}} uiSchema={basicUiSchema} onChange={vi.fn()} />,
     )
     // Check that the wrapper div is rendered (class name is generated)
     expect(
@@ -63,7 +67,7 @@ describe('SchemaConfigEditor', () => {
       <SchemaConfigEditor
         schema={basicSchema}
         data={{ name: 'Test' }}
-        uiSchema={{}}
+        uiSchema={basicUiSchema}
         onChange={onChange}
       />,
     )
@@ -79,7 +83,7 @@ describe('SchemaConfigEditor', () => {
       <SchemaConfigEditor
         schema={basicSchema}
         data={initialData}
-        uiSchema={{}}
+        uiSchema={basicUiSchema}
         onChange={onChange}
       />,
     )

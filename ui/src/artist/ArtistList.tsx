@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Datagrid,
@@ -105,7 +105,7 @@ const ArtistDatagrid = ({
 }: {
   sx?: unknown
   rowClick?: (id: string | number) => string
-  children?: React.ReactNode
+  children?: ReactNode
 }) => (
   <Datagrid
     {...props}

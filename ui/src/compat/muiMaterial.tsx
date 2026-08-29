@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes } from 'react'
+import { forwardRef, type InputHTMLAttributes, type Ref } from 'react'
 import MuiCheckbox from '@mui/material/Checkbox'
 import MuiSnackbar from '@mui/material/Snackbar'
 import MuiTextField from '@mui/material/TextField'
@@ -57,7 +57,7 @@ type SnackbarProps = MuiSnackbarProps & LegacySnackbarProps
 
 type LegacyCheckboxProps = {
   inputProps?: InputHTMLAttributes<HTMLInputElement>
-  inputRef?: React.Ref<HTMLInputElement>
+  inputRef?: Ref<HTMLInputElement>
 }
 
 type CheckboxProps = Omit<MuiCheckboxProps, 'slotProps'> &

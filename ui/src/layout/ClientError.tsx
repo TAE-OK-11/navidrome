@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Button, Typography } from '@mui/material'
+import type { ErrorProps } from 'ra-ui-materialui'
 
 const clearClientState = async () => {
   localStorage.clear()
@@ -17,7 +18,10 @@ const clearClientState = async () => {
   window.location.assign('./')
 }
 
-const ClientError = ({ error, resetErrorBoundary }) => {
+const ClientError = ({
+  error,
+  resetErrorBoundary,
+}: ErrorProps & { resetErrorBoundary?: () => void }) => {
   const message = error instanceof Error ? error.message : String(error || '')
   const retry = () => {
     if (resetErrorBoundary) {

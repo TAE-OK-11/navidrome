@@ -11,7 +11,6 @@ import type { LayoutProps as RALayoutProps } from 'react-admin'
 import { useAppHotkey } from '../hooks/useAppHotkey'
 import Menu from './Menu'
 import AppBar from './AppBar'
-import Notification from './Notification'
 import ClientError from './ClientError'
 import { useSearchRefocus } from '../common'
 import { retrieveTranslation } from '../i18n'
@@ -68,7 +67,6 @@ const Layout = (props: RALayoutProps) => {
       menu={Menu}
       appBar={AppBar}
       error={ClientError}
-      notification={Notification}
     />
   )
 }

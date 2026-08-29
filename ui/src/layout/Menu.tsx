@@ -15,7 +15,7 @@ import albumLists from '../album/albumLists'
 import PlaylistsSubMenu from './PlaylistsSubMenu'
 import LibrarySelector from '../common/LibrarySelector'
 import config from '../config'
-import type { AppState } from '../types/redux'
+import type { NavidromeRootState } from '../types/redux'
 
 const translatedResourceName = (resource, translate) =>
   translate(`resources.${resource.name}.name`, {
@@ -32,7 +32,7 @@ const translatedResourceName = (resource, translate) =>
 const Menu = ({ dense = false }) => {
   const [open] = useSidebarState()
   const translate = useTranslate()
-  const queue = useSelector((state: AppState) => state.player?.queue || [])
+  const queue = useSelector((state: NavidromeRootState) => state.player.queue)
   const resourceDefinitions = useResourceDefinitions()
   const resources = Object.values(resourceDefinitions ?? {})
 

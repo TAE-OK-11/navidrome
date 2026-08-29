@@ -29,14 +29,14 @@ jobs:
         run: |
           go mod download
           go mod verify
-      - name: Install Rust 1.97
-        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Install Rust 1.98
+        run: rustup toolchain install 1.98.0 --profile minimal
       - name: Build metadata worker
         working-directory: rust/metadata
-        run: cargo +1.97.0 build --release --locked
+        run: cargo +1.98.0 build --release --locked
       - name: Build scanner worker
         working-directory: rust/scanner
-        run: cargo +1.97.0 build --release --locked
+        run: cargo +1.98.0 build --release --locked
       - name: Test
         env:
           ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/metadata/target/release/navidrome-metadata
@@ -55,7 +55,7 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.1
+          version: v2.13.2
           args: --timeout 5m
       - name: Verify generated files
         run: |
@@ -80,11 +80,11 @@ jobs:
             directory: rust/scanner
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust 1.97
-        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Install Rust 1.98
+        run: rustup toolchain install 1.98.0 --profile minimal
       - name: Test
         working-directory: ${{ matrix.directory }}
-        run: cargo +1.97.0 test --locked
+        run: cargo +1.98.0 test --locked
 
   ui:
     name: UI tests and build

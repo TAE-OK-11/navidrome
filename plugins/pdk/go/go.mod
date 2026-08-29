@@ -1,6 +1,6 @@
 module github.com/navidrome/navidrome/plugins/pdk/go
 
-go 1.25
+go 1.27
 
 require (
 	github.com/extism/go-pdk v1.1.3

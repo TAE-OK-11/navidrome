@@ -59,8 +59,7 @@ const mapResource = (resource, params) => {
     case 'playlistTrack': {
       params.filter = params.filter || {}
 
-      let plsId = '0'
-      plsId = params.filter.playlist_id
+      const plsId = params.filter.playlist_id
       if (!isAdmin()) {
         params.filter.missing = false
       }

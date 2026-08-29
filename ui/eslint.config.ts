@@ -43,7 +43,7 @@ export default [
       'react-refresh': reactRefresh,
     },
     settings: {
-      react: { version: 'detect' },
+      react: { version: '19.2.8' },
       'import/resolver': {
         node: {
           paths: ['src'],

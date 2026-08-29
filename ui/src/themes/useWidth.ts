@@ -12,7 +12,7 @@ export type WidthOptions = Omit<MediaQueryOptions, 'noSsr'> & {
   noSsr?: boolean
 }
 
-type WithWidthProps = { width: Width }
+export type WithWidthProps = { width: Width }
 
 /**
  * MUI v4 withWidth replacement using useMediaQuery.

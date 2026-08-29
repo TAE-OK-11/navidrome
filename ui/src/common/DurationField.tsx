@@ -6,6 +6,8 @@ type DurationFieldProps = {
   label?: string
   record?: Record<string, unknown>
   addLabel?: boolean
+  sortable?: boolean
+  sortByOrder?: string
 }
 
 export const DurationField = ({ source, ...rest }: DurationFieldProps) => {

@@ -1,19 +1,24 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useMemo } from 'react'
 import { Link } from '@mui/material'
 
-const Linkify = ({ text, ...rest }) => {
-  const linkify = useCallback((text) => {
+const Linkify = ({
+  text,
+  ...rest
+}: {
+  text: string
+  [key: string]: unknown
+}) => {
+  const linkify = useCallback((input: string) => {
     const urlRegex =
       /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#/%?=~_|!:,.;]*[-A-Z0-9+&@#/%=~_|])/gi
-    return [...text.matchAll(urlRegex)]
+    return [...input.matchAll(urlRegex)]
   }, [])
 
   const parse = useCallback(() => {
     const matches = linkify(text)
     if (matches.length === 0) return text
 
-    const elements = []
+    const elements: React.ReactNode[] = []
     let lastIndex = 0
     matches.forEach((match, index) => {
       // Push text located before matched string

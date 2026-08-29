@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import {
   TextInput,
@@ -19,6 +18,7 @@ import {
   FormDataConsumer,
   usePermissions,
   useRecordContext,
+  type HttpError,
 } from 'react-admin'
 import { Typography } from '@mui/material'
 import { Title } from '../common'
@@ -26,7 +26,11 @@ import DeleteUserButton from './DeleteUserButton'
 import { LibrarySelectionField } from './LibrarySelectionField'
 import { validateUserForm } from './userValidation'
 
-const UserTitle = ({ record: recordOverride }) => {
+const UserTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.user.name', { smart_count: 1 })
@@ -88,8 +92,9 @@ const UserEdit = (props) => {
         })
         permissions === 'admin' ? redirect('/user') : refresh()
       } catch (error) {
-        if (error?.body?.errors) {
-          return error.body.errors
+        const httpError = error as HttpError
+        if (httpError?.body?.errors) {
+          return httpError.body.errors
         }
         notify('ra.page.error', { type: 'warning' })
       }
@@ -106,7 +111,7 @@ const UserEdit = (props) => {
     <Edit title={<UserTitle />} mutationMode="pessimistic" {...props}>
       <SimpleForm
         toolbar={<UserToolbar showDelete={canDelete} />}
-        save={save}
+        onSubmit={save}
         validate={validateForm}
       >
         {permissions === 'admin' && (

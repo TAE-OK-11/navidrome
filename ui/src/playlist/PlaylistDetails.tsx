@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   Card,
   CardContent,
@@ -22,12 +21,18 @@ import {
 import config from '../config'
 import subsonic from '../subsonic'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { Theme } from '@mui/material/styles'
+import type { PlaylistRecord } from '../types/records'
 
-const playlistOverride = (slot) => (theme) =>
+const playlistOverride = (slot: string) => (theme: Theme) =>
   componentStyleOverride(theme, 'NDPlaylistDetails', slot)
 
-const PlaylistDetails = (props) => {
-  const { record = {} } = props
+type PlaylistDetailsProps = {
+  record?: PlaylistRecord
+}
+
+const PlaylistDetails = (props: PlaylistDetailsProps) => {
+  const record = props.record ?? ({} as PlaylistRecord)
   const translate = useTranslate()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   const {
@@ -150,7 +155,7 @@ const PlaylistDetails = (props) => {
                 ]}
                 record={record}
                 resource={'playlist'}
-                size={isDesktop ? 'default' : 'small'}
+                size={isDesktop ? 'medium' : 'small'}
                 aria-label="love"
                 color="primary"
               />
@@ -174,7 +179,12 @@ const PlaylistDetails = (props) => {
                 <span>&nbsp;</span>
               )}
             </Typography>
-            <CollapsibleComment record={record} />
+            <CollapsibleComment
+              record={{
+                id: String(record.id),
+                comment: record.comment,
+              }}
+            />
           </CardContent>
         </Box>
       </Box>

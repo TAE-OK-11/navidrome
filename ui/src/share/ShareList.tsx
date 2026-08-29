@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   Datagrid,
   FunctionField,
@@ -18,7 +17,13 @@ import { DateField, QualityInfo } from '../common'
 import { sharePlayerUrl } from '../utils'
 import config from '../config'
 
-export const FormatInfo = ({ record: recordOverride, size }) => {
+export const FormatInfo = ({
+  record: recordOverride,
+  size,
+}: {
+  record?: { format?: string; maxBitRate?: number }
+  size?: 'small' | 'medium'
+}) => {
   const record = useRecordContext({ record: recordOverride }) || {}
   const r = { suffix: record.format, bitRate: record.maxBitRate }
   r.suffix =
@@ -93,7 +98,6 @@ const ShareList = (props) => {
             render={(r) => (
               <Link
                 href={sharePlayerUrl(r.id)}
-                label="URL"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => {
@@ -107,7 +111,7 @@ const ShareList = (props) => {
           <TextField source="username" />
           <TextField source="description" />
           {isDesktop && <TextField source="contents" />}
-          {isDesktop && <FormatInfo source="format" />}
+          {isDesktop && <FormatInfo />}
           {config.enableDownloads && <BooleanField source="downloadable" />}
           <NumberField source="visitCount" />
           {isDesktop && (

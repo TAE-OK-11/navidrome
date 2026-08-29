@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import {
   ReferenceManyField,
@@ -19,6 +18,8 @@ import {
   useResourceRefresh,
 } from '../common'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { Identifier } from 'react-admin'
+import type { PlaylistRecord } from '../types/records'
 
 const playlistTrackPerPageOptions = [100, 250, 500]
 
@@ -27,19 +28,21 @@ const FullWidthPlaylistActions = styled(PlaylistActions)(({ theme }) => ({
   ...componentStyleOverride(theme, 'NDPlaylistShow', 'playlistActions'),
 }))
 
-const PlaylistShowLayout = (props) => {
-  const context = useShowContext(props)
+type PlaylistShowLayoutProps = {
+  id?: Identifier
+}
+
+const PlaylistShowLayout = (props: PlaylistShowLayoutProps) => {
+  const context = useShowContext()
   const { record } = context
   useResourceRefresh('song')
 
   return (
     <>
       {record && <RaTitle title={<Title subTitle={record.name} />} />}
-      {record && <PlaylistDetails {...context} />}
+      {record && <PlaylistDetails record={record as PlaylistRecord} />}
       {record && (
         <ReferenceManyField
-          {...context}
-          addLabel={false}
           reference="playlistTrack"
           target="playlist_id"
           sort={{ field: 'id', order: 'ASC' }}
@@ -52,8 +55,9 @@ const PlaylistShowLayout = (props) => {
           <PlaylistSongs
             {...props}
             readOnly={!canChangeTracks(record)}
-            title={<Title subTitle={record.name} />}
-            actions={<FullWidthPlaylistActions record={record} />}
+            actions={
+              <FullWidthPlaylistActions record={record as PlaylistRecord} />
+            }
             resource={'playlistTrack'}
             exporter={false}
             pagination={
@@ -66,11 +70,11 @@ const PlaylistShowLayout = (props) => {
   )
 }
 
-const PlaylistShow = (props) => {
+const PlaylistShow = (props: Record<string, unknown>) => {
   const controllerProps = useShowController(props)
   return (
     <ShowContextProvider value={controllerProps}>
-      <PlaylistShowLayout {...props} {...controllerProps} />
+      <PlaylistShowLayout {...props} />
     </ShowContextProvider>
   )
 }

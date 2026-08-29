@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,7 +15,10 @@ describe('useTranscodingOptions', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('handles the initial react-admin 5 loading state', () => {
-    useGetList.mockReturnValue({ data: undefined, isPending: true })
+    vi.mocked(useGetList).mockReturnValue({
+      data: undefined,
+      isPending: true,
+    } as any)
 
     expect(() => renderHook(() => useTranscodingOptions())).not.toThrow()
     expect(useGetList).toHaveBeenCalledWith('transcoding', {
@@ -27,10 +29,10 @@ describe('useTranscodingOptions', () => {
   })
 
   it('accepts the array returned by useGetList', () => {
-    useGetList.mockReturnValue({
+    vi.mocked(useGetList).mockReturnValue({
       data: [{ targetFormat: 'opus', name: 'Opus' }],
       isPending: false,
-    })
+    } as any)
 
     const { result } = renderHook(() => useTranscodingOptions())
 

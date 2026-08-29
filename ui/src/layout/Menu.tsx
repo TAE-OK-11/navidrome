@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Divider, MenuList } from '@mui/material'
@@ -16,6 +15,7 @@ import albumLists from '../album/albumLists'
 import PlaylistsSubMenu from './PlaylistsSubMenu'
 import LibrarySelector from '../common/LibrarySelector'
 import config from '../config'
+import type { NavidromeRootState } from '../types/redux'
 
 const translatedResourceName = (resource, translate) =>
   translate(`resources.${resource.name}.name`, {
@@ -32,7 +32,7 @@ const translatedResourceName = (resource, translate) =>
 const Menu = ({ dense = false }) => {
   const [open] = useSidebarState()
   const translate = useTranslate()
-  const queue = useSelector((state) => state.player?.queue || [])
+  const queue = useSelector((state: NavidromeRootState) => state.player.queue)
   const resourceDefinitions = useResourceDefinitions()
   const resources = Object.values(resourceDefinitions ?? {})
 

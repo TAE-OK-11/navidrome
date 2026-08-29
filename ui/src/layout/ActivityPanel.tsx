@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import { useNotify, useTranslate } from 'react-admin'
@@ -24,6 +23,7 @@ import { useInterval } from '../common'
 import { useScanElapsedTime } from './useScanElapsedTime'
 import { formatDuration, formatShortDuration } from '../utils'
 import config from '../config'
+import type { NavidromeRootState } from '../types/redux'
 
 const counterStatusSx = {
   display: 'grid',
@@ -50,7 +50,9 @@ const getUptime = (serverStart) =>
   formatDuration((Date.now() - serverStart.startTime) / 1000)
 
 const Uptime = () => {
-  const serverStart = useSelector((state) => state.activity.serverStart)
+  const serverStart = useSelector(
+    (state: NavidromeRootState) => state.activity.serverStart,
+  )
   const [uptime, setUptime] = useState(getUptime(serverStart))
   useInterval(() => {
     setUptime(getUptime(serverStart))
@@ -59,9 +61,13 @@ const Uptime = () => {
 }
 
 const ActivityPanel = () => {
-  const serverStart = useSelector((state) => state.activity.serverStart)
+  const serverStart = useSelector(
+    (state: NavidromeRootState) => state.activity.serverStart,
+  )
   const up = serverStart.startTime
-  const scanStatus = useSelector((state) => state.activity.scanStatus)
+  const scanStatus = useSelector(
+    (state: NavidromeRootState) => state.activity.scanStatus,
+  )
   const elapsed = useScanElapsedTime(
     scanStatus.scanning,
     scanStatus.elapsedTime,

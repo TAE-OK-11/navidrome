@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useEffect, useRef, useState } from 'react'
 import { useNotify, useTranslate } from 'react-admin'
 import {
@@ -16,7 +15,7 @@ import { httpClient } from '../dataProvider'
 const Progress = (props) => {
   const { setLinked, setCheckingLink, openedTab } = props
   const notify = useNotify()
-  let linkCheckDelay = 2000
+  let linkCheckDelay: number | null = 2000
   let linkChecks = 30
 
   const endChecking = (success) => {
@@ -63,10 +62,10 @@ const Progress = (props) => {
 export const LastfmScrobbleToggle = (props) => {
   const notify = useNotify()
   const translate = useTranslate()
-  const [linked, setLinked] = useState(null)
+  const [linked, setLinked] = useState<boolean | null>(null)
   const [checkingLink, setCheckingLink] = useState(false)
-  const [apiKey, setApiKey] = useState(false)
-  const openedTab = useRef()
+  const [apiKey, setApiKey] = useState<string | false>(false)
+  const openedTab = useRef<Window | null>(null)
 
   useEffect(() => {
     httpClient('/api/lastfm/link')

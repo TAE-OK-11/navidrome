@@ -1,11 +1,33 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import Rating from '@mui/material/Rating'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { isDateSet } from '../utils/validations'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
 import { useRating } from './useRating'
 import { useRecordContext } from 'react-admin'
 import clsx from 'clsx'
+import type { Identifier } from 'react-admin'
+
+type RatingRecord = {
+  id?: Identifier
+  mediaFileId?: Identifier
+  ratedAt?: string
+  missing?: boolean
+}
+
+type RatingFieldProps = {
+  resource: string
+  source?: string
+  sortable?: boolean
+  sortByOrder?: string
+  label?: React.ReactNode
+  visible?: boolean
+  className?: string
+  size?: 'small' | 'medium' | 'large'
+  color?: string
+  sx?: SxProps<Theme>
+  record?: RatingRecord
+}
 
 export const RatingField = ({
   resource,
@@ -15,49 +37,58 @@ export const RatingField = ({
   color = 'inherit',
   sx,
   ...rest
-}) => {
-  const record = useRecordContext(rest) || {}
-  const [rate, rating, loading] = useRating(resource, record)
-
-  const stopPropagation = (e) => {
-    e.stopPropagation()
-  }
+}: RatingFieldProps) => {
+  const record = useRecordContext<RatingRecord>(rest)
+  const [setSongRating, currentRating, isLoading] = useRating(
+    resource,
+    record ?? {},
+  )
 
   const handleRating = useCallback(
-    (e, val) => {
-      const targetId = record.mediaFileId || record.id
-      rate(val ?? 0, targetId)
+    (_e: React.SyntheticEvent, val: number | null) => {
+      const targetId = record?.mediaFileId || record?.id
+      if (targetId !== undefined) {
+        void setSongRating(val ?? 0, targetId)
+      }
     },
-    [rate, record.mediaFileId, record.id],
+    [setSongRating, record?.mediaFileId, record?.id],
   )
+
+  if (!record) {
+    return null
+  }
+
+  const stopPropagation = (e: React.MouseEvent) => {
+    e.stopPropagation()
+  }
 
   return (
     <span
       onClick={(e) => stopPropagation(e)}
       title={
-        isDateSet(record.ratedAt)
+        record.ratedAt && isDateSet(record.ratedAt)
           ? new Date(record.ratedAt).toLocaleString()
           : undefined
       }
     >
       <Rating
-        name={record.mediaFileId || record.id}
+        name={String(record.mediaFileId || record.id)}
         className={clsx('nd-rating-field', className)}
         sx={[
           {
             color,
             visibility: visible === false ? 'hidden' : 'inherit',
           },
-          rating > 0
+          currentRating > 0
             ? { visibility: 'visible !important' }
             : { visibility: 'hidden' },
           ...(Array.isArray(sx) ? sx : [sx]),
         ]}
-        value={rating}
+        value={currentRating}
         size={size}
-        disabled={record?.missing || loading}
+        disabled={Boolean(record.missing) || isLoading}
         emptyIcon={<StarBorderIcon fontSize="inherit" />}
-        onChange={(e, newValue) => handleRating(e, newValue)}
+        onChange={handleRating}
       />
     </span>
   )

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { TestContext } from '../test/TestContext'
 import {
@@ -234,7 +233,7 @@ describe('SelectPlaylistInput', () => {
       })
 
       // Input should be cleared after creating
-      expect(searchInput.value).toBe('')
+      expect((searchInput as HTMLInputElement).value).toBe('')
     })
 
     it('should create new playlist by clicking add button', async () => {
@@ -381,7 +380,7 @@ describe('SelectPlaylistInput', () => {
   describe('Empty States', () => {
     it('should show empty message when no playlists exist', async () => {
       const onChangeMock = vi.fn()
-      createTestComponent(null, onChangeMock, [], {})
+      createTestComponent(null, onChangeMock, [], {} as any)
 
       await waitFor(() => {
         expect(
@@ -445,7 +444,7 @@ describe('SelectPlaylistInput', () => {
 
       // Should not create playlist or trigger onChange
       expect(onChangeMock).not.toHaveBeenCalled()
-      expect(searchInput.value).toBe('test')
+      expect((searchInput as HTMLInputElement).value).toBe('test')
     })
   })
 

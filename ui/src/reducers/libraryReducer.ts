@@ -1,15 +1,20 @@
 import { SET_SELECTED_LIBRARIES, SET_USER_LIBRARIES } from '../actions'
+import type { LibraryInfo, LibraryState, UnknownAction } from '../types/redux'
 
-const initialState = {
+const initialState: LibraryState = {
   userLibraries: [],
   selectedLibraries: [], // Empty means "all accessible libraries"
 }
 
-export const libraryReducer = (previousState = initialState, payload) => {
+export const libraryReducer = (
+  previousState: LibraryState = initialState,
+  payload: UnknownAction,
+): LibraryState => {
   const { type, data } = payload
   switch (type) {
     case SET_USER_LIBRARIES: {
-      const newUserLibraryIds = data.map((lib) => lib.id)
+      const libraries = (data ?? []) as LibraryInfo[]
+      const newUserLibraryIds = libraries.map((lib) => lib.id)
 
       // Validate and filter selected libraries to only include IDs that exist in new user libraries
       const validatedSelection = previousState.selectedLibraries.filter((id) =>
@@ -20,7 +25,7 @@ export const libraryReducer = (previousState = initialState, payload) => {
       // 1. If first time setting libraries (no previous user libraries), select all
       // 2. If user now has only one library, reset to empty (no filter needed)
       // 3. Otherwise, use validated selection (may be empty if all previous selections were invalid)
-      let finalSelection
+      let finalSelection: string[]
       if (
         previousState.selectedLibraries.length === 0 &&
         previousState.userLibraries.length === 0
@@ -37,14 +42,14 @@ export const libraryReducer = (previousState = initialState, payload) => {
 
       return {
         ...previousState,
-        userLibraries: data,
+        userLibraries: libraries,
         selectedLibraries: finalSelection,
       }
     }
     case SET_SELECTED_LIBRARIES:
       return {
         ...previousState,
-        selectedLibraries: data,
+        selectedLibraries: (data ?? []) as string[],
       }
     default:
       return previousState

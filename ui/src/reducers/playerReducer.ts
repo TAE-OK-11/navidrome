@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { v4 as uuidv4 } from 'uuid'
 import subsonic from '../subsonic'
 import { decisionService } from '../transcode'
@@ -15,8 +14,15 @@ import {
   PLAYER_REFRESH_QUEUE,
 } from '../actions'
 import config from '../config'
+import type {
+  AudioListItem,
+  PlayerCurrent,
+  PlayerState,
+  TrackSource,
+  UnknownAction,
+} from '../types/redux'
 
-const initialState = {
+const initialState: PlayerState = {
   queue: [],
   current: {},
   clear: false,
@@ -24,12 +30,13 @@ const initialState = {
   savedPlayIndex: 0,
 }
 
-const pad = (value) => (value < 10 ? `0${value}` : String(value))
+const pad = (value: number): string =>
+  value < 10 ? `0${value}` : String(value)
 
-const formatSyncedLyrics = (lyrics) => {
+const formatSyncedLyrics = (lyrics: unknown): string => {
   if (!lyrics) return ''
 
-  let structured
+  let structured: unknown
   try {
     structured = typeof lyrics === 'string' ? JSON.parse(lyrics) : lyrics
   } catch {
@@ -37,11 +44,21 @@ const formatSyncedLyrics = (lyrics) => {
   }
   if (!Array.isArray(structured)) return ''
 
-  const output = []
+  const output: string[] = []
   for (const entry of structured) {
-    if (!entry?.synced || !Array.isArray(entry.line)) continue
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      !('synced' in entry) ||
+      !entry.synced ||
+      !('line' in entry) ||
+      !Array.isArray(entry.line)
+    ) {
+      continue
+    }
     for (const line of entry.line) {
-      const start = Number(line?.start)
+      if (!line || typeof line !== 'object' || !('start' in line)) continue
+      const start = Number(line.start)
       if (!Number.isFinite(start)) continue
 
       let time = Math.floor(start / 10)
@@ -49,13 +66,15 @@ const formatSyncedLyrics = (lyrics) => {
       time = Math.floor(time / 100)
       const sec = time % 60
       const min = Math.floor(time / 60) % 60
-      output.push(`[${pad(min)}:${pad(sec)}.${pad(ms)}] ${line.value ?? ''}`)
+      const value =
+        'value' in line && line.value != null ? String(line.value) : ''
+      output.push(`[${pad(min)}:${pad(sec)}.${pad(ms)}] ${value}`)
     }
   }
   return output.length > 0 ? `${output.join('\n')}\n` : ''
 }
 
-const makeMusicSrc = (trackId) =>
+const makeMusicSrc = (trackId: string): string | (() => Promise<string>) =>
   decisionService.getProfile()
     ? () =>
         decisionService
@@ -63,18 +82,21 @@ const makeMusicSrc = (trackId) =>
           .catch(() => subsonic.streamUrl(trackId))
     : subsonic.streamUrl(trackId)
 
-const mapToAudioLists = (item) => {
+const mapToAudioLists = (item: TrackSource): AudioListItem => {
   // If item comes from a playlist, trackId is mediaFileId
-  const trackId = item.mediaFileId || item.id
+  const trackId = String(item.mediaFileId ?? item.id ?? '')
+  const updatedAt =
+    typeof item.updatedAt === 'string' ? item.updatedAt : undefined
+  const album = typeof item.album === 'string' ? item.album : undefined
 
   if (item.isRadio) {
     return {
       trackId,
       uuid: uuidv4(),
-      name: item.name,
+      name: typeof item.name === 'string' ? item.name : undefined,
       song: item,
-      musicSrc: item.streamUrl,
-      cover: item.cover,
+      musicSrc: typeof item.streamUrl === 'string' ? item.streamUrl : undefined,
+      cover: typeof item.cover === 'string' ? item.cover : undefined,
       isRadio: true,
     }
   }
@@ -85,31 +107,35 @@ const mapToAudioLists = (item) => {
     trackId,
     uuid: uuidv4(),
     song: item,
-    name: item.title,
+    name: typeof item.title === 'string' ? item.title : undefined,
     lyric: lyricText,
-    singer: item.artist,
-    duration: item.duration,
+    singer: typeof item.artist === 'string' ? item.artist : undefined,
+    duration: typeof item.duration === 'number' ? item.duration : undefined,
     musicSrc: makeMusicSrc(trackId),
     cover: subsonic.getCoverArtUrl(
       {
         id: trackId,
-        updatedAt: item.updatedAt,
-        album: item.album,
+        updatedAt,
+        album,
       },
       300,
     ),
   }
 }
 
-const reduceClearQueue = () => ({ ...initialState, clear: true })
+const reduceClearQueue = (): PlayerState => ({ ...initialState, clear: true })
 
-const reducePlayTracks = (state, { data, id }) => {
+const reducePlayTracks = (
+  state: PlayerState,
+  { data, id }: UnknownAction,
+): PlayerState => {
   let playIndex = 0
-  const queue = Object.keys(data).map((key, idx) => {
+  const tracks = (data ?? {}) as Record<string, TrackSource>
+  const queue = Object.keys(tracks).map((key, idx) => {
     if (key === id) {
       playIndex = idx
     }
-    return mapToAudioLists(data[key])
+    return mapToAudioLists(tracks[key])
   })
   return {
     ...state,
@@ -119,26 +145,37 @@ const reducePlayTracks = (state, { data, id }) => {
   }
 }
 
-const reduceSetTrack = (state, { data }) => {
+const reduceSetTrack = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
   return {
     ...state,
-    queue: [mapToAudioLists(data)],
+    queue: [mapToAudioLists((data ?? {}) as TrackSource)],
     playIndex: 0,
     clear: true,
   }
 }
 
-const reduceAddTracks = (state, { data }) => {
+const reduceAddTracks = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
   const queue = state.queue.slice()
-  Object.keys(data).forEach((id) => {
-    queue.push(mapToAudioLists(data[id]))
+  const tracks = (data ?? {}) as Record<string, TrackSource>
+  Object.keys(tracks).forEach((id) => {
+    queue.push(mapToAudioLists(tracks[id]))
   })
   return { ...state, queue, clear: false }
 }
 
-const reducePlayNext = (state, { data }) => {
-  const newTracks = Object.keys(data).map((id) => mapToAudioLists(data[id]))
-  const newQueue = []
+const reducePlayNext = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
+  const tracks = (data ?? {}) as Record<string, TrackSource>
+  const newTracks = Object.keys(tracks).map((id) => mapToAudioLists(tracks[id]))
+  const newQueue: AudioListItem[] = []
   const current = state.current || {}
   let foundPos = false
   state.queue.forEach((item) => {
@@ -159,14 +196,26 @@ const reducePlayNext = (state, { data }) => {
   }
 }
 
-const reduceSetVolume = (state, { data: { volume } }) => {
+const reduceSetVolume = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
+  const payload = (data ?? {}) as { volume?: number }
   return {
     ...state,
-    volume,
+    volume: payload.volume ?? state.volume,
   }
 }
 
-const reduceSyncQueue = (state, { data: { audioInfo, audioLists } }) => {
+const reduceSyncQueue = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
+  const payload = (data ?? {}) as {
+    audioInfo?: PlayerCurrent
+    audioLists?: AudioListItem[]
+  }
+  const audioLists = payload.audioLists ?? []
   // Keep clear and playIndex alive when there is a pending track switch.
   // A switch is pending when playIndex is set AND either:
   //   - playIndex differs from savedPlayIndex, OR
@@ -184,8 +233,12 @@ const reduceSyncQueue = (state, { data: { audioInfo, audioLists } }) => {
   }
 }
 
-const reduceCurrent = (state, { data }) => {
-  const current = data.ended ? {} : data
+const reduceCurrent = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
+  const payload = (data ?? {}) as PlayerCurrent & { ended?: boolean }
+  const current = payload.ended ? {} : payload
   const savedPlayIndex = state.queue.findIndex(
     (item) => item.uuid === current.uuid,
   )
@@ -200,18 +253,25 @@ const reduceCurrent = (state, { data }) => {
     playIndex: pending ? state.playIndex : undefined,
     clear: pending ? state.clear : false,
     savedPlayIndex: pending ? state.savedPlayIndex : savedPlayIndex,
-    volume: data.volume,
+    volume: typeof payload.volume === 'number' ? payload.volume : state.volume,
   }
 }
 
-const reduceMode = (state, { data: { mode } }) => {
+const reduceMode = (
+  state: PlayerState,
+  { data }: UnknownAction,
+): PlayerState => {
+  const payload = (data ?? {}) as { mode?: string }
   return {
     ...state,
-    mode,
+    mode: payload.mode,
   }
 }
 
-export const playerReducer = (previousState = initialState, payload) => {
+export const playerReducer = (
+  previousState: PlayerState = initialState,
+  payload: UnknownAction,
+): PlayerState => {
   const { type } = payload
   switch (type) {
     case PLAYER_CLEAR_QUEUE:
@@ -233,7 +293,7 @@ export const playerReducer = (previousState = initialState, payload) => {
     case PLAYER_SET_MODE:
       return reduceMode(previousState, payload)
     case PLAYER_REFRESH_QUEUE: {
-      const resolvedUrls = payload.data || {}
+      const resolvedUrls = (payload.data ?? {}) as Record<string, string>
       return {
         ...previousState,
         queue: previousState.queue.map((item) => ({

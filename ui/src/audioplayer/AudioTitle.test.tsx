@@ -1,11 +1,10 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import AudioTitle from './AudioTitle'
 
 vi.mock('@mui/material', async () => {
-  const actual = await import('@mui/material')
+  const actual = (await import('@mui/material')) as Record<string, unknown>
   return {
     ...actual,
     useMediaQuery: vi.fn(),
@@ -14,11 +13,16 @@ vi.mock('@mui/material', async () => {
 
 vi.mock('react-router-dom', () => ({
   // eslint-disable-next-line react/display-name
-  Link: React.forwardRef(({ to, children, ...props }, ref) => (
-    <a href={to} ref={ref} {...props}>
-      {children}
-    </a>
-  )),
+  Link: React.forwardRef(
+    (
+      { to, children, ...props }: { to: string; children?: React.ReactNode },
+      ref: React.Ref<HTMLAnchorElement>,
+    ) => (
+      <a href={to} ref={ref} {...props}>
+        {children}
+      </a>
+    ),
+  ),
 }))
 
 vi.mock('react-dnd', () => ({
@@ -42,7 +46,9 @@ describe('<AudioTitle />', () => {
 
   it('links to playlist when playlistId is provided', () => {
     const audioInfo = { trackId: 'track-1', song: baseSong }
-    render(<AudioTitle audioInfo={audioInfo} gainInfo={{}} isMobile={false} />)
+    render(
+      <AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />,
+    )
     const link = screen.getByRole('link')
     expect(link.getAttribute('href')).toBe('/playlist/playlist-1/show')
   })
@@ -52,7 +58,9 @@ describe('<AudioTitle />', () => {
       trackId: 'track-1',
       song: { ...baseSong, playlistId: undefined },
     }
-    render(<AudioTitle audioInfo={audioInfo} gainInfo={{}} isMobile={false} />)
+    render(
+      <AudioTitle {...({ audioInfo, gainInfo: {}, isMobile: false } as any)} />,
+    )
     const link = screen.getByRole('link')
     expect(link.getAttribute('href')).toBe('/album/album-1/show')
   })

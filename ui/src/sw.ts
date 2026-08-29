@@ -1,7 +1,9 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 /* eslint-disable */
+/// <reference path="./types/workbox.d.ts" />
 
 import { createNavigationHandler } from './swNavigation'
+
+const serviceWorker = self as unknown as ServiceWorkerGlobalScope
 
 // documentation: https://developers.google.com/web/tools/workbox/modules/workbox-sw
 importScripts('3rdparty/workbox/workbox-sw.js')
@@ -18,11 +20,11 @@ workbox.loadModule('workbox-navigation-preload')
 workbox.loadModule('workbox-precaching')
 
 workbox.core.clientsClaim()
-self.skipWaiting()
+serviceWorker.skipWaiting()
 
-addEventListener('message', (event) => {
+addEventListener('message', (event: MessageEvent) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    skipWaiting()
+    serviceWorker.skipWaiting()
   }
 })
 
@@ -32,7 +34,7 @@ const CACHE_NAME = 'offline-html'
 const FALLBACK_HTML_URL = './offline.html'
 // Populate the cache with the offline HTML page when the
 // service worker is installed.
-self.addEventListener('install', async (event) => {
+serviceWorker.addEventListener('install', (event: ExtendableEvent) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.add(FALLBACK_HTML_URL)),
   )

@@ -1,17 +1,16 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { beforeEach, describe, expect, it } from 'vitest'
 import authProvider from './authProvider'
 
 const token = (payload) => {
   const encode = (value) =>
     btoa(JSON.stringify(value))
-      .replaceAll('+', '-')
-      .replaceAll('/', '_')
-      .replaceAll('=', '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode(payload)}.`
 }
 
-const storeValidSession = (overrides = {}) => {
+const storeValidSession = (overrides: Record<string, string | null> = {}) => {
   localStorage.setItem('is-authenticated', 'true')
   localStorage.setItem(
     'token',

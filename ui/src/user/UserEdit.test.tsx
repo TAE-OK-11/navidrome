@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { render, screen } from '@testing-library/react'
 import UserEdit from './UserEdit'
@@ -29,7 +28,7 @@ const adminUser = {
 }
 
 const hooks = vi.hoisted(() => ({
-  save: null,
+  save: null as ((values: Record<string, unknown>) => Promise<unknown>) | null,
   mutate: vi.fn(),
   notify: vi.fn(),
   redirect: vi.fn(),
@@ -44,8 +43,8 @@ vi.mock('react-admin', () => ({
       {children}
     </div>
   ),
-  SimpleForm: ({ children, save }) => {
-    hooks.save = save
+  SimpleForm: ({ children, onSubmit }) => {
+    hooks.save = onSubmit
     return <form data-testid="simple-form">{children}</form>
   },
   TextInput: ({ source }) => <input data-testid={`text-input-${source}`} />,
@@ -144,7 +143,7 @@ describe('<UserEdit />', () => {
       hooks.mutate.mockResolvedValue({ data: defaultUser })
       render(<UserEdit id="user1" permissions="admin" />)
 
-      await hooks.save({ id: 'user1', name: 'New Name' })
+      await hooks.save!({ id: 'user1', name: 'New Name' })
 
       expect(hooks.notify).toHaveBeenCalledWith(
         'resources.user.notifications.updated',
@@ -158,7 +157,7 @@ describe('<UserEdit />', () => {
       hooks.mutate.mockRejectedValue({ body: { errors: fieldErrors } })
       render(<UserEdit id="user1" permissions="admin" />)
 
-      const result = await hooks.save({ id: 'user1' })
+      const result = await hooks.save!({ id: 'user1' })
 
       expect(result).toEqual(fieldErrors)
       expect(hooks.notify).not.toHaveBeenCalledWith(
@@ -171,7 +170,7 @@ describe('<UserEdit />', () => {
       hooks.mutate.mockRejectedValue(new Error('Forbidden'))
       render(<UserEdit id="user1" permissions="admin" />)
 
-      await hooks.save({ id: 'user1' })
+      await hooks.save!({ id: 'user1' })
 
       expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', {
         type: 'warning',
@@ -183,7 +182,7 @@ describe('<UserEdit />', () => {
       hooks.mutate.mockRejectedValue(undefined)
       render(<UserEdit id="user1" permissions="admin" />)
 
-      await hooks.save({ id: 'user1' })
+      await hooks.save!({ id: 'user1' })
 
       expect(hooks.notify).toHaveBeenCalledWith('ra.page.error', {
         type: 'warning',

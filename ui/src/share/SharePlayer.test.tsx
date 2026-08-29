@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { render, act } from '@testing-library/react'
 import SharePlayer, { DOWNLOAD_FEEDBACK_MS } from './SharePlayer'
 
@@ -51,7 +50,7 @@ describe('SharePlayer', () => {
     render(<SharePlayer />)
 
     let anchor
-    clickSpy.mockImplementation(function () {
+    clickSpy.mockImplementation(function (this: HTMLAnchorElement) {
       anchor = { href: this.href, download: this.download }
     })
 

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, test, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { RecordContextProvider } from 'react-admin'

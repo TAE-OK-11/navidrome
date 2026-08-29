@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Provider } from 'react-redux'
 import { createStore } from 'redux'
@@ -8,15 +7,16 @@ import useCurrentTheme from './useCurrentTheme'
 import { themeReducer } from '../reducers/themeReducer'
 import { AUTO_THEME_ID } from '../consts'
 
-function createMatchMedia(theme) {
-  return (query) => ({
-    matches: mediaQuery.match(query, { 'prefers-color-scheme': theme }),
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  })
+function createMatchMedia(theme: string) {
+  return (query: string) =>
+    ({
+      matches: mediaQuery.match(query, { 'prefers-color-scheme': theme }),
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList
 }
 
 beforeEach(() => {
@@ -26,12 +26,14 @@ beforeEach(() => {
 describe('useCurrentTheme', () => {
   describe('with user preference theme as light', () => {
     beforeAll(() => {
-      window.matchMedia = createMatchMedia('light')
+      window.matchMedia = createMatchMedia('light') as typeof window.matchMedia
     })
     it('sets theme as light in auto mode', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: AUTO_THEME_ID })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}
+          >
             {children}
           </Provider>
         ),
@@ -41,7 +43,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as dark', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -52,7 +56,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as light', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -64,7 +70,7 @@ describe('useCurrentTheme', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
           <Provider
-            store={createStore(themeReducer, { theme: 'SpotifyTheme' })}
+            store={createStore(themeReducer as any, { theme: 'SpotifyTheme' })}
           >
             {children}
           </Provider>
@@ -76,12 +82,14 @@ describe('useCurrentTheme', () => {
   })
   describe('with user preference theme as dark', () => {
     beforeAll(() => {
-      window.matchMedia = createMatchMedia('dark')
+      window.matchMedia = createMatchMedia('dark') as typeof window.matchMedia
     })
     it('sets theme as dark in auto mode', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: AUTO_THEME_ID })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: AUTO_THEME_ID })}
+          >
             {children}
           </Provider>
         ),
@@ -92,7 +100,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as dark', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -103,7 +113,9 @@ describe('useCurrentTheme', () => {
     it('sets theme as light', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -115,7 +127,7 @@ describe('useCurrentTheme', () => {
       const { result } = renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
           <Provider
-            store={createStore(themeReducer, { theme: 'SpotifyTheme' })}
+            store={createStore(themeReducer as any, { theme: 'SpotifyTheme' })}
           >
             {children}
           </Provider>
@@ -127,12 +139,14 @@ describe('useCurrentTheme', () => {
   })
   describe('body background color', () => {
     beforeAll(() => {
-      window.matchMedia = createMatchMedia('dark')
+      window.matchMedia = createMatchMedia('dark') as typeof window.matchMedia
     })
     it('sets body background for dark theme', () => {
       renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'DarkTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'DarkTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -143,7 +157,9 @@ describe('useCurrentTheme', () => {
     it('sets body background for light theme', () => {
       renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
-          <Provider store={createStore(themeReducer, { theme: 'LightTheme' })}>
+          <Provider
+            store={createStore(themeReducer as any, { theme: 'LightTheme' })}
+          >
             {children}
           </Provider>
         ),
@@ -155,7 +171,7 @@ describe('useCurrentTheme', () => {
       renderHook(() => useCurrentTheme(), {
         wrapper: ({ children }) => (
           <Provider
-            store={createStore(themeReducer, { theme: 'SpotifyTheme' })}
+            store={createStore(themeReducer as any, { theme: 'SpotifyTheme' })}
           >
             {children}
           </Provider>

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   DateTimeInput,
   BooleanInput,
@@ -8,7 +7,7 @@ import {
   TextInput,
 } from 'react-admin'
 import { sharePlayerUrl } from '../utils'
-import { Link } from '@mui/material'
+import { Link as MuiLink } from '@mui/material'
 import { DateField } from '../common'
 import config from '../config'
 
@@ -18,9 +17,9 @@ export const ShareEdit = (props) => {
   return (
     <Edit {...props}>
       <SimpleForm {...rest}>
-        <Link source="URL" href={url} target="_blank" rel="noopener noreferrer">
+        <MuiLink href={url} target="_blank" rel="noopener noreferrer">
           {url}
-        </Link>
+        </MuiLink>
         <TextInput source="description" />
         {config.enableDownloads && <BooleanInput source="downloadable" />}
         <DateTimeInput source="expiresAt" />
@@ -28,7 +27,7 @@ export const ShareEdit = (props) => {
         <TextInput source="format" disabled />
         <TextInput source="maxBitRate" disabled />
         <TextInput source="username" disabled />
-        <NumberField source="visitCount" disabled />
+        <NumberField source="visitCount" />
         <DateField source="lastVisitedAt" disabled showTime />
         <DateField source="createdAt" disabled showTime />
       </SimpleForm>

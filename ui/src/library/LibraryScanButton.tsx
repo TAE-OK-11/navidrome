@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import {
   Button,
@@ -11,6 +10,7 @@ import { useSelector } from 'react-redux'
 import SyncIcon from '@mui/icons-material/Sync'
 import CachedIcon from '@mui/icons-material/Cached'
 import subsonic from '../subsonic'
+import type { NavidromeRootState } from '../types/redux'
 
 type LibraryScanButtonProps = {
   fullScan: boolean
@@ -27,14 +27,16 @@ const LibraryScanButton = ({
   const notify = useNotify()
   const refresh = useRefresh()
   const translate = useTranslate()
-  const unselectAll = useUnselectAll()
-  const scanStatus = useSelector((state) => state.activity.scanStatus)
+  const unselectAll = useUnselectAll('library')
+  const scanStatus = useSelector(
+    (state: NavidromeRootState) => state.activity.scanStatus,
+  )
 
   const handleClick = async () => {
     setLoading(true)
     try {
       // Build scan options
-      const options = { fullScan }
+      const options: { fullScan: boolean; target?: string[] } = { fullScan }
 
       // If specific libraries are selected, scan only those
       // Format: "libraryID:" to scan entire library (no folder path specified)
@@ -50,7 +52,7 @@ const LibraryScanButton = ({
       refresh()
 
       // Unselect all items after successful scan
-      unselectAll('library')
+      unselectAll()
     } catch (error) {
       notify('resources.library.notifications.scanError', { type: 'warning' })
     } finally {

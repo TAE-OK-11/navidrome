@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { Avatar, useMediaQuery } from '@mui/material'
 import React, { cloneElement } from 'react'
 import {
@@ -15,6 +14,10 @@ import {
   UrlField,
   useTranslate,
   useRecordContext,
+  type ListActionsProps,
+  type RaRecord,
+  type Identifier,
+  type RowClickFunction,
 } from 'react-admin'
 import {
   List,
@@ -46,7 +49,7 @@ const RadioListActions = ({
   filterValues,
   isAdmin,
   ...rest
-}) => {
+}: ListActionsProps & { isAdmin?: boolean }) => {
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
   const translate = useTranslate()
 
@@ -66,8 +69,17 @@ const RadioListActions = ({
   )
 }
 
-const CoverArtField = ({ record: recordOverride }) => {
-  const record = useRecordContext({ record: recordOverride })
+type CoverArtRecord = RaRecord<Identifier> & {
+  uploadedImage?: boolean
+  name?: string
+}
+
+const CoverArtField = ({
+  record: recordOverride,
+}: {
+  record?: CoverArtRecord
+}) => {
+  const record = useRecordContext<CoverArtRecord>({ record: recordOverride })
   const directUrl = record?.uploadedImage
     ? subsonic.getCoverArtUrl(record, 40, true)
     : null
@@ -91,7 +103,7 @@ const RadioList = ({ permissions, ...props }) => {
   const isAdmin = permissions === 'admin'
 
   const toggleableFields = {
-    coverArt: <CoverArtField source="id" sortable={false} />,
+    coverArt: <CoverArtField />,
     name: <TextField source="name" />,
     homePageUrl: (
       <UrlField
@@ -112,9 +124,10 @@ const RadioList = ({ permissions, ...props }) => {
     defaultOff: ['streamUrl', 'createdAt'],
   })
 
-  const handleRowClick = async (id, basePath, record) => {
-    dispatch(setTrack(await songFromRadio(record)))
-  }
+  const handleRowClick = ((_id, _resource, record) => {
+    void songFromRadio(record).then((track) => dispatch(setTrack(track)))
+    return false
+  }) as RowClickFunction
 
   return (
     <List

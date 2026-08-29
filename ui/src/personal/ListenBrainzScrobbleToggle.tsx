@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useEffect, useState } from 'react'
 import { useNotify, useTranslate } from 'react-admin'
 import { FormControl, FormControlLabel, Switch } from '@mui/material'
@@ -11,7 +10,7 @@ export const ListenBrainzScrobbleToggle = () => {
   const dispatch = useDispatch()
   const notify = useNotify()
   const translate = useTranslate()
-  const [linked, setLinked] = useState(null)
+  const [linked, setLinked] = useState<boolean | null>(null)
 
   const toggleScrobble = () => {
     if (linked) {

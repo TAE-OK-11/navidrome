@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInterval } from '../common'
 import { useDispatch, useSelector } from 'react-redux'
@@ -8,11 +7,15 @@ import {
   ThemeProvider,
   StyledEngineProvider,
 } from '@mui/material/styles'
+import type { ThemeOptions } from '@mui/material/styles'
 import { useAuthState, useDataProvider, useTranslate } from 'react-admin'
 import ReactGA from 'react-ga4'
 import { useAppHotkey } from '../hooks/useAppHotkey'
 import ReactJkMusicPlayer from 'navidrome-music-player'
 import 'navidrome-music-player/assets/index.css'
+
+const NavidromeMusicPlayer =
+  ReactJkMusicPlayer as unknown as React.ComponentType<Record<string, unknown>>
 import useCurrentTheme from '../themes/useCurrentTheme'
 import config from '../config'
 import AudioTitle from './AudioTitle'
@@ -34,6 +37,7 @@ import { calculateGain } from '../utils/calculateReplayGain'
 import { detectBrowserProfile, decisionService } from '../transcode'
 import modernizeTheme from '../themes/modernizeTheme'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { NavidromeRootState } from '../types/redux'
 
 const isMobileUserAgent =
   typeof navigator !== 'undefined' &&
@@ -43,11 +47,14 @@ const isMobileUserAgent =
 
 const Player = () => {
   const theme = useCurrentTheme()
-  const muiTheme = useMemo(() => createTheme(modernizeTheme(theme)), [theme])
+  const muiTheme = useMemo(
+    () => createTheme(modernizeTheme(theme) as ThemeOptions),
+    [theme],
+  )
   const translate = useTranslate()
   const playerTheme = theme.player?.theme || 'dark'
   const dataProvider = useDataProvider()
-  const playerState = useSelector((state) => state.player)
+  const playerState = useSelector((state: NavidromeRootState) => state.player)
   const playerAutoPlay = playerState.autoPlay
   const playerClear = playerState.clear
   const playerCurrent = playerState.current
@@ -57,12 +64,14 @@ const Player = () => {
   const playerSavedPlayIndex = playerState.savedPlayIndex
   const playerVolume = playerState.volume
   const dispatch = useDispatch()
-  const [currentTrackId, setCurrentTrackId] = useState(null)
-  const [heartbeatTrackId, setHeartbeatTrackId] = useState(null)
+  const [currentTrackId, setCurrentTrackId] = useState<string | null>(null)
+  const [heartbeatTrackId, setHeartbeatTrackId] = useState<string | null>(null)
   const lastPositionMsRef = useRef(0)
-  const currentTrackIdRef = useRef(null)
+  const currentTrackIdRef = useRef<string | null>(null)
   const stoppedRef = useRef(false)
-  const [audioInstance, setAudioInstance] = useState(null)
+  const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(
+    null,
+  )
   const isDesktop = useMediaQuery('(min-width:810px)')
   const isMobilePlayer = isMobileUserAgent
 
@@ -103,7 +112,7 @@ const Player = () => {
       .map((item) => item.trackId)
 
     if (trackIds.length === 0) {
-      dispatch(refreshQueue())
+      dispatch(refreshQueue(undefined))
       return
     }
 
@@ -140,11 +149,11 @@ const Player = () => {
   const visible = authenticated && playerQueue.length > 0
   const isRadio = playerCurrent?.isRadio || false
   const showNotifications = useSelector(
-    (state) => state.settings.notifications || false,
+    (state: NavidromeRootState) => state.settings.notifications || false,
   )
-  const gainInfo = useSelector((state) => state.replayGain)
-  const [context, setContext] = useState(null)
-  const [gainNode, setGainNode] = useState(null)
+  const gainInfo = useSelector((state: NavidromeRootState) => state.replayGain)
+  const [context, setContext] = useState<AudioContext | null>(null)
+  const [gainNode, setGainNode] = useState<GainNode | null>(null)
 
   useEffect(() => {
     if (
@@ -174,7 +183,7 @@ const Player = () => {
       const song = current.song || {}
 
       const numericGain = calculateGain(gainInfo, song)
-      gainNode.gain.setValueAtTime(numericGain, context.currentTime)
+      gainNode.gain.setValueAtTime(numericGain, context!.currentTime)
     }
   }, [audioInstance, context, gainNode, playerCurrent, gainInfo])
 
@@ -464,7 +473,7 @@ const Player = () => {
   // bursts into one report at the final position.
   useEffect(() => {
     if (!audioInstance) return
-    let timer = null
+    let timer: ReturnType<typeof setTimeout> | null = null
     const flush = () => {
       timer = null
       if (
@@ -546,7 +555,7 @@ const Player = () => {
             (theme) => componentStyleOverride(theme, 'NDAudioPlayer', 'player'),
           ]}
         >
-          <ReactJkMusicPlayer
+          <NavidromeMusicPlayer
             {...options}
             onAudioListsChange={onAudioListsChange}
             onAudioVolumeChange={onAudioVolumeChange}
@@ -558,7 +567,7 @@ const Player = () => {
             onAudioEnded={onAudioEnded}
             onCoverClick={onCoverClick}
             onAudioError={onAudioError}
-            onBeforeDestroy={onBeforeDestroy}
+            onBeforeDestroy={onBeforeDestroy as () => Promise<void>}
             getAudioInstance={setAudioInstance}
           />
         </Box>

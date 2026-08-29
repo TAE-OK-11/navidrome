@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { TestContext } from '../test/TestContext'
 import { DataProviderContext } from 'react-admin'
@@ -18,6 +17,7 @@ const createTestUtils = (mockDataProvider) =>
   render(
     <DataProviderContext.Provider value={mockDataProvider}>
       <TestContext
+        dataProvider={mockDataProvider}
         initialState={{
           saveQueueDialog: { open: true },
           player: { queue },
@@ -31,7 +31,7 @@ const createTestUtils = (mockDataProvider) =>
 
 // Mock navigation to update the hash used by this application.
 vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useNavigate: () => (url) => {

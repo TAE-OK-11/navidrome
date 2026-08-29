@@ -16,6 +16,7 @@ export default [
       'prettier.config.ts',
       'vite.config.ts',
       'public/3rdparty/workbox/**',
+      'src/sw.ts',
     ],
   },
   js.configs.recommended,
@@ -80,6 +81,12 @@ export default [
         { allowConstantExport: true },
       ],
       'react/prop-types': 'off',
+    },
+  },
+  {
+    files: ['**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 ]

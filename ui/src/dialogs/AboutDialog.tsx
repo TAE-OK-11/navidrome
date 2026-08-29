@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useEffect, useState } from 'react'
 import Link from '@mui/material/Link'
 import Dialog from '@mui/material/Dialog'

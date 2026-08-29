@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -18,11 +17,14 @@ import {
 } from '@mui/material'
 import { closeSaveQueueDialog } from '../actions'
 import { useNavigate } from 'react-router-dom'
+import type { NavidromeRootState } from '../types/redux'
 
 export const SaveQueueDialog = () => {
   const dispatch = useDispatch()
-  const { open } = useSelector((state) => state.saveQueueDialog)
-  const queue = useSelector((state) => state.player.queue)
+  const { open } = useSelector(
+    (state: NavidromeRootState) => state.saveQueueDialog,
+  )
+  const queue = useSelector((state: NavidromeRootState) => state.player.queue)
   const [name, setName] = useState('')
   const dataProvider = useDataProvider()
   const notify = useNotify()

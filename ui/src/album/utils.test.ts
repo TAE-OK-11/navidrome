@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { removeAlbumCommentsFromSongs } from './utils'
 
 describe('removeAlbumCommentsFromSongs', () => {

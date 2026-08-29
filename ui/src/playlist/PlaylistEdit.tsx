@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   Edit,
   FormDataConsumer,
@@ -14,8 +13,16 @@ import {
   useRecordContext,
 } from 'react-admin'
 import { isWritable, Title } from '../common'
+import type { PlaylistRecord } from '../types/records'
 
-const SyncFragment = ({ formData, variant, ...rest }) => {
+const SyncFragment = ({
+  formData,
+  variant: _variant,
+  ...rest
+}: {
+  formData: { path?: string }
+  variant?: string
+}) => {
   return (
     <>
       {formData.path && <BooleanInput source="sync" {...rest} />}
@@ -24,18 +31,21 @@ const SyncFragment = ({ formData, variant, ...rest }) => {
   )
 }
 
-const PlaylistTitle = ({ record: recordOverride }) => {
-  const record = useRecordContext({ record: recordOverride })
+const PlaylistTitle = ({
+  record: recordOverride,
+}: {
+  record?: PlaylistRecord
+}) => {
+  const record = useRecordContext<PlaylistRecord>({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.playlist.name', { smart_count: 1 })
   return <Title subTitle={`${resourceName} "${record ? record.name : ''}"`} />
 }
 
-const PlaylistEditForm = (props) => {
-  const { record } = props
+const PlaylistEditForm = ({ record }: { record?: PlaylistRecord }) => {
   const { permissions } = usePermissions()
   return (
-    <SimpleForm redirect="list" {...props}>
+    <SimpleForm>
       <TextInput source="name" validate={required()} />
       <TextInput
         multiline
@@ -59,7 +69,7 @@ const PlaylistEditForm = (props) => {
       ) : (
         <TextField source="ownerName" />
       )}
-      <BooleanInput source="public" disabled={!isWritable(record.ownerId)} />
+      <BooleanInput source="public" disabled={!isWritable(record?.ownerId)} />
       <FormDataConsumer>
         {(formDataProps) => <SyncFragment {...formDataProps} />}
       </FormDataConsumer>
@@ -67,8 +77,8 @@ const PlaylistEditForm = (props) => {
   )
 }
 
-const PlaylistEdit = (props) => (
-  <Edit title={<PlaylistTitle />} actions={false} {...props}>
+const PlaylistEdit = (props: Record<string, unknown>) => (
+  <Edit title={<PlaylistTitle />} actions={false} redirect="list" {...props}>
     <PlaylistEditForm {...props} />
   </Edit>
 )

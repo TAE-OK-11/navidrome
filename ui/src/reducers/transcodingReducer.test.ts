@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect } from 'vitest'
 import { transcodingReducer } from './transcodingReducer'
 import { TRANSCODING_SET_PROFILE } from '../actions'
@@ -7,7 +6,9 @@ describe('transcodingReducer', () => {
   const initialState = { browserProfile: null }
 
   it('returns initial state', () => {
-    expect(transcodingReducer(undefined, {})).toEqual(initialState)
+    expect(transcodingReducer(undefined, { type: 'UNKNOWN' })).toEqual(
+      initialState,
+    )
   })
 
   it('handles TRANSCODING_SET_PROFILE', () => {

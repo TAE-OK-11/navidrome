@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { LinkToVersion } from './AboutDialog'
@@ -7,7 +6,7 @@ import TableRow from '@mui/material/TableRow'
 import Table from '@mui/material/Table'
 import TableCell from '@mui/material/TableCell'
 
-const Wrapper = ({ version }) => (
+const Wrapper = ({ version }: { version: string }) => (
   <Table>
     <TableBody>
       <TableRow>
@@ -32,13 +31,13 @@ describe('<LinkToVersion />', () => {
     const version = '0.40.0 (300a0292)'
     render(<Wrapper version={version} />)
 
-    const link = screen.queryByRole('link')
+    const link = screen.getByRole('link') as HTMLAnchorElement
     expect(link.href).toBe(
       'https://github.com/navidrome/navidrome/releases/tag/v0.40.0',
     )
     expect(link.textContent).toBe('0.40.0')
 
-    const cell = screen.queryByRole('cell')
+    const cell = screen.getByRole('cell')
     expect(cell.textContent).toBe('0.40.0 (300a0292)')
   })
 
@@ -46,13 +45,13 @@ describe('<LinkToVersion />', () => {
     const version = '0.40.0-SNAPSHOT (300a0292)'
     render(<Wrapper version={version} />)
 
-    const link = screen.queryByRole('link')
+    const link = screen.getByRole('link') as HTMLAnchorElement
     expect(link.href).toBe(
       'https://github.com/navidrome/navidrome/compare/v0.40.0...300a0292',
     )
     expect(link.textContent).toBe('0.40.0-SNAPSHOT')
 
-    const cell = screen.queryByRole('cell')
+    const cell = screen.getByRole('cell')
     expect(cell.textContent).toBe('0.40.0-SNAPSHOT (300a0292)')
   })
 })

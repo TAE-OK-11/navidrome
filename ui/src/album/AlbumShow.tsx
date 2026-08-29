@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import {
   ReferenceManyField,
@@ -13,14 +12,15 @@ import AlbumDetails from './AlbumDetails'
 import AlbumActions from './AlbumActions'
 import { useResourceRefresh, useScrollRestoration, Title } from '../common'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { AlbumRecord } from '../types/records'
 
 const FullWidthAlbumActions = styled(AlbumActions)(({ theme }) => ({
   width: '100%',
   ...componentStyleOverride(theme, 'NDAlbumShow', 'albumActions'),
 }))
 
-const AlbumShowLayout = (props) => {
-  const context = useShowContext(props)
+const AlbumShowLayout = () => {
+  const context = useShowContext()
   const { record } = context
   useResourceRefresh('album', 'song')
   useScrollRestoration(!!record?.id)
@@ -28,11 +28,9 @@ const AlbumShowLayout = (props) => {
   return (
     <>
       {record && <RaTitle title={<Title subTitle={record.name} />} />}
-      {record && <AlbumDetails {...context} />}
+      {record && <AlbumDetails record={record as AlbumRecord} />}
       {record && (
         <ReferenceManyField
-          {...context}
-          addLabel={false}
           reference="song"
           target="album_id"
           sort={{ field: 'album', order: 'ASC' }}
@@ -43,7 +41,7 @@ const AlbumShowLayout = (props) => {
             resource={'song'}
             exporter={false}
             album={record}
-            actions={<FullWidthAlbumActions record={record} />}
+            actions={<FullWidthAlbumActions record={record as AlbumRecord} />}
           />
         </ReferenceManyField>
       )}
@@ -51,11 +49,11 @@ const AlbumShowLayout = (props) => {
   )
 }
 
-const AlbumShow = (props) => {
+const AlbumShow = (props: Record<string, unknown>) => {
   const controllerProps = useShowController(props)
   return (
     <ShowContextProvider value={controllerProps}>
-      <AlbumShowLayout {...props} {...controllerProps} />
+      <AlbumShowLayout />
     </ShowContextProvider>
   )
 }

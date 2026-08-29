@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { Fragment } from 'react'
 import ExpandMore from '@mui/icons-material/ExpandMore'
 import ArrowRightOutlined from '@mui/icons-material/ArrowRightOutlined'
@@ -11,6 +10,22 @@ import Tooltip from '@mui/material/Tooltip'
 import { useSidebarState, useTranslate } from 'react-admin'
 import { Box, IconButton, useMediaQuery } from '@mui/material'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+
+type SubMenuProps = {
+  handleToggle: () => void
+  sidebarIsOpen: boolean
+  isOpen: boolean
+  name: string
+  icon: React.ReactNode
+  children: React.ReactNode
+  dense?: boolean
+  onAction?: (e: React.MouseEvent) => void
+  actionIcon?: React.ReactNode
+  onSecondaryAction?: (e: React.MouseEvent) => void
+  secondaryActionIcon?: React.ReactNode
+  secondaryActionTitle?: string
+  secondaryActionActive?: boolean
+}
 
 const SubMenu = ({
   handleToggle,
@@ -26,23 +41,23 @@ const SubMenu = ({
   secondaryActionIcon,
   secondaryActionTitle,
   secondaryActionActive,
-}) => {
+}: SubMenuProps) => {
   const translate = useTranslate()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'))
   const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))
   const [, setSidebarOpen] = useSidebarState()
 
-  const handleOnClick = (e) => {
+  const handleOnClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onAction(e)
+    onAction?.(e)
     if (isSmall) {
       setSidebarOpen(false)
     }
   }
 
-  const handleSecondaryClick = (e) => {
+  const handleSecondaryClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onSecondaryAction(e)
+    onSecondaryAction?.(e)
   }
 
   const header = (

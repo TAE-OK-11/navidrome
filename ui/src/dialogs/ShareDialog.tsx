@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   Button,
   Dialog,
@@ -20,6 +19,8 @@ import { useTranscodingOptions } from './useTranscodingOptions'
 import { useDispatch, useSelector } from 'react-redux'
 import { closeShareMenu } from '../actions'
 import config from '../config'
+import type { NavidromeRootState } from '../types/redux'
+import type { HttpError } from 'react-admin'
 
 export const ShareDialog = () => {
   const {
@@ -28,7 +29,7 @@ export const ShareDialog = () => {
     resource,
     name,
     label = 'message.shareDialogTitle',
-  } = useSelector((state) => state.shareDialog)
+  } = useSelector((state: NavidromeRootState) => state.shareDialog)
   const dispatch = useDispatch()
   const notify = useNotify()
   const translate = useTranslate()
@@ -55,7 +56,7 @@ export const ShareDialog = () => {
     },
     {
       onSuccess: (res) => {
-        const url = sharePlayerUrl(res?.data?.id)
+        const url = sharePlayerUrl(res?.id)
         if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard
             .writeText(url)
@@ -78,7 +79,7 @@ export const ShareDialog = () => {
             })
         } else prompt(translate('message.shareCopyToClipboard'), url)
       },
-      onError: (error) =>
+      onError: (error: HttpError) =>
         notify(translate('ra.page.error') + ': ' + error.message, {
           type: 'warning',
         }),
@@ -135,6 +136,7 @@ export const ShareDialog = () => {
             />
           )}
           <TranscodingOptionsInput
+            basePath=""
             fullWidth
             label={translate('message.shareOriginalFormat')}
           />

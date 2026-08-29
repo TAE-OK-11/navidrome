@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import {
@@ -26,10 +25,45 @@ import config from '../config'
 import { playSimilar } from './playbackActions'
 import { formatBytes } from '../utils'
 import { useRedirect } from 'react-admin'
+import type { Identifier } from 'react-admin'
+import type { SongRecord } from '../types/records'
 
-const MoreButton = ({ record, onClick, info }) => {
+type PlaylistSummary = {
+  id: Identifier
+  name: string
+}
+
+type ContextMenuRecord = SongRecord & {
+  mediaFileId?: Identifier
+  playlistId?: Identifier
+  size?: number
+  title?: string
+  missing?: boolean
+  rawTags?: Record<string, string[]>
+}
+
+type SongContextMenuProps = {
+  resource?: string
+  record?: ContextMenuRecord
+  showLove?: boolean
+  onAddToPlaylist?: (id?: Identifier) => void
+  className?: string
+  sx?: unknown
+  source?: string
+  sortable?: boolean
+  sortByOrder?: string
+  label?: React.ReactNode
+}
+
+type MoreButtonProps = {
+  record: ContextMenuRecord
+  onClick: (e: React.MouseEvent) => void
+  info: { action: (record: ContextMenuRecord) => void }
+}
+
+const MoreButton = ({ record, onClick, info }: MoreButtonProps) => {
   const handleClick = record.missing
-    ? (e) => {
+    ? (e: React.MouseEvent) => {
         info.action(record)
         e.stopPropagation()
       }
@@ -57,44 +91,52 @@ export const SongContextMenu = ({
   onAddToPlaylist = () => {},
   className,
   sx,
-}) => {
-  const record = useRecordContext({ record: recordOverride })
+}: SongContextMenuProps) => {
+  const record = useRecordContext<ContextMenuRecord>({ record: recordOverride })
   const dispatch = useDispatch()
   const translate = useTranslate()
   const notify = useNotify()
   const dataProvider = useDataProvider()
-  const [anchorEl, setAnchorEl] = useState(null)
-  const [playlistAnchorEl, setPlaylistAnchorEl] = useState(null)
-  const [playlists, setPlaylists] = useState([])
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const [playlistAnchorEl, setPlaylistAnchorEl] = useState<HTMLElement | null>(
+    null,
+  )
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false)
   const { permissions } = usePermissions()
   const redirect = useRedirect()
+
+  if (!record?.id) {
+    return null
+  }
 
   const options = {
     playNow: {
       enabled: true,
       label: translate('resources.song.actions.playNow'),
-      action: (record) => dispatch(setTrack(record)),
+      action: (menuRecord: ContextMenuRecord) => dispatch(setTrack(menuRecord)),
     },
     playNext: {
       enabled: true,
       label: translate('resources.song.actions.playNext'),
-      action: (record) => dispatch(playNext({ [record.id]: record })),
+      action: (menuRecord: ContextMenuRecord) =>
+        dispatch(playNext({ [menuRecord.id]: menuRecord })),
     },
     addToQueue: {
       enabled: true,
       label: translate('resources.song.actions.addToQueue'),
-      action: (record) => dispatch(addTracks({ [record.id]: record })),
+      action: (menuRecord: ContextMenuRecord) =>
+        dispatch(addTracks({ [menuRecord.id]: menuRecord })),
     },
     instantMix: {
       enabled: config.enableExternalServices,
       label: translate('resources.song.actions.instantMix'),
-      action: async (record) => {
+      action: async (menuRecord: ContextMenuRecord) => {
         notify('message.startingInstantMix', { type: 'info' })
         try {
-          const id = record.mediaFileId || record.id
-          await playSimilar(dispatch, notify, id, {
-            seedRecord: record,
+          const id = menuRecord.mediaFileId || menuRecord.id
+          await playSimilar(dispatch, notify, String(id), {
+            seedRecord: menuRecord,
             shuffle: false,
           })
         } catch (e) {
@@ -107,11 +149,11 @@ export const SongContextMenu = ({
     addToPlaylist: {
       enabled: true,
       label: translate('resources.song.actions.addToPlaylist'),
-      action: (record) =>
+      action: (menuRecord: ContextMenuRecord) =>
         dispatch(
           openAddToPlaylist({
-            selectedIds: [record.mediaFileId || record.id],
-            onSuccess: (id) => onAddToPlaylist(id),
+            selectedIds: [menuRecord.mediaFileId || menuRecord.id],
+            onSuccess: (id: Identifier) => onAddToPlaylist(id),
           }),
         ),
     },
@@ -120,47 +162,47 @@ export const SongContextMenu = ({
       label:
         translate('resources.song.actions.showInPlaylist') +
         (playlists.length > 0 ? ' ►' : ''),
-      action: (record, e) => {
-        setPlaylistAnchorEl(e.currentTarget)
+      action: (menuRecord: ContextMenuRecord, e: React.MouseEvent) => {
+        setPlaylistAnchorEl(e.currentTarget as HTMLElement)
       },
     },
     share: {
       enabled: config.enableSharing,
       label: translate('ra.action.share'),
-      action: (record) =>
+      action: (menuRecord: ContextMenuRecord) =>
         dispatch(
           openShareMenu(
-            [record.mediaFileId || record.id],
+            [menuRecord.mediaFileId || menuRecord.id],
             'song',
-            record.title,
+            menuRecord.title,
+            undefined,
           ),
         ),
     },
     download: {
       enabled: config.enableDownloads,
-      label: `${translate('ra.action.download')} (${formatBytes(record.size)})`,
-      action: (record) =>
-        dispatch(openDownloadMenu(record, DOWNLOAD_MENU_SONG)),
+      label: `${translate('ra.action.download')} (${formatBytes(record.size ?? 0)})`,
+      action: (menuRecord: ContextMenuRecord) =>
+        dispatch(openDownloadMenu(menuRecord, DOWNLOAD_MENU_SONG)),
     },
     info: {
       enabled: true,
       label: translate('resources.song.actions.info'),
-      action: async (record) => {
-        let fullRecord = record
-        if (permissions === 'admin' && !record.missing) {
+      action: async (menuRecord: ContextMenuRecord) => {
+        let fullRecord = menuRecord
+        if (permissions === 'admin' && !menuRecord.missing) {
           try {
-            let id = record.mediaFileId ?? record.id
+            const id = menuRecord.mediaFileId ?? menuRecord.id
             const data = await dataProvider.inspect(id)
-            fullRecord = { ...record, rawTags: data.data.rawTags }
+            fullRecord = { ...menuRecord, rawTags: data.data.rawTags }
           } catch (error) {
-            notify(
-              translate('ra.notification.http_error') + ': ' + error.message,
-              {
-                type: 'warning',
-                multiLine: true,
-                autoHideDuration: null,
-              },
-            )
+            const message =
+              error instanceof Error ? error.message : String(error)
+            notify(translate('ra.notification.http_error') + ': ' + message, {
+              type: 'warning',
+              multiLine: true,
+              autoHideDuration: null,
+            })
           }
         }
 
@@ -169,8 +211,8 @@ export const SongContextMenu = ({
     },
   }
 
-  const handleClick = (e) => {
-    setAnchorEl(e.currentTarget)
+  const handleClick = (e: React.MouseEvent) => {
+    setAnchorEl(e.currentTarget as HTMLElement)
     if (!playlistsLoaded) {
       const id = record.mediaFileId || record.id
       dataProvider
@@ -189,15 +231,15 @@ export const SongContextMenu = ({
     e.stopPropagation()
   }
 
-  const handleClose = (e) => {
+  const handleClose = (e: React.MouseEvent) => {
     setAnchorEl(null)
     e.stopPropagation()
   }
 
-  const handleItemClick = (e) => {
+  const handleItemClick = (e: React.MouseEvent<HTMLElement>) => {
     e.preventDefault()
-    const key = e.currentTarget.dataset.action
-    const action = options[key].action
+    const key = e.currentTarget.dataset.action as string
+    const action = options[key as keyof typeof options].action
 
     if (key === 'showInPlaylist') {
       // For showInPlaylist, we keep the main menu open and show submenu
@@ -205,37 +247,34 @@ export const SongContextMenu = ({
     } else {
       // For other actions, close the main menu
       setAnchorEl(null)
-      action(record)
+      ;(action as (menuRecord: ContextMenuRecord) => void)(record)
     }
     e.stopPropagation()
   }
 
-  const handlePlaylistClose = (e) => {
+  const handlePlaylistClose = (
+    _event?: object,
+    _reason?: 'backdropClick' | 'escapeKeyDown',
+  ) => {
     setPlaylistAnchorEl(null)
-    if (e) {
-      e.stopPropagation()
-    }
   }
 
-  const handleMainMenuClose = (e) => {
+  const handleMainMenuClose = (
+    _event?: object,
+    _reason?: 'backdropClick' | 'escapeKeyDown',
+  ) => {
     setAnchorEl(null)
     setPlaylistAnchorEl(null) // Close both menus
-    e?.stopPropagation()
   }
 
-  const handlePlaylistClick = (id, e) => {
+  const handlePlaylistClick = (id: Identifier, e: React.MouseEvent) => {
     e.stopPropagation()
     redirect(`/playlist/${id}/show`)
     handlePlaylistClose()
   }
 
-  const open = Boolean(anchorEl)
-
-  if (!record?.id) {
-    return null
-  }
-
   const present = !record.missing
+  const open = Boolean(anchorEl)
 
   return (
     <Box
@@ -259,7 +298,7 @@ export const SongContextMenu = ({
           const showInPlaylistDisabled =
             key === 'showInPlaylist' && !playlists.length
           return (
-            options[key].enabled && (
+            options[key as keyof typeof options].enabled && (
               <MenuItem
                 data-action={key}
                 key={key}
@@ -278,7 +317,7 @@ export const SongContextMenu = ({
                   showInPlaylistDisabled ? { pointerEvents: 'auto' } : undefined
                 }
               >
-                {options[key].label}
+                {options[key as keyof typeof options].label}
               </MenuItem>
             )
           )

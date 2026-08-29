@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { activityReducer } from './activityReducer'
 import {
   EVENT_SCAN_STATUS,
@@ -24,7 +23,9 @@ describe('activityReducer', () => {
   }
 
   it('returns the initial state when no action is specified', () => {
-    expect(activityReducer(undefined, {})).toEqual(initialState)
+    expect(activityReducer(undefined, { type: 'UNKNOWN' })).toEqual(
+      initialState,
+    )
   })
 
   it('handles EVENT_SCAN_STATUS action with elapsedTime field', () => {
@@ -108,6 +109,9 @@ describe('activityReducer', () => {
         elapsedTime: 12345,
       },
       serverStart: { version: config.version },
+      nowPlayingCount: 0,
+      nowPlayingLastUpdate: 0,
+      streamReconnected: 0,
     }
 
     const action = {

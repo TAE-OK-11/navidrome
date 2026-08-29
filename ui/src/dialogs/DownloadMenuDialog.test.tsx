@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import * as React from 'react'
 import { TestContext } from '../test/TestContext'
 import { render, screen, cleanup } from '@testing-library/react'
@@ -16,7 +15,7 @@ vi.mock('./useTranscodingOptions', () => ({
 }))
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useTranslate: () => (key, opts) =>

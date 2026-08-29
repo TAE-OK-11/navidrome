@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import { useDispatch } from 'react-redux'
 import { useGetOne } from 'react-admin'
@@ -95,7 +94,7 @@ const PlayerToolbar = ({ id, isRadio }) => {
     <LoveButton
       record={data}
       resource={'song'}
-      size={isDesktop ? undefined : 'inherit'}
+      size={isDesktop ? undefined : 'small'}
       disabled={isPending || toggling || !id || isRadio}
       sx={buttonSx}
     />

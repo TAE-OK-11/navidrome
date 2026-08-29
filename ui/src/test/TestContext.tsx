@@ -1,19 +1,30 @@
-import { useContext, useMemo } from 'react'
+import { useContext, useMemo, type ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createStore } from 'redux'
-import { AdminContext, DataProviderContext } from 'react-admin'
+import {
+  AdminContext,
+  DataProviderContext,
+  type AdminContextProps,
+} from 'react-admin'
+import type { DataProvider } from 'ra-core'
 
 const preserveState = (state = {}) => state
 const defaultDataProvider = {
-  create: () => Promise.resolve({ data: {} }),
-  delete: () => Promise.resolve({ data: {} }),
+  create: () => Promise.resolve({ data: { id: 0 } }),
+  delete: () => Promise.resolve({ data: { id: 0 } }),
   deleteMany: () => Promise.resolve({ data: [] }),
   getList: () => Promise.resolve({ data: [], total: 0 }),
   getMany: () => Promise.resolve({ data: [] }),
   getManyReference: () => Promise.resolve({ data: [], total: 0 }),
-  getOne: () => Promise.resolve({ data: {} }),
-  update: () => Promise.resolve({ data: {} }),
+  getOne: () => Promise.resolve({ data: { id: 0 } }),
+  update: () => Promise.resolve({ data: { id: 0 } }),
   updateMany: () => Promise.resolve({ data: [] }),
+} as DataProvider
+
+type TestContextProps = Omit<AdminContextProps, 'children' | 'dataProvider'> & {
+  children: ReactNode
+  dataProvider?: Partial<DataProvider> | DataProvider
+  initialState?: Record<string, unknown>
 }
 
 // React-admin 5 no longer ships the old ra-test package. This compatibility
@@ -24,8 +35,15 @@ export const TestContext = ({
   dataProvider,
   initialState = {},
   ...adminContextProps
-}) => {
+}: TestContextProps) => {
   const inheritedDataProvider = useContext(DataProviderContext)
+  const resolvedDataProvider = useMemo(() => {
+    if (dataProvider) {
+      return { ...defaultDataProvider, ...dataProvider } as DataProvider
+    }
+
+    return inheritedDataProvider || defaultDataProvider
+  }, [dataProvider, inheritedDataProvider])
   const reduxStore = useMemo(
     () => createStore(preserveState, initialState),
     [initialState],
@@ -33,12 +51,7 @@ export const TestContext = ({
 
   return (
     <Provider store={reduxStore}>
-      <AdminContext
-        dataProvider={
-          dataProvider || inheritedDataProvider || defaultDataProvider
-        }
-        {...adminContextProps}
-      >
+      <AdminContext dataProvider={resolvedDataProvider} {...adminContextProps}>
         {children}
       </AdminContext>
     </Provider>

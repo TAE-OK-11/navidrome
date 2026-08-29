@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { vi } from 'vitest'
 import * as React from 'react'
 import * as Redux from 'react-redux'
@@ -23,13 +22,13 @@ vi.mock('react-redux', async () => {
 
 describe('useRefreshOnEvents', () => {
   const setState = vi.fn()
-  const useStateMock = (initState) => [initState, setState]
-  const onRefresh = vi.fn().mockResolvedValue()
+  const onRefresh = vi.fn().mockResolvedValue(undefined)
+  const useStateMock = (initState: unknown) => [initState, setState]
   let lastTime
   let mockUseEffect
 
   beforeEach(() => {
-    vi.spyOn(React, 'useState').mockImplementation(useStateMock)
+    vi.spyOn(React, 'useState').mockImplementation(useStateMock as any)
     mockUseEffect = vi.spyOn(React, 'useEffect')
     lastTime = new Date(new Date().valueOf() + 1000)
     onRefresh.mockClear()
@@ -191,8 +190,8 @@ describe('useRefreshOnEvents', () => {
       expect(() => {
         useRefreshOnEvents({
           events: ['library'],
-          // onRefresh is undefined
-        })
+          onRefresh: undefined,
+        } as any)
       }).not.toThrow()
 
       expect(setState).toHaveBeenCalledWith(lastTime)

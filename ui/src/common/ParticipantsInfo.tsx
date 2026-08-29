@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { TableRow, TableCell } from '@mui/material'
 import { humanize } from 'inflection'
 import { useTranslate } from 'react-admin'
@@ -6,11 +5,24 @@ import { useTranslate } from 'react-admin'
 import en from '../i18n/en.json'
 import { ArtistLinkField } from './index'
 
-export const ParticipantsInfo = ({ classes, tableCellSx, record }) => {
+import type { SxProps, Theme } from '@mui/material/styles'
+import type { ParticipantsRecord } from '../types/records'
+
+type ParticipantsInfoProps = {
+  classes?: { tableCell?: string }
+  tableCellSx?: SxProps<Theme>
+  record: ParticipantsRecord
+}
+
+export const ParticipantsInfo = ({
+  classes,
+  tableCellSx,
+  record,
+}: ParticipantsInfoProps) => {
   const translate = useTranslate()
   const existingRoles = en?.resources?.artist?.roles ?? {}
 
-  const roles = []
+  const roles: Array<[string, number]> = []
 
   if (record.participants) {
     for (const name of Object.keys(record.participants)) {

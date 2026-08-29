@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useEffect, useMemo } from 'react'
 import {
   BulkActionsToolbar,
@@ -32,8 +31,11 @@ import PlaylistSongBulkActions from './PlaylistSongBulkActions'
 import ExpandInfoDialog from '../dialogs/ExpandInfoDialog'
 import config from '../config'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { AppState } from '../types/redux'
+import type { Identifier } from 'react-admin'
+import type { SongRecord } from '../types/records'
 
-const contentSx = (bulkActionsDisplayed) => (theme) => ({
+const contentSx = (bulkActionsDisplayed: boolean) => (theme) => ({
   mt: bulkActionsDisplayed ? -8 : 0,
   transition: theme.transitions.create('margin-top'),
   position: 'relative',
@@ -45,15 +47,45 @@ const contentSx = (bulkActionsDisplayed) => (theme) => ({
     : {}),
 })
 
-const ReorderableList = ({ readOnly, children, ...rest }) => {
+const ReorderableList = ({
+  readOnly,
+  children,
+  ...rest
+}: {
+  readOnly?: boolean
+  children: React.ReactNode
+  onDragEnd?: (from: number, to: number) => void
+  nodeSelector?: string
+}) => {
   if (readOnly) {
     return children
   }
-  return <ReactDragListView {...rest}>{children}</ReactDragListView>
+  return (
+    <ReactDragListView
+      {...(rest as React.ComponentProps<typeof ReactDragListView>)}
+    >
+      {children}
+    </ReactDragListView>
+  )
 }
 
-const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
-  const listContext = useListContext()
+type PlaylistSongsProps = {
+  playlistId?: Identifier
+  readOnly?: boolean
+  actions?: React.ReactElement
+  filters?: React.ReactElement
+  pagination?: React.ReactElement
+  resource?: string
+  exporter?: boolean
+}
+
+const PlaylistSongs = ({
+  playlistId,
+  readOnly,
+  actions,
+  ...props
+}: PlaylistSongsProps) => {
+  const listContext = useListContext<SongRecord>()
   const {
     data = [],
     selectedIds,
@@ -68,7 +100,7 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
   const dataProvider = useDataProvider()
   const notify = useNotify()
   const version = useSelector(
-    (state) => state.activity?.refresh?.lastReceived || 0,
+    (state: AppState) => state.activity?.refresh?.lastReceived || 0,
   )
   useResourceRefresh('song', 'playlist')
 
@@ -77,21 +109,17 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [playlistId, setPage])
 
-  const onAddToPlaylist = useCallback(
-    (pls) => {
-      if (pls.id === playlistId) {
-        refetch()
-      }
-    },
-    [playlistId, refetch],
-  )
+  const onAddToPlaylist = useCallback(() => {
+    refetch()
+  }, [refetch])
 
   const reorder = useCallback(
-    (playlistId, id, newPos) => {
+    (playlistId: Identifier, id: Identifier, newPos: Identifier) => {
       dataProvider
         .update('playlistTrack', {
           id,
           data: { insert_before: newPos },
+          previousData: dataById[id],
           filter: { playlist_id: playlistId },
         })
         .then(() => {
@@ -101,14 +129,14 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
           notify('ra.page.error', { type: 'warning' })
         })
     },
-    [dataProvider, notify, refetch],
+    [dataById, dataProvider, notify, refetch],
   )
 
   const handleDragEnd = useCallback(
-    (from, to) => {
+    (from: number, to: number) => {
       const toId = ids[to]
       const fromId = ids[from]
-      reorder(playlistId, fromId, toId)
+      reorder(playlistId!, fromId, toId)
     },
     [playlistId, reorder, ids],
   )
@@ -178,6 +206,7 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
               playlistId={playlistId}
               onUnselectItems={onUnselectItems}
               readOnly={readOnly}
+              resource="playlistTrack"
             />
           </BulkActionsToolbar>
           <ReorderableList
@@ -201,13 +230,24 @@ const PlaylistSongs = ({ playlistId, readOnly, actions, ...props }) => {
           </ReorderableList>
         </Card>
       </Box>
-      <ExpandInfoDialog content={<SongInfo />} />
-      {React.cloneElement(props.pagination, listContext)}
+      <ExpandInfoDialog content={(<SongInfo />) as React.ReactElement} />
+      {props.pagination &&
+        React.cloneElement(
+          props.pagination,
+          listContext as unknown as Record<string, unknown>,
+        )}
     </>
   )
 }
 
-const SanitizedPlaylistSongs = (props) => {
+const SanitizedPlaylistSongs = (props: {
+  id?: Identifier
+  actions?: React.ReactElement
+  pagination?: React.ReactElement
+  readOnly?: boolean
+  resource?: string
+  exporter?: boolean
+}) => {
   const { isPending } = useListContext()
   return (
     <>
@@ -216,7 +256,9 @@ const SanitizedPlaylistSongs = (props) => {
           playlistId={props.id}
           actions={props.actions}
           pagination={props.pagination}
-          {...props}
+          readOnly={props.readOnly}
+          resource={props.resource}
+          exporter={props.exporter}
         />
       )}
     </>

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useMemo } from 'react'
 import {
   Datagrid,
@@ -33,6 +32,7 @@ import FavoriteIcon from '@mui/icons-material/Favorite'
 import config from '../config'
 import PlaylistListActions from './PlaylistListActions'
 import ChangePublicStatusButton from './ChangePublicStatusButton'
+import type { PlaylistRecord } from '../types/records'
 
 const bulkButtonSx = {
   color: (theme) => (theme.palette.mode === 'dark' ? 'white' : undefined),
@@ -65,14 +65,22 @@ const PlaylistFilter = (props) => {
   )
 }
 
-const TogglePublicInput = ({ resource, source }) => {
-  const record = useRecordContext()
+const TogglePublicInput = ({
+  resource,
+  source,
+  sortByOrder: _sortByOrder,
+}: {
+  resource?: string
+  source: string
+  sortByOrder?: string
+}) => {
+  const record = useRecordContext<PlaylistRecord>()
   const notify = useNotify()
   const [togglePublic] = useUpdate(
     resource,
     {
-      id: record.id,
-      data: { ...record, public: !record.public },
+      id: record!.id,
+      data: { ...record, public: !record!.public },
       previousData: record,
     },
     {
@@ -83,28 +91,38 @@ const TogglePublicInput = ({ resource, source }) => {
     },
   )
 
-  const handleClick = (e) => {
+  const handleClick = (e: React.MouseEvent) => {
     togglePublic()
     e.stopPropagation()
   }
 
+  if (!record) return null
+
   return (
     <Switch
-      checked={record[source]}
+      checked={Boolean(record[source])}
       onClick={handleClick}
       disabled={!isWritable(record.ownerId)}
     />
   )
 }
 
-const ToggleAutoImport = ({ resource, source }) => {
-  const record = useRecordContext()
+const ToggleAutoImport = ({
+  resource,
+  source,
+  sortByOrder: _sortByOrder,
+}: {
+  resource?: string
+  source: string
+  sortByOrder?: string
+}) => {
+  const record = useRecordContext<PlaylistRecord>()
   const notify = useNotify()
   const [ToggleAutoImport] = useUpdate(
     resource,
     {
-      id: record.id,
-      data: { ...record, sync: !record.sync },
+      id: record!.id,
+      data: { ...record, sync: !record!.sync },
       previousData: record,
     },
     {
@@ -114,14 +132,16 @@ const ToggleAutoImport = ({ resource, source }) => {
       },
     },
   )
-  const handleClick = (e) => {
+  const handleClick = (e: React.MouseEvent) => {
     ToggleAutoImport()
     e.stopPropagation()
   }
 
+  if (!record) return null
+
   return record.path ? (
     <Switch
-      checked={record[source]}
+      checked={Boolean(record[source])}
       onClick={handleClick}
       disabled={!isWritable(record.ownerId)}
     />
@@ -138,10 +158,14 @@ const PlaylistListBulkActions = (props) => {
   )
 }
 
-// Datagrid reads `source`/`sortable`/`label` off this element for the column
-// header; only record/resource are forwarded so they never leak onto the button.
-export const PlaylistLove = ({ record: recordOverride, className }) => {
-  const record = useRecordContext({ record: recordOverride })
+export const PlaylistLove = ({
+  record: recordOverride,
+  className,
+}: {
+  record?: PlaylistRecord
+  className?: string
+}) => {
+  const record = useRecordContext<PlaylistRecord>({ record: recordOverride })
   return (
     <LoveButton record={record} resource="playlist" className={className} />
   )

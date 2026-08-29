@@ -1,5 +1,5 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import type { BrowserProfile } from './types'
 
 // Mock httpClient before importing module under test
 vi.mock('../dataProvider', () => ({
@@ -10,7 +10,7 @@ import { fetchTranscodeDecision } from './fetchDecision'
 import { httpClient } from '../dataProvider'
 
 describe('fetchTranscodeDecision', () => {
-  const fakeProfile = {
+  const fakeProfile: BrowserProfile = {
     name: 'NavidromeUI',
     platform: 'test',
     directPlayProfiles: [
@@ -37,7 +37,12 @@ describe('fetchTranscodeDecision', () => {
     localStorage.setItem('subsonic-token', 'testtoken')
     localStorage.setItem('subsonic-salt', 'testsalt')
 
-    httpClient.mockResolvedValue({ json: fakeJson })
+    vi.mocked(httpClient).mockResolvedValue({
+      status: 200,
+      headers: new Headers(),
+      body: '',
+      json: fakeJson,
+    } as any)
   })
 
   afterEach(() => {
@@ -49,18 +54,18 @@ describe('fetchTranscodeDecision', () => {
     await fetchTranscodeDecision('song-1', fakeProfile)
 
     expect(httpClient).toHaveBeenCalledTimes(1)
-    const [url, options] = httpClient.mock.calls[0]
+    const [url, options] = vi.mocked(httpClient).mock.calls[0]
     expect(url).toContain('getTranscodeDecision')
     expect(url).toContain('mediaId=song-1')
     expect(url).toContain('mediaType=song')
-    expect(options.method).toBe('POST')
+    expect(options?.method).toBe('POST')
   })
 
   it('sends the browser profile as JSON body', async () => {
     await fetchTranscodeDecision('song-1', fakeProfile)
 
-    const [, options] = httpClient.mock.calls[0]
-    expect(JSON.parse(options.body)).toEqual(fakeProfile)
+    const [, options] = vi.mocked(httpClient).mock.calls[0]
+    expect(JSON.parse(String(options?.body))).toEqual(fakeProfile)
   })
 
   it('returns the transcodeDecision from response', async () => {
@@ -69,7 +74,7 @@ describe('fetchTranscodeDecision', () => {
   })
 
   it('throws on HTTP error (httpClient rejects)', async () => {
-    httpClient.mockRejectedValue(new Error('Server Error'))
+    vi.mocked(httpClient).mockRejectedValue(new Error('Server Error'))
 
     await expect(
       fetchTranscodeDecision('song-1', fakeProfile),
@@ -77,14 +82,17 @@ describe('fetchTranscodeDecision', () => {
   })
 
   it('throws on Subsonic error response', async () => {
-    httpClient.mockResolvedValue({
+    vi.mocked(httpClient).mockResolvedValue({
+      status: 200,
+      headers: new Headers(),
+      body: '',
       json: {
         'subsonic-response': {
           status: 'failed',
           error: { code: 70, message: 'not found' },
         },
       },
-    })
+    } as any)
 
     await expect(
       fetchTranscodeDecision('song-1', fakeProfile),

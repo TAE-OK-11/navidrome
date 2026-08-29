@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { Box, Typography, Collapse } from '@mui/material'
 import Card from '@mui/material/Card'
@@ -18,11 +17,28 @@ import AlbumInfo from '../album/AlbumInfo'
 import subsonic from '../subsonic'
 import { SafeHTML } from '../common/SafeHTML'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { ArtistRecord } from '../types/records'
 
 const desktopOverride = (slot) => (theme) =>
   componentStyleOverride(theme, 'NDDesktopArtistDetails', slot)
 
-const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
+type ArtistInfo = {
+  biography?: string
+  lastFmUrl?: string
+  musicBrainzId?: string
+}
+
+type DesktopArtistDetailsProps = {
+  artistInfo?: ArtistInfo
+  record: ArtistRecord
+  biography?: string
+}
+
+const DesktopArtistDetails = ({
+  artistInfo,
+  record,
+  biography,
+}: DesktopArtistDetailsProps) => {
   const [expanded, setExpanded] = useState(false)
   const title = record.name
   const {
@@ -108,7 +124,7 @@ const DesktopArtistDetails = ({ artistInfo, record, biography }) => {
                 sx={[{ top: -0.2, left: 0.5 }, desktopOverride('loveButton')]}
                 record={record}
                 resource={'artist'}
-                size={'default'}
+                size={'medium'}
                 aria-label="artist context menu"
                 color="primary"
               />

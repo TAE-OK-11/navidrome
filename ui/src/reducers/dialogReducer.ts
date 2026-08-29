@@ -18,26 +18,35 @@ import {
   SHARE_MENU_OPEN,
   SHARE_MENU_CLOSE,
 } from '../actions'
+import type {
+  AddToPlaylistDialogState,
+  DownloadMenuDialogState,
+  ExpandInfoDialogState,
+  ListenBrainzTokenDialogState,
+  SaveQueueDialogState,
+  ShareDialogState,
+  UnknownAction,
+} from '../types/redux'
 
 export const shareDialogReducer = (
-  previousState = {
+  previousState: ShareDialogState = {
     open: false,
     ids: [],
     resource: '',
     name: '',
   },
-  payload,
-) => {
+  payload: UnknownAction,
+): ShareDialogState => {
   const { type, ids, resource, name, label } = payload
   switch (type) {
     case SHARE_MENU_OPEN:
       return {
         ...previousState,
         open: true,
-        ids,
-        resource,
-        name,
-        label,
+        ids: (ids ?? []) as string[],
+        resource: typeof resource === 'string' ? resource : '',
+        name: typeof name === 'string' ? name : '',
+        label: typeof label === 'string' ? label : undefined,
       }
     case SHARE_MENU_CLOSE:
       return {
@@ -50,20 +59,23 @@ export const shareDialogReducer = (
 }
 
 export const addToPlaylistDialogReducer = (
-  previousState = {
+  previousState: AddToPlaylistDialogState = {
     open: false,
     duplicateSong: false,
   },
-  payload,
-) => {
+  payload: UnknownAction,
+): AddToPlaylistDialogState => {
   const { type } = payload
   switch (type) {
     case ADD_TO_PLAYLIST_OPEN:
       return {
         ...previousState,
         open: true,
-        selectedIds: payload.selectedIds,
-        onSuccess: payload.onSuccess,
+        selectedIds: (payload.selectedIds ?? []) as string[],
+        onSuccess:
+          typeof payload.onSuccess === 'function'
+            ? (payload.onSuccess as () => void)
+            : undefined,
       }
     case ADD_TO_PLAYLIST_CLOSE:
       return { ...previousState, open: false, onSuccess: undefined }
@@ -71,7 +83,7 @@ export const addToPlaylistDialogReducer = (
       return {
         ...previousState,
         duplicateSong: true,
-        duplicateIds: payload.duplicateIds,
+        duplicateIds: (payload.duplicateIds ?? []) as string[],
       }
     case DUPLICATE_SONG_WARNING_CLOSE:
       return { ...previousState, duplicateSong: false }
@@ -81,11 +93,11 @@ export const addToPlaylistDialogReducer = (
 }
 
 export const downloadMenuDialogReducer = (
-  previousState = {
+  previousState: DownloadMenuDialogState = {
     open: false,
   },
-  payload,
-) => {
+  payload: UnknownAction,
+): DownloadMenuDialogState => {
   const { type } = payload
   switch (type) {
     case DOWNLOAD_MENU_OPEN: {
@@ -97,15 +109,15 @@ export const downloadMenuDialogReducer = (
           return {
             ...previousState,
             open: true,
-            record: payload.record,
-            recordType: payload.recordType,
+            record: payload.record as DownloadMenuDialogState['record'],
+            recordType: String(payload.recordType),
           }
         }
         default: {
           return {
             ...previousState,
             open: true,
-            record: payload.record,
+            record: payload.record as DownloadMenuDialogState['record'],
             recordType: undefined,
           }
         }
@@ -124,19 +136,19 @@ export const downloadMenuDialogReducer = (
 }
 
 export const expandInfoDialogReducer = (
-  previousState = {
+  previousState: ExpandInfoDialogState = {
     open: false,
     record: undefined,
   },
-  payload,
-) => {
+  payload: UnknownAction,
+): ExpandInfoDialogState => {
   const { type } = payload
   switch (type) {
     case EXTENDED_INFO_OPEN:
       return {
         ...previousState,
         open: true,
-        record: payload.record,
+        record: payload.record as ExpandInfoDialogState['record'],
       }
     case EXTENDED_INFO_CLOSE:
       return {
@@ -150,11 +162,11 @@ export const expandInfoDialogReducer = (
 }
 
 export const listenBrainzTokenDialogReducer = (
-  previousState = {
+  previousState: ListenBrainzTokenDialogState = {
     open: false,
   },
-  payload,
-) => {
+  payload: UnknownAction,
+): ListenBrainzTokenDialogState => {
   const { type } = payload
   switch (type) {
     case LISTENBRAINZ_TOKEN_OPEN:
@@ -173,9 +185,9 @@ export const listenBrainzTokenDialogReducer = (
 }
 
 export const saveQueueDialogReducer = (
-  previousState = { open: false },
-  payload,
-) => {
+  previousState: SaveQueueDialogState = { open: false },
+  payload: UnknownAction,
+): SaveQueueDialogState => {
   const { type } = payload
   switch (type) {
     case SAVE_QUEUE_OPEN:

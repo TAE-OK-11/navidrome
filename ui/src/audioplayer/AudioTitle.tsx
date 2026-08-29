@@ -1,138 +1,163 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Box, useMediaQuery } from '@mui/material'
+import type { Theme } from '@mui/material/styles'
 import { Link } from 'react-router-dom'
 import { QualityInfo } from '../common'
 import { decisionService } from '../transcode'
 import { useDrag } from 'react-dnd'
 import { DraggableTypes } from '../consts'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { ReplayGainState } from '../types/redux'
+import type { SongRecord } from '../types/records'
 
-const audioOverride = (slot) => (theme) =>
+const audioOverride = (slot: string) => (theme: Theme) =>
   componentStyleOverride(theme, 'NDAudioPlayer', slot)
 
-const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
-  const isDesktop = useMediaQuery('(min-width:810px)')
+type AudioInfo = {
+  trackId?: string
+  isRadio?: boolean
+  song?: SongRecord & { playlistId?: string; suffix?: string; bitRate?: number }
+}
 
-  const song = audioInfo.song
-  const [, dragSongRef] = useDrag(
-    () => ({
-      type: DraggableTypes.SONG,
-      item: { ids: [song?.id] },
-      options: { dropEffect: 'copy' },
-    }),
-    [song],
-  )
+type AudioTitleProps = {
+  audioInfo: AudioInfo
+  gainInfo: ReplayGainState
+  isMobile?: boolean
+}
 
-  if (!song) {
-    return ''
-  }
+const AudioTitle = React.memo(
+  ({ audioInfo, gainInfo, isMobile }: AudioTitleProps) => {
+    const isDesktop = useMediaQuery('(min-width:810px)')
 
-  const qi = {
-    suffix: song.suffix,
-    bitRate: song.bitRate,
-    rgAlbumGain: song.rgAlbumGain,
-    rgAlbumPeak: song.rgAlbumPeak,
-    rgTrackGain: song.rgTrackGain,
-    rgTrackPeak: song.rgTrackPeak,
-  }
+    const song = audioInfo.song
+    const [, dragSongRef] = useDrag(
+      () => ({
+        type: DraggableTypes.SONG,
+        item: { ids: [song?.id] },
+        options: { dropEffect: 'copy' },
+      }),
+      [song],
+    )
 
-  const decision = decisionService.getCachedDecision(audioInfo.trackId)
-  const transcodeProps = decision
-    ? {
-        transcodeStream: decision.transcodeStream || null,
-        isDirectPlay: decision.canDirectPlay,
-      }
-    : {}
+    if (!song) {
+      return ''
+    }
 
-  const subtitle = song.tags?.['subtitle']
-  const title = song.title + (subtitle ? ` (${subtitle})` : '')
+    const qi = {
+      suffix: song.suffix,
+      bitRate: song.bitRate,
+      rgAlbumGain: song.rgAlbumGain,
+      rgAlbumPeak: song.rgAlbumPeak,
+      rgTrackGain: song.rgTrackGain,
+      rgTrackPeak: song.rgTrackPeak,
+    }
 
-  const linkTo = audioInfo.isRadio
-    ? `/radio/${audioInfo.trackId}/show`
-    : song.playlistId
-      ? `/playlist/${song.playlistId}/show`
-      : `/album/${song.albumId}/show`
+    const decision = audioInfo.trackId
+      ? decisionService.getCachedDecision(audioInfo.trackId)
+      : undefined
+    const transcodeProps = decision
+      ? {
+          transcodeStream: decision.transcodeStream ?? undefined,
+          isDirectPlay: decision.canDirectPlay,
+        }
+      : {}
 
-  return (
-    <Box
-      component={Link}
-      to={linkTo}
-      ref={dragSongRef}
-      sx={[
-        { textDecoration: 'none', color: 'primary.dark' },
-        audioOverride('audioTitle'),
-      ]}
-    >
-      <span>
+    const subtitle = song.tags?.['subtitle']
+    const title = song.title + (subtitle ? ` (${subtitle})` : '')
+
+    const linkTo = audioInfo.isRadio
+      ? `/radio/${audioInfo.trackId}/show`
+      : song.playlistId
+        ? `/playlist/${song.playlistId}/show`
+        : `/album/${song.albumId}/show`
+
+    return (
+      <Box
+        ref={dragSongRef as unknown as React.Ref<HTMLDivElement>}
+        sx={[
+          { textDecoration: 'none', color: 'primary.dark' },
+          audioOverride('audioTitle'),
+        ]}
+      >
         <Box
-          component="span"
-          className="songTitle"
-          sx={[
-            {
-              fontWeight: 'bold',
-              '&:hover + .quality-info': { opacity: 1 },
-            },
-            audioOverride('songTitle'),
-          ]}
+          component={Link}
+          to={linkTo}
+          sx={{ textDecoration: 'none', color: 'inherit' }}
         >
-          {title}
+          <span>
+            <Box
+              component="span"
+              className="songTitle"
+              sx={[
+                {
+                  fontWeight: 'bold',
+                  '&:hover + .quality-info': { opacity: 1 },
+                },
+                audioOverride('songTitle'),
+              ]}
+            >
+              {title}
+            </Box>
+            {isDesktop && (
+              <QualityInfo
+                record={qi}
+                className="quality-info"
+                sx={[
+                  {
+                    mt: '-4px',
+                    opacity: 0,
+                    transition: 'all 500ms ease-out',
+                  },
+                  audioOverride('qualityInfo'),
+                ]}
+                {...gainInfo}
+                {...transcodeProps}
+              />
+            )}
+          </span>
+          {isMobile ? (
+            <>
+              <Box
+                component="span"
+                sx={[
+                  { display: 'block', mt: '2px' },
+                  audioOverride('songInfo'),
+                ]}
+              >
+                <span className={'songArtist'}>{song.artist}</span>
+              </Box>
+              <Box
+                component="span"
+                sx={[
+                  {
+                    display: 'block',
+                    mt: '2px',
+                    fontStyle: 'italic',
+                    fontSize: 'smaller',
+                  },
+                  audioOverride('songInfo'),
+                  audioOverride('songAlbum'),
+                ]}
+              >
+                <span className={'songAlbum'}>{song.album}</span>
+                {song.year ? ` - ${song.year}` : ''}
+              </Box>
+            </>
+          ) : (
+            <Box
+              component="span"
+              sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
+            >
+              <span className={'songArtist'}>{song.artist}</span> -{' '}
+              <span className={'songAlbum'}>{song.album}</span>
+              {song.year ? ` - ${song.year}` : ''}
+            </Box>
+          )}
         </Box>
-        {isDesktop && (
-          <QualityInfo
-            record={qi}
-            className="quality-info"
-            sx={[
-              {
-                mt: '-4px',
-                opacity: 0,
-                transition: 'all 500ms ease-out',
-              },
-              audioOverride('qualityInfo'),
-            ]}
-            {...gainInfo}
-            {...transcodeProps}
-          />
-        )}
-      </span>
-      {isMobile ? (
-        <>
-          <Box
-            component="span"
-            sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
-          >
-            <span className={'songArtist'}>{song.artist}</span>
-          </Box>
-          <Box
-            component="span"
-            sx={[
-              {
-                display: 'block',
-                mt: '2px',
-                fontStyle: 'italic',
-                fontSize: 'smaller',
-              },
-              audioOverride('songInfo'),
-              audioOverride('songAlbum'),
-            ]}
-          >
-            <span className={'songAlbum'}>{song.album}</span>
-            {song.year ? ` - ${song.year}` : ''}
-          </Box>
-        </>
-      ) : (
-        <Box
-          component="span"
-          sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
-        >
-          <span className={'songArtist'}>{song.artist}</span> -{' '}
-          <span className={'songAlbum'}>{song.album}</span>
-          {song.year ? ` - ${song.year}` : ''}
-        </Box>
-      )}
-    </Box>
-  )
-})
+      </Box>
+    )
+  },
+)
 
 AudioTitle.displayName = 'AudioTitle'
 

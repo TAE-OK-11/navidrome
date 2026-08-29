@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 /**
  * Nautiline Theme for Navidrome
  * Light theme inspired by the Nautiline iOS app
@@ -113,7 +112,7 @@ const { colors, typography, spacing, radii, sizing, breakpoints } = tokens
 // REUSABLE STYLE FACTORIES
 // ============================================
 
-const headingStyle = (weight, letterSpacing) => ({
+const headingStyle = (weight: number, letterSpacing?: string) => ({
   fontFamily: typography.fontFamily.heading,
   fontWeight: weight,
   ...(letterSpacing && { letterSpacing }),

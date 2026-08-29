@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useState, useMemo } from 'react'
 import { Card, CardContent, Typography, Box } from '@mui/material'
 import Alert from '@mui/material/Alert'
@@ -14,7 +13,7 @@ const formatError = (error, schema) => {
   // Navigate schema to find field title, build bracket-notation path
   let currentSchema = schema
   let fieldName = parts[parts.length - 1]
-  const pathParts = []
+  const pathParts: string[] = []
 
   for (const part of parts) {
     if (/^\d+$/.test(part)) {
@@ -44,7 +43,9 @@ export const ConfigCard = ({
   classes,
   translate,
 }) => {
-  const [validationErrors, setValidationErrors] = useState([])
+  const [validationErrors, setValidationErrors] = useState<
+    Array<Record<string, unknown>>
+  >([])
 
   // Handle changes from JSONForms
   const handleChange = useCallback(

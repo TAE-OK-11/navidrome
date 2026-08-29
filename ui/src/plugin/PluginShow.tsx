@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState, useCallback, useMemo } from 'react'
 import {
   ShowContextProvider,
@@ -198,7 +197,7 @@ const PluginShowLayout = () => {
   const handleSaveConfig = useCallback(() => {
     if (!record) return
     const parsedManifest = record.manifest ? JSON.parse(record.manifest) : null
-    const data = {}
+    const data: Record<string, unknown> = {}
 
     // Only include config if the plugin has a config schema
     if (parsedManifest?.config?.schema) {

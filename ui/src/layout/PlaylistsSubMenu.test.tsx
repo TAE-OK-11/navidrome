@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -32,7 +31,7 @@ vi.mock('react-dnd', () => ({
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useTranslate: () => (x) => x,
@@ -51,8 +50,8 @@ const playlists = {
 const renderMenu = (preloadedSettings = {}) => {
   const store = createStore(
     combineReducers({
-      settings: settingsReducer,
-      activity: activityReducer,
+      settings: settingsReducer as any,
+      activity: activityReducer as any,
     }),
     {
       settings: preloadedSettings,
@@ -89,15 +88,16 @@ describe('<PlaylistsSubMenu />', () => {
       isPending: false,
     })
     // SubMenu uses MUI's useMediaQuery, which needs window.matchMedia in jsdom
-    window.matchMedia = (query) => ({
+    window.matchMedia = ((query: string) => ({
       matches: false,
       media: query,
+      onchange: null,
       addListener: () => {},
       removeListener: () => {},
       addEventListener: () => {},
       removeEventListener: () => {},
       dispatchEvent: () => false,
-    })
+    })) as typeof window.matchMedia
     // OverflowTooltip (via MenuItemLink) needs ResizeObserver, unavailable in jsdom
     window.ResizeObserver = class {
       observe() {}
@@ -121,7 +121,9 @@ describe('<PlaylistsSubMenu />', () => {
   it('toggles the setting when the heart action is clicked', () => {
     const store = renderMenu()
     fireEvent.click(screen.getByTitle('menu.onlyFavourites'))
-    expect(store.getState().settings.sidebarPlaylistsOnlyFavourites).toBe(true)
+    expect(
+      (store.getState() as any).settings.sidebarPlaylistsOnlyFavourites,
+    ).toBe(true)
     expect(lastQuery().filter).toEqual({ starred: true })
   })
 

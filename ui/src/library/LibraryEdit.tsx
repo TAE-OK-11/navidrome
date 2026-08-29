@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import {
   Edit,
@@ -14,13 +13,18 @@ import {
   useRedirect,
   Toolbar,
   useRecordContext,
+  type HttpError,
 } from 'react-admin'
 import { Typography, Box } from '@mui/material'
 import DeleteLibraryButton from './DeleteLibraryButton'
 import { Title } from '../common'
 import { formatBytes, formatDuration2 } from '../utils/index'
 
-const LibraryTitle = ({ record: recordOverride }) => {
+const LibraryTitle = ({
+  record: recordOverride,
+}: {
+  record?: { name?: string }
+}) => {
   const record = useRecordContext({ record: recordOverride })
   const translate = useTranslate()
   const resourceName = translate('resources.library.name', { smart_count: 1 })
@@ -63,8 +67,9 @@ const LibraryEdit = (props) => {
         })
         redirect('/library')
       } catch (error) {
-        if (error.body && error.body.errors) {
-          return error.body.errors
+        const httpError = error as HttpError
+        if (httpError.body && httpError.body.errors) {
+          return httpError.body.errors
         }
       }
     },

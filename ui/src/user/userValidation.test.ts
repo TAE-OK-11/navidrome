@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect, vi } from 'vitest'
 import { validateUserForm } from './userValidation'
 
@@ -18,7 +17,7 @@ describe('User Validation Utilities', () => {
     it('should not return errors for non-admin users with libraries', () => {
       const values = {
         isAdmin: false,
-        libraryIds: [1, 2, 3],
+        libraryIds: ['1', '2', '3'],
       }
       const errors = validateUserForm(values, mockTranslate)
       expect(errors).toEqual({})
@@ -49,8 +48,8 @@ describe('User Validation Utilities', () => {
       const values = {
         isAdmin: false,
         libraries: [
-          { id: 1, name: 'Library 1' },
-          { id: 2, name: 'Library 2' },
+          { id: '1', name: 'Library 1' },
+          { id: '2', name: 'Library 2' },
         ],
       }
       const errors = validateUserForm(values, mockTranslate)

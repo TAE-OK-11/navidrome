@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -11,19 +10,28 @@ import { sanitizeListRestProps, useListContext } from 'react-admin'
 import { ArtistContextMenu, CoverArtAvatar, RatingField } from '../common'
 import config from '../config'
 
+import type { ArtistRecord } from '../types/records'
+
+type ArtistSimpleListProps = {
+  linkType: (id: string | number) => void
+  className?: string
+  classes?: { listItem?: string; title?: string; rightIcon?: string }
+  hasBulkActions?: boolean
+}
+
 const ArtistSimpleList = ({
   linkType,
   className,
   classes: classesOverride,
   hasBulkActions = false,
   ...rest
-}) => {
+}: ArtistSimpleListProps) => {
   const { data = [], isPending, total = 0 } = useListContext()
   return (
     (isPending || total > 0) && (
       <List className={className} {...sanitizeListRestProps(rest)}>
         {data.map(
-          (record) =>
+          (record: ArtistRecord) =>
             record && (
               <span key={record.id} onClick={() => linkType(record.id)}>
                 <ListItemButton

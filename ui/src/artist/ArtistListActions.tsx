@@ -3,6 +3,15 @@ import { sanitizeListRestProps, TopToolbar } from 'react-admin'
 import { useMediaQuery } from '@mui/material'
 import { ToggleFieldsMenu } from '../common'
 
+type ArtistListActionsProps = {
+  className?: string
+  filters?: React.ReactElement
+  resource?: string
+  showFilter?: boolean
+  displayedFilters?: unknown
+  filterValues?: unknown
+}
+
 const ArtistListActions = ({
   className,
   filters,
@@ -11,7 +20,7 @@ const ArtistListActions = ({
   displayedFilters,
   filterValues,
   ...rest
-}) => {
+}: ArtistListActionsProps) => {
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
 
   return (
@@ -23,7 +32,7 @@ const ArtistListActions = ({
           displayedFilters,
           filterValues,
           context: 'button',
-        })}
+        } as Record<string, unknown>)}
       {isNotSmall && <ToggleFieldsMenu resource="artist" />}
     </TopToolbar>
   )

@@ -1,5 +1,5 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   Card,
   CardContent,
@@ -16,6 +16,7 @@ import {
   SingleFieldList,
   useRecordContext,
   useTranslate,
+  type Identifier,
 } from 'react-admin'
 import ImageLightbox from '../common/ImageLightbox'
 import config from '../config'
@@ -34,13 +35,16 @@ import {
 import { formatFullDate, intersperse } from '../utils'
 import AlbumExternalLinks from './AlbumExternalLinks'
 import { SafeHTML } from '../common/SafeHTML'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type Width } from '../themes/useWidth'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { Theme } from '@mui/material/styles'
+import type { AlbumRecord } from '../types/records'
 
-const albumDetailsSx = (slot, styles) => (theme) => ({
-  ...styles(theme),
-  ...componentStyleOverride(theme, 'NDAlbumDetails', slot),
-})
+const albumDetailsSx =
+  (slot: string, styles: (theme: Theme) => object) => (theme: Theme) => ({
+    ...styles(theme),
+    ...componentStyleOverride(theme, 'NDAlbumDetails', slot),
+  })
 
 const notesSx = albumDetailsSx('notes', () => ({
   display: 'inline-block',
@@ -50,17 +54,19 @@ const notesSx = albumDetailsSx('notes', () => ({
   cursor: 'pointer',
 }))
 
-const useGetHandleGenreClick = (width) => {
+const useGetHandleGenreClick = (width?: Width) => {
   const [perPage] = useAlbumsPerPage(width)
 
-  return (id) => {
+  return (id: Identifier) => {
     return `/album?filter={"genre_id":["${id}"]}&order=ASC&sort=name&perPage=${perPage}`
   }
 }
 
 const GenreChipField = withWidth()(({ width, ...rest }) => {
-  const record = useRecordContext(rest)
+  const record = useRecordContext<{ id: Identifier }>(rest)
   const genreLink = useGetHandleGenreClick(width)
+
+  if (!record) return null
 
   return (
     <Link to={genreLink(record.id)} onClick={(e) => e.stopPropagation()}>
@@ -75,10 +81,7 @@ const GenreChipField = withWidth()(({ width, ...rest }) => {
 
 const GenreList = () => {
   return (
-    <ArrayField
-      sx={albumDetailsSx('genreList', () => ({ mt: 0.5 }))}
-      source={'genres'}
-    >
+    <ArrayField source={'genres'}>
       <SingleFieldList linkType={false}>
         <GenreChipField />
       </SingleFieldList>
@@ -86,19 +89,23 @@ const GenreList = () => {
   )
 }
 
-export const Details = (props) => {
+type DetailsProps = {
+  record?: AlbumRecord
+}
+
+export const Details = (props: DetailsProps) => {
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const translate = useTranslate()
-  const record = useRecordContext(props)
+  const record = useRecordContext<AlbumRecord>(props)
 
-  // Create an array of detail elements
-  let details = []
-  const addDetail = (obj) => {
+  if (!record) return null
+
+  const details: ReactNode[] = []
+  const addDetail = (obj: ReactNode) => {
     const id = details.length
     details.push(<span key={`detail-${record.id}-${id}`}>{obj}</span>)
   }
 
-  // Calculate date related fields
   const yearRange = formatRange(record, 'year')
   const date = record.date ? formatFullDate(record.date) : yearRange
 
@@ -111,21 +118,18 @@ export const Details = (props) => {
   const isOriginalDate = originalDate && dateToUse !== date
   const showDate = dateToUse && dateToUse !== releaseDate
 
-  // Get label for the main date display
   const getDateLabel = () => {
     if (isXsmall) return '♫'
     if (isOriginalDate) return translate('resources.album.fields.originalDate')
     return null
   }
 
-  // Get label for release date display
   const getReleaseDateLabel = () => {
     if (!isXsmall) return translate('resources.album.fields.releaseDate')
     if (showDate) return '○'
     return null
   }
 
-  // Display dates with appropriate labels
   if (showDate) {
     addDetail(<>{[getDateLabel(), dateToUse].filter(Boolean).join('  ')}</>)
   }
@@ -147,16 +151,23 @@ export const Details = (props) => {
   !isXsmall && addDetail(<DurationField source={'duration'} />)
   !isXsmall && addDetail(<SizeField source="size" />)
 
-  // Return the details rendered with separators
   return <>{intersperse(details, ' · ')}</>
 }
 
-const AlbumDetails = (props) => {
-  const record = useRecordContext(props)
+type AlbumInfoData = {
+  notes?: string
+}
+
+type AlbumDetailsProps = {
+  record?: AlbumRecord
+}
+
+const AlbumDetails = (props: AlbumDetailsProps) => {
+  const record = useRecordContext<AlbumRecord>(props)
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('lg'))
   const [expanded, setExpanded] = useState(false)
-  const [albumInfo, setAlbumInfo] = useState()
+  const [albumInfo, setAlbumInfo] = useState<AlbumInfoData>()
   const {
     imageLoading,
     imageError,
@@ -165,17 +176,12 @@ const AlbumDetails = (props) => {
     handleImageError,
     handleOpenLightbox,
     handleCloseLightbox,
-  } = useImageLoadingState(record.id)
-
-  let notes = albumInfo?.notes || record.notes
-
-  if (notes) {
-    notes += '..'
-  }
+  } = useImageLoadingState(record?.id)
 
   useEffect(() => {
+    if (!record?.id) return
     subsonic
-      .getAlbumInfo(record.id)
+      .getAlbumInfo(String(record.id))
       .then((resp) => resp.json['subsonic-response'])
       .then((data) => {
         if (data.status === 'ok') {
@@ -187,6 +193,14 @@ const AlbumDetails = (props) => {
         console.error('error on album page', e)
       })
   }, [record])
+
+  if (!record) return null
+
+  let notes = albumInfo?.notes || record.notes
+
+  if (notes) {
+    notes += '..'
+  }
 
   const imageUrl = subsonic.getCoverArtUrl(record, config.uiCoverArtSize)
   const fullImageUrl = subsonic.getCoverArtUrl(record)
@@ -289,7 +303,7 @@ const AlbumDetails = (props) => {
                 }))}
                 record={record}
                 resource={'album'}
-                size={isDesktop ? 'default' : 'small'}
+                size={isDesktop ? 'medium' : 'small'}
                 aria-label="love"
                 color="primary"
               />
@@ -320,7 +334,7 @@ const AlbumDetails = (props) => {
                 lineHeight: 1.6,
               }))}
             >
-              <Details />
+              <Details record={record} />
             </Typography>
             {config.enableStarRating && (
               <div>
@@ -372,13 +386,17 @@ const AlbumDetails = (props) => {
               </Collapse>
             )}
             {isDesktop && record['comment'] && (
-              <CollapsibleComment record={record} />
+              <CollapsibleComment
+                record={{ id: String(record.id), comment: record.comment }}
+              />
             )}
           </CardContent>
         </Box>
       </Box>
       {!isDesktop && record['comment'] && (
-        <CollapsibleComment record={record} />
+        <CollapsibleComment
+          record={{ id: String(record.id), comment: record.comment }}
+        />
       )}
       {!isDesktop && notes && (
         <Box sx={notesSx}>

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { renderHook, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { useRating } from './useRating'
@@ -27,7 +26,7 @@ describe('useRating', () => {
   let getOne
   beforeEach(() => {
     getOne = vi.fn(() => Promise.resolve())
-    useDataProvider.mockReturnValue({ getOne })
+    vi.mocked(useDataProvider).mockReturnValue({ getOne } as any)
     refresh.mockClear()
     vi.clearAllMocks()
   })
@@ -145,7 +144,8 @@ describe('useRating', () => {
       const { result } = renderHook(() => useRating('playlistTrack', record))
 
       // Simulate RatingField component behavior: uses mediaFileId || record.id
-      const targetId = record.mediaFileId || record.id
+      const targetId =
+        (record as { mediaFileId?: string }).mediaFileId || record.id
       await act(async () => {
         await result.current[0](4, targetId)
       })
@@ -158,7 +158,8 @@ describe('useRating', () => {
       const { result } = renderHook(() => useRating('song', record))
 
       // Simulate RatingField component behavior: uses mediaFileId || record.id
-      const targetId = record.mediaFileId || record.id
+      const targetId =
+        (record as { mediaFileId?: string }).mediaFileId || record.id
       await act(async () => {
         await result.current[0](5, targetId)
       })

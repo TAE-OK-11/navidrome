@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect } from 'vitest'
 import { libraryReducer } from './libraryReducer'
 import { SET_SELECTED_LIBRARIES, SET_USER_LIBRARIES } from '../actions'

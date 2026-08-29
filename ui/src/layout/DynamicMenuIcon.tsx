@@ -1,7 +1,15 @@
 import { useLocation } from 'react-router-dom'
-import { createElement } from 'react'
+import { createElement, type ElementType } from 'react'
 
-const DynamicMenuIcon = ({ icon, activeIcon, path }) => {
+const DynamicMenuIcon = ({
+  icon,
+  activeIcon,
+  path,
+}: {
+  icon: ElementType
+  activeIcon?: ElementType
+  path: string
+}) => {
   const location = useLocation()
 
   if (!activeIcon) {

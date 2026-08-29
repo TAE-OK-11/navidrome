@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, fireEvent, screen, waitFor } from '@testing-library/react'
 import { AdminContext as TestContext, RecordContextProvider } from 'react-admin'
@@ -35,7 +34,7 @@ const getOneMock = vi.fn(() => Promise.resolve({ data: {} }))
 const mockNotify = vi.fn()
 
 vi.mock('react-admin', async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     useNotify: () => mockNotify,
@@ -59,14 +58,14 @@ describe('SongContextMenu', () => {
     getPlaylistsMock.mockResolvedValue({
       data: [{ id: 'pl1', name: 'Pl 1' }],
     })
-    subsonic.getSimilarSongs2.mockResolvedValue({
+    vi.mocked(subsonic.getSimilarSongs2).mockResolvedValue({
       json: {
         'subsonic-response': {
           status: 'ok',
           similarSongs2: { song: [{ id: 's1' }] },
         },
       },
-    })
+    } as any)
   })
 
   it('uses RecordContext for favourite and menu actions', async () => {
@@ -187,7 +186,7 @@ describe('SongContextMenu', () => {
       const seedRecord = { id: 'song1', title: 'Seed Song', size: 1 }
       render(
         <TestContext>
-          <SongContextMenu record={seedRecord} resource="song" />
+          <SongContextMenu record={seedRecord as any} resource="song" />
         </TestContext>,
       )
 
@@ -206,7 +205,7 @@ describe('SongContextMenu', () => {
       expect(dispatchCall).toBeDefined()
 
       // Verify seed song is first (id property contains the first song to play)
-      const { id, data } = dispatchCall[0]
+      const { id, data } = dispatchCall![0]
       expect(id).toBe('song1')
       // Verify seed song data is included
       expect(data['song1']).toBeDefined()
@@ -246,7 +245,7 @@ describe('SongContextMenu', () => {
         (call) => call[0]?.type === 'PLAYER_PLAY_TRACKS',
       )
       expect(dispatchCall).toBeDefined()
-      const { id, data } = dispatchCall[0]
+      const { id, data } = dispatchCall![0]
       expect(id).toBe('actualSongId')
       // Verify seed song data is included
       expect(data['actualSongId']).toBeDefined()

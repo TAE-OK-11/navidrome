@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { useDispatch } from 'react-redux'
 import {
@@ -30,8 +29,23 @@ import { M3U_MIME_TYPE, REST_URL } from '../consts'
 import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
+import type { PlaylistRecord, SongRecord } from '../types/records'
+import type { Identifier } from 'react-admin'
 
-const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
+type PlaylistActionsProps = {
+  className?: string
+  ids?: Identifier[]
+  data?: Record<string, SongRecord>
+  record?: PlaylistRecord
+}
+
+const PlaylistActions = ({
+  className,
+  ids,
+  data,
+  record,
+  ...rest
+}: PlaylistActionsProps) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const dataProvider = useDataProvider()
@@ -40,8 +54,13 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
 
   const getAllSongsAndDispatch = React.useCallback(
-    (action) => {
-      if (ids?.length === record.songCount) {
+    (
+      action: (
+        trackData: Record<string, SongRecord>,
+        trackIds?: Identifier[],
+      ) => { type: string },
+    ) => {
+      if (ids?.length === record?.songCount && data) {
         return dispatch(action(data, ids))
       }
 
@@ -49,12 +68,12 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
         .getList('playlistTrack', {
           pagination: { page: 1, perPage: -1 },
           sort: { field: 'id', order: 'ASC' },
-          filter: { playlist_id: record.id },
+          filter: { playlist_id: record?.id },
         })
         .then((res) => {
-          const data = {}
-          for (const track of res.data) data[track.id] = track
-          dispatch(action(data))
+          const trackData: Record<string, SongRecord> = {}
+          for (const track of res.data) trackData[track.id] = track
+          dispatch(action(trackData))
         })
         .catch(() => {
           notify('ra.page.error', { type: 'warning' })
@@ -80,26 +99,28 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
   }, [getAllSongsAndDispatch])
 
   const handleShare = React.useCallback(() => {
-    dispatch(openShareMenu([record.id], 'playlist', record.name))
+    if (!record?.id) return
+    dispatch(openShareMenu([record.id], 'playlist', record.name, undefined))
   }, [dispatch, record])
 
   const handleDownload = React.useCallback(() => {
+    if (!record) return
     dispatch(openDownloadMenu(record, DOWNLOAD_MENU_PLAY))
   }, [dispatch, record])
 
   const handleExport = React.useCallback(
     () =>
-      httpClient(`${REST_URL}/playlist/${record.id}/tracks`, {
+      httpClient(`${REST_URL}/playlist/${record?.id}/tracks`, {
         headers: new Headers({ Accept: M3U_MIME_TYPE }),
       }).then((res) => {
         const blob = new Blob([res.body], { type: M3U_MIME_TYPE })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `${record.name}.m3u`
+        link.download = `${record?.name}.m3u`
         document.body.appendChild(link)
         link.click()
-        link.parentNode.removeChild(link)
+        link.parentNode?.removeChild(link)
       }),
     [record],
   )
@@ -144,7 +165,7 @@ const PlaylistActions = ({ className, ids, data, record = {}, ...rest }) => {
               onClick={handleDownload}
               label={
                 translate('ra.action.download') +
-                (isDesktop ? ` (${formatBytes(record.size)})` : '')
+                (isDesktop ? ` (${formatBytes(record?.size ?? 0)})` : '')
               }
             >
               <CloudDownloadOutlinedIcon />

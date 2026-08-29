@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import subsonic from '../subsonic/index'
 import { playTracks } from '../actions/index'
 import { processSongsForPlayback } from '../common/playbackActions'
@@ -23,16 +22,19 @@ export const playTopSongs = async (dispatch, notify, artistName) => {
   dispatch(playTracks(songData, ids))
 }
 
-export const playShuffle = async (dataProvider, dispatch, id) => {
+import type { Identifier } from 'react-admin'
+import type { SongRecord } from '../types/records'
+
+export const playShuffle = async (dataProvider, dispatch, id: Identifier) => {
   const res = await dataProvider.getList('song', {
     pagination: { page: 1, perPage: 500 },
     sort: { field: 'random', order: 'ASC' },
     filter: { album_artist_id: id, missing: false },
   })
 
-  const data = {}
-  const ids = []
-  res.data.forEach((s) => {
+  const data: Record<string, SongRecord> = {}
+  const ids: Identifier[] = []
+  res.data.forEach((s: SongRecord) => {
     data[s.id] = s
     ids.push(s.id)
   })

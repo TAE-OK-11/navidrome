@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Box, useMediaQuery } from '@mui/material'
 import { styled } from '@mui/material/styles'
 import {
@@ -22,8 +21,9 @@ import {
   Title,
 } from '../common/index'
 import ArtistActions from './ArtistActions'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type Width } from '../themes/useWidth'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { ArtistRecord } from '../types/records'
 
 const ShowArtistActions = styled(ArtistActions)(({ theme }) => ({
   width: '100%',
@@ -41,18 +41,21 @@ const ShowArtistActions = styled(ArtistActions)(({ theme }) => ({
   ...componentStyleOverride(theme, 'NDArtistShow', 'actions'),
 }))
 
-const ArtistDetails = (props) => {
-  const record = useRecordContext(props)
+type ArtistInfo = {
+  biography?: string
+}
+
+const ArtistDetails = () => {
+  const record = useRecordContext<ArtistRecord>()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'), {
     noSsr: true,
   })
-  const [artistInfo, setArtistInfo] = useState()
-
-  const biography = artistInfo?.biography || record.biography
+  const [artistInfo, setArtistInfo] = useState<ArtistInfo>()
 
   useEffect(() => {
+    if (!record?.id) return
     subsonic
-      .getArtistInfo(record.id)
+      .getArtistInfo(String(record.id))
       .then((resp) => resp.json['subsonic-response'])
       .then((data) => {
         if (data.status === 'ok') {
@@ -63,7 +66,11 @@ const ArtistDetails = (props) => {
         // eslint-disable-next-line no-console
         console.error('error on artist page', e)
       })
-  }, [record.id])
+  }, [record?.id])
+
+  if (!record) return null
+
+  const biography = artistInfo?.biography || record.biography
 
   const Component = isDesktop ? DesktopArtistDetails : MobileArtistDetails
   return (
@@ -71,9 +78,9 @@ const ArtistDetails = (props) => {
   )
 }
 
-const ArtistShowLayout = (props) => {
-  const showContext = useShowContext(props)
-  const record = useRecordContext()
+const ArtistShowLayout = (props: { width?: Width }) => {
+  const showContext = useShowContext()
+  const record = useRecordContext<ArtistRecord>()
   const { width } = props
   const [, perPageOptions] = useAlbumsPerPage(width)
   useResourceRefresh('artist', 'album')
@@ -81,11 +88,8 @@ const ArtistShowLayout = (props) => {
 
   const maxPerPage = 90
   let perPage = -1
-  let pagination = null
+  let pagination: ReactNode = null
 
-  // Use the main credit count instead of total count, as this is a precise measure
-  // of the number of albums where the artist is credited as an album artist OR
-  // artist
   const count = record?.stats?.['maincredit']?.albumCount || 0
 
   if (count > maxPerPage) {
@@ -93,13 +97,12 @@ const ArtistShowLayout = (props) => {
     const rowsPerPageOptions = [1, 2, 3].map((option) =>
       Math.trunc(option * (perPage / 3)),
     )
-    // react-admin's Pagination on purpose: the common one would persist 30/60/90 under the album grid's key
     pagination = <Pagination rowsPerPageOptions={rowsPerPageOptions} />
   }
 
   return (
     <>
-      {record && <RaTitle title={<Title subTitle={record.name} />} />}
+      {record && <RaTitle title={<Title subTitle={record.name ?? ''} />} />}
       {record && <ArtistDetails />}
       {record && (
         <Box
@@ -114,8 +117,6 @@ const ArtistShowLayout = (props) => {
       )}
       {record && (
         <ReferenceManyField
-          {...showContext}
-          addLabel={false}
           reference="album"
           target="artist_id"
           sort={{ field: 'max_year', order: 'ASC' }}
@@ -130,11 +131,11 @@ const ArtistShowLayout = (props) => {
   )
 }
 
-const ArtistShow = withWidth()((props) => {
+const ArtistShow = withWidth()((props: Record<string, unknown>) => {
   const controllerProps = useShowController(props)
   return (
     <ShowContextProvider value={controllerProps}>
-      <ArtistShowLayout {...controllerProps} />
+      <ArtistShowLayout width={props.width as Width | undefined} />
     </ShowContextProvider>
   )
 })

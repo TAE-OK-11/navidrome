@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -52,7 +51,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(screen.getByText('Artist 1')).toBeInTheDocument()
       expect(screen.getByText('Artist 2')).toBeInTheDocument()
@@ -64,7 +63,7 @@ describe('ArtistLinkField', () => {
         artistId: '123',
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(screen.getByText('Fallback Artist')).toBeInTheDocument()
     })
@@ -76,7 +75,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(intersperse).toHaveBeenCalledWith([], ' • ')
     })
@@ -91,7 +90,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(screen.getByText('Artist 1')).toBeInTheDocument()
       expect(screen.getByText('Remixer 1')).toBeInTheDocument()
@@ -109,7 +108,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(screen.getByText('Artist 1')).toBeInTheDocument()
       expect(screen.getByText('Remixer 1')).toBeInTheDocument()
@@ -125,7 +124,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       const links = screen.getAllByRole('link')
       expect(links).toHaveLength(1)
@@ -142,7 +141,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="albumArtist" />)
+      render(<ArtistLinkField record={record as any} source="albumArtist" />)
 
       expect(screen.getByText('Group Artist')).toBeInTheDocument()
       expect(screen.getByRole('link')).toHaveAttribute('href', '/artist/1')
@@ -156,7 +155,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(screen.getByText('Main Artist')).toBeInTheDocument()
       expect(screen.getByRole('link')).toHaveAttribute('href', '/artist/1')
@@ -171,7 +170,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       const links = screen.getAllByRole('link')
       expect(links).toHaveLength(2)
@@ -191,7 +190,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       const links = screen.getAllByRole('link')
       expect(links).toHaveLength(1)
@@ -208,7 +207,7 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" />)
+      render(<ArtistLinkField record={record as any} source="artist" />)
 
       expect(
         screen.getByText('Multi-Role Artist (Vocals, Guitar)'),
@@ -229,7 +228,9 @@ describe('ArtistLinkField', () => {
         },
       }
 
-      render(<ArtistLinkField record={record} source="artist" limit={3} />)
+      render(
+        <ArtistLinkField record={record as any} source="artist" limit={3} />,
+      )
 
       expect(screen.getByText('Artist 1')).toBeInTheDocument()
       expect(screen.getByText('Artist 2')).toBeInTheDocument()

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { Box, Typography, Collapse } from '@mui/material'
 import Card from '@mui/material/Card'
@@ -14,11 +13,26 @@ import ImageLightbox from '../common/ImageLightbox'
 import subsonic from '../subsonic'
 import { SafeHTML } from '../common/SafeHTML'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { ArtistRecord } from '../types/records'
 
 const mobileOverride = (slot) => (theme) =>
   componentStyleOverride(theme, 'NDMobileArtistDetails', slot)
 
-const MobileArtistDetails = ({ artistInfo, biography, record }) => {
+type ArtistInfo = {
+  biography?: string
+}
+
+type MobileArtistDetailsProps = {
+  artistInfo?: ArtistInfo
+  biography?: string
+  record: ArtistRecord
+}
+
+const MobileArtistDetails = ({
+  artistInfo,
+  biography,
+  record,
+}: MobileArtistDetailsProps) => {
   const img = subsonic.getCoverArtUrl(record, 800)
   const [expanded, setExpanded] = useState(false)
   const title = record.name

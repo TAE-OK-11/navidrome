@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -268,7 +267,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0] // First checkbox is the master checkbox
         expect(masterCheckbox.checked).toBe(true)
         expect(masterCheckbox.indeterminate).toBe(false)
@@ -284,7 +283,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0]
         expect(masterCheckbox.checked).toBe(false)
         expect(masterCheckbox.indeterminate).toBe(false)
@@ -300,7 +299,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0]
         expect(masterCheckbox.checked).toBe(false)
         expect(masterCheckbox.indeterminate).toBe(true)
@@ -319,7 +318,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0]
 
         // Use fireEvent.click to trigger the onChange event
@@ -344,7 +343,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0]
 
         fireEvent.click(masterCheckbox)
@@ -368,7 +367,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const masterCheckbox = checkboxes[0]
 
         fireEvent.click(masterCheckbox)
@@ -391,7 +390,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         // Skip master checkbox (index 0)
         expect(checkboxes[1].checked).toBe(true) // Music Library
         expect(checkboxes[2].checked).toBe(false) // Podcasts
@@ -408,7 +407,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const podcastsCheckbox = checkboxes[2] // Podcasts checkbox
 
         fireEvent.click(podcastsCheckbox)
@@ -432,7 +431,7 @@ describe('LibrarySelector', () => {
         const chipButton = screen.getByRole('button')
         await user.click(chipButton)
 
-        const checkboxes = screen.getAllByRole('checkbox')
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
         const musicCheckbox = checkboxes[1] // Music Library checkbox
 
         fireEvent.click(musicCheckbox)
@@ -468,7 +467,7 @@ describe('LibrarySelector', () => {
 
     it('should load user libraries on mount', async () => {
       // Override localStorage mock to return a userId for this test
-      window.localStorage.getItem.mockReturnValue('user123')
+      vi.mocked(localStorage.getItem).mockReturnValue('user123')
 
       mockDataProvider.getOne.mockResolvedValue({
         data: { libraries: mockLibraries },
@@ -490,7 +489,7 @@ describe('LibrarySelector', () => {
 
     it('should handle API error gracefully', async () => {
       // Override localStorage mock to return a userId for this test
-      window.localStorage.getItem.mockReturnValue('user123')
+      vi.mocked(localStorage.getItem).mockReturnValue('user123')
 
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       mockDataProvider.getOne.mockRejectedValue(new Error('API Error'))
@@ -508,7 +507,7 @@ describe('LibrarySelector', () => {
     })
 
     it('should not load libraries when userId is not available', () => {
-      window.localStorage.getItem.mockReturnValue(null)
+      vi.mocked(localStorage.getItem).mockReturnValue(null)
 
       renderLibrarySelector({ userLibraries: [], selectedLibraries: [] })
 

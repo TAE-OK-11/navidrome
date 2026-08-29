@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -24,28 +23,40 @@ import DuplicateSongDialog from './DuplicateSongDialog'
 import { httpClient } from '../dataProvider'
 import { REST_URL } from '../consts'
 
+import type { NavidromeRootState } from '../types/redux'
+import type { PlaylistSelection } from '../types/records'
+import type { Identifier } from 'react-admin'
+
 export const AddToPlaylistDialog = () => {
-  const { open, selectedIds, onSuccess, duplicateSong, duplicateIds } =
-    useSelector((state) => state.addToPlaylistDialog)
+  const {
+    open,
+    selectedIds = [],
+    onSuccess,
+    duplicateSong,
+    duplicateIds = [],
+  } = useSelector((state: NavidromeRootState) => state.addToPlaylistDialog)
   const dispatch = useDispatch()
   const translate = useTranslate()
   const notify = useNotify()
   const refresh = useRefresh()
-  const [value, setValue] = useState({})
+  const [value, setValue] = useState<PlaylistSelection[]>([])
   const [check, setCheck] = useState(false)
   const dataProvider = useDataProvider()
-  const createAndAddToPlaylist = (playlistObject) => {
+  const createAndAddToPlaylist = (playlistObject: PlaylistSelection) => {
     dataProvider
       .create('playlist', {
         data: { name: playlistObject.name },
       })
       .then((res) => {
-        addToPlaylist(res.data.id)
+        addToPlaylist(res.data.id as Identifier)
       })
       .catch((error) => notify(`Error: ${error.message}`, { type: 'warning' }))
   }
 
-  const addToPlaylist = (playlistId, distinctIds) => {
+  const addToPlaylist = (
+    playlistId: Identifier,
+    distinctIds?: Identifier[],
+  ) => {
     const trackIds = Array.isArray(distinctIds) ? distinctIds : selectedIds
     if (trackIds.length) {
       dataProvider
@@ -58,7 +69,7 @@ export const AddToPlaylistDialog = () => {
           notify('message.songsAddedToPlaylist', {
             messageArgs: { smart_count: len },
           })
-          onSuccess && onSuccess(value, len)
+          onSuccess?.(value, len)
           refresh()
         })
         .catch(() => {
@@ -101,22 +112,22 @@ export const AddToPlaylistDialog = () => {
       }
     })
     setCheck(false)
-    setValue({})
+    setValue([])
     dispatch(closeAddToPlaylist())
     e.stopPropagation()
   }
 
   const handleClickClose = (e) => {
     setCheck(false)
-    setValue({})
+    setValue([])
     dispatch(closeAddToPlaylist())
     e.stopPropagation()
   }
 
-  const handleChange = (pls) => {
+  const handleChange = (pls: PlaylistSelection[]) => {
     if (!value.length || pls.length > value.length) {
-      let newlyAdded = pls.slice(-1).pop()
-      if (newlyAdded.id) {
+      const newlyAdded = pls.slice(-1).pop()
+      if (newlyAdded?.id) {
         setCheck(false)
         checkDuplicateSong(newlyAdded)
       } else setCheck(true)
@@ -134,7 +145,10 @@ export const AddToPlaylistDialog = () => {
     const distinctSongs = selectedIds.filter(
       (id) => duplicateIds.indexOf(id) < 0,
     )
-    value.slice(-1).pop().distinctIds = distinctSongs
+    const lastSelection = value.slice(-1).pop()
+    if (lastSelection) {
+      lastSelection.distinctIds = distinctSongs
+    }
     dispatch(closeDuplicateSongDialog())
   }
 

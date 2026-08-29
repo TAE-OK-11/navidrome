@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import Avatar from '@mui/material/Avatar'
 import List from '@mui/material/List'
@@ -48,11 +47,18 @@ const LinkOrNot = ({
   id,
   record,
   children,
+}: {
+  classes?: { link?: string; tertiary?: string }
+  linkType: SimpleListProps['linkType']
+  basePath: string
+  id: string | number
+  record: SimpleRecord
+  children: React.ReactNode
 }) => {
   return linkType === 'edit' || linkType === true ? (
     <Box
       component={Link}
-      to={linkToRecord(basePath, id)}
+      to={linkToRecord(basePath, id, 'edit')}
       className={classesOverride?.link}
       sx={{ textDecoration: 'none', color: 'inherit' }}
     >
@@ -61,7 +67,7 @@ const LinkOrNot = ({
   ) : linkType === 'show' ? (
     <Box
       component={Link}
-      to={`${linkToRecord(basePath, id)}/show`}
+      to={linkToRecord(basePath, id, 'show')}
       className={classesOverride?.link}
       sx={{ textDecoration: 'none', color: 'inherit' }}
     >

@@ -1,13 +1,15 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useMemo } from 'react'
 import ReactGA from 'react-ga4'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
+import type { ResourceProps } from 'react-admin'
 import { createTheme } from '@mui/material/styles'
+import type { ThemeOptions } from '@mui/material/styles'
 import { DndProvider } from 'react-dnd'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
 import { Layout, Login } from './layout'
+import Notification from './layout/Notification'
 import transcoding from './transcoding'
 import player from './player'
 import user from './user'
@@ -84,7 +86,7 @@ const App = () => (
 const Admin = (props) => {
   const themeOptions = useCurrentTheme()
   const theme = useMemo(
-    () => createTheme(modernizeTheme(themeOptions)),
+    () => createTheme(modernizeTheme(themeOptions) as ThemeOptions),
     [themeOptions],
   )
   useChangeThemeColor()
@@ -99,6 +101,7 @@ const Admin = (props) => {
       layout={Layout}
       loginPage={Login}
       error={ClientError}
+      notification={Notification}
       theme={theme}
       {...props}
     >
@@ -106,31 +109,48 @@ const Admin = (props) => {
         <>
           <Resource
             name="album"
-            {...album}
+            {...(album as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'albumList' }}
           />
-          <Resource name="artist" {...artist} />
-          <Resource name="song" {...song} />
+          <Resource
+            name="artist"
+            {...(artist as unknown as Omit<ResourceProps, 'name'>)}
+          />
+          <Resource
+            name="song"
+            {...(song as unknown as Omit<ResourceProps, 'name'>)}
+          />
           <Resource
             name="radio"
-            {...(permissions === 'admin' ? radio.admin : radio.all)}
+            {...((permissions === 'admin'
+              ? radio.admin
+              : radio.all) as unknown as Omit<ResourceProps, 'name'>)}
           />
-          {config.enableSharing && <Resource name="share" {...share} />}
+          {config.enableSharing && (
+            <Resource
+              name="share"
+              {...(share as unknown as Omit<ResourceProps, 'name'>)}
+            />
+          )}
           <Resource
             name="playlist"
-            {...playlist}
+            {...(playlist as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'playlist' }}
           />
-          <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
+          <Resource
+            name="user"
+            {...(user as unknown as Omit<ResourceProps, 'name'>)}
+            options={{ subMenu: 'settings' }}
+          />
           <Resource
             name="player"
-            {...player}
+            {...(player as unknown as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'settings' }}
           />
           {permissions === 'admin' ? (
             <Resource
               name="transcoding"
-              {...transcoding}
+              {...(transcoding as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           ) : (
@@ -139,21 +159,21 @@ const Admin = (props) => {
           {permissions === 'admin' && (
             <Resource
               name="library"
-              {...library}
+              {...(library as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && (
             <Resource
               name="missing"
-              {...missing}
+              {...(missing as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && config.pluginsEnabled && (
             <Resource
               name="plugin"
-              {...plugin}
+              {...(plugin as unknown as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}

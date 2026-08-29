@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { SimpleForm, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -13,11 +12,18 @@ import { closeDownloadMenu, DOWNLOAD_MENU_ARTIST } from '../actions'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from '../common/artist'
 import { useTranscodingOptions } from './useTranscodingOptions'
+import type {
+  NavidromeRootState,
+  DownloadMenuDialogState,
+} from '../types/redux'
+
+type DownloadRecord = NonNullable<DownloadMenuDialogState['record']>
 
 const DownloadMenuDialog = () => {
   const { open, record, recordType } = useSelector(
-    (state) => state.downloadMenuDialog,
+    (state: NavidromeRootState) => state.downloadMenuDialog,
   )
+  const downloadRecord = record as DownloadRecord | undefined
   const dispatch = useDispatch()
   const translate = useTranslate()
 
@@ -27,8 +33,8 @@ const DownloadMenuDialog = () => {
   // Artist downloads only include album-artist songs, so show that size
   const downloadSize =
     recordType === DOWNLOAD_MENU_ARTIST
-      ? artistDownloadSize(record)
-      : record?.size
+      ? artistDownloadSize(downloadRecord)
+      : downloadRecord?.size
 
   const handleClose = (e) => {
     dispatch(closeDownloadMenu())
@@ -36,12 +42,12 @@ const DownloadMenuDialog = () => {
   }
 
   const handleDownload = (e) => {
-    if (record) {
-      const id = record.mediaFileId || record.id
+    if (downloadRecord) {
+      const id = downloadRecord.mediaFileId || downloadRecord.id
       if (originalFormat) {
-        subsonic.download(id, 'raw')
+        subsonic.download(String(id), 'raw')
       } else {
-        subsonic.download(id, format, maxBitRate?.toString())
+        subsonic.download(String(id), format, maxBitRate?.toString())
       }
       dispatch(closeDownloadMenu())
     }
@@ -62,13 +68,14 @@ const DownloadMenuDialog = () => {
             resource: translate(`resources.${recordType}.name`, {
               smart_count: 1,
             }).toLocaleLowerCase(),
-            name: record?.name || record?.title,
+            name: downloadRecord?.name || downloadRecord?.title,
             size: formatBytes(downloadSize),
           })}
       </DialogTitle>
       <DialogContent>
         <SimpleForm toolbar={null}>
           <TranscodingOptionsInput
+            basePath=""
             fullWidth
             label={translate('message.downloadOriginalFormat')}
           />

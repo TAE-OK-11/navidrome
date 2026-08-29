@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { vi } from 'vitest'
 import config from '../config'
 import subsonic from './index'
@@ -6,8 +5,10 @@ import subsonic from './index'
 describe('getCoverArtUrl', () => {
   beforeEach(() => {
     // Mock window.location
-    delete window.location
-    window.location = { href: 'http://localhost:3000/app' }
+    Object.defineProperty(window, 'location', {
+      value: { href: 'http://localhost:3000/app' },
+      writable: true,
+    })
 
     // Mock localStorage values required by subsonic
     const localStorageMock = {

@@ -1,10 +1,11 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, {
   isValidElement,
   useMemo,
   useCallback,
   useState,
   forwardRef,
+  type ReactElement,
+  type ReactNode,
 } from 'react'
 import { useDispatch } from 'react-redux'
 import {
@@ -13,6 +14,8 @@ import {
   PureDatagridRow,
   useRecordContext,
   useTranslate,
+  type Identifier,
+  type RaRecord,
 } from 'react-admin'
 import { Box, TableCell, TableRow, Typography } from '@mui/material'
 import AlbumIcon from '@mui/icons-material/Album'
@@ -23,128 +26,160 @@ import { playTracks } from '../actions'
 import subsonic from '../subsonic'
 import { AlbumContextMenu } from '../common'
 import { DraggableTypes } from '../consts'
-import { formatFullDate } from '../utils'
+import type { SongRecord } from '../types/records'
 
 const rowClass = 'nd-song-grid-row'
 const missingRowClass = 'nd-song-grid-row-missing'
 
-export const DiscSubtitleRow = forwardRef(
-  ({ record, onClick, colSpan, contextAlwaysVisible }, ref) => {
-    const translate = useTranslate()
-    const [imageError, setImageError] = useState(false)
-    const [isLightboxOpen, setLightboxOpen] = useState(false)
-    const lightboxClosedAt = React.useRef(0)
-    const handlePlaySubset = (discNumber) => () => {
-      // Ignore clicks shortly after the lightbox was closed to prevent
-      // mobile touch events from "falling through" the overlay and
-      // triggering playback.
-      if (Date.now() - lightboxClosedAt.current < 400) {
-        return
-      }
-      onClick(discNumber)
+type DiscRecord = SongRecord & {
+  albumId: Identifier
+  discNumber: number
+  discSubtitle?: string
+  album?: string
+}
+
+type DiscSubtitleRowProps = {
+  record: DiscRecord
+  onClick: (discNumber: number) => void
+  colSpan: number
+  contextAlwaysVisible?: boolean
+}
+
+export const DiscSubtitleRow = forwardRef<
+  HTMLTableRowElement,
+  DiscSubtitleRowProps
+>(({ record, onClick, colSpan, contextAlwaysVisible }, ref) => {
+  const translate = useTranslate()
+  const [imageError, setImageError] = useState(false)
+  const [isLightboxOpen, setLightboxOpen] = useState(false)
+  const lightboxClosedAt = React.useRef(0)
+  const handlePlaySubset = (discNumber: number) => () => {
+    // Ignore clicks shortly after the lightbox was closed to prevent
+    // mobile touch events from "falling through" the overlay and
+    // triggering playback.
+    if (Date.now() - lightboxClosedAt.current < 400) {
+      return
     }
+    onClick(discNumber)
+  }
 
-    const coverArtUrl = subsonic.getDiscCoverArtUrl(
-      record.albumId,
-      record.discNumber,
-      record.updatedAt,
-      96,
-    )
+  const coverArtUrl = subsonic.getDiscCoverArtUrl(
+    String(record.albumId),
+    record.discNumber,
+    record.updatedAt,
+    96,
+  )
 
-    const fullImageUrl = subsonic.getDiscCoverArtUrl(
-      record.albumId,
-      record.discNumber,
-      record.updatedAt,
-    )
+  const fullImageUrl = subsonic.getDiscCoverArtUrl(
+    String(record.albumId),
+    record.discNumber,
+    record.updatedAt,
+  )
 
-    const handleOpenLightbox = useCallback(
-      (e) => {
-        if (!imageError) {
-          e.stopPropagation()
-          setLightboxOpen(true)
-        }
-      },
-      [imageError],
-    )
+  const handleOpenLightbox = useCallback(
+    (e: React.MouseEvent) => {
+      if (!imageError) {
+        e.stopPropagation()
+        setLightboxOpen(true)
+      }
+    },
+    [imageError],
+  )
 
-    const handleCloseLightbox = useCallback(() => {
-      lightboxClosedAt.current = Date.now()
-      setLightboxOpen(false)
-    }, [])
+  const handleCloseLightbox = useCallback(() => {
+    lightboxClosedAt.current = Date.now()
+    setLightboxOpen(false)
+  }, [])
 
-    const subtitle = record.discSubtitle
-      ? record.discSubtitle
-      : translate('resources.song.fields.disc', {
-          discNumber: record.discNumber,
-        })
+  const subtitle = record.discSubtitle
+    ? record.discSubtitle
+    : translate('resources.song.fields.disc', {
+        discNumber: record.discNumber,
+      })
 
-    return (
-      <TableRow
-        hover
-        ref={ref}
-        onClick={handlePlaySubset(record.discNumber)}
-        className={rowClass}
-      >
-        <TableCell colSpan={colSpan}>
-          <Typography
-            variant="h6"
-            sx={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              verticalAlign: 'middle',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            {!imageError ? (
-              <Box
-                component="img"
-                src={coverArtUrl}
-                sx={{
-                  width: 48,
-                  height: 48,
-                  mr: '14px',
-                  objectFit: 'cover',
-                  borderRadius: 1,
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                }}
-                alt=""
-                onClick={handleOpenLightbox}
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <AlbumIcon sx={{ mr: '14px' }} fontSize={'small'} />
-            )}
-            {subtitle}
-          </Typography>
-          <span onClick={(e) => e.stopPropagation()}>
-            <ImageLightbox
-              open={isLightboxOpen && !imageError}
-              imageUrl={fullImageUrl}
-              title={record.album + ' - ' + subtitle}
-              onClose={handleCloseLightbox}
+  return (
+    <TableRow
+      hover
+      ref={ref}
+      onClick={handlePlaySubset(record.discNumber)}
+      className={rowClass}
+    >
+      <TableCell colSpan={colSpan}>
+        <Typography
+          variant="h6"
+          sx={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            verticalAlign: 'middle',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          {!imageError ? (
+            <Box
+              component="img"
+              src={coverArtUrl}
+              sx={{
+                width: 48,
+                height: 48,
+                mr: '14px',
+                objectFit: 'cover',
+                borderRadius: 1,
+                flexShrink: 0,
+                cursor: 'pointer',
+              }}
+              alt=""
+              onClick={handleOpenLightbox}
+              onError={() => setImageError(true)}
             />
-          </span>
-        </TableCell>
-        <TableCell>
-          <AlbumContextMenu
-            record={{ id: record.albumId }}
-            discNumber={record.discNumber}
-            showLove={false}
-            sx={{ visibility: contextAlwaysVisible ? 'visible' : 'hidden' }}
-            hideShare={true}
-            hideInfo={true}
-            visible={contextAlwaysVisible}
+          ) : (
+            <AlbumIcon sx={{ mr: '14px' }} fontSize={'small'} />
+          )}
+          {subtitle}
+        </Typography>
+        <span onClick={(e) => e.stopPropagation()}>
+          <ImageLightbox
+            open={isLightboxOpen && !imageError}
+            imageUrl={fullImageUrl}
+            title={record.album + ' - ' + subtitle}
+            onClose={handleCloseLightbox}
           />
-        </TableCell>
-      </TableRow>
-    )
-  },
-)
+        </span>
+      </TableCell>
+      <TableCell>
+        <AlbumContextMenu
+          record={{ id: record.albumId }}
+          discNumber={record.discNumber}
+          showLove={false}
+          sx={{ visibility: contextAlwaysVisible ? 'visible' : 'hidden' }}
+          hideShare={true}
+          hideInfo={true}
+          visible={contextAlwaysVisible}
+        />
+      </TableCell>
+    </TableRow>
+  )
+})
 
 DiscSubtitleRow.displayName = 'DiscSubtitleRow'
+
+type SongDatagridRowProps = {
+  record?: SongRecord
+  children?: ReactNode
+  firstTracksOfDiscs: Set<Identifier>
+  contextAlwaysVisible?: boolean
+  onClickSubset?: (discNumber?: number) => void
+  className?: string
+  rowClick?:
+    | string
+    | false
+    | ((
+        id: Identifier,
+        resource: string,
+        record: RaRecord,
+      ) => string | false | void)
+}
 
 export const SongDatagridRow = ({
   record: recordOverride,
@@ -154,8 +189,8 @@ export const SongDatagridRow = ({
   onClickSubset = () => {},
   className,
   ...rest
-}) => {
-  const record = useRecordContext({ record: recordOverride })
+}: SongDatagridRowProps) => {
+  const record = useRecordContext<SongRecord>({ record: recordOverride })
   const fields = React.Children.toArray(children).filter((c) =>
     isValidElement(c),
   )
@@ -197,22 +232,23 @@ export const SongDatagridRow = ({
     record.missing && missingRowClass,
   )
   const childCount = fields.length
+  const rowExpand = (rest as { expand?: ReactNode }).expand
   return (
     <>
       {firstTracksOfDiscs.has(record.id) && (
         <DiscSubtitleRow
-          ref={dragDiscRef}
-          record={record}
+          ref={dragDiscRef as unknown as React.Ref<HTMLTableRowElement>}
+          record={record as DiscRecord}
           onClick={onClickSubset}
           contextAlwaysVisible={contextAlwaysVisible}
-          colSpan={childCount + (rest.expand ? 1 : 0)}
+          colSpan={childCount + (rowExpand ? 1 : 0)}
         />
       )}
       <PureDatagridRow
-        ref={dragSongRef}
+        ref={dragSongRef as unknown as React.Ref<HTMLTableRowElement>}
         record={record}
         {...rest}
-        rowClick={rowClick}
+        rowClick={rowClick as never}
         className={computedClasses}
       >
         {fields}
@@ -221,21 +257,32 @@ export const SongDatagridRow = ({
   )
 }
 
+type SongDatagridBodyProps = {
+  contextAlwaysVisible?: boolean
+  showDiscSubtitles?: boolean
+  data?: SongRecord[]
+  [key: string]: unknown
+}
+
+const DatagridBody = PureDatagridBody as React.ComponentType<
+  SongDatagridBodyProps & { row?: ReactElement }
+>
+
 const SongDatagridBody = ({
   contextAlwaysVisible,
   showDiscSubtitles,
   ...rest
-}) => {
+}: SongDatagridBodyProps) => {
   const dispatch = useDispatch()
   const records = rest.data || []
   const ids = records.map((record) => record.id)
   const dataById = Object.fromEntries(
     records.map((record) => [record.id, record]),
-  )
+  ) as Record<string, SongRecord>
 
   const playSubset = useCallback(
-    (discNumber) => {
-      let idsToPlay = []
+    (discNumber?: number) => {
+      let idsToPlay: Identifier[] = []
       if (discNumber !== undefined) {
         idsToPlay = ids.filter((id) => dataById[id].discNumber === discNumber)
       }
@@ -251,15 +298,15 @@ const SongDatagridBody = ({
 
   const firstTracksOfDiscs = useMemo(() => {
     if (!ids) {
-      return new Set()
+      return new Set<Identifier>()
     }
     let foundSubtitle = false
     const set = new Set(
       ids
         .filter((i) => dataById[i])
-        .reduce((acc, id) => {
+        .reduce<Identifier[]>((acc, id) => {
           const last = acc && acc[acc.length - 1]
-          foundSubtitle = foundSubtitle || dataById[id].discSubtitle
+          foundSubtitle = foundSubtitle || Boolean(dataById[id].discSubtitle)
           if (
             acc.length === 0 ||
             (last && dataById[id].discNumber !== dataById[last].discNumber)
@@ -276,7 +323,7 @@ const SongDatagridBody = ({
   }, [ids, dataById, showDiscSubtitles])
 
   return (
-    <PureDatagridBody
+    <DatagridBody
       {...rest}
       row={
         <SongDatagridRow
@@ -289,11 +336,18 @@ const SongDatagridBody = ({
   )
 }
 
+type SongDatagridProps = {
+  contextAlwaysVisible?: boolean
+  showDiscSubtitles?: boolean
+  sx?: unknown
+  [key: string]: unknown
+}
+
 export const SongDatagrid = ({
   contextAlwaysVisible,
   showDiscSubtitles,
   ...rest
-}) => {
+}: SongDatagridProps) => {
   const { sx, ...datagridProps } = rest
   return (
     <Datagrid

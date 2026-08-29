@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { JsonForms } from '@jsonforms/react'
 import { materialRenderers, materialCells } from '@jsonforms/material-renderers'
@@ -14,19 +13,32 @@ import {
 import { componentStyleOverride } from '../themes/componentStyleOverride'
 
 // Error boundary for catching JSONForms rendering errors
-class SchemaErrorBoundary extends React.Component {
-  constructor(props) {
+type SchemaErrorBoundaryProps = {
+  children: React.ReactNode
+  fallback: (error: Error) => React.ReactNode
+}
+
+type SchemaErrorBoundaryState = {
+  hasError: boolean
+  error: Error | null
+}
+
+class SchemaErrorBoundary extends React.Component<
+  SchemaErrorBoundaryProps,
+  SchemaErrorBoundaryState
+> {
+  constructor(props: SchemaErrorBoundaryProps) {
     super(props)
     this.state = { hasError: false, error: null }
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error) {
     return { hasError: true, error }
   }
 
   render() {
     if (this.state.hasError) {
-      return this.props.fallback(this.state.error)
+      return this.props.fallback(this.state.error as Error)
     }
     return this.props.children
   }
@@ -45,17 +57,18 @@ const ajv = new Ajv({
 const origCompile = ajv.compile.bind(ajv)
 ajv.compile = (schema) => {
   const validate = origCompile(schema)
-  const wrapped = (data) => {
+  const wrapped = (data: unknown) => {
     const valid = validate(data)
     validate.errors?.forEach((e) => {
-      if (e.keyword === 'required' && e.params?.missingProperty) {
-        e.dataPath = `${e.dataPath || ''}/${e.params.missingProperty}`
+      const params = e.params as { missingProperty?: string }
+      if (e.keyword === 'required' && params?.missingProperty) {
+        e.dataPath = `${e.dataPath || ''}/${params.missingProperty}`
       }
     })
-    wrapped.errors = validate.errors
+    ;(wrapped as { errors?: typeof validate.errors }).errors = validate.errors
     return valid
   }
-  wrapped.schema = validate.schema
+  ;(wrapped as { schema?: typeof validate.schema }).schema = validate.schema
   return wrapped
 }
 
@@ -117,14 +130,16 @@ export const SchemaConfigEditor = ({
   readOnly = false,
 }) => {
   const translate = useTranslate()
-  const containerRef = useRef(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   // Disable browser autocomplete on all inputs
   useEffect(() => {
     if (!containerRef.current) return
 
     const disableAutocomplete = () => {
-      const inputs = containerRef.current.querySelectorAll('input')
+      const container = containerRef.current
+      if (!container) return
+      const inputs = container.querySelectorAll('input')
       inputs.forEach((input) => {
         input.setAttribute('autocomplete', 'off')
       })

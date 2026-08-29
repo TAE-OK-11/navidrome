@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, it, beforeEach, vi } from 'vitest'
@@ -42,7 +41,7 @@ describe('<AppBar />', () => {
   beforeEach(() => {
     config.devActivityPanel = true
     config.enableNowPlaying = true
-    store = createStore(combineReducers({ activity: activityReducer }), {
+    store = createStore(combineReducers({ activity: activityReducer as any }), {
       activity: { nowPlayingCount: 0 },
     })
   })

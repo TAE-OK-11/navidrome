@@ -1,6 +1,6 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
+import type { NavidromeRootState } from '../types/redux'
 
 /**
  * A reusable hook for triggering custom reload logic when specific SSE events occur.
@@ -67,10 +67,18 @@ import { useSelector } from 'react-redux'
  *   onRefresh: reloadAll
  * })
  */
-export const useRefreshOnEvents = ({ events, onRefresh }) => {
+export const useRefreshOnEvents = ({
+  events,
+  onRefresh,
+}: {
+  events: string[]
+  onRefresh?: () => Promise<void> | void
+}) => {
   const [lastRefreshTime, setLastRefreshTime] = useState(Date.now())
 
-  const refreshData = useSelector((state) => state.activity?.refresh)
+  const refreshData = useSelector(
+    (state: NavidromeRootState) => state.activity?.refresh,
+  )
 
   useEffect(() => {
     const { resources, lastReceived = lastRefreshTime } = refreshData || {}
@@ -98,7 +106,7 @@ export const useRefreshOnEvents = ({ events, onRefresh }) => {
 
       // Call the custom refresh function
       if (onRefresh) {
-        onRefresh().catch((error) => {
+        Promise.resolve(onRefresh()).catch((error) => {
           // eslint-disable-next-line no-console
           console.warn('Error in useRefreshOnEvents onRefresh callback:', error)
         })

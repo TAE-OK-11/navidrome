@@ -1,9 +1,10 @@
 import { CHANGE_GAIN, CHANGE_PREAMP } from '../actions'
+import type { ReplayGainState } from '../types/redux'
 
 const GAIN_KEY = 'gainMode'
 const PREAMP_KEY = 'preAmp'
 
-const getPreAmp = () => {
+const getPreAmp = (): number => {
   const storage = localStorage.getItem(PREAMP_KEY)
 
   if (storage === null) {
@@ -14,17 +15,25 @@ const getPreAmp = () => {
   }
 }
 
-const initialState = {
+const initialState: ReplayGainState = {
   gainMode: localStorage.getItem(GAIN_KEY) || 'none',
   preAmp: getPreAmp(),
 }
 
+type ReplayGainAction = {
+  type: string
+  payload?: string
+}
+
 export const replayGainReducer = (
-  previousState = initialState,
-  { type, payload },
-) => {
+  previousState: ReplayGainState = initialState,
+  { type, payload }: ReplayGainAction,
+): ReplayGainState => {
   switch (type) {
     case CHANGE_GAIN: {
+      if (payload == null) {
+        return previousState
+      }
       localStorage.setItem(GAIN_KEY, payload)
       return {
         ...previousState,
@@ -32,6 +41,9 @@ export const replayGainReducer = (
       }
     }
     case CHANGE_PREAMP: {
+      if (payload == null) {
+        return previousState
+      }
       const value = parseFloat(payload)
       if (isNaN(value)) {
         return previousState

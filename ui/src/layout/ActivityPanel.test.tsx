@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -30,7 +29,7 @@ describe('<ActivityPanel />', () => {
   let store
 
   beforeEach(() => {
-    store = createStore(combineReducers({ activity: activityReducer }), {
+    store = createStore(combineReducers({ activity: activityReducer as any }), {
       activity: {
         scanStatus: {
           scanning: false,
@@ -63,7 +62,7 @@ describe('<ActivityPanel />', () => {
 
   it('shows error icon when server is down', () => {
     const downStore = createStore(
-      combineReducers({ activity: activityReducer }),
+      combineReducers({ activity: activityReducer as any }),
       {
         activity: {
           scanStatus: {

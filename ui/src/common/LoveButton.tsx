@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
@@ -7,6 +6,14 @@ import { useToggleLove } from './useToggleLove'
 import { useRecordContext, useTranslate } from 'react-admin'
 import config from '../config'
 import { isDateSet } from '../utils/validations'
+
+import type { Identifier } from 'react-admin'
+
+type LoveRecord = {
+  id?: Identifier
+  missing?: boolean
+  starredAt?: string
+}
 
 export const LoveButton = ({
   resource,
@@ -20,8 +27,21 @@ export const LoveButton = ({
   record: recordProp,
   sx,
   ...rest
+}: {
+  resource: string
+  color?: string
+  visible?: boolean
+  size?: 'small' | 'medium' | 'large'
+  component?: typeof IconButton
+  addLabel?: boolean
+  disabled?: boolean
+  className?: string
+  record?: LoveRecord
+  sx?: unknown
+  [key: string]: unknown
 }) => {
-  const record = useRecordContext({ record: recordProp }) || {}
+  const record = (useRecordContext<LoveRecord>({ record: recordProp }) ||
+    {}) as LoveRecord
   const translate = useTranslate()
   const [toggleLove, loading, loved] = useToggleLove(resource, record)
 
@@ -54,16 +74,16 @@ export const LoveButton = ({
       aria-label={translate('message.toggle_love')}
       aria-pressed={loved}
       title={
-        isDateSet(record.starredAt)
+        record.starredAt && isDateSet(record.starredAt)
           ? new Date(record.starredAt).toLocaleString()
           : undefined
       }
       {...rest}
     >
       {loved ? (
-        <FavoriteIcon fontSize={size} />
+        <FavoriteIcon fontSize={size as 'small' | 'medium' | 'large'} />
       ) : (
-        <FavoriteBorderIcon fontSize={size} />
+        <FavoriteBorderIcon fontSize={size as 'small' | 'medium' | 'large'} />
       )}
     </Button>
   )

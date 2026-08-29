@@ -1,5 +1,4 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Datagrid,
@@ -35,7 +34,8 @@ import ArtistSimpleList from './ArtistSimpleList'
 import { DraggableTypes } from '../consts'
 import en from '../i18n/en.json'
 import { formatBytes } from '../utils/index'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type Width } from '../themes/useWidth'
+import type { ArtistRecord } from '../types/records'
 
 const rowClass = 'nd-artist-grid-row'
 const missingRowClass = 'nd-artist-grid-row-missing'
@@ -45,7 +45,9 @@ const ArtistFilter = (props) => {
   const { permissions } = usePermissions()
   const isAdmin = permissions === 'admin'
   const rolesObj = en?.resources?.artist?.roles
-  const roles = Object.keys(rolesObj).reduce((acc, role) => {
+  const roles = Object.keys(rolesObj).reduce<
+    Array<{ id: string; name: string }>
+  >((acc, role) => {
     acc.push({
       id: role,
       name: translate(`resources.artist.roles.${role}`, {
@@ -94,9 +96,19 @@ const ArtistDatagridBody = (props) => (
   <DatagridBody {...props} row={<ArtistDatagridRow />} />
 )
 
-const ArtistDatagrid = ({ sx, ...props }) => (
+const ArtistDatagrid = ({
+  sx,
+  rowClick,
+  children,
+  ...props
+}: {
+  sx?: unknown
+  rowClick?: (id: string | number) => string
+  children?: ReactNode
+}) => (
   <Datagrid
     {...props}
+    rowClick={rowClick}
     sx={[
       {
         [`& .${rowClass} td`]: {
@@ -113,24 +125,42 @@ const ArtistDatagrid = ({ sx, ...props }) => (
       ...(Array.isArray(sx) ? sx : [sx]),
     ]}
     body={<ArtistDatagridBody />}
-  />
+  >
+    {children}
+  </Datagrid>
 )
 
-const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
-  const { filterValues } = rest
+const ArtistListView = ({
+  hasShow,
+  hasEdit,
+  hasList,
+  width,
+  filterValues,
+  ...rest
+}: {
+  hasShow?: boolean
+  hasEdit?: boolean
+  hasList?: boolean
+  width?: Width
+  filterValues?: { role?: string }
+}) => {
   const handleArtistLink = useGetHandleArtistClick(width)
   const navigate = useNavigate()
   const isXsmall = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   useResourceRefresh('artist')
 
   const role = filterValues?.role
-  const getCounter = (record, counter) => {
+  const getCounter = (
+    record: ArtistRecord | undefined,
+    counter: 'albumCount' | 'songCount' | 'size',
+  ) => {
     if (!record) return undefined
     return role ? record?.stats?.[role]?.[counter] : record?.[counter]
   }
-  const getAlbumCount = (record) => getCounter(record, 'albumCount')
-  const getSongCount = (record) => getCounter(record, 'songCount')
-  const getSize = (record) => {
+  const getAlbumCount = (record: ArtistRecord) =>
+    getCounter(record, 'albumCount')
+  const getSongCount = (record: ArtistRecord) => getCounter(record, 'songCount')
+  const getSize = (record: ArtistRecord) => {
     const size = getCounter(record, 'size')
     return size ? formatBytes(size) : '0 MB'
   }
@@ -161,7 +191,7 @@ const ArtistListView = ({ hasShow, hasEdit, hasList, width, ...rest }) => {
       {...rest}
     />
   ) : (
-    <ArtistDatagrid rowClick={handleArtistLink}>
+    <ArtistDatagrid rowClick={handleArtistLink} {...rest}>
       <CoverArtAvatar source="id" />
       <TextField source="name" />
       <FunctionField

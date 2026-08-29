@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -17,6 +16,17 @@ export const SongSimpleList = ({
   classes: classesOverride,
   hasBulkActions = false,
   ...rest
+}: {
+  className?: string
+  classes?: {
+    listItem?: string
+    title?: string
+    rightIcon?: string
+    secondary?: string
+    artist?: string
+    timeStamp?: string
+  }
+  hasBulkActions?: boolean
 }) => {
   const dispatch = useDispatch()
   const { data = [], isPending, total = 0 } = useListContext()
@@ -94,7 +104,7 @@ export const SongSimpleList = ({
                     sx={{ top: 26 }}
                   >
                     <ListItemIcon>
-                      <SongContextMenu record={record} visible={true} />
+                      <SongContextMenu record={record} />
                     </ListItemIcon>
                   </ListItemSecondaryAction>
                 </ListItemButton>

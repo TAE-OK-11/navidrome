@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gen2brain/webp"
@@ -37,6 +40,7 @@ type resizedArtworkReader struct {
 	size       int
 	square     bool
 	a          *artwork
+	original   artworkReader
 }
 
 func resizedFromOriginal(ctx context.Context, a *artwork, artID model.ArtworkID, size int, square bool) (*resizedArtworkReader, error) {
@@ -52,6 +56,7 @@ func resizedFromOriginal(ctx context.Context, a *artwork, artID model.ArtworkID,
 	}
 	r.cacheKey = original.Key()
 	r.lastUpdate = original.LastUpdated()
+	r.original = original
 	return r, nil
 }
 
@@ -68,14 +73,19 @@ func (a *resizedArtworkReader) LastUpdated() time.Time {
 }
 
 func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, string, error) {
-	// Get artwork in original size, possibly from cache
-	orig, _, err := a.a.Get(ctx, a.artID, 0, false)
+	orig, sourcePath, err := a.original.Reader(ctx)
 	if err != nil {
 		return nil, "", err
 	}
 	defer orig.Close()
 
-	resized, origSize, err := a.resizeImage(ctx, orig)
+	var resized io.Reader
+	var origSize int
+	if absPath, ok := a.resolveLocalImagePath(ctx, sourcePath); ok {
+		resized, origSize, err = a.resizeImageFromPath(ctx, absPath)
+	} else {
+		resized, origSize, err = a.resizeImage(ctx, orig)
+	}
 	if resized == nil {
 		log.Trace(ctx, "Image smaller than requested size", "artID", a.artID, "original", origSize, "resized", a.size, "square", a.square)
 	} else {
@@ -86,7 +96,7 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 	}
 	if err != nil || resized == nil {
 		// if we couldn't resize the image, return the original
-		orig, _, err = a.a.Get(ctx, a.artID, 0, false)
+		orig, _, err = a.original.Reader(ctx)
 		return orig, "", err
 	}
 	// Preserve ReadCloser semantics if the resized reader already supports Close
@@ -149,6 +159,116 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 	}
 
 	return resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)
+}
+
+func localImageFilePath(path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", false
+	}
+	return abs, true
+}
+
+func (a *resizedArtworkReader) resolveLocalImagePath(ctx context.Context, path string) (string, bool) {
+	if abs, ok := localImageFilePath(path); ok {
+		return abs, true
+	}
+	if path == "" || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return "", false
+	}
+	libraries, err := a.a.ds.Library(ctx).GetAll()
+	if err != nil {
+		return "", false
+	}
+	for _, library := range libraries {
+		candidate := filepath.Join(library.Path, filepath.FromSlash(path))
+		if abs, ok := localImageFilePath(candidate); ok {
+			return abs, true
+		}
+	}
+	return "", false
+}
+
+func (a *resizedArtworkReader) resizeImageFromPath(ctx context.Context, path string) (io.Reader, int, error) {
+	flags, sniffErr := persistentImageWorkers.sniffAnimationPath(ctx, path)
+	if sniffErr == nil {
+		if flags.AnimatedGIF {
+			resized, err := persistentImageWorkers.resizeAnimatedGIFPath(ctx, path, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
+				return bytes.NewReader(resized), 0, nil
+			}
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			return nil, 0, fmt.Errorf("Rust animated GIF resize unavailable: %w", err)
+		} else if flags.AnimatedWebP {
+			resized, err := persistentImageWorkers.resizeAnimatedWebPPath(ctx, path, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
+				return bytes.NewReader(resized), 0, nil
+			}
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			log.Debug(ctx, "Rust animated WebP resize unavailable; returning original bytes", "error", err)
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return nil, 0, readErr
+			}
+			return bytes.NewReader(data), 0, nil
+		} else if flags.AnimatedPNG {
+			resized, err := persistentImageWorkers.resizeAnimatedPNGPath(ctx, path, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
+				return bytes.NewReader(resized), 0, nil
+			}
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			log.Debug(ctx, "Rust animated PNG resize unavailable; returning original bytes", "error", err)
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return nil, 0, readErr
+			}
+			return bytes.NewReader(data), 0, nil
+		}
+	} else if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	} else {
+		log.Debug(ctx, "Rust animation sniff unavailable; treating as static image", "error", sniffErr)
+	}
+
+	outputFormat := "jpeg"
+	if conf.Server.EnableWebPEncoding {
+		outputFormat = "webp"
+	} else if a.square || strings.EqualFold(filepath.Ext(path), ".png") {
+		outputFormat = "png"
+	}
+	resized, resizeErr := persistentImageWorkers.resizePath(
+		ctx,
+		path,
+		a.size,
+		conf.Server.CoverArtQuality,
+		a.square,
+		outputFormat,
+	)
+	if resizeErr == nil {
+		return bytes.NewReader(resized), 0, nil
+	} else if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	}
+	if strings.Contains(resizeErr.Error(), "does not require resizing") {
+		return nil, 0, nil
+	}
+	return nil, 0, fmt.Errorf("Rust artwork resize unavailable: %w", resizeErr)
 }
 
 func resizeStaticImage(data []byte, size int, square bool) (io.Reader, int, error) {

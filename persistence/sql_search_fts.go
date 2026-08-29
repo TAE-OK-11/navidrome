@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -190,6 +191,23 @@ func buildFTS5Query(userInput string) (string, bool) {
 	return result, ftsQueryDegraded(userInput, prefixQuery)
 }
 
+type cachedFTS5Query struct {
+	query    string
+	degraded bool
+}
+
+var ftsQueryCache sync.Map
+
+func buildFTS5QueryCached(userInput string) (string, bool) {
+	if cached, ok := ftsQueryCache.Load(userInput); ok {
+		entry := cached.(cachedFTS5Query)
+		return entry.query, entry.degraded
+	}
+	query, degraded := buildFTS5Query(userInput)
+	ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
+	return query, degraded
+}
+
 // ftsColumn pairs an FTS5 column name with its BM25 relevance weight.
 type ftsColumn struct {
 	Name   string
@@ -359,7 +377,7 @@ func ftsQueryDegraded(original, ftsQuery string) bool {
 // tokenization stripped significant content from the query (e.g., "1+" → "1*").
 // Returns nil when the query produces no searchable tokens at all.
 func newFTSSearch(tableName, query string) searchStrategy {
-	q, degraded := buildFTS5Query(query)
+	q, degraded := buildFTS5QueryCached(query)
 	if q == "" || degraded {
 		// Fallback: try LIKE search with the raw query
 		cleaned := strings.TrimSpace(strings.ReplaceAll(query, `"`, ""))

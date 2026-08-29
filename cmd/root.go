@@ -80,6 +80,7 @@ func postRun() {
 // it will cancel the context and exit gracefully.
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
+	preflightRustWorkers(ctx)
 	subsonicRouter := CreateSubsonicAPIRouter(ctx)
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(startServer(ctx, subsonicRouter))

@@ -172,50 +172,7 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
 }
 
 fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
-    let known_hashes = request.known_hashes.clone();
-    let (folders, warnings) = collect_scan(request)?;
-    let file_count = folders
-        .values()
-        .map(|folder| folder.audio_files.len() + folder.image_files.len() + folder.num_playlists)
-        .sum();
-    let mut ordered: Vec<&Folder> = folders.values().collect();
-    ordered.sort_by(|left, right| {
-        path_depth(&right.path)
-            .cmp(&path_depth(&left.path))
-            .then_with(|| left.path.cmp(&right.path))
-    });
-
-    for warning in &warnings {
-        write_event(output, &Event::Warning { message: warning }, false)?;
-    }
-    for folder in ordered {
-        if known_hashes.get(&folder.path).is_some_and(|known| known == &folder.hash) {
-            write_event(
-                output,
-                &Event::FolderSummary {
-                    folder: FolderSummary {
-                        path: folder.path.clone(),
-                        hash: folder.hash.clone(),
-                    },
-                },
-                false,
-            )?;
-        } else {
-            write_event(output, &Event::Folder { folder }, false)?;
-        }
-    }
-    write_event(
-        output,
-        &Event::Done {
-            folders: folders.len(),
-            files: file_count,
-        },
-        true,
-    )?;
-    Ok(())
-}
-
-fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<String>)> {
+    let known_hashes = request.known_hashes;
     let root = request
         .root
         .canonicalize()
@@ -225,49 +182,324 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
     } else {
         request.targets
     };
-    let mut folders = BTreeMap::<String, Folder>::new();
-    let mut warnings = Vec::<String>::new();
+    let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
+    let mut folder_count = 0usize;
+    let mut file_count = 0usize;
 
     for target in targets {
         let target_path = root.join(Path::new(&target));
         if !target_path.exists() {
-            warnings.push(format!("scan target does not exist: {target}"));
+            write_event(
+                output,
+                &Event::Warning {
+                    message: &format!("scan target does not exist: {target}"),
+                },
+                true,
+            )?;
+            continue;
+        }
+        if request.walk_threads > 1 {
+            let (folders, warnings) = collect_target(&root, &target, &request, &ignore_cache)?;
+            for warning in &warnings {
+                write_event(output, &Event::Warning { message: warning }, true)?;
+            }
+            emit_collected_folders(
+                &folders,
+                &known_hashes,
+                output,
+                &mut folder_count,
+                &mut file_count,
+            )?;
+        } else {
+            walk_target_post_order(
+                &root,
+                &target,
+                &request,
+                &known_hashes,
+                &ignore_cache,
+                output,
+                &mut folder_count,
+                &mut file_count,
+            )?;
+        }
+    }
+
+    write_event(
+        output,
+        &Event::Done {
+            folders: folder_count,
+            files: file_count,
+        },
+        true,
+    )?;
+    Ok(())
+}
+
+fn emit_collected_folders(
+    folders: &BTreeMap<String, Folder>,
+    known_hashes: &HashMap<String, String>,
+    output: &mut impl Write,
+    folder_count: &mut usize,
+    file_count: &mut usize,
+) -> Result<()> {
+    let mut ordered: Vec<&Folder> = folders.values().collect();
+    ordered.sort_by(|left, right| {
+        path_depth(&right.path)
+            .cmp(&path_depth(&left.path))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    for folder in ordered {
+        emit_folder(output, folder, known_hashes)?;
+        *folder_count += 1;
+        *file_count += folder_file_count(folder);
+    }
+    Ok(())
+}
+
+fn folder_file_count(folder: &Folder) -> usize {
+    folder.audio_files.len() + folder.image_files.len() + folder.num_playlists
+}
+
+fn emit_folder(
+    output: &mut impl Write,
+    folder: &Folder,
+    known_hashes: &HashMap<String, String>,
+) -> Result<()> {
+    if known_hashes
+        .get(&folder.path)
+        .is_some_and(|known| known == &folder.hash)
+    {
+        write_event(
+            output,
+            &Event::FolderSummary {
+                folder: FolderSummary {
+                    path: folder.path.clone(),
+                    hash: folder.hash.clone(),
+                },
+            },
+            true,
+        )
+    } else {
+        write_event(output, &Event::Folder { folder }, true)
+    }
+}
+
+fn walk_target_post_order(
+    root: &Path,
+    target: &str,
+    request: &ScanRequest,
+    known_hashes: &HashMap<String, String>,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
+    output: &mut impl Write,
+    folder_count: &mut usize,
+    file_count: &mut usize,
+) -> Result<()> {
+    let relative = normalize_relative(Path::new(target));
+    let abs_path = root.join(Path::new(target));
+    walk_folder_post_order(
+        root,
+        &abs_path,
+        &relative,
+        request,
+        known_hashes,
+        ignore_cache,
+        output,
+        folder_count,
+        file_count,
+    )
+}
+
+fn walk_folder_post_order(
+    root: &Path,
+    abs_path: &Path,
+    relative: &str,
+    request: &ScanRequest,
+    known_hashes: &HashMap<String, String>,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
+    output: &mut impl Write,
+    folder_count: &mut usize,
+    file_count: &mut usize,
+) -> Result<()> {
+    let metadata = fs::metadata(abs_path).with_context(|| format!("reading {}", abs_path.display()))?;
+    let mut folder = Folder {
+        path: relative.to_owned(),
+        mod_time_ns: system_time_ns(metadata.modified().unwrap_or(UNIX_EPOCH)),
+        ..Folder::default()
+    };
+    let mut child_dirs = Vec::<String>::new();
+
+    let mut builder = WalkBuilder::new(abs_path);
+    builder
+        .standard_filters(false)
+        .add_custom_ignore_filename(IGNORE_FILE)
+        .follow_links(request.follow_symlinks)
+        .max_depth(Some(1))
+        .sort_by_file_name(|left, right| left.cmp(right));
+    let ignore_dot_folders = request.ignore_dot_folders;
+    let follow_symlinks = request.follow_symlinks;
+    let cache_for_filter = Arc::clone(ignore_cache);
+    builder.filter_entry(move |entry| {
+        allow_entry(
+            entry,
+            ignore_dot_folders,
+            follow_symlinks,
+            &cache_for_filter,
+        )
+    });
+
+    for result in builder.build() {
+        let entry = match result {
+            Ok(entry) => entry,
+            Err(error) => {
+                write_event(
+                    output,
+                    &Event::Warning {
+                        message: &format!("filesystem traversal warning: {error}"),
+                    },
+                    true,
+                )?;
+                continue;
+            }
+        };
+        if entry.depth() == 0 {
+            continue;
+        }
+        let file_type = match entry.file_type() {
+            Some(file_type) => file_type,
+            None => continue,
+        };
+        let entry_metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                write_event(
+                    output,
+                    &Event::Warning {
+                        message: &format!("{}: {error:#}", entry.path().display()),
+                    },
+                    true,
+                )?;
+                continue;
+            }
+        };
+        let mod_time_ns = system_time_ns(entry_metadata.modified().unwrap_or(UNIX_EPOCH));
+        if file_type.is_dir() {
+            let child_name = entry.file_name().to_string_lossy();
+            let child_relative = join_relative(relative, &child_name);
+            child_dirs.push(child_relative);
             continue;
         }
 
-        let mut builder = WalkBuilder::new(&target_path);
-        builder
-            .standard_filters(false)
-            .add_custom_ignore_filename(IGNORE_FILE)
-            .follow_links(request.follow_symlinks)
-            .sort_by_file_name(|left, right| left.cmp(right));
-        if request.walk_threads > 1 {
-            builder.threads(request.walk_threads);
+        let source_name = entry.file_name().to_string_lossy().into_owned();
+        if source_name == IGNORE_FILE {
+            continue;
         }
-        let ignore_dot_folders = request.ignore_dot_folders;
-        let follow_symlinks = request.follow_symlinks;
-        let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
-        let cache_for_filter = Arc::clone(&ignore_cache);
-        builder.filter_entry(move |entry| {
-            allow_entry(
-                entry,
-                ignore_dot_folders,
-                follow_symlinks,
-                &cache_for_filter,
-            )
-        });
-
-        for result in builder.build() {
-            let entry = match result {
-                Ok(entry) => entry,
-                Err(error) => {
-                    warnings.push(format!("filesystem traversal warning: {error}"));
-                    continue;
-                }
-            };
-            if let Err(error) = collect_entry(&root, &entry, &mut folders, &ignore_cache) {
-                warnings.push(format!("{}: {error:#}", entry.path().display()));
+        let classification_name = if entry.path_is_symlink() {
+            entry
+                .path()
+                .canonicalize()
+                .ok()
+                .and_then(|path| path.file_name().map(|name| name.to_owned()))
+                .unwrap_or_else(|| entry.file_name().to_owned())
+        } else {
+            entry.file_name().to_owned()
+        };
+        let extension = Path::new(&classification_name)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
+        let file = FileEntry {
+            name: source_name.clone(),
+            size: entry_metadata.len(),
+            mod_time_ns,
+        };
+        folder.mod_time_ns = folder.mod_time_ns.max(mod_time_ns);
+        match extension.as_str() {
+            extension if AUDIO_EXTENSION_SET.contains(extension) => {
+                folder.audio_files.insert(source_name, file);
             }
+            extension if IMAGE_EXTENSION_SET.contains(extension) => {
+                folder.images_updated_at_ns = folder.images_updated_at_ns.max(mod_time_ns);
+                folder.image_files.insert(source_name, file);
+            }
+            extension if PLAYLIST_EXTENSION_SET.contains(extension) => {
+                folder.num_playlists += 1;
+            }
+            _ => {}
+        }
+    }
+
+    for child_relative in &child_dirs {
+        walk_folder_post_order(
+            root,
+            &root.join(Path::new(child_relative)),
+            child_relative,
+            request,
+            known_hashes,
+            ignore_cache,
+            output,
+            folder_count,
+            file_count,
+        )?;
+        folder.num_subfolders += 1;
+    }
+
+    folder.hash = folder_content_hash(&folder);
+    emit_folder(output, &folder, known_hashes)?;
+    *folder_count += 1;
+    *file_count += folder_file_count(&folder);
+    Ok(())
+}
+
+fn join_relative(parent: &str, child: &str) -> String {
+    if parent == "." {
+        child.to_owned()
+    } else {
+        format!("{parent}/{child}")
+    }
+}
+
+fn collect_target(
+    root: &Path,
+    target: &str,
+    request: &ScanRequest,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
+) -> Result<(BTreeMap<String, Folder>, Vec<String>)> {
+    let target_path = root.join(Path::new(target));
+    let mut folders = BTreeMap::<String, Folder>::new();
+    let mut warnings = Vec::<String>::new();
+
+    let mut builder = WalkBuilder::new(&target_path);
+    builder
+        .standard_filters(false)
+        .add_custom_ignore_filename(IGNORE_FILE)
+        .follow_links(request.follow_symlinks)
+        .sort_by_file_name(|left, right| left.cmp(right));
+    if request.walk_threads > 1 {
+        builder.threads(request.walk_threads);
+    }
+    let ignore_dot_folders = request.ignore_dot_folders;
+    let follow_symlinks = request.follow_symlinks;
+    let cache_for_filter = Arc::clone(ignore_cache);
+    builder.filter_entry(move |entry| {
+        allow_entry(
+            entry,
+            ignore_dot_folders,
+            follow_symlinks,
+            &cache_for_filter,
+        )
+    });
+
+    for result in builder.build() {
+        let entry = match result {
+            Ok(entry) => entry,
+            Err(error) => {
+                warnings.push(format!("filesystem traversal warning: {error}"));
+                continue;
+            }
+        };
+        if let Err(error) = collect_entry(root, &entry, &mut folders, ignore_cache) {
+            warnings.push(format!("{}: {error:#}", entry.path().display()));
         }
     }
 
@@ -287,6 +519,35 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
 
     for folder in folders.values_mut() {
         folder.hash = folder_content_hash(folder);
+    }
+
+    Ok((folders, warnings))
+}
+
+fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<String>)> {
+    let root = request
+        .root
+        .canonicalize()
+        .with_context(|| format!("resolving music root {}", request.root.display()))?;
+    let targets = if request.targets.is_empty() {
+        vec![".".to_owned()]
+    } else {
+        request.targets
+    };
+    let mut folders = BTreeMap::<String, Folder>::new();
+    let mut warnings = Vec::<String>::new();
+    let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
+
+    for target in targets {
+        let target_path = root.join(Path::new(&target));
+        if !target_path.exists() {
+            warnings.push(format!("scan target does not exist: {target}"));
+            continue;
+        }
+        let (mut target_folders, mut target_warnings) =
+            collect_target(&root, &target, &request, &ignore_cache)?;
+        warnings.append(&mut target_warnings);
+        folders.append(&mut target_folders);
     }
 
     Ok((folders, warnings))
@@ -774,6 +1035,42 @@ mod tests {
 
         let text = String::from_utf8(output).expect("utf8 scan output");
         assert!(text.contains("\"kind\":\"done\""));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn post_order_emits_deepest_folders_first() {
+        let root = temporary_music_root();
+        fs::create_dir_all(root.join("Artist/Album")).unwrap();
+        fs::write(root.join("Artist/Album/track.mp3"), b"audio").unwrap();
+
+        let mut output = Vec::new();
+        run_scan(
+            ScanRequest {
+                root: root.clone(),
+                targets: vec![".".to_owned()],
+                follow_symlinks: false,
+                ignore_dot_folders: true,
+                known_hashes: HashMap::new(),
+                walk_threads: 0,
+            },
+            &mut output,
+        )
+        .unwrap();
+
+        let mut folder_paths = Vec::new();
+        for line in String::from_utf8(output).expect("utf8 scan output").lines() {
+            let value: serde_json::Value = serde_json::from_str(line).expect("json line");
+            if value.get("kind").and_then(|kind| kind.as_str()) == Some("folder") {
+                folder_paths.push(
+                    value["folder"]["path"]
+                        .as_str()
+                        .expect("folder path")
+                        .to_owned(),
+                );
+            }
+        }
+        assert_eq!(folder_paths, vec!["Artist/Album".to_owned(), "Artist".to_owned()]);
         fs::remove_dir_all(root).unwrap();
     }
 

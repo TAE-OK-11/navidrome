@@ -153,17 +153,10 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 }
 
 func rustWalkThreads() int {
-	threads := int(conf.Server.DevScannerThreads)
-	if threads < 1 {
-		threads = runtime.GOMAXPROCS(0)
-	}
-	if threads > 8 {
-		return 8
-	}
-	if threads < 1 {
-		return 1
-	}
-	return threads
+	// Rust streams folders in post-order when walk_threads <= 1. Folder processing
+	// stays parallel on the Go side via DevScannerThreads; a parallel Rust walk
+	// would buffer the entire tree before the first folder reaches Go.
+	return 1
 }
 
 func (j *scanJob) knownHashesSnapshot() map[string]string {

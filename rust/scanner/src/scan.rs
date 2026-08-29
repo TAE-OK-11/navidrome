@@ -172,7 +172,7 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
 }
 
 fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
-    let known_hashes = request.known_hashes;
+    let known_hashes = request.known_hashes.clone();
     let root = request
         .root
         .canonicalize()

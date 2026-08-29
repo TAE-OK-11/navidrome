@@ -50,7 +50,7 @@ const navigationHandler = createNavigationHandler(
 )
 
 // self.__WB_MANIFEST is default injection point
-workbox.precaching.precacheAndRoute(serviceWorker.__WB_MANIFEST)
+workbox.precaching.precacheAndRoute(self.__WB_MANIFEST)
 
 // Register this strategy to handle all navigations.
 workbox.routing.registerRoute(

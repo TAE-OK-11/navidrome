@@ -72,14 +72,10 @@ func NewPair(key, value string) string {
 }
 
 func New(filePath string, info Info) Metadata {
-	var tags model.Tags
-	if info.MediaFileJSON == "" {
-		tags = clean(filePath, info.Tags)
-	}
 	return Metadata{
 		filePath:      filePath,
 		fileInfo:      info.FileInfo,
-		tags:          tags,
+		tags:          clean(filePath, info.Tags),
 		audioProps:    info.AudioProperties,
 		hasPicture:    info.HasPicture,
 		lyricsJSON:    info.LyricsJSON,

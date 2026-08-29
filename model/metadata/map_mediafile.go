@@ -103,16 +103,23 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 }
 
 func albumTagsFromRust(rustTags map[string][]string, cleaned model.Tags) model.Tags {
-	if len(rustTags) > 0 {
-		tags := make(model.Tags, len(rustTags))
-		for key, values := range rustTags {
-			if len(values) == 0 {
-				continue
-			}
-			tags[model.TagName(key)] = values
-		}
+	tags := mediaFileTagsFromCleaned(cleaned)
+	if len(rustTags) == 0 {
 		return tags
 	}
+	for key, values := range rustTags {
+		tag := model.TagName(key)
+		if len(values) == 0 {
+			delete(tags, tag)
+			continue
+		}
+		tags[tag] = values
+	}
+	return tags
+}
+
+// mediaFileTagsFromCleaned keeps additional tags and main tags marked album:true.
+func mediaFileTagsFromCleaned(cleaned model.Tags) model.Tags {
 	if len(cleaned) == 0 {
 		return nil
 	}

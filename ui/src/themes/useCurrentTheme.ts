@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useSelector } from 'react-redux'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import themes, { findThemeKeyByDisplayName, getTheme } from './index'
@@ -8,13 +7,17 @@ import { useEffect, useMemo } from 'react'
 
 const fallbackThemeKey = findThemeKeyByDisplayName(config.defaultTheme)
 
+type ThemeState = {
+  theme: string
+}
+
 const useCurrentTheme = () => {
   // Runs above the ThemeProvider carrying the prop below, so it needs its own noSsr or the
   // auto theme renders dark first and flips.
   const prefersLightMode = useMediaQuery('(prefers-color-scheme: light)', {
     noSsr: true,
   })
-  const theme = useSelector((state) => {
+  const theme = useSelector((state: ThemeState) => {
     if (state.theme === AUTO_THEME_ID) {
       return prefersLightMode ? themes.LightTheme : themes.DarkTheme
     }

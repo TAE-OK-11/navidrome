@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useCallback } from 'react'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
@@ -20,6 +19,18 @@ export const LoveButton = ({
   record: recordProp,
   sx,
   ...rest
+}: {
+  resource: string
+  color?: string
+  visible?: boolean
+  size?: 'small' | 'medium' | 'large'
+  component?: typeof IconButton
+  addLabel?: boolean
+  disabled?: boolean
+  className?: string
+  record?: Record<string, unknown>
+  sx?: unknown
+  [key: string]: unknown
 }) => {
   const record = useRecordContext({ record: recordProp }) || {}
   const translate = useTranslate()

@@ -1,9 +1,20 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDataProvider, useNotify, useRefresh } from 'react-admin'
+import {
+  useDataProvider,
+  useNotify,
+  useRefresh,
+  type Identifier,
+} from 'react-admin'
 import subsonic from '../subsonic'
 
-export const useToggleLove = (resource, record = {}) => {
+type LoveRecord = {
+  id?: Identifier
+  mediaFileId?: Identifier
+  playlistId?: Identifier
+  starred?: boolean
+}
+
+export const useToggleLove = (resource: string, record: LoveRecord = {}) => {
   const [loading, setLoading] = useState(false)
   const [loved, setLoved] = useState(Boolean(record.starred))
   const notify = useNotify()
@@ -24,10 +35,12 @@ export const useToggleLove = (resource, record = {}) => {
   const dataProvider = useDataProvider()
 
   const refreshRecord = useCallback(() => {
-    const promises = []
+    const promises: Promise<unknown>[] = []
 
     // Always refresh the original resource
-    const params = { id: record.id }
+    const params: { id: Identifier; filter?: { playlist_id: Identifier } } = {
+      id: record.id!,
+    }
     if (record.playlistId) {
       params.filter = { playlist_id: record.playlistId }
     }
@@ -35,7 +48,9 @@ export const useToggleLove = (resource, record = {}) => {
 
     // If we have a mediaFileId, also refresh the song
     if (record.mediaFileId) {
-      promises.push(dataProvider.getOne('song', { id: record.mediaFileId }))
+      promises.push(
+        dataProvider.getOne('song', { id: record.mediaFileId }),
+      )
     }
 
     return Promise.all(promises)
@@ -67,7 +82,7 @@ export const useToggleLove = (resource, record = {}) => {
 
     setLoading(true)
     setLoved(!previousLoved)
-    return toggle(id)
+    return toggle(String(id))
       .then(refreshRecord)
       .catch((e) => {
         // eslint-disable-next-line no-console
@@ -80,5 +95,5 @@ export const useToggleLove = (resource, record = {}) => {
       })
   }
 
-  return [toggleLove, loading, loved]
+  return [toggleLove, loading, loved] as const
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { createBreakpoints, createSpacing } from '@mui/system'
 
 const modernComponentDefaults = {
@@ -95,10 +94,16 @@ const MUI_SLOT_CLASSES = {
   icon: 'MuiStepIcon-root',
 }
 
-const isPlainObject = (value) =>
+type ComponentOptions = {
+  defaultProps?: Record<string, unknown>
+  styleOverrides?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
-const rewriteLegacySelector = (selector) =>
+const rewriteLegacySelector = (selector: string) =>
   selector.replace(
     /(^|[^A-Za-z0-9_-])\$([A-Za-z0-9_]+)/g,
     (match, prefix, name) => {
@@ -112,7 +117,7 @@ const rewriteLegacySelector = (selector) =>
     },
   )
 
-const modernizeStyleObject = (styles) => {
+const modernizeStyleObject = (styles: Record<string, unknown>) => {
   if (!isPlainObject(styles)) {
     return styles
   }
@@ -126,7 +131,9 @@ const modernizeStyleObject = (styles) => {
   return next
 }
 
-const modernizeStyleOverrides = (styleOverrides = {}) => {
+const modernizeStyleOverrides = (
+  styleOverrides: Record<string, unknown> = {},
+) => {
   const next = {}
   for (const [slot, value] of Object.entries(styleOverrides)) {
     next[slot] = isPlainObject(value) ? modernizeStyleObject(value) : value
@@ -134,7 +141,10 @@ const modernizeStyleOverrides = (styleOverrides = {}) => {
   return next
 }
 
-const mergeComponentOptions = (base = {}, next = {}) => ({
+const mergeComponentOptions = (
+  base: ComponentOptions = {},
+  next: ComponentOptions = {},
+): ComponentOptions => ({
   ...base,
   ...next,
   defaultProps: { ...base.defaultProps, ...next.defaultProps },
@@ -146,7 +156,7 @@ const mergeComponentOptions = (base = {}, next = {}) => ({
 
 // Navidrome's themes still use the v4 `overrides`, `props`, and palette `type`
 // shape. Convert it once without relying on MUI's removed/deprecated adapter.
-const modernizeTheme = (inputTheme) => {
+const modernizeTheme = (inputTheme: Record<string, unknown>) => {
   const {
     components = {},
     defaultProps = {},
@@ -156,8 +166,20 @@ const modernizeTheme = (inputTheme) => {
     props = {},
     styleOverrides = {},
     ...other
-  } = inputTheme
-  const modernComponents = { ...modernComponentDefaults }
+  } = inputTheme as {
+    components?: Record<string, ComponentOptions>
+    defaultProps?: Record<string, Record<string, unknown>>
+    mixins?: Record<string, unknown>
+    overrides?: Record<string, Record<string, unknown>>
+    palette?: Record<string, unknown> & { type?: string; mode?: string }
+    props?: Record<string, Record<string, unknown>>
+    styleOverrides?: Record<string, Record<string, unknown>>
+    spacing?: number | string
+    breakpoints?: Record<string, unknown>
+  }
+  const modernComponents: Record<string, ComponentOptions> = {
+    ...modernComponentDefaults,
+  }
 
   for (const [component, value] of Object.entries(components)) {
     modernComponents[component] = mergeComponentOptions(
@@ -166,16 +188,20 @@ const modernizeTheme = (inputTheme) => {
     )
   }
 
-  const addComponentOptions = (options, key) => {
+  const addComponentOptions = (
+    options: Record<string, Record<string, unknown>>,
+    key: 'defaultProps' | 'styleOverrides',
+  ) => {
     for (const [component, value] of Object.entries(options)) {
       const current = modernComponents[component] || {}
       const nextValue =
         key === 'styleOverrides' ? modernizeStyleOverrides(value) : value
+      const currentKeyValue = (current[key] as Record<string, unknown>) || {}
       modernComponents[component] = {
         ...current,
         [key]:
           key === 'defaultProps' || key === 'styleOverrides'
-            ? { ...current[key], ...nextValue }
+            ? { ...currentKeyValue, ...nextValue }
             : nextValue,
       }
     }
@@ -188,7 +214,7 @@ const modernizeTheme = (inputTheme) => {
 
   // Ensure styleOverrides that came through merge still have modern selectors.
   for (const [component, value] of Object.entries(modernComponents)) {
-    if (value?.styleOverrides) {
+    if (value.styleOverrides) {
       modernComponents[component] = {
         ...value,
         styleOverrides: modernizeStyleOverrides(value.styleOverrides),
@@ -196,8 +222,13 @@ const modernizeTheme = (inputTheme) => {
     }
   }
 
-  const spacing = createSpacing(inputTheme.spacing)
-  const breakpoints = createBreakpoints(inputTheme.breakpoints || {})
+  const spacing = createSpacing(
+    (inputTheme as { spacing?: number | string }).spacing,
+  )
+  const breakpoints = createBreakpoints(
+    ((inputTheme as { breakpoints?: Record<string, unknown> }).breakpoints ||
+      {}) as Parameters<typeof createBreakpoints>[0],
+  )
   const { type, mode, ...paletteOptions } = palette
   const finalMode = mode || type || 'light'
 

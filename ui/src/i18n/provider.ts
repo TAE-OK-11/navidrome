@@ -1,15 +1,28 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import polyglotI18nProvider from 'ra-i18n-polyglot'
 import deepmerge from 'deepmerge'
+import type { TranslationMessages } from 'react-admin'
 import dataProvider from '../dataProvider'
 import en from './en.json'
 import { i18nProvider } from './index'
 
+type StoredTranslation = {
+  id: string
+  data: string
+}
+
+const parseStoredTranslation = (): StoredTranslation | null => {
+  const raw = localStorage.getItem('translation')
+  if (!raw) {
+    return null
+  }
+  return JSON.parse(raw) as StoredTranslation
+}
+
 // Only returns current selected locale if its translations are found in localStorage
 const defaultLocale = function () {
   const locale = localStorage.getItem('locale')
-  const current = JSON.parse(localStorage.getItem('translation'))
-  if (current && current.id === locale) {
+  const current = parseStoredTranslation()
+  if (locale && current && current.id === locale) {
     // Asynchronously reload the translation from the server
     retrieveTranslation(locale).then(() => {
       i18nProvider.changeLocale(locale)
@@ -19,20 +32,20 @@ const defaultLocale = function () {
   return 'en'
 }
 
-export function retrieveTranslation(locale) {
+export function retrieveTranslation(locale: string) {
   return dataProvider.getOne('translation', { id: locale }).then((res) => {
     localStorage.setItem('translation', JSON.stringify(res.data))
     return prepareLanguage(JSON.parse(res.data.data))
   })
 }
 
-const removeEmpty = (obj) => {
-  for (let k in obj) {
+const removeEmpty = (obj: Record<string, unknown>) => {
+  for (const k in obj) {
     if (
       Object.prototype.hasOwnProperty.call(obj, k) &&
       typeof obj[k] === 'object'
     ) {
-      removeEmpty(obj[k])
+      removeEmpty(obj[k] as Record<string, unknown>)
     } else {
       if (!obj[k]) {
         delete obj[k]
@@ -41,27 +54,33 @@ const removeEmpty = (obj) => {
   }
 }
 
-const prepareLanguage = (lang) => {
+const prepareLanguage = (lang: Record<string, unknown>): TranslationMessages => {
   removeEmpty(lang)
   // Make "albumSong" and "playlistTrack" resource use the same translations as "song"
-  lang.resources.albumSong = lang.resources.song
-  lang.resources.playlistTrack = lang.resources.song
+  const resources = lang.resources as Record<string, unknown>
+  resources.albumSong = resources.song
+  resources.playlistTrack = resources.song
   // ra.boolean.null should always be empty
-  lang.ra.boolean.null = ''
+  const ra = lang.ra as Record<string, Record<string, string>>
+  ra.boolean.null = ''
   // Fallback to english translations
-  return deepmerge(en, lang)
+  return deepmerge(en, lang) as TranslationMessages
 }
 
-export default polyglotI18nProvider((locale) => {
+const getMessages = (
+  locale: string,
+): TranslationMessages | Promise<TranslationMessages> => {
   // English is bundled
   if (locale === 'en') {
-    return prepareLanguage(en)
+    return prepareLanguage(en as Record<string, unknown>)
   }
   // If the requested locale is in already loaded, return it
-  const current = JSON.parse(localStorage.getItem('translation'))
+  const current = parseStoredTranslation()
   if (current && current.id === locale) {
     return prepareLanguage(JSON.parse(current.data))
   }
   // If not, get it from the server, and store it in localStorage
   return retrieveTranslation(locale)
-}, defaultLocale())
+}
+
+export default polyglotI18nProvider(getMessages, defaultLocale())

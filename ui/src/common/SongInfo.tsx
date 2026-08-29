@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React, { useState } from 'react'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -26,15 +25,24 @@ import { MultiLineTextField } from './MultiLineTextField'
 import config from '../config'
 import { AlbumLinkField } from '../song/AlbumLinkField'
 import { Tab, Tabs } from '@mui/material'
+import type { SongRecord } from '../types/records'
 
 const tableCellSx = { width: '17.5%' }
 const valueSx = { whiteSpace: 'pre-line' }
 const gainSx = { '&:after': { content: '" db"' } }
 
-export const SongInfo = (props) => {
+type SongInfoProps = {
+  record?: SongRecord
+}
+
+export const SongInfo = (props: SongInfoProps) => {
   const translate = useTranslate()
-  const record = useRecordContext(props)
+  const record = useRecordContext<SongRecord>(props)
   const [tab, setTab] = useState(0)
+
+  if (!record) {
+    return null
+  }
 
   // These are already displayed in other fields or are album-level tags
   const excludedTags = [
@@ -46,7 +54,7 @@ export const SongInfo = (props) => {
     'media',
     'albumversion',
   ]
-  const data = {
+  const data: Record<string, React.ReactNode> = {
     path: <PathField />,
     libraryName: <TextField source="libraryName" />,
     album: (
@@ -54,13 +62,19 @@ export const SongInfo = (props) => {
     ),
     discSubtitle: <TextField source="discSubtitle" />,
     albumArtist: (
-      <ArtistLinkField source="albumArtist" record={record} limit={Infinity} />
+      <ArtistLinkField
+        source="albumArtist"
+        record={record}
+        limit={Infinity}
+      />
     ),
     artist: (
       <ArtistLinkField source="artist" record={record} limit={Infinity} />
     ),
     genre: (
-      <FunctionField render={(r) => r.genres?.map((g) => g.name).join(' • ')} />
+      <FunctionField
+        render={(r) => r.genres?.map((g) => g.name).join(' • ')}
+      />
     ),
     compilation: <BooleanField source="compilation" />,
     bitRate: <BitrateField source="bitRate" />,
@@ -74,13 +88,15 @@ export const SongInfo = (props) => {
     comment: <MultiLineTextField source="comment" />,
   }
 
-  const roles = []
+  const roles: Array<[string, number]> = []
 
-  for (const name of Object.keys(record.participants)) {
-    if (name === 'albumartist' || name === 'artist') {
-      continue
+  if (record.participants) {
+    for (const name of Object.keys(record.participants)) {
+      if (name === 'albumartist' || name === 'artist') {
+        continue
+      }
+      roles.push([name, record.participants[name].length])
     }
-    roles.push([name, record.participants[name].length])
   }
 
   const optionalFields = [
@@ -92,9 +108,11 @@ export const SongInfo = (props) => {
     'sampleRate',
   ]
   optionalFields.forEach((field) => {
-    !record[field] && delete data[field]
+    if (!record[field]) {
+      delete data[field]
+    }
   })
-  if (record.playCount > 0) {
+  if ((record.playCount ?? 0) > 0) {
     data.playDate = <DateField record={record} source="playDate" showTime />
   }
 
@@ -107,9 +125,11 @@ export const SongInfo = (props) => {
     (tag) => !excludedTags.includes(tag[0]),
   )
 
+  const rawTags = record.rawTags as Record<string, string[]> | undefined
+
   return (
     <TableContainer>
-      {record.rawTags && (
+      {rawTags && (
         <Tabs value={tab} onChange={(_, value) => setTab(value)}>
           <Tab
             label={translate(`resources.song.fields.mappedTags`)}
@@ -126,7 +146,7 @@ export const SongInfo = (props) => {
       <div
         hidden={tab === 1}
         id="mapped-tags-body"
-        aria-labelledby={record.rawTags ? 'mapped-tags-tab' : undefined}
+        aria-labelledby={rawTags ? 'mapped-tags-tab' : undefined}
       >
         <Table aria-label="song details" size="small">
           <TableBody>
@@ -145,7 +165,11 @@ export const SongInfo = (props) => {
                 </TableRow>
               )
             })}
-            <ParticipantsInfo tableCellSx={tableCellSx} record={record} />
+            <ParticipantsInfo
+              classes={undefined}
+              tableCellSx={tableCellSx}
+              record={record}
+            />
             {tags.length > 0 && (
               <TableRow key={`${record.id}-separator`}>
                 <TableCell scope="row" sx={tableCellSx}></TableCell>
@@ -160,14 +184,14 @@ export const SongInfo = (props) => {
                   {name}:
                 </TableCell>
                 <TableCell align="left" sx={valueSx}>
-                  {values.join(' • ')}
+                  {(values as string[]).join(' • ')}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-      {record.rawTags && (
+      {rawTags && (
         <div
           hidden={tab === 0}
           id="raw-tags-body"
@@ -181,7 +205,7 @@ export const SongInfo = (props) => {
                 </TableCell>
                 <TableCell align="left">{data.path}</TableCell>
               </TableRow>
-              {Object.entries(record.rawTags).map(([key, value]) => (
+              {Object.entries(rawTags).map(([key, value]) => (
                 <TableRow key={`${record.id}-raw-${key}`}>
                   <TableCell scope="row" sx={tableCellSx}>
                     {key}:

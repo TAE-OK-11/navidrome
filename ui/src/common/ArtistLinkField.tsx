@@ -1,14 +1,23 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import React from 'react'
 import { Link, useRecordContext } from 'react-admin'
 import { useGetHandleArtistClick } from './useGetHandleArtistClick'
 import { intersperse } from '../utils/index'
 import { useDispatch } from 'react-redux'
 import { closeExtendedInfoDialog } from '../actions/dialogs'
-import { withWidth } from '../themes/useWidth'
+import { withWidth, type WithWidthProps } from '../themes/useWidth'
+import type { ArtistParticipant, ParticipantsRecord } from '../types/records'
+
+type ArtistLink = ArtistParticipant & {
+  subRole?: string
+}
+
+type ALinkProps = WithWidthProps & {
+  artist: ArtistLink
+  className?: string
+}
 
 // noSSR: withWidth otherwise renders null until mounted, so the artist line pops in and grows the row.
-const ALink = withWidth({ noSSR: true })((props) => {
+const ALink = withWidth({ noSSR: true })((props: ALinkProps) => {
   const { artist, width, ...rest } = props
   const artistLink = useGetHandleArtistClick(width)
   const dispatch = useDispatch()
@@ -24,17 +33,19 @@ const ALink = withWidth({ noSSR: true })((props) => {
       {...rest}
     >
       {artist.name}
-      {artist.subroles?.length > 0 ? ` (${artist.subroles.join(', ')})` : ''}
+      {(artist.subroles?.length ?? 0) > 0
+        ? ` (${artist.subroles!.join(', ')})`
+        : ''}
     </Link>
   )
 })
 
 const parseAndReplaceArtists = (
-  displayAlbumArtist,
-  albumArtists,
-  className,
-) => {
-  let result = []
+  displayAlbumArtist: string,
+  albumArtists: ArtistLink[] | undefined,
+  className?: string,
+): React.ReactNode[] => {
+  const result: React.ReactNode[] = []
   let lastIndex = 0
 
   albumArtists?.forEach((artist) => {
@@ -64,29 +75,40 @@ const parseAndReplaceArtists = (
   return result
 }
 
+type ArtistLinkFieldProps = {
+  record?: ParticipantsRecord
+  className?: string
+  limit?: number
+  source?: string
+  sortable?: boolean
+  sortByOrder?: string
+  label?: React.ReactNode
+}
+
 export const ArtistLinkField = ({
   record: recordOverride,
   className,
   limit = 3,
   source = 'albumArtist',
-}) => {
-  const record = useRecordContext({ record: recordOverride }) || {}
+}: ArtistLinkFieldProps) => {
+  const record = useRecordContext<ParticipantsRecord>({ record: recordOverride })
+  if (!record) {
+    return null
+  }
+
   const role = source.toLowerCase()
 
   // Get artists array with fallback
-  let artists = record?.participants?.[role] || []
+  let artists = (record.participants?.[role] as ArtistLink[] | undefined) || []
   const remixers =
-    role === 'artist' && record?.participants?.remixer
-      ? record.participants.remixer.slice(0, 2)
+    role === 'artist' && record.participants?.remixer
+      ? (record.participants.remixer as ArtistLink[]).slice(0, 2)
       : []
 
   // Use parseAndReplaceArtists for artist and albumartist roles
-  if ((role === 'artist' || role === 'albumartist') && record[source]) {
-    const artistsLinks = parseAndReplaceArtists(
-      record[source],
-      artists,
-      className,
-    )
+  const sourceValue = record[source] as string | undefined
+  if ((role === 'artist' || role === 'albumartist') && sourceValue) {
+    const artistsLinks = parseAndReplaceArtists(sourceValue, artists, className)
 
     if (artistsLinks.length > 0) {
       // For artist role, append remixers if available, avoiding duplicates
@@ -121,16 +143,21 @@ export const ArtistLinkField = ({
   }
 
   // Fall back to regular handling
-  if (artists.length === 0 && record[source]) {
-    artists = [{ name: record[source], id: record[source + 'Id'] }]
+  if (artists.length === 0 && sourceValue) {
+    artists = [
+      {
+        name: sourceValue,
+        id: record[`${source}Id`] as ArtistLink['id'],
+      },
+    ]
   }
 
   // For artist role, combine artists and remixers before deduplication
   const allArtists = role === 'artist' ? [...artists, ...remixers] : artists
 
   // Dedupe artists and collect subroles
-  const seen = new Map()
-  const dedupedArtists = []
+  const seen = new Map<ArtistLink['id'], number>()
+  const dedupedArtists: ArtistLink[] = []
   let limitedShow = false
 
   for (const artist of allArtists) {
@@ -141,22 +168,26 @@ export const ArtistLinkField = ({
         seen.set(artist.id, dedupedArtists.length)
         dedupedArtists.push({
           ...artist,
-          subroles: artist.subRole ? [artist.subRole] : [],
+          subroles: artist.subRole ? [artist.subRole] : artist.subroles,
         })
       } else {
         limitedShow = true
       }
     } else {
-      const position = seen.get(artist.id)
+      const position = seen.get(artist.id)!
       const existing = dedupedArtists[position]
-      if (artist.subRole && !existing.subroles.includes(artist.subRole)) {
+      if (
+        artist.subRole &&
+        existing.subroles &&
+        !existing.subroles.includes(artist.subRole)
+      ) {
         existing.subroles.push(artist.subRole)
       }
     }
   }
 
   // Create artist links
-  const artistsList = dedupedArtists.map((artist) => (
+  const artistsList: React.ReactNode[] = dedupedArtists.map((artist) => (
     <ALink artist={artist} className={className} key={artist.id} />
   ))
 

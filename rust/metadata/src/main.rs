@@ -18,9 +18,10 @@ use lofty::picture::{Picture, PictureType};
 use lofty::tag::{ItemKey, Tag};
 use serde::{Deserialize, Serialize};
 
-use navidrome_metadata::map_media;
+use navidrome_metadata::{compute_pid, map_media, tag_clean};
 
 mod build_fts5_query_worker;
+mod clean_tags_worker;
 mod image_worker;
 mod lyrics;
 mod lyricsfile;
@@ -36,6 +37,14 @@ const MAX_BATCH_FILES: usize = 4096;
 #[derive(Debug, Deserialize)]
 struct Request {
     files: Vec<InputFile>,
+    #[serde(default)]
+    tag_mappings: HashMap<String, tag_clean::TagMappingConfig>,
+    #[serde(default)]
+    artist_split_exceptions: Vec<String>,
+    #[serde(default)]
+    pid_config: Option<compute_pid::PidConfig>,
+    #[serde(default)]
+    library_id: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,6 +79,8 @@ struct Metadata {
     /// Pre-mapped MediaFile scan fields (participants, titles, dates, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     media_file_json: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cleaned_tags: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,6 +132,12 @@ fn main() -> Result<()> {
                 bail!("--build-fts5-query-worker accepts no arguments");
             }
             return build_fts5_query_worker::run();
+        }
+        if command == "--clean-tags-worker" {
+            if args.next().is_some() {
+                bail!("--clean-tags-worker accepts no arguments");
+            }
+            return clean_tags_worker::run();
         }
         if command == "--map-media-worker" {
             if args.next().is_some() {
@@ -263,7 +280,12 @@ fn handle_request(request: Request) -> Response {
     let parsed: Vec<(String, Result<Metadata>)> = request
         .files
         .par_iter()
-        .map(|input| (input.key.clone(), parse_file(&input.path)))
+        .map(|input| {
+            (
+                input.key.clone(),
+                parse_file(&input.path, &request),
+            )
+        })
         .collect();
     for (key, outcome) in parsed {
         match outcome {
@@ -284,7 +306,7 @@ fn handle_request(request: Request) -> Response {
     }
 }
 
-fn parse_file(path: &Path) -> Result<Metadata> {
+fn parse_file(path: &Path, request: &Request) -> Result<Metadata> {
     let (tagged, codec, raw_vorbis, file_metadata) = read_file(path)?;
 
     let mut tags = generic_tags(&tagged);
@@ -292,10 +314,28 @@ fn parse_file(path: &Path) -> Result<Metadata> {
         merge_vorbis_tags(&mut tags, vorbis);
     }
 
+    let cleaned_tags = if request.tag_mappings.is_empty() {
+        None
+    } else {
+        Some(tag_clean::clean(
+            &path.to_string_lossy(),
+            &tags,
+            &request.tag_mappings,
+            &request.artist_split_exceptions,
+        ))
+    };
+
     let properties = tagged.properties();
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
     let lyrics_json = lyrics::parse_tags_to_json(&tags);
-    let media_file_json = map_media::map_to_json(&tags, path, lyrics_json.as_deref());
+    let media_file_json = map_media::map_to_json_with_pid(
+        &tags,
+        path,
+        lyrics_json.as_deref(),
+        request.pid_config.as_ref(),
+        request.library_id,
+        &path.to_string_lossy(),
+    );
 
     Ok(Metadata {
         tags,
@@ -309,6 +349,7 @@ fn parse_file(path: &Path) -> Result<Metadata> {
         has_picture,
         lyrics_json,
         media_file_json,
+        cleaned_tags,
     })
 }
 

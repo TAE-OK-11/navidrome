@@ -85,10 +85,45 @@ struct ScanMediaFile {
     /// Album-level tags persisted on media files (mirrors Go TagMainMappings album:true).
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     tags: HashMap<String, Vec<String>>,
+    #[serde(rename = "pid", skip_serializing_if = "String::is_empty")]
+    pid: String,
+    #[serde(rename = "albumId", skip_serializing_if = "String::is_empty")]
+    album_id: String,
 }
 
 pub fn map_to_json(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: Option<&str>) -> Option<String> {
-    let mapped = map_tags(tags, path, lyrics_json.unwrap_or("[]"))?;
+    map_to_json_with_pid(tags, path, lyrics_json, None, 0, "")
+}
+
+pub fn map_to_json_with_pid(
+    tags: &HashMap<String, Vec<String>>,
+    path: &Path,
+    lyrics_json: Option<&str>,
+    pid_config: Option<&crate::compute_pid::PidConfig>,
+    library_id: i32,
+    file_path: &str,
+) -> Option<String> {
+    let mut mapped = map_tags(tags, path, lyrics_json.unwrap_or("[]"))?;
+    if let Some(config) = pid_config {
+        let input = crate::compute_pid::PidInput {
+            library_id,
+            path: file_path,
+            title: &mapped.title,
+            album: &mapped.album,
+            album_artist: &mapped.album_artist,
+            track_number: mapped.track_number,
+            disc_number: mapped.disc_number,
+            tags,
+            mbz_recording_id: &mapped.mbz_recording_id,
+            mbz_release_track_id: &mapped.mbz_release_track_id,
+            mbz_album_id: &mapped.mbz_album_id,
+            mbz_album_comment: &mapped.comment,
+            release_date: &mapped.release_date,
+        };
+        let pids = crate::compute_pid::compute_pids(&input, config);
+        mapped.pid = pids.track_pid;
+        mapped.album_id = pids.album_id;
+    }
     serde_json::to_string(&mapped).ok()
 }
 
@@ -156,6 +191,8 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
         ),
         participants: map_participants(tags, &artist, &album_artist),
         tags: map_album_tags(tags),
+        pid: String::new(),
+        album_id: String::new(),
     })
 }
 

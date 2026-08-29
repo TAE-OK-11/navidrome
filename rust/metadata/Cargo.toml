@@ -21,8 +21,10 @@ lofty = "=0.25.1"
 quick-xml = { version = "0.42.0", default-features = false, features = ["escape-html"] }
 regex = "1.13.1"
 deunicode = "1.6.2"
+uuid = "1.18.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+md-5 = "0.10.6"
 rayon = "1.12.0"
 serde_yaml = "0.9.34"
 webp = { version = "=0.3.1", default-features = false }

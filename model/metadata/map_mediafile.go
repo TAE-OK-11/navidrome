@@ -50,6 +50,8 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 		model.MediaFile
 		Participants map[string][]model.Participant `json:"participants"`
 		Tags         map[string][]string              `json:"tags"`
+		PID          string                           `json:"pid"`
+		AlbumID      string                           `json:"albumId"`
 	}
 	if err := json.Unmarshal([]byte(md.mediaFileJSON), &payload); err != nil {
 		log.Warn("Rust media_file_json decode failed", "file", md.filePath, err)
@@ -90,8 +92,16 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 	if mf.Lyrics == "" {
 		mf.Lyrics = md.lyricsJSONOrEmpty()
 	}
-	mf.PID = md.trackPID(mf)
-	mf.AlbumID = md.albumID(mf, conf.Server.PID.Album)
+	if payload.PID != "" {
+		mf.PID = payload.PID
+	} else {
+		mf.PID = md.trackPID(mf)
+	}
+	if payload.AlbumID != "" {
+		mf.AlbumID = payload.AlbumID
+	} else {
+		mf.AlbumID = md.albumID(mf, conf.Server.PID.Album)
+	}
 	mf.ArtistID = mf.Participants.First(model.RoleArtist).ID
 	mf.AlbumArtistID = mf.Participants.First(model.RoleAlbumArtist).ID
 	mf.OrderArtistName = mf.Participants.First(model.RoleArtist).OrderArtistName

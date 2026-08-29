@@ -22,6 +22,7 @@ import (
 	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/storage/local"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/metadata"
 )
 
@@ -33,7 +34,11 @@ const (
 )
 
 type request struct {
-	Files []inputFile `json:"files"`
+	Files                   []inputFile                      `json:"files"`
+	TagMappings             map[string]metadataworker.TagMappingExport `json:"tag_mappings,omitempty"`
+	ArtistSplitExceptions   []string                         `json:"artist_split_exceptions,omitempty"`
+	PIDConfig               map[string]any                   `json:"pid_config,omitempty"`
+	LibraryID               int                              `json:"library_id,omitempty"`
 }
 
 type inputFile struct {
@@ -60,6 +65,7 @@ type rawResult struct {
 	HasPicture    bool                `json:"has_picture"`
 	LyricsJSON    string              `json:"lyrics_json,omitempty"`
 	MediaFileJSON string              `json:"media_file_json,omitempty"`
+	CleanedTags   map[string][]string `json:"cleaned_tags,omitempty"`
 }
 
 type rawFileInfo struct {
@@ -109,7 +115,7 @@ func (e *extractor) ParseContext(ctx context.Context, files ...string) (map[stri
 		return map[string]metadata.Info{}, nil
 	}
 
-	req, err := e.buildRequest(files)
+	req, err := e.buildRequest(ctx, files)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +227,7 @@ func (e *extractor) Version() string {
 	return loftyVersion
 }
 
-func (e *extractor) buildRequest(files []string) (request, error) {
+func (e *extractor) buildRequest(ctx context.Context, files []string) (request, error) {
 	base, err := filepath.Abs(e.baseDir)
 	if err != nil {
 		return request{}, fmt.Errorf("resolving music root: %w", err)
@@ -242,7 +248,14 @@ func (e *extractor) buildRequest(files []string) (request, error) {
 		}
 		inputs = append(inputs, inputFile{Key: key, Path: candidate})
 	}
-	return request{Files: inputs}, nil
+	scanConfig := workerScanConfig(metadataworker.LibraryIDFromContext(ctx))
+	return request{
+		Files:                 inputs,
+		TagMappings:           scanConfig.TagMappings,
+		ArtistSplitExceptions: scanConfig.ArtistSplitExceptions,
+		PIDConfig:             scanConfig.PIDConfig,
+		LibraryID:             scanConfig.LibraryID,
+	}, nil
 }
 
 func (e *extractor) workerPool() chan *workerSlot {
@@ -337,6 +350,10 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid file information for %q: %w", key, err)
 		}
+		cleaned := model.Tags{}
+		for tag, values := range value.CleanedTags {
+			cleaned[model.TagName(tag)] = append([]string(nil), values...)
+		}
 		results[key] = metadata.Info{
 			FileInfo: fileInfo,
 			Tags:     value.Tags,
@@ -351,6 +368,7 @@ func convertResponse(resp response) (map[string]metadata.Info, error) {
 			HasPicture:    value.HasPicture,
 			LyricsJSON:    value.LyricsJSON,
 			MediaFileJSON: value.MediaFileJSON,
+			CleanedTags:   cleaned,
 		}
 	}
 	for key, workerErr := range resp.Errors {

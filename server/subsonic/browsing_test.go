@@ -58,6 +58,24 @@ var _ = Describe("Browsing", func() {
 			Expect(response.MusicFolders.Folders[1].Name).To(Equal("Test Library 2"))
 			Expect(response.MusicFolders.Folders[2].Name).To(Equal("Test Library 3"))
 		})
+
+		It("reuses the short-lived music folders response cache", func() {
+			ctx := contextWithUser(ctx, "user-id", 1, 2, 3)
+			r := httptest.NewRequest("GET", "/rest/getMusicFolders", nil)
+			r = r.WithContext(ctx)
+
+			first, err := api.GetMusicFolders(r)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(first.MusicFolders.Folders).To(HaveLen(3))
+
+			libRepo := ds.Library(ctx).(*tests.MockLibraryRepo)
+			libRepo.SetData(model.Libraries{{ID: 99, Name: "New Library"}})
+
+			second, err := api.GetMusicFolders(r)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(second.MusicFolders.Folders).To(HaveLen(3))
+			Expect(second.MusicFolders).To(Equal(first.MusicFolders))
+		})
 	})
 
 	Describe("GetGenres", func() {

@@ -37,6 +37,16 @@ type genreResponseCache struct {
 	entries map[string]genreResponseCacheEntry
 }
 
+type musicFoldersResponseCache struct {
+	mu      sync.Mutex
+	entries map[string]musicFoldersResponseCacheEntry
+}
+
+type musicFoldersResponseCacheEntry struct {
+	expires time.Time
+	value   *responses.MusicFolders
+}
+
 func (c *genreResponseCache) get(key string, now time.Time) (*responses.Genres, bool) {
 	c.mu.RLock()
 	entry, ok := c.entries[key]
@@ -74,6 +84,41 @@ func (c *genreResponseCache) put(key string, now time.Time, value *responses.Gen
 	c.entries[key] = genreResponseCacheEntry{value: value, expires: now.Add(genreResponseCacheTTL)}
 }
 
+func (c *musicFoldersResponseCache) get(key string, now time.Time) (*responses.MusicFolders, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok || !now.Before(entry.expires) {
+		delete(c.entries, key)
+		return nil, false
+	}
+	return entry.value, true
+}
+
+func (c *musicFoldersResponseCache) put(key string, now time.Time, value *responses.MusicFolders) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]musicFoldersResponseCacheEntry)
+	}
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
+		for existingKey, entry := range c.entries {
+			if !now.Before(entry.expires) {
+				delete(c.entries, existingKey)
+			}
+		}
+		if len(c.entries) >= genreResponseCacheLimit {
+			for existingKey := range c.entries {
+				delete(c.entries, existingKey)
+				break
+			}
+		}
+	}
+	copied := *value
+	copied.Folders = append([]responses.MusicFolder(nil), value.Folders...)
+	c.entries[key] = musicFoldersResponseCacheEntry{value: &copied, expires: now.Add(genreResponseCacheTTL)}
+}
+
 func genreResponseCacheKey(user model.User) string {
 	if user.IsAdmin {
 		return "admin"
@@ -93,6 +138,15 @@ func genreResponseCacheKey(user model.User) string {
 }
 
 func (api *Router) GetMusicFolders(r *http.Request) (*responses.Subsonic, error) {
+	user, _ := request.UserFrom(r.Context())
+	cacheKey := genreResponseCacheKey(user)
+	now := time.Now()
+	if cached, ok := api.musicFoldersCache.get(cacheKey, now); ok {
+		response := newResponse()
+		response.MusicFolders = cached
+		return response, nil
+	}
+
 	libraries := getUserAccessibleLibraries(r.Context())
 
 	folders := make([]responses.MusicFolder, len(libraries))
@@ -102,6 +156,7 @@ func (api *Router) GetMusicFolders(r *http.Request) (*responses.Subsonic, error)
 	}
 	response := newResponse()
 	response.MusicFolders = &responses.MusicFolders{Folders: folders}
+	api.musicFoldersCache.put(cacheKey, now, response.MusicFolders)
 	return response, nil
 }
 

@@ -8,8 +8,8 @@ use std::sync::LazyLock;
 static FTS_PUNCT_STRIP: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[^\p{L}\p{N}]").expect("fts punct regex"));
 
-/// Matches Go `str.NormalizeForFTS`: punctuation-stripped and accent-transliterated
-/// word variants for secondary search fields.
+/// Punctuation-stripped and accent-transliterated word variants for secondary
+/// search fields. Used by navidrome-metadata, navidrome-search, and Go persistence.
 pub fn normalize_for_fts(values: &[String]) -> String {
     let mut seen = HashSet::new();
     let mut result = Vec::new();

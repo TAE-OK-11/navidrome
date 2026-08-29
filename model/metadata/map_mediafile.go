@@ -49,6 +49,7 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 	var payload struct {
 		model.MediaFile
 		Participants map[string][]model.Participant `json:"participants"`
+		Tags         map[string][]string              `json:"tags"`
 	}
 	if err := json.Unmarshal([]byte(md.mediaFileJSON), &payload); err != nil {
 		log.Warn("Rust media_file_json decode failed", "file", md.filePath, err)
@@ -97,13 +98,38 @@ func (md Metadata) mediaFileFromRust(libID int, folderID string) (model.MediaFil
 	mf.OrderAlbumArtistName = mf.Participants.First(model.RoleAlbumArtist).OrderArtistName
 	mf.SortArtistName = mf.Participants.First(model.RoleArtist).SortArtistName
 	mf.SortAlbumArtistName = mf.Participants.First(model.RoleAlbumArtist).SortArtistName
-	mf.Tags = maps.Clone(md.tags)
+	mf.Tags = albumTagsFromRust(payload.Tags, md.tags)
+	return mf, true
+}
+
+func albumTagsFromRust(rustTags map[string][]string, cleaned model.Tags) model.Tags {
+	tags := mediaFileTagsFromCleaned(cleaned)
+	if len(rustTags) == 0 {
+		return tags
+	}
+	for key, values := range rustTags {
+		tag := model.TagName(key)
+		if len(values) == 0 {
+			delete(tags, tag)
+			continue
+		}
+		tags[tag] = values
+	}
+	return tags
+}
+
+// mediaFileTagsFromCleaned keeps additional tags and main tags marked album:true.
+func mediaFileTagsFromCleaned(cleaned model.Tags) model.Tags {
+	if len(cleaned) == 0 {
+		return nil
+	}
+	tags := maps.Clone(cleaned)
 	for tag, conf := range model.TagMainMappings() {
 		if !conf.Album {
-			delete(mf.Tags, tag)
+			delete(tags, tag)
 		}
 	}
-	return mf, true
+	return tags
 }
 
 func (md Metadata) lyricsJSONOrEmpty() string {

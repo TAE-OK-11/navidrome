@@ -12,13 +12,12 @@ func NormalizeForFTS(ctx context.Context, values ...string) string {
 	if len(values) == 0 {
 		return ""
 	}
-	if normalized := normalizeInProcess(values...); normalized != "" {
+	normalized, err := metadataworker.PersistentNormalizeWorkers().Normalize(ctx, values...)
+	if err == nil && normalized != "" {
 		return normalized
 	}
-	normalized, err := metadataworker.PersistentNormalizeWorkers().Normalize(ctx, values...)
 	if err != nil {
-		log.Error(ctx, "Rust FTS normalize worker unavailable", err)
-		return ""
+		log.Trace(ctx, "Rust FTS normalize worker unavailable", err)
 	}
-	return normalized
+	return ""
 }

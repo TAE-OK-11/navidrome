@@ -117,7 +117,21 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 				return nil, 0, ctx.Err()
 			}
 			return nil, 0, fmt.Errorf("Rust animated GIF resize unavailable: %w", err)
-		} else if flags.AnimatedWebP || flags.AnimatedPNG {
+		} else if flags.AnimatedWebP {
+			if resized, err := persistentImageWorkers.resizeAnimatedWebP(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			log.Debug(ctx, "Rust animated WebP resize unavailable; returning original bytes", "error", err)
+			return bytes.NewReader(data), 0, nil
+		} else if flags.AnimatedPNG {
+			if resized, err := persistentImageWorkers.resizeAnimatedPNG(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+				return bytes.NewReader(resized), 0, nil
+			} else if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			log.Debug(ctx, "Rust animated PNG resize unavailable; returning original bytes", "error", err)
 			return bytes.NewReader(data), 0, nil
 		}
 	} else if ctx.Err() != nil {

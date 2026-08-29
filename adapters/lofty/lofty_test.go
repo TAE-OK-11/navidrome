@@ -25,7 +25,7 @@ func TestBuildRequestKeepsFilesInsideLibrary(t *testing.T) {
 
 	root := t.TempDir()
 	e := &extractor{baseDir: root}
-	req, err := e.buildRequest([]string{"Artist/Album/01 Song.flac"})
+	req, err := e.buildRequest(context.Background(), []string{"Artist/Album/01 Song.flac"})
 	if err != nil {
 		t.Fatalf("buildRequest() error = %v", err)
 	}
@@ -42,7 +42,7 @@ func TestBuildRequestRejectsTraversal(t *testing.T) {
 	t.Parallel()
 
 	e := &extractor{baseDir: t.TempDir()}
-	if _, err := e.buildRequest([]string{"../outside.flac"}); err == nil {
+	if _, err := e.buildRequest(context.Background(), []string{"../outside.flac"}); err == nil {
 		t.Fatal("buildRequest() accepted path traversal")
 	}
 }

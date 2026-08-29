@@ -180,7 +180,7 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
     let targets = if request.targets.is_empty() {
         vec![".".to_owned()]
     } else {
-        request.targets
+        request.targets.clone()
     };
     let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
     let mut folder_count = 0usize;
@@ -532,7 +532,7 @@ fn collect_scan(request: ScanRequest) -> Result<(BTreeMap<String, Folder>, Vec<S
     let targets = if request.targets.is_empty() {
         vec![".".to_owned()]
     } else {
-        request.targets
+        request.targets.clone()
     };
     let mut folders = BTreeMap::<String, Folder>::new();
     let mut warnings = Vec::<String>::new();
@@ -993,7 +993,7 @@ mod tests {
         assert!(is_dot_entry(".hidden"));
         assert!(!is_dot_entry("..Album"));
         assert!(!is_dot_entry("regular"));
-        let mut cache = HashMap::new();
+        let cache = HashMap::new();
         let cache = Arc::new(Mutex::new(cache));
         let root = temporary_music_root();
         fs::create_dir_all(root.join("cached")).unwrap();

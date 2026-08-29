@@ -1,31 +1,58 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import {
   combineReducers,
-  compose,
   legacy_createStore as createStore,
+  type Reducer,
+  type StoreEnhancer,
 } from 'redux'
 import throttle from '../utils/throttle'
 import { loadState, saveState } from './persistState'
+import type { NavidromeRootState, PersistedState } from '../types/redux'
 
-const createAdminStore = ({ customReducers = {} }) => {
-  const reducer = combineReducers(customReducers)
+type NavidromeReducers = {
+  [K in keyof NavidromeRootState]: Reducer<NavidromeRootState[K]>
+}
 
-  const composeEnhancers =
-    (process.env.NODE_ENV === 'development' &&
-      typeof window !== 'undefined' &&
-      window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ &&
-      window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__({
-        trace: true,
-        traceLimit: 25,
-      })) ||
-    compose
+type CreateAdminStoreOptions = {
+  customReducers?: Partial<NavidromeReducers>
+}
 
-  const persistedState = loadState()
-  if (persistedState?.player?.savedPlayIndex) {
-    persistedState.player.playIndex = persistedState.player.savedPlayIndex
+const createAdminStore = ({ customReducers = {} }: CreateAdminStoreOptions) => {
+  const reducer = combineReducers(
+    customReducers as NavidromeReducers,
+  ) as Reducer<NavidromeRootState>
+
+  const devToolsCompose = (
+    window as Window & {
+      __REDUX_DEVTOOLS_EXTENSION_COMPOSE__?: (options?: {
+        trace?: boolean
+        traceLimit?: number
+      }) => (...funcs: StoreEnhancer[]) => StoreEnhancer
+    }
+  ).__REDUX_DEVTOOLS_EXTENSION_COMPOSE__
+
+  let enhancer: StoreEnhancer | undefined
+  if (import.meta.env.DEV && typeof window !== 'undefined' && devToolsCompose) {
+    enhancer = (devToolsCompose({
+      trace: true,
+      traceLimit: 25,
+    }) as unknown as () => StoreEnhancer)()
   }
 
-  const store = createStore(reducer, persistedState, composeEnhancers())
+  const persistedState = loadState()
+  if (persistedState?.player?.savedPlayIndex != null) {
+    const hydratedPlayer = persistedState.player as PersistedState['player'] & {
+      playIndex?: number
+    }
+    hydratedPlayer.playIndex = persistedState.player.savedPlayIndex
+  }
+
+  const preloadedState = persistedState as unknown as
+    | NavidromeRootState
+    | undefined
+
+  const store = enhancer
+    ? createStore(reducer, preloadedState, enhancer)
+    : createStore(reducer, preloadedState)
 
   store.subscribe(
     throttle(() => {
@@ -41,8 +68,7 @@ const createAdminStore = ({ customReducers = {} }) => {
         albumView: state.albumView,
         settings: state.settings,
       })
-    }),
-    1000,
+    }, 1000),
   )
 
   return store

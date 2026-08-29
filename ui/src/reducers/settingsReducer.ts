@@ -4,28 +4,32 @@ import {
   SET_SIDEBAR_PLAYLISTS_FAVOURITES,
   SET_TOGGLEABLE_FIELDS,
 } from '../actions'
+import type { SettingsState, UnknownAction } from '../types/redux'
 
-const initialState = {
+const initialState: SettingsState = {
   notifications: false,
   toggleableFields: {},
   omittedFields: {},
   sidebarPlaylistsOnlyFavourites: false,
 }
 
-export const settingsReducer = (previousState = initialState, payload) => {
+export const settingsReducer = (
+  previousState: SettingsState = initialState,
+  payload: UnknownAction,
+): SettingsState => {
   const { type, data } = payload
   switch (type) {
     case SET_NOTIFICATIONS_STATE:
       return {
         ...previousState,
-        notifications: data,
+        notifications: Boolean(data),
       }
     case SET_TOGGLEABLE_FIELDS:
       return {
         ...previousState,
         toggleableFields: {
           ...previousState.toggleableFields,
-          ...data,
+          ...((data ?? {}) as Record<string, unknown>),
         },
       }
     case SET_OMITTED_FIELDS:
@@ -33,13 +37,13 @@ export const settingsReducer = (previousState = initialState, payload) => {
         ...previousState,
         omittedFields: {
           ...previousState.omittedFields,
-          ...data,
+          ...((data ?? {}) as Record<string, unknown>),
         },
       }
     case SET_SIDEBAR_PLAYLISTS_FAVOURITES:
       return {
         ...previousState,
-        sidebarPlaylistsOnlyFavourites: data,
+        sidebarPlaylistsOnlyFavourites: Boolean(data),
       }
     default:
       return previousState

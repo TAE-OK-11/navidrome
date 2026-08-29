@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy JavaScript migration; remove after typing this module
 import { describe, it, expect } from 'vitest'
 import { playerReducer } from './playerReducer'
 import {
@@ -43,7 +42,7 @@ describe('playerReducer', () => {
 
     it('ignores malformed lyric JSON instead of aborting queue updates', () => {
       const result = playerReducer(
-        { queue: [], current: {}, volume: 1, savedPlayIndex: 0 },
+        { queue: [], current: {}, clear: false, volume: 1, savedPlayIndex: 0 },
         {
           type: PLAYER_ADD_TRACKS,
           data: { [song.id]: { ...song, lyrics: '{invalid' } },
@@ -64,7 +63,7 @@ describe('playerReducer', () => {
         },
       ])
       const result = playerReducer(
-        { queue: [], current: {}, volume: 1, savedPlayIndex: 0 },
+        { queue: [], current: {}, clear: false, volume: 1, savedPlayIndex: 0 },
         {
           type: PLAYER_ADD_TRACKS,
           data: { [song.id]: { ...song, lyrics } },

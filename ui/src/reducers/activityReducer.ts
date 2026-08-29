@@ -7,8 +7,9 @@ import {
   EVENT_STREAM_RECONNECTED,
 } from '../actions'
 import config from '../config'
+import type { ActivityState, ScanStatus, UnknownAction } from '../types/redux'
 
-const initialState = {
+const initialState: ActivityState = {
   scanStatus: {
     scanning: false,
     folderCount: 0,
@@ -22,22 +23,33 @@ const initialState = {
   streamReconnected: 0, // Timestamp of last reconnection
 }
 
-export const activityReducer = (previousState = initialState, payload) => {
+export const activityReducer = (
+  previousState: ActivityState = initialState,
+  payload: UnknownAction,
+): ActivityState => {
   const { type, data } = payload
 
   switch (type) {
     case EVENT_SCAN_STATUS: {
-      const elapsedTime = Number(data.elapsedTime) || 0
-      return { ...previousState, scanStatus: { ...data, elapsedTime } }
+      const scanData = (data ?? {}) as ScanStatus
+      const elapsedTime = Number(scanData.elapsedTime) || 0
+      return { ...previousState, scanStatus: { ...scanData, elapsedTime } }
     }
-    case EVENT_SERVER_START:
+    case EVENT_SERVER_START: {
+      const serverData = (data ?? {}) as {
+        startTime?: string
+        version?: string
+      }
       return {
         ...previousState,
         serverStart: {
-          startTime: data.startTime && Date.parse(data.startTime),
-          version: data.version,
+          startTime: serverData.startTime
+            ? Date.parse(serverData.startTime)
+            : undefined,
+          version: serverData.version ?? previousState.serverStart.version,
         },
       }
+    }
     case EVENT_REFRESH_RESOURCE:
       return {
         ...previousState,
@@ -46,14 +58,18 @@ export const activityReducer = (previousState = initialState, payload) => {
           resources: data,
         },
       }
-    case EVENT_NOW_PLAYING_COUNT:
+    case EVENT_NOW_PLAYING_COUNT: {
+      const countData = (data ?? {}) as { count?: number }
       return {
         ...previousState,
-        nowPlayingCount: data.count,
+        nowPlayingCount: countData.count ?? 0,
         nowPlayingLastUpdate: Date.now(),
       }
-    case EVENT_NOW_PLAYING_COUNT_SYNC:
-      return { ...previousState, nowPlayingCount: data.count }
+    }
+    case EVENT_NOW_PLAYING_COUNT_SYNC: {
+      const countData = (data ?? {}) as { count?: number }
+      return { ...previousState, nowPlayingCount: countData.count ?? 0 }
+    }
     case EVENT_STREAM_RECONNECTED:
       return { ...previousState, streamReconnected: Date.now() }
     default:

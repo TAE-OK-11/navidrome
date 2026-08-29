@@ -418,7 +418,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}
 
 	// Create stream
-	stream, err := api.streamer.NewStream(ctx, mf, streamReq)
+	mediaStream, err := api.streamer.NewStream(ctx, mf, streamReq)
 	if err != nil {
 		if errors.Is(err, stream.ErrTooManyTranscodes) {
 			w.Header().Set("Retry-After", strconv.Itoa(stream.RetryAfterSeconds))
@@ -432,14 +432,14 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 
 	// Make sure the stream will be closed at the end
 	defer func() {
-		if err := stream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
-			log.Error("Error closing stream", "id", mediaID, "file", stream.Name(), err)
+		if err := mediaStream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Error("Error closing stream", "id", mediaID, "file", mediaStream.Name(), err)
 		}
 	}()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	n, err := stream.Serve(ctx, w, r)
+	n, err := mediaStream.Serve(ctx, w, r)
 	if err != nil {
 		if n == 0 {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)

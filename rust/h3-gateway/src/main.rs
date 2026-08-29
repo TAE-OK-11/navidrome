@@ -1217,17 +1217,21 @@ async fn forward_raw_body(
         send.send(OutboundFrame::Body(data, false)).await?;
     }
     loop {
-        let frame = tokio::time::timeout(idle_timeout, body.frame())
-            .await
-            .context("response body idle timeout")?
-            .context("failed to read inherited HTTP/2 response body")?;
-        let Some(frame) = frame else {
-            return Ok(());
-        };
-        if let Ok(data) = frame.into_data()
-            && !data.is_empty()
-        {
-            send.send(OutboundFrame::Body(data, false)).await?;
+        match tokio::time::timeout(idle_timeout, body.frame()).await {
+            Ok(Some(Ok(frame))) => {
+                if let Ok(data) = frame.into_data()
+                    && !data.is_empty()
+                {
+                    send.send(OutboundFrame::Body(data, false)).await?;
+                }
+            }
+            Ok(Some(Err(error))) => {
+                return Err(error).context("failed to read inherited HTTP/2 response body");
+            }
+            Ok(None) => return Ok(()),
+            Err(_) => {
+                return Err(anyhow::anyhow!("response body idle timeout"));
+            }
         }
     }
 }

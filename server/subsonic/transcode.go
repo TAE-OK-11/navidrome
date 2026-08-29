@@ -418,8 +418,13 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}
 
 	// Create stream
-	stream, err := api.streamer.NewStream(ctx, mf, streamReq)
+	mediaStream, err := api.streamer.NewStream(ctx, mf, streamReq)
 	if err != nil {
+		if errors.Is(err, stream.ErrTooManyTranscodes) {
+			w.Header().Set("Retry-After", strconv.Itoa(stream.RetryAfterSeconds))
+			http.Error(w, "too many concurrent transcodes, please retry shortly", http.StatusTooManyRequests)
+			return nil, nil
+		}
 		log.Error(ctx, "Error creating stream", "mediaID", mediaID, err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return nil, nil
@@ -427,15 +432,24 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 
 	// Make sure the stream will be closed at the end
 	defer func() {
-		if err := stream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
-			log.Error("Error closing stream", "id", mediaID, "file", stream.Name(), err)
+		if err := mediaStream.Close(); err != nil && log.IsGreaterOrEqualTo(log.LevelDebug) {
+			log.Error("Error closing stream", "id", mediaID, "file", mediaStream.Name(), err)
 		}
 	}()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	n, err := stream.Serve(ctx, w, r)
-	if err != nil || (n == 0 && r.Method != http.MethodHead) {
+	n, err := mediaStream.Serve(ctx, w, r)
+	if err != nil {
+		if n == 0 {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		} else {
+			log.Error(ctx, "Error sending transcode stream after response started", "mediaID", mediaID, "bytesSent", n, err)
+		}
+		return nil, nil
+	}
+	if n == 0 && r.Method != http.MethodHead {
+		log.Error(ctx, "Transcode stream returned no data", "mediaID", mediaID)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 	return nil, nil

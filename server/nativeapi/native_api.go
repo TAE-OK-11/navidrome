@@ -60,6 +60,7 @@ func (api *Router) routes() http.Handler {
 
 	// Public
 	api.RX(r, "/translation", newTranslationRepository, false)
+	r.Get("/health", healthHandler)
 
 	// Protected
 	r.Group(func(r chi.Router) {

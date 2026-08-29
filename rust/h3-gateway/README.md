@@ -10,10 +10,9 @@ and accepts only loopback peers. It strips spoofable forwarding/internal
 headers, then restores the original QUIC peer address, authority, HTTPS state
 and HTTP/3 protocol metadata before invoking the existing Go middleware chain.
 
-The production provider is `HTTP3Provider = "tokio-quiche"`. The JBS image
+The production provider is `tokio-quiche`. The JBS image
 installs the companion at `/app/navidrome-h3`; a non-image deployment can set
-`HTTP3GatewayPath`. The old quic-go provider exists only as a temporary rollback
-path while the Rust transport completes sustained canary/soak validation.
+`HTTP3GatewayPath`.
 
 Important settings:
 
@@ -80,12 +79,12 @@ request body, SSE, and graceful shutdown across the Rust-to-Go boundary.
 `Dockerfile.jbs` runs both unit and end-to-end tests.
 
 For deployment comparison, run the benchmark client against isolated but
-otherwise identical rollback and tokio-quiche instances:
+otherwise identical tokio-quiche instances:
 
 ```sh
 NAVIDROME_BENCH_AUTHORIZATION='Bearer ...' go run ./cmd/http3bench \
-  -baseline https://rollback.example:4533 \
-  -candidate https://tokio-quiche.example:4533 \
+  -baseline https://baseline.example:4533 \
+  -candidate https://candidate.example:4533 \
   -api-path '/rest/ping.view?f=json' \
   -range-path '/rest/stream.view?id=TRACK_ID' \
   -artwork-path '/rest/getCoverArt.view?id=ALBUM_ID' \
@@ -96,7 +95,4 @@ The command exits non-zero on any candidate 425 or Range failure, an error-rate
 increase above 0.1 percentage point, more than 10% p95 regression, more than
 15% p99 regression, or more than 10% request-throughput regression. Repeat
 under representative RTT/loss using the deployment's traffic impairment
-tooling, and separately record server CPU, RSS, UDP drops and qlogs. Keep the
-legacy provider only until the tokio-quiche candidate passes sustained canaries
-and long-connection soak tests; then remove the legacy provider and its Go QUIC
-dependency.
+tooling, and separately record server CPU, RSS, UDP drops and qlogs.

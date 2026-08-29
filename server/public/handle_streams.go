@@ -85,8 +85,16 @@ func (pub *Router) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(stream.Duration()), 'G', -1, 32))
 
 	n, err := stream.Serve(ctx, w, r)
-	if err != nil || (n == 0 && r.Method != http.MethodHead) {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	if err != nil {
+		if n == 0 {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		} else {
+			log.Error(ctx, "Error sending shared stream after response started", "id", info.id, "bytesSent", n, err)
+		}
+		return
+	}
+	if n == 0 && r.Method != http.MethodHead {
+		log.Error(ctx, "Shared stream returned no data", "id", info.id)
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/utils/pl"
 	"github.com/navidrome/navidrome/utils/singleton"
 )
 
@@ -26,7 +25,7 @@ const (
 	keepAliveFrequency = 15 * time.Second
 	// The timeout must be higher than the keepAliveFrequency, or the lack of activity will cause the channel to close.
 	writeTimeOut = keepAliveFrequency + 5*time.Second
-	bufferSize   = 1
+	bufferSize   = 16
 )
 
 type (
@@ -154,15 +153,45 @@ func (b *broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer b.unsubscribe(c)
 	log.Debug(ctx, "Started new EventStream connection", "client", c.String())
 
-	for event := range pl.ReadOrDone(ctx, c.msgC) {
-		log.Trace(ctx, "Sending event to client", "event", event, "client", c.String())
-		err := writeEvent(ctx, w, event, writeTimeOut)
-		if err != nil {
-			log.Debug(ctx, "Error sending event to client. Closing connection", "event", event, "client", c.String(), err)
+	keepAlive := time.NewTicker(keepAliveFrequency)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Trace(ctx, "Client EventStream connection closed", "client", c.String())
 			return
+		case <-keepAlive.C:
+			if err := writeSSEComment(w, writeTimeOut); err != nil {
+				log.Debug(ctx, "Error sending SSE keepalive. Closing connection", "client", c.String(), err)
+				return
+			}
+		case event, ok := <-c.msgC:
+			if !ok {
+				log.Trace(ctx, "Client EventStream connection closed", "client", c.String())
+				return
+			}
+			log.Trace(ctx, "Sending event to client", "event", event, "client", c.String())
+			if err := writeEvent(ctx, w, event, writeTimeOut); err != nil {
+				log.Debug(ctx, "Error sending event to client. Closing connection", "event", event, "client", c.String(), err)
+				return
+			}
 		}
 	}
-	log.Trace(ctx, "Client EventStream connection closed", "client", c.String())
+}
+
+func writeSSEComment(w io.Writer, timeout time.Duration) error {
+	if err := setWriteTimeout(w, timeout); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, ": keepalive\n\n")
+	if err != nil {
+		return err
+	}
+	if flusher, ok := w.(http.Flusher); ok && flusher != nil {
+		flusher.Flush()
+	}
+	return nil
 }
 
 func (b *broker) subscribe(r *http.Request) client {

@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/slice"
 	"github.com/navidrome/navidrome/utils/str"
 )
@@ -211,7 +212,7 @@ func (a *archiver) addFileToZip(ctx context.Context, z *zip.Writer, mf model.Med
 		return err
 	}
 
-	_, err = io.Copy(w, r)
+	_, err = ioutils.Copy(w, r)
 	if err != nil {
 		log.Error(ctx, "Error zipping file", "file", path, err)
 		return err

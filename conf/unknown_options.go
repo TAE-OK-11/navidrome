@@ -20,7 +20,6 @@ import (
 var extraKnownConfigKeys = []string{
 	"enablehttp3",
 	"http3allow0rtt",
-	"http3provider",
 	"http3gatewaypath",
 	"http3altsvcmaxage",
 	"http3qlogdir",

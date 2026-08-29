@@ -59,7 +59,7 @@ var (
 func compressMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if shouldBypassCompressionRequest(r) {
+			if isProbeRequest(r) || shouldBypassCompressionRequest(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -79,6 +79,7 @@ func compressMiddleware() func(http.Handler) http.Handler {
 				ResponseWriter: w,
 				accepted:       accepted,
 				path:           r.URL.Path,
+				pathClass:      classifyCompressionPath(r.URL.Path),
 			}
 			defer func() {
 				_ = cw.Close()
@@ -270,11 +271,34 @@ func isAPIResponsePath(path string) bool {
 		strings.Contains(path, "/auth/")
 }
 
-func compressionDecisionTarget(path string) int {
-	if isAPIResponsePath(path) {
+func compressionDecisionTarget(pathClass compressionPathClass) int {
+	if pathClass == compressionPathAPI || pathClass == compressionPathLyrics {
 		return apiCompressionDecisionBufferSize
 	}
 	return compressionDecisionBufferTarget
+}
+
+type compressionPathClass int
+
+const (
+	compressionPathOther compressionPathClass = iota
+	compressionPathAPI
+	compressionPathLyrics
+	compressionPathWebUI
+)
+
+func classifyCompressionPath(path string) compressionPathClass {
+	path = strings.ToLower(strings.TrimSuffix(path, ".view"))
+	switch {
+	case isLyricsResponsePath(path):
+		return compressionPathLyrics
+	case isWebUIResponsePath(path, ""):
+		return compressionPathWebUI
+	case isAPIResponsePath(path):
+		return compressionPathAPI
+	default:
+		return compressionPathOther
+	}
 }
 
 type compressResponseWriter struct {
@@ -282,6 +306,7 @@ type compressResponseWriter struct {
 	accepted   acceptedCompressions
 	encoding   compressionEncoding
 	path       string
+	pathClass  compressionPathClass
 	status     int
 	writer     io.WriteCloser
 	buffer     []byte
@@ -322,7 +347,7 @@ func (w *compressResponseWriter) Write(p []byte) (int, error) {
 		return w.writeStarted(p)
 	}
 
-	decisionTarget := compressionDecisionTarget(w.path)
+	decisionTarget := compressionDecisionTarget(w.pathClass)
 	if w.buffer == nil && len(p) >= decisionTarget {
 		if err := w.start(p); err != nil {
 			return 0, err

@@ -57,10 +57,17 @@ const ADMISSION_SHARDS: usize = 16;
 const ADMISSION_IDLE: Duration = Duration::from_secs(600);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+// Stall protection for inherited HTTP/2 bodies. Idle (not total) so long media
+// streams can run for hours while still closing wedged upstream responses.
+const BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const API_COMPRESSION_MIN_SIZE: usize = 256;
+const LARGE_COMPRESSED_RESPONSE_SIZE: usize = 16 * 1024;
+const HUGE_COMPRESSED_RESPONSE_SIZE: usize = 256 * 1024;
+const BROTLI_LARGE_LEVEL: i32 = 5;
+const BROTLI_HUGE_LEVEL: i32 = 6;
 const BRIDGE_MAX_FRAME_SIZE: u32 = 64 * 1024;
 const BRIDGE_STREAM_WINDOW: u32 = 512 * 1024;
 const BRIDGE_CONNECTION_WINDOW: u32 = 4 * 1024 * 1024;
-const API_COMPRESSION_MIN_SIZE: usize = 256;
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
@@ -620,7 +627,7 @@ fn is_safe_early_data_request(headers: &[h3::Header]) -> bool {
 async fn proxy_request(
     incoming: IncomingH3Headers,
     context: Arc<ConnectionContext>,
-    _request_permit: tokio::sync::OwnedSemaphorePermit,
+    request_permit: tokio::sync::OwnedSemaphorePermit,
 ) {
     let IncomingH3Headers {
         headers,
@@ -629,7 +636,9 @@ async fn proxy_request(
         read_fin,
         ..
     } = incoming;
-    if let Err(error) = proxy_request_inner(headers, send, recv, read_fin, &context).await {
+    if let Err(error) =
+        proxy_request_inner(headers, send, recv, read_fin, &context, request_permit).await
+    {
         if peer_closed_stream(&error) {
             log::debug!("HTTP/3 stream closed by peer={}: {error:#}", context.peer);
         } else {
@@ -653,6 +662,7 @@ async fn proxy_request_inner(
     recv: tokio_quiche::http3::driver::InboundFrameStream,
     read_fin: bool,
     context: &ConnectionContext,
+    request_permit: tokio::sync::OwnedSemaphorePermit,
 ) -> Result<()> {
     if is_connect_request(&headers) {
         send_error(
@@ -700,7 +710,15 @@ async fn proxy_request_inner(
             .await
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
-    forward_response(response, &mut send, &context.alt_svc, compression).await
+    drop(request_permit);
+    forward_response(
+        response,
+        &mut send,
+        &context.alt_svc,
+        compression,
+        BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT,
+    )
+    .await
 }
 
 fn is_connect_request(headers: &[h3::Header]) -> bool {
@@ -822,6 +840,22 @@ fn select_request_compression(
         level: selected.level(),
         identity_forbidden: accepted.identity.is_some_and(|quality| quality <= 0.0),
     })
+}
+
+fn refine_compression_for_size(profile: CompressionProfile, size: usize) -> CompressionProfile {
+    if size < LARGE_COMPRESSED_RESPONSE_SIZE {
+        return profile;
+    }
+    let level = if size >= HUGE_COMPRESSED_RESPONSE_SIZE {
+        BROTLI_HUGE_LEVEL
+    } else {
+        BROTLI_LARGE_LEVEL
+    };
+    CompressionProfile {
+        encoding: CompressionEncoding::Brotli,
+        level,
+        identity_forbidden: profile.identity_forbidden,
+    }
 }
 
 fn parse_accept_encoding(value: &str) -> AcceptedEncodings {
@@ -1023,10 +1057,16 @@ async fn forward_response(
     send: &mut OutboundFrameSender,
     alt_svc: &HeaderValue,
     compression: Option<CompressionProfile>,
+    body_idle_timeout: Duration,
 ) -> Result<()> {
     let (mut parts, mut body) = response.into_parts();
     let mut prefix = VecDeque::new();
     let mut compress = compression.filter(|_| response_supports_compression(&parts));
+    if let Some(profile) = compress
+        && let Some(length) = response_content_length(&parts.headers)
+    {
+        compress = Some(refine_compression_for_size(profile, length));
+    }
     if let Some(profile) = compress
         && let Some(length) = response_content_length(&parts.headers)
         && length < API_COMPRESSION_MIN_SIZE
@@ -1039,6 +1079,9 @@ async fn forward_response(
         let (bytes, finished) = buffer_response_prefix(&mut body, API_COMPRESSION_MIN_SIZE).await?;
         let buffered = bytes.iter().map(Bytes::len).sum::<usize>();
         prefix = bytes;
+        if finished {
+            compress = Some(refine_compression_for_size(profile, buffered));
+        }
         if finished && buffered < API_COMPRESSION_MIN_SIZE && !profile.identity_forbidden {
             compress = None;
         }
@@ -1065,9 +1108,9 @@ async fn forward_response(
     }
     send.send(OutboundFrame::Headers(headers, None)).await?;
     if let Some(profile) = compress {
-        forward_compressed_body(body, prefix, send, profile).await?;
+        forward_compressed_body(body, prefix, send, profile, body_idle_timeout).await?;
     } else {
-        forward_raw_body(&mut body, prefix, send).await?;
+        forward_raw_body(&mut body, prefix, send, body_idle_timeout).await?;
     }
     send.send(OutboundFrame::Body(Bytes::new(), true)).await?;
     Ok(())
@@ -1168,41 +1211,62 @@ async fn forward_raw_body(
     body: &mut hyper::body::Incoming,
     mut prefix: VecDeque<Bytes>,
     send: &mut OutboundFrameSender,
+    idle_timeout: Duration,
 ) -> Result<()> {
     while let Some(data) = prefix.pop_front() {
         send.send(OutboundFrame::Body(data, false)).await?;
     }
-    while let Some(frame) = body.frame().await {
-        if let Ok(data) = frame?.into_data()
-            && !data.is_empty()
-        {
-            send.send(OutboundFrame::Body(data, false)).await?;
+    loop {
+        match tokio::time::timeout(idle_timeout, body.frame()).await {
+            Ok(Some(Ok(frame))) => {
+                if let Ok(data) = frame.into_data()
+                    && !data.is_empty()
+                {
+                    send.send(OutboundFrame::Body(data, false)).await?;
+                }
+            }
+            Ok(Some(Err(error))) => {
+                return Err(error).context("failed to read inherited HTTP/2 response body");
+            }
+            Ok(None) => return Ok(()),
+            Err(_) => {
+                return Err(anyhow::anyhow!("response body idle timeout"));
+            }
         }
     }
-    Ok(())
 }
 
 fn response_data_stream(
     body: hyper::body::Incoming,
     prefix: VecDeque<Bytes>,
+    idle_timeout: Duration,
 ) -> impl futures::Stream<Item = std::io::Result<Bytes>> + Send {
-    stream::unfold((body, prefix), |(mut body, mut prefix)| async move {
+    stream::unfold((body, prefix, idle_timeout), |(mut body, mut prefix, idle_timeout)| async move {
         if let Some(data) = prefix.pop_front() {
-            return Some((Ok(data), (body, prefix)));
+            return Some((Ok(data), (body, prefix, idle_timeout)));
         }
         loop {
-            match body.frame().await {
-                Some(Ok(frame)) => {
+            match tokio::time::timeout(idle_timeout, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
                     if let Ok(data) = frame.into_data()
                         && !data.is_empty()
                     {
-                        return Some((Ok(data), (body, prefix)));
+                        return Some((Ok(data), (body, prefix, idle_timeout)));
                     }
                 }
-                Some(Err(error)) => {
-                    return Some((Err(std::io::Error::other(error)), (body, prefix)));
+                Ok(Some(Err(error))) => {
+                    return Some((Err(std::io::Error::other(error)), (body, prefix, idle_timeout)));
                 }
-                None => return None,
+                Ok(None) => return None,
+                Err(_) => {
+                    return Some((
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "response body idle timeout",
+                        )),
+                        (body, prefix, idle_timeout),
+                    ));
+                }
             }
         }
     })
@@ -1213,9 +1277,10 @@ async fn forward_compressed_body(
     prefix: VecDeque<Bytes>,
     send: &mut OutboundFrameSender,
     profile: CompressionProfile,
+    idle_timeout: Duration,
 ) -> Result<()> {
     let reader = TokioBufReader::new(StreamReader::new(Box::pin(response_data_stream(
-        body, prefix,
+        body, prefix, idle_timeout,
     ))));
     let quality = Level::Precise(profile.level);
     let mut encoder: Pin<Box<dyn AsyncRead + Send>> = match profile.encoding {
@@ -1437,6 +1502,21 @@ mod tests {
             })
         );
         assert!(!decoded.headers.contains_key("x-real-ip"));
+    }
+
+    #[test]
+    fn compression_profile_escalates_for_large_payloads() {
+        let base = CompressionProfile {
+            encoding: CompressionEncoding::Zstd,
+            level: 1,
+            identity_forbidden: false,
+        };
+        let large = refine_compression_for_size(base, LARGE_COMPRESSED_RESPONSE_SIZE);
+        assert_eq!(large.encoding, CompressionEncoding::Brotli);
+        assert_eq!(large.level, BROTLI_LARGE_LEVEL);
+        let huge = refine_compression_for_size(base, HUGE_COMPRESSED_RESPONSE_SIZE);
+        assert_eq!(huge.encoding, CompressionEncoding::Brotli);
+        assert_eq!(huge.level, BROTLI_HUGE_LEVEL);
     }
 
     #[test]

@@ -1148,10 +1148,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     RUSTFLAGS="-C target-cpu=x86-64" \
     cargo build --locked --release && \
     install -D -m 755 /tmp/scanner-test/release/navidrome-scanner /out/navidrome-scanner-portable && \
+    rm -rf target && \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/scanner-release \
     RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \
-    install -D -m 755 target/release/navidrome-scanner /out/navidrome-scanner && \
+    printf '%s\n' '{"root":"/tmp","targets":["."],"follow_symlinks":false,"ignore_dot_folders":true}' \
+      | /tmp/scanner-release/release/navidrome-scanner | grep -q '"kind":"done"' && \
+    install -D -m 755 /tmp/scanner-release/release/navidrome-scanner /out/navidrome-scanner && \
     test -x /out/navidrome-scanner
 
 # =========================================================
@@ -1187,10 +1191,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     CARGO_TARGET_DIR=/tmp/search-test \
     RUSTFLAGS="-C target-cpu=x86-64" \
     cargo test --locked --release && \
+    rm -rf target && \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/search-release \
     RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
     cargo build --locked --release && \
-    install -D -m 755 target/release/navidrome-search /out/navidrome-search && \
+    printf '%s\n' '{"op":"search_all","query":"","searches":[]}' \
+      | /tmp/search-release/release/navidrome-search | grep -q '"protocol":1' && \
+    install -D -m 755 /tmp/search-release/release/navidrome-search /out/navidrome-search && \
     test -x /out/navidrome-search
 
 # =========================================================

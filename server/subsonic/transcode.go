@@ -450,6 +450,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}
 	if n == 0 && r.Method != http.MethodHead {
 		log.Error(ctx, "Transcode stream returned no data", "mediaID", mediaID)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 	return nil, nil
 }

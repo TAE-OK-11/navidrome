@@ -250,7 +250,7 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)
-			return c, nil
+			return c, nil //nolint:nilerr // client disconnect; not a server error
 		}
 		log.Error(ctx, "Error sending transcoded file", "id", id, err)
 		if c == 0 {

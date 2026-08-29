@@ -30,8 +30,7 @@ type WorkerCheck struct {
 	SmokeExpect  string
 }
 
-// Preflight validates Rust worker binaries and logs actionable errors. It never aborts startup;
-// callers rely on Go fallbacks where available.
+// Preflight validates Rust worker binaries and logs actionable errors. It never aborts startup.
 func Preflight(ctx context.Context, checks []WorkerCheck) {
 	for _, check := range checks {
 		if err := check.run(ctx); err != nil {

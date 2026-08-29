@@ -2,7 +2,9 @@ import { useMemo } from 'react'
 import ReactGA from 'react-ga4'
 import { Provider } from 'react-redux'
 import { Admin as RAAdmin, Resource } from 'react-admin'
+import type { ResourceProps } from 'react-admin'
 import { createTheme } from '@mui/material/styles'
+import type { ThemeOptions } from '@mui/material/styles'
 import { DndProvider } from 'react-dnd'
 import dataProvider from './dataProvider'
 import authProvider from './authProvider'
@@ -83,7 +85,7 @@ const App = () => (
 const Admin = (props) => {
   const themeOptions = useCurrentTheme()
   const theme = useMemo(
-    () => createTheme(modernizeTheme(themeOptions)),
+    () => createTheme(modernizeTheme(themeOptions) as ThemeOptions),
     [themeOptions],
   )
   useChangeThemeColor()
@@ -105,31 +107,40 @@ const Admin = (props) => {
         <>
           <Resource
             name="album"
-            {...album}
+            {...(album as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'albumList' }}
           />
-          <Resource name="artist" {...artist} />
-          <Resource name="song" {...song} />
+          <Resource name="artist" {...(artist as Omit<ResourceProps, 'name'>)} />
+          <Resource name="song" {...(song as Omit<ResourceProps, 'name'>)} />
           <Resource
             name="radio"
-            {...(permissions === 'admin' ? radio.admin : radio.all)}
+            {...((permissions === 'admin' ? radio.admin : radio.all) as Omit<
+              ResourceProps,
+              'name'
+            >)}
           />
-          {config.enableSharing && <Resource name="share" {...share} />}
+          {config.enableSharing && (
+            <Resource name="share" {...(share as Omit<ResourceProps, 'name'>)} />
+          )}
           <Resource
             name="playlist"
-            {...playlist}
+            {...(playlist as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'playlist' }}
           />
-          <Resource name="user" {...user} options={{ subMenu: 'settings' }} />
+          <Resource
+            name="user"
+            {...(user as Omit<ResourceProps, 'name'>)}
+            options={{ subMenu: 'settings' }}
+          />
           <Resource
             name="player"
-            {...player}
+            {...(player as Omit<ResourceProps, 'name'>)}
             options={{ subMenu: 'settings' }}
           />
           {permissions === 'admin' ? (
             <Resource
               name="transcoding"
-              {...transcoding}
+              {...(transcoding as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           ) : (
@@ -138,21 +149,21 @@ const Admin = (props) => {
           {permissions === 'admin' && (
             <Resource
               name="library"
-              {...library}
+              {...(library as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && (
             <Resource
               name="missing"
-              {...missing}
+              {...(missing as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}
           {permissions === 'admin' && config.pluginsEnabled && (
             <Resource
               name="plugin"
-              {...plugin}
+              {...(plugin as Omit<ResourceProps, 'name'>)}
               options={{ subMenu: 'settings' }}
             />
           )}

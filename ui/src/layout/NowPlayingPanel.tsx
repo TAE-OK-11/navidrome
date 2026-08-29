@@ -23,6 +23,7 @@ import { useInterval } from '../common'
 import { nowPlayingCountSync } from '../actions'
 import { formatDuration } from '../utils'
 import config from '../config'
+import type { NavidromeRootState, NowPlayingEntry } from '../types/redux'
 
 const ellipsisSx = {
   overflow: 'hidden',
@@ -30,8 +31,13 @@ const ellipsisSx = {
   whiteSpace: 'nowrap',
 }
 
+type NowPlayingButtonProps = {
+  count: number
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+}
+
 // NowPlayingButton component - handles the button with badge
-const NowPlayingButton = React.memo(({ count, onClick }) => {
+const NowPlayingButton = React.memo(({ count, onClick }: NowPlayingButtonProps) => {
   const translate = useTranslate()
 
   return (
@@ -63,8 +69,15 @@ const NowPlayingButton = React.memo(({ count, onClick }) => {
 
 NowPlayingButton.displayName = 'NowPlayingButton'
 
+type NowPlayingItemProps = {
+  nowPlayingEntry: NowPlayingEntry
+  onLinkClick: () => void
+  getArtistLink: (artistId: string) => string | null
+  now: number
+}
+
 const NowPlayingItem = React.memo(
-  ({ nowPlayingEntry, onLinkClick, getArtistLink, now }) => {
+  ({ nowPlayingEntry, onLinkClick, getArtistLink, now }: NowPlayingItemProps) => {
     const isPaused = nowPlayingEntry.state === 'paused'
     const isPlaying =
       nowPlayingEntry.state === 'playing' ||
@@ -105,7 +118,6 @@ const NowPlayingItem = React.memo(
               src={subsonic.getCoverArtUrl(nowPlayingEntry, 80)}
               variant="square"
               alt={`${nowPlayingEntry.album} cover art`}
-              loading="lazy"
             />
           </Link>
           {isPaused && (
@@ -151,7 +163,7 @@ const NowPlayingItem = React.memo(
           {artistId ? (
             <Box
               component={Link}
-              to={getArtistLink(artistId)}
+              to={getArtistLink(artistId) ?? ''}
               onClick={onLinkClick}
               sx={(theme) => ({
                 cursor: 'pointer',
@@ -240,9 +252,27 @@ const NowPlayingItem = React.memo(
 
 NowPlayingItem.displayName = 'NowPlayingItem'
 
+type NowPlayingListProps = {
+  anchorEl: HTMLElement | null
+  open: boolean
+  onClose: () => void
+  entries: NowPlayingEntry[]
+  onLinkClick: () => void
+  getArtistLink: (artistId: string) => string | null
+  now: number
+}
+
 // NowPlayingList component - handles the popover content
 const NowPlayingList = React.memo(
-  ({ anchorEl, open, onClose, entries, onLinkClick, getArtistLink, now }) => {
+  ({
+    anchorEl,
+    open,
+    onClose,
+    entries,
+    onLinkClick,
+    getArtistLink,
+    now,
+  }: NowPlayingListProps) => {
     const translate = useTranslate()
 
     return (
@@ -298,25 +328,29 @@ NowPlayingList.displayName = 'NowPlayingList'
 // Main NowPlayingPanel component
 const NowPlayingPanel = () => {
   const dispatch = useDispatch()
-  const count = useSelector((state) => state.activity.nowPlayingCount)
-  const lastUpdate = useSelector((state) => state.activity.nowPlayingLastUpdate)
+  const count = useSelector(
+    (state: NavidromeRootState) => state.activity.nowPlayingCount,
+  )
+  const lastUpdate = useSelector(
+    (state: NavidromeRootState) => state.activity.nowPlayingLastUpdate,
+  )
   const streamReconnected = useSelector(
-    (state) => state.activity.streamReconnected,
+    (state: NavidromeRootState) => state.activity.streamReconnected,
   )
   const serverUp = useSelector(
-    (state) => !!state.activity.serverStart.startTime,
+    (state: NavidromeRootState) => !!state.activity.serverStart.startTime,
   )
   const translate = useTranslate()
   const notify = useNotify()
   const theme = useTheme()
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'))
 
-  const [anchorEl, setAnchorEl] = useState(null)
-  const [entries, setEntries] = useState([])
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const [entries, setEntries] = useState<NowPlayingEntry[]>([])
   const [now, setNow] = useState(Date.now())
   const open = Boolean(anchorEl)
 
-  const handleMenuOpen = useCallback((event) => {
+  const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget)
   }, [])
 
@@ -331,15 +365,15 @@ const NowPlayingPanel = () => {
     }
   }, [isSmallScreen, handleMenuClose])
 
-  const getArtistLink = useCallback((artistId) => {
+  const getArtistLink = useCallback((artistId: string) => {
     if (!artistId) return null
     return config.devShowArtistPage && artistId !== config.variousArtistsId
       ? `/artist/${artistId}/show`
       : `/album?filter={"artist_id":"${artistId}"}&order=ASC&sort=max_year&displayedFilters={"compilation":true}&perPage=15`
   }, [])
 
-  const fetchTimerRef = useRef(null)
-  const doFetchRef = useRef()
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const doFetchRef = useRef<() => void>(() => {})
   doFetchRef.current = () =>
     subsonic
       .getNowPlaying()
@@ -349,7 +383,10 @@ const NowPlayingPanel = () => {
           const nowPlayingEntries = data.nowPlaying?.entry || []
           const fetchTime = Date.now()
           setEntries(
-            nowPlayingEntries.map((e) => ({ ...e, _fetchedAt: fetchTime })),
+            nowPlayingEntries.map((e: NowPlayingEntry) => ({
+              ...e,
+              _fetchedAt: fetchTime,
+            })),
           )
           dispatch(nowPlayingCountSync({ count: nowPlayingEntries.length }))
         } else {
@@ -358,7 +395,7 @@ const NowPlayingPanel = () => {
           )
         }
       })
-      .catch((error) => {
+      .catch((error: Error) => {
         notify('ra.page.error', {
           type: 'warning',
           messageArgs: { error: error.message || 'Unknown error' },

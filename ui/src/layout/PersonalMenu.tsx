@@ -3,10 +3,9 @@ import { MenuItemLink, useTranslate } from 'react-admin'
 import type { MenuItemLinkProps } from 'react-admin'
 import { MdTune } from 'react-icons/md'
 
-type PersonalMenuProps = Pick<
-  MenuItemLinkProps,
-  'onClick' | 'sidebarIsOpen' | 'dense'
->
+type PersonalMenuProps = Pick<MenuItemLinkProps, 'sidebarIsOpen' | 'dense'> & {
+  onClick?: MenuItemLinkProps['onClick']
+}
 
 const PersonalMenu = forwardRef<HTMLLIElement, PersonalMenuProps>(
   ({ onClick, sidebarIsOpen, dense }, ref) => {

@@ -6,6 +6,7 @@ import {
   usePermissions,
   useResourceDefinitions,
 } from 'react-admin'
+import type { ResourceDefinition } from 'react-admin'
 import { MdInfo, MdPerson, MdSupervisorAccount } from 'react-icons/md'
 import { MenuItem, ListItemIcon, Divider } from '@mui/material'
 import ViewListIcon from '@mui/icons-material/ViewList'
@@ -24,7 +25,12 @@ const menuItemSx = {
   '&.RaMenuItemLink-active': { color: 'text.primary' },
 }
 
-const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
+type AboutMenuItemProps = {
+  onClick?: () => void
+}
+
+const AboutMenuItem = forwardRef<HTMLLIElement, AboutMenuItemProps>(
+  ({ onClick, ...rest }, ref) => {
   const translate = useTranslate()
   const [open, setOpen] = React.useState(false)
 
@@ -58,11 +64,12 @@ const AboutMenuItem = forwardRef(({ onClick, ...rest }, ref) => {
       <AboutDialog onClose={handleClose} open={open} />
     </>
   )
-})
+},
+)
 
 AboutMenuItem.displayName = 'AboutMenuItem'
 
-const settingsResources = (resource) =>
+const settingsResources = (resource: ResourceDefinition) =>
   resource.name !== 'user' &&
   resource.hasList &&
   resource.options &&
@@ -77,7 +84,10 @@ const CustomUserMenu = (props) => {
   const resourceDefinition = (resourceName) =>
     resources.find((resource) => resource?.name === resourceName)
 
-  const renderSettingsMenuItemLink = (resource, id) => {
+  const renderSettingsMenuItemLink = (
+    resource: ResourceDefinition,
+    id?: string | null,
+  ) => {
     const label = translate(`resources.${resource.name}.name`, {
       smart_count: id ? 1 : 2,
     })
@@ -123,12 +133,12 @@ const CustomUserMenu = (props) => {
         config.enableNowPlaying && <NowPlayingPanel />}
       {config.devActivityPanel && permissions === 'admin' && <ActivityPanel />}
       <UserMenu {...props}>
-        <PersonalMenu sidebarIsOpen={true} />
+        <PersonalMenu sidebarIsOpen={true} dense={false} />
         <Divider />
         {renderUserMenuItemLink()}
         {resources
           .filter(settingsResources)
-          .map((resource) => renderSettingsMenuItemLink(resource))}
+          .map((resource) => renderSettingsMenuItemLink(resource, null))}
         <Divider />
         <AboutMenuItem />
         {(!config.auth || !!config.extAuthLogoutURL) && <Logout />}

@@ -69,6 +69,12 @@ export type ArtistRecord = NavidromeRecord & {
   >
 }
 
+export type PlaylistSelection = {
+  id?: Identifier
+  name: string
+  distinctIds?: Identifier[]
+}
+
 export type PlaylistRecord = NavidromeRecord & {
   id: Identifier
   name?: string

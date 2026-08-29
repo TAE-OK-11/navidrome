@@ -28,9 +28,9 @@ const PlayerList = ({ permissions, ...props }) => {
     >
       {isXsmall ? (
         <SimpleList
-          primaryText={(r) => r.name}
-          secondaryText={(r) => r.userName}
-          tertiaryText={(r) => (r.maxBitRate ? r.maxBitRate : '-')}
+          primaryText={(r) => String(r.name ?? '')}
+          secondaryText={(r) => String(r.userName ?? '')}
+          tertiaryText={(r) => (r.maxBitRate ? String(r.maxBitRate) : '-')}
         />
       ) : (
         <Datagrid rowClick="edit">

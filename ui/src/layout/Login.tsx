@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Field, Form } from 'react-final-form'
+import type { FieldRenderProps } from 'react-final-form'
 import { useDispatch } from 'react-redux'
 import { useLocation } from 'react-router-dom'
 import Button from '@mui/material/Button'
@@ -14,6 +15,7 @@ import {
   StyledEngineProvider,
   createTheme,
 } from '@mui/material/styles'
+import type { ThemeOptions } from '@mui/material/styles'
 import { useLogin, useNotify, useTranslate } from 'react-admin'
 import Logo from '../icons/android-icon-192x192.png'
 
@@ -74,7 +76,7 @@ const renderInput = ({
   meta: { touched, error } = {},
   input: { ...inputProps },
   ...props
-}) => (
+}: FieldRenderProps<string>) => (
   <TextField
     {...props}
     {...inputProps}
@@ -186,7 +188,7 @@ const InsightsNotice = ({ url }) => {
   const lines = originalMsg.split('\n')
 
   const renderedLines = lines.map((line, lineIndex) => {
-    const segments = []
+    const segments: React.ReactNode[] = []
     let lastIndex = 0
     let match
 
@@ -340,8 +342,8 @@ const Login = () => {
   )
 
   const validateLogin = useCallback(
-    (values) => {
-      const errors = {}
+    (values: { username?: string; password?: string }) => {
+      const errors: { username?: string; password?: string } = {}
       if (!values.username) {
         errors.username = translate('ra.validation.required')
       }
@@ -354,8 +356,16 @@ const Login = () => {
   )
 
   const validateSignup = useCallback(
-    (values) => {
-      const errors = validateLogin(values)
+    (values: {
+      username?: string
+      password?: string
+      confirmPassword?: string
+    }) => {
+      const errors = validateLogin(values) as {
+        username?: string
+        password?: string
+        confirmPassword?: string
+      }
       const regex = /^\w+$/g
       if (values.username && !values.username.match(regex)) {
         errors.username = translate('ra.validation.invalidChars')
@@ -395,7 +405,7 @@ const LoginWithTheme = (props) => {
   const theme = useCurrentTheme()
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={createTheme(modernizeTheme(theme))}>
+      <ThemeProvider theme={createTheme(modernizeTheme(theme) as ThemeOptions)}>
         <Login {...props} />
       </ThemeProvider>
     </StyledEngineProvider>

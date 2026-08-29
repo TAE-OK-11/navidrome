@@ -18,7 +18,14 @@ export const SongSimpleList = ({
   ...rest
 }: {
   className?: string
-  classes?: { listItem?: string; title?: string; rightIcon?: string }
+  classes?: {
+    listItem?: string
+    title?: string
+    rightIcon?: string
+    secondary?: string
+    artist?: string
+    timeStamp?: string
+  }
   hasBulkActions?: boolean
 }) => {
   const dispatch = useDispatch()
@@ -97,7 +104,7 @@ export const SongSimpleList = ({
                     sx={{ top: 26 }}
                   >
                     <ListItemIcon>
-                      <SongContextMenu record={record} visible={true} />
+                      <SongContextMenu record={record} />
                     </ListItemIcon>
                   </ListItemSecondaryAction>
                 </ListItemButton>

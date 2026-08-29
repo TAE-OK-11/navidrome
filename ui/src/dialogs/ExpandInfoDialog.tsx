@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@mui/material'
 import { closeExtendedInfoDialog } from '../actions'
+import type { NavidromeRootState } from '../types/redux'
 
 const ExpandInfoDialog = ({
   title,
@@ -17,7 +18,9 @@ const ExpandInfoDialog = ({
   title?: string
   content: React.ReactNode
 }) => {
-  const { open, record } = useSelector((state) => state.expandInfoDialog)
+  const { open, record } = useSelector(
+    (state: NavidromeRootState) => state.expandInfoDialog,
+  )
   const dispatch = useDispatch()
   const translate = useTranslate()
 

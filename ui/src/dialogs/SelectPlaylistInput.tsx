@@ -16,6 +16,7 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
 import { isWritable } from '../common'
+import type { PlaylistRecord, PlaylistSelection } from '../types/records'
 
 const PlaylistSearchField = ({
   searchText,
@@ -206,9 +207,15 @@ const SelectedPlaylistsDisplay = ({ selectedPlaylists, onRemoveSelected }) => {
   )
 }
 
-export const SelectPlaylistInput = ({ onChange }) => {
+export const SelectPlaylistInput = ({
+  onChange,
+}: {
+  onChange: (selection: PlaylistSelection[]) => void
+}) => {
   const [searchText, setSearchText] = useState('')
-  const [selectedPlaylists, setSelectedPlaylists] = useState([])
+  const [selectedPlaylists, setSelectedPlaylists] = useState<PlaylistSelection[]>(
+    [],
+  )
 
   const { data = [] } = useGetList('playlist', {
     pagination: { page: 1, perPage: -1 },
@@ -216,7 +223,9 @@ export const SelectPlaylistInput = ({ onChange }) => {
     filter: { smart: false },
   })
 
-  const options = data.filter((option) => isWritable(option.ownerId))
+  const options = (data as PlaylistRecord[]).filter((option) =>
+    isWritable(option.ownerId),
+  )
 
   // Filter playlists based on search text
   const filteredOptions =
@@ -224,7 +233,7 @@ export const SelectPlaylistInput = ({ onChange }) => {
       option.name.toLowerCase().includes(searchText.toLowerCase()),
     ) || []
 
-  const handlePlaylistToggle = (playlist) => {
+  const handlePlaylistToggle = (playlist: PlaylistSelection) => {
     const isSelected = selectedPlaylists.some((p) => p.id === playlist.id)
     let newSelection
 

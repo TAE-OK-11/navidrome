@@ -11,6 +11,22 @@ import { useSidebarState, useTranslate } from 'react-admin'
 import { Box, IconButton, useMediaQuery } from '@mui/material'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
 
+type SubMenuProps = {
+  handleToggle: () => void
+  sidebarIsOpen: boolean
+  isOpen: boolean
+  name: string
+  icon: React.ReactNode
+  children: React.ReactNode
+  dense?: boolean
+  onAction?: (e: React.MouseEvent) => void
+  actionIcon?: React.ReactNode
+  onSecondaryAction?: (e: React.MouseEvent) => void
+  secondaryActionIcon?: React.ReactNode
+  secondaryActionTitle?: string
+  secondaryActionActive?: boolean
+}
+
 const SubMenu = ({
   handleToggle,
   sidebarIsOpen,
@@ -25,7 +41,7 @@ const SubMenu = ({
   secondaryActionIcon,
   secondaryActionTitle,
   secondaryActionActive,
-}) => {
+}: SubMenuProps) => {
   const translate = useTranslate()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('sm'))
   const isSmall = useMediaQuery((theme) => theme.breakpoints.down('md'))

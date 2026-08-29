@@ -22,7 +22,7 @@ export const ParticipantsInfo = ({
   const translate = useTranslate()
   const existingRoles = en?.resources?.artist?.roles ?? {}
 
-  const roles = []
+  const roles: Array<[string, number]> = []
 
   if (record.participants) {
     for (const name of Object.keys(record.participants)) {

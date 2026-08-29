@@ -14,22 +14,25 @@ import { useNotify, useTranslate } from 'react-admin'
 import { useDispatch, useSelector } from 'react-redux'
 import { closeListenBrainzTokenDialog } from '../actions'
 import { httpClient } from '../dataProvider'
+import type { NavidromeRootState } from '../types/redux'
 
 export const ListenBrainzTokenDialog = ({ setLinked }) => {
   const dispatch = useDispatch()
   const notify = useNotify()
   const translate = useTranslate()
-  const { open } = useSelector((state) => state.listenBrainzTokenDialog)
+  const { open } = useSelector(
+    (state: NavidromeRootState) => state.listenBrainzTokenDialog,
+  )
   const [token, setToken] = useState('')
   const [checking, setChecking] = useState(false)
-  const inputRef = createRef()
+  const inputRef = createRef<HTMLInputElement>()
 
   const handleChange = (event) => {
     setToken(event.target.value)
   }
 
-  const handleLinkClick = (event) => {
-    inputRef.current.focus()
+  const handleLinkClick = (event: React.MouseEvent) => {
+    inputRef.current?.focus()
   }
 
   const handleSave = useCallback(

@@ -94,7 +94,7 @@ const PlayerToolbar = ({ id, isRadio }) => {
     <LoveButton
       record={data}
       resource={'song'}
-      size={isDesktop ? undefined : 'inherit'}
+      size={isDesktop ? undefined : 'small'}
       disabled={isPending || toggling || !id || isRadio}
       sx={buttonSx}
     />

@@ -16,6 +16,7 @@ import {
 import { ExpandMore, ExpandLess, LibraryMusic } from '@mui/icons-material'
 import { setSelectedLibraries, setUserLibraries } from '../actions'
 import { useRefreshOnEvents } from './useRefreshOnEvents'
+import type { NavidromeRootState } from '../types/redux'
 
 const LibrarySelector = () => {
   const dispatch = useDispatch()
@@ -26,7 +27,7 @@ const LibrarySelector = () => {
   const [open, setOpen] = useState(false)
 
   const { userLibraries, selectedLibraries } = useSelector(
-    (state) => state.library,
+    (state: NavidromeRootState) => state.library,
   )
 
   // Load user's libraries when component mounts

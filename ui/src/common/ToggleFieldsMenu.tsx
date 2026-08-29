@@ -8,6 +8,7 @@ import Checkbox from '@mui/material/Checkbox'
 import { useDispatch, useSelector } from 'react-redux'
 import { useTranslate } from 'react-admin'
 import { setToggleableFields } from '../actions'
+import type { NavidromeRootState } from '../types/redux'
 
 type ToggleFieldsMenuProps = {
   resource: string
@@ -24,10 +25,12 @@ export const ToggleFieldsMenu = ({
   const dispatch = useDispatch()
   const translate = useTranslate()
   const toggleableColumns = useSelector(
-    (state) => state.settings.toggleableFields[resource],
+    (state: NavidromeRootState) => state.settings.toggleableFields[resource],
   )
   const omittedColumns =
-    useSelector((state) => state.settings.omittedFields[resource]) || []
+    useSelector(
+      (state: NavidromeRootState) => state.settings.omittedFields[resource],
+    ) || []
 
   const open = Boolean(anchorEl)
 

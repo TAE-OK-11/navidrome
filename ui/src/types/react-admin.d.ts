@@ -14,4 +14,12 @@ declare module 'ra-core' {
   interface UpdateParams<RecordType = unknown> {
     filter?: Record<string, unknown>
   }
+
+  interface CreateParams<T = unknown> {
+    filter?: Record<string, unknown>
+  }
+
+  interface GetOneParams<RecordType = unknown> {
+    filter?: Record<string, unknown>
+  }
 }

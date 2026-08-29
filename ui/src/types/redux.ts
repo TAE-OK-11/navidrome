@@ -25,6 +25,24 @@ export type ScanStatus = {
   count: number
   error: string
   elapsedTime: number
+  scanType?: string
+}
+
+export type NowPlayingEntry = {
+  username: string
+  playerName?: string
+  title?: string
+  artist?: string
+  album?: string
+  albumId?: string
+  artistId?: string
+  albumArtist?: string
+  albumArtistId?: string
+  duration?: number
+  state?: string
+  positionMs?: number
+  playbackRate?: number
+  _fetchedAt?: number
 }
 
 export type ActivityState = {
@@ -36,17 +54,19 @@ export type ActivityState = {
   nowPlayingCount: number
   nowPlayingLastUpdate: number
   streamReconnected: number
-  refresh?: {
-    lastReceived: number
-    resources: unknown
-  }
+  refresh?: ActivityRefresh
 }
 
 export type SettingsState = {
   notifications: boolean
-  toggleableFields: Record<string, unknown>
-  omittedFields: Record<string, unknown>
+  toggleableFields: Record<string, Record<string, boolean>>
+  omittedFields: Record<string, string[]>
   sidebarPlaylistsOnlyFavourites: boolean
+}
+
+export type ActivityRefresh = {
+  lastReceived: number
+  resources: Record<string, string[]>
 }
 
 export type TrackSource = Record<string, unknown>

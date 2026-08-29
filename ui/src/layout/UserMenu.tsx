@@ -101,7 +101,7 @@ const UserMenu = ({
                   textOverflow: 'ellipsis',
                 }}
               >
-                <Typography variant="button">{identity.fullName}</Typography>
+                <Typography variant="button">{identity?.fullName}</Typography>
               </CardContent>
             </Card>
           )}
@@ -110,7 +110,7 @@ const UserMenu = ({
             isValidElement(menuItem)
               ? cloneElement(menuItem, {
                   onClick: handleClose,
-                })
+                } as Record<string, unknown>)
               : null,
           )}
         </MenuList>

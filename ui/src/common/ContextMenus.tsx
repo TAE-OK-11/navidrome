@@ -28,6 +28,8 @@ import { LoveButton } from './LoveButton'
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from './artist'
+import type { Identifier } from 'react-admin'
+import type { SongRecord } from '../types/records'
 
 const MoreButton = ({ record, onClick, info, ...rest }) => {
   const handleClick = record.missing
@@ -52,12 +54,12 @@ const ContextMenu = ({
   resource,
   showLove,
   record,
-  color,
+  color = 'inherit',
   className,
   sx,
   songQueryParams,
-  hideShare,
-  hideInfo,
+  hideShare = false,
+  hideInfo = false,
 }) => {
   const dataProvider = useDataProvider()
   const dispatch = useDispatch()
@@ -97,7 +99,8 @@ const ContextMenu = ({
       enabled: true,
       needData: true,
       label: translate('resources.album.actions.addToPlaylist'),
-      action: (data, ids) => dispatch(openAddToPlaylist({ selectedIds: ids })),
+      action: (data, ids) =>
+        dispatch(openAddToPlaylist({ selectedIds: ids, onSuccess: undefined })),
     },
     ...(!hideShare && {
       share: {
@@ -105,7 +108,7 @@ const ContextMenu = ({
         needData: false,
         label: translate('ra.action.share'),
         action: (record) =>
-          dispatch(openShareMenu([record.id], resource, record.name)),
+          dispatch(openShareMenu([record.id], resource, record.name, undefined)),
       },
     }),
     download: {
@@ -145,9 +148,9 @@ const ContextMenu = ({
     e.stopPropagation()
   }
 
-  const extractSongsData = (response) => {
-    const data = {}
-    const ids = []
+  const extractSongsData = (response: { data: SongRecord[] }) => {
+    const data: Record<string, SongRecord> = {}
+    const ids: Identifier[] = []
     for (const song of response.data) {
       data[song.id] = song
       ids.push(song.id)

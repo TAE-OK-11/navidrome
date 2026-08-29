@@ -6,11 +6,25 @@ import { decisionService } from '../transcode'
 import { useDrag } from 'react-dnd'
 import { DraggableTypes } from '../consts'
 import { componentStyleOverride } from '../themes/componentStyleOverride'
+import type { ReplayGainState } from '../types/redux'
+import type { SongRecord } from '../types/records'
 
-const audioOverride = (slot) => (theme) =>
+const audioOverride = (slot: string) => (theme: object) =>
   componentStyleOverride(theme, 'NDAudioPlayer', slot)
 
-const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
+type AudioInfo = {
+  trackId?: string
+  isRadio?: boolean
+  song?: SongRecord & { playlistId?: string; suffix?: string; bitRate?: number }
+}
+
+type AudioTitleProps = {
+  audioInfo: AudioInfo
+  gainInfo: ReplayGainState
+  isMobile?: boolean
+}
+
+const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }: AudioTitleProps) => {
   const isDesktop = useMediaQuery('(min-width:810px)')
 
   const song = audioInfo.song
@@ -55,80 +69,84 @@ const AudioTitle = React.memo(({ audioInfo, gainInfo, isMobile }) => {
 
   return (
     <Box
-      component={Link}
-      to={linkTo}
       ref={dragSongRef}
       sx={[
         { textDecoration: 'none', color: 'primary.dark' },
         audioOverride('audioTitle'),
       ]}
     >
-      <span>
-        <Box
-          component="span"
-          className="songTitle"
-          sx={[
-            {
-              fontWeight: 'bold',
-              '&:hover + .quality-info': { opacity: 1 },
-            },
-            audioOverride('songTitle'),
-          ]}
-        >
-          {title}
-        </Box>
-        {isDesktop && (
-          <QualityInfo
-            record={qi}
-            className="quality-info"
+      <Box
+        component={Link}
+        to={linkTo}
+        sx={{ textDecoration: 'none', color: 'inherit' }}
+      >
+        <span>
+          <Box
+            component="span"
+            className="songTitle"
             sx={[
               {
-                mt: '-4px',
-                opacity: 0,
-                transition: 'all 500ms ease-out',
+                fontWeight: 'bold',
+                '&:hover + .quality-info': { opacity: 1 },
               },
-              audioOverride('qualityInfo'),
+              audioOverride('songTitle'),
             ]}
-            {...gainInfo}
-            {...transcodeProps}
-          />
-        )}
-      </span>
-      {isMobile ? (
-        <>
+          >
+            {title}
+          </Box>
+          {isDesktop && (
+            <QualityInfo
+              record={qi}
+              className="quality-info"
+              sx={[
+                {
+                  mt: '-4px',
+                  opacity: 0,
+                  transition: 'all 500ms ease-out',
+                },
+                audioOverride('qualityInfo'),
+              ]}
+              {...gainInfo}
+              {...transcodeProps}
+            />
+          )}
+        </span>
+        {isMobile ? (
+          <>
+            <Box
+              component="span"
+              sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
+            >
+              <span className={'songArtist'}>{song.artist}</span>
+            </Box>
+            <Box
+              component="span"
+              sx={[
+                {
+                  display: 'block',
+                  mt: '2px',
+                  fontStyle: 'italic',
+                  fontSize: 'smaller',
+                },
+                audioOverride('songInfo'),
+                audioOverride('songAlbum'),
+              ]}
+            >
+              <span className={'songAlbum'}>{song.album}</span>
+              {song.year ? ` - ${song.year}` : ''}
+            </Box>
+          </>
+        ) : (
           <Box
             component="span"
             sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
           >
-            <span className={'songArtist'}>{song.artist}</span>
-          </Box>
-          <Box
-            component="span"
-            sx={[
-              {
-                display: 'block',
-                mt: '2px',
-                fontStyle: 'italic',
-                fontSize: 'smaller',
-              },
-              audioOverride('songInfo'),
-              audioOverride('songAlbum'),
-            ]}
-          >
+            <span className={'songArtist'}>{song.artist}</span> -{' '}
             <span className={'songAlbum'}>{song.album}</span>
             {song.year ? ` - ${song.year}` : ''}
           </Box>
-        </>
-      ) : (
-        <Box
-          component="span"
-          sx={[{ display: 'block', mt: '2px' }, audioOverride('songInfo')]}
-        >
-          <span className={'songArtist'}>{song.artist}</span> -{' '}
-          <span className={'songAlbum'}>{song.album}</span>
-          {song.year ? ` - ${song.year}` : ''}
-        </Box>
-      )}
+        )}
+      </Box>
     </Box>
   )
 })

@@ -9,7 +9,7 @@ import {
 } from 'react-admin'
 import { useNavigate } from 'react-router-dom'
 import QueueMusicIcon from '@mui/icons-material/QueueMusic'
-import { Typography } from '@mui/material'
+import { Typography, Box } from '@mui/material'
 import QueueMusicOutlinedIcon from '@mui/icons-material/QueueMusicOutlined'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
@@ -20,6 +20,8 @@ import { canChangeTracks, OverflowTooltip, useRefreshOnEvents } from '../common'
 import { DraggableTypes } from '../consts'
 import { setSidebarPlaylistsOnlyFavourites } from '../actions'
 import config from '../config'
+import type { NavidromeRootState } from '../types/redux'
+import type { PlaylistRecord } from '../types/records'
 
 const PlaylistMenuItemLink = ({ pls, sidebarIsOpen }) => {
   const dataProvider = useDataProvider()
@@ -46,9 +48,11 @@ const PlaylistMenuItemLink = ({ pls, sidebarIsOpen }) => {
       to={`/playlist/${pls.id}/show`}
       primaryText={
         <OverflowTooltip title={pls.name} placement="right">
-          <Typography variant="inherit" noWrap ref={dropRef}>
-            {pls.name}
-          </Typography>
+          <Box component="span" ref={dropRef} sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography variant="inherit" component="span" noWrap>
+              {pls.name}
+            </Typography>
+          </Box>
         </OverflowTooltip>
       }
       sidebarIsOpen={sidebarIsOpen}
@@ -62,7 +66,8 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
   const dispatch = useDispatch()
   const translate = useTranslate()
   const onlyFavourites = useSelector(
-    (state) => state.settings.sidebarPlaylistsOnlyFavourites,
+    (state: NavidromeRootState) =>
+      state.settings.sidebarPlaylistsOnlyFavourites,
   )
   // Ignore a persisted preference when the feature is off, so disabling it later
   // (with the toggle now hidden) doesn't strand the user on a filtered sidebar
@@ -100,8 +105,8 @@ const PlaylistsSubMenu = ({ state, setState, sidebarIsOpen, dense }) => {
   )
 
   const userId = localStorage.getItem('userId')
-  const myPlaylists = []
-  const sharedPlaylists = []
+  const myPlaylists: PlaylistRecord[] = []
+  const sharedPlaylists: PlaylistRecord[] = []
 
   if (!isPending && data) {
     data.forEach((pls) => {

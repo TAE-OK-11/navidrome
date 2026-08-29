@@ -342,7 +342,7 @@ func (r *rustHTTP3Runtime) startChild() error {
 	r.control = parent
 	r.mu.Unlock()
 	r.ready.Store(true)
-	http3CompanionUp.Set(1)
+	setHTTP3CompanionReady(true)
 	failed = false
 	log.Info(r.ctx, "Tokio-quiche HTTP/3 companion is ready", "udpAddress", r.config.UDPAddress,
 		"bridge", "inherited-af_unix+h2", "binary", r.binaryPath,
@@ -362,7 +362,7 @@ func (r *rustHTTP3Runtime) serve() error {
 
 		err := cmd.Wait()
 		r.ready.Store(false)
-		http3CompanionUp.Set(0)
+		setHTTP3CompanionReady(false)
 		r.mu.Lock()
 		if r.control != nil {
 			_ = r.control.Close()
@@ -411,7 +411,7 @@ func (r *rustHTTP3Runtime) shutdown(ctx context.Context) error {
 		return nil
 	}
 	r.ready.Store(false)
-	http3CompanionUp.Set(0)
+	setHTTP3CompanionReady(false)
 
 	r.mu.Lock()
 	control := r.control

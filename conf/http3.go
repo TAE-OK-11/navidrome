@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/navidrome/navidrome/log"
 	"github.com/spf13/viper"
 )
 
@@ -112,4 +113,11 @@ func setHTTP3Defaults() {
 
 func init() {
 	setHTTP3Defaults()
+	warnDeprecatedHTTP3Provider()
+}
+
+func warnDeprecatedHTTP3Provider() {
+	if viper.IsSet("http3provider") {
+		log.Warn("http3provider is deprecated and ignored; HTTP/3 uses the tokio-quiche companion")
+	}
 }

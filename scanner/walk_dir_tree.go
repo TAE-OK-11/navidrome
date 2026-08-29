@@ -49,6 +49,8 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 
 // streamRustFoldersInto streams Rust walker output into results. It returns false when
 // traversal fails before any folder is emitted so callers can fall back to the Go walker.
+// The Rust worker emits folders in post-order (deepest first) with per-event flush when
+// walk_threads is 1, so Go can start Phase 1 processing while traversal continues.
 func streamRustFoldersInto(ctx context.Context, job *scanJob, targetFolders []string, results chan<- *folderEntry) bool {
 	folderCh, errCh := streamRustFolders(ctx, job, targetFolders)
 	var sent int

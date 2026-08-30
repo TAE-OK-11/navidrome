@@ -28,7 +28,7 @@ var redacted = &Hook{
 	RedactionList: []string{
 		// Structured log field names. Keep this first so secrets passed as
 		// key/value pairs are removed independently of their formatting.
-		`(?i)^(?:authorization|x-nd-authorization|cookie|token|.*password.*|.*secret.*|.*api[_-]?key.*)$`,
+		`(?i)^(?:authorization|x-nd-authorization|cookie|token|.*password.*|.*api[_-]?key.*)$`,
 
 		// Keys from the config
 		`(?i)(ApiKey:[\s]*")[^"]*`,
@@ -56,8 +56,8 @@ var redacted = &Hook{
 		"([^\\w]api_key=)[\\w]+",
 		`(?i)([?&](?:uid|token)=)[^&\s]+`,
 
-		// Authorization headers serialized by request tracing.
-		`(?i)("?(?:authorization|x-nd-authorization)"?\s*:\s*\[?\s*"?)[^"\],\s]+(?:\s+[^"\],\s]+)?`,
+		// Sensitive request headers logged as a JSON blob at trace level.
+		`(?i)("(?:Authorization|X-Emby-Token|X-MediaBrowser-Token|X-Nd-Authorization)":\[")[^\]]*("\])`,
 	},
 }
 

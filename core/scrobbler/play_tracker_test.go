@@ -272,7 +272,7 @@ var _ = Describe("PlayTracker", func() {
 		})
 
 		It("increments play counts even if it cannot scrobble", func() {
-			fake.Error = errors.New("error")
+			fake.SetError(errors.New("error"))
 
 			err := tracker.Submit(ctx, []Submission{{TrackID: "123", Timestamp: time.Now()}})
 
@@ -1225,7 +1225,23 @@ type fakeScrobbler struct {
 	position             atomic.Int32
 	LastScrobble         atomic.Pointer[Scrobble]
 	LastPlaybackReport   atomic.Pointer[PlaybackSession]
-	Error                error
+	err                  atomic.Pointer[error]
+	scrobbleAttempts     atomic.Int32
+}
+
+func (f *fakeScrobbler) SetError(err error) {
+	f.err.Store(&err)
+}
+
+func (f *fakeScrobbler) getError() error {
+	if e := f.err.Load(); e != nil {
+		return *e
+	}
+	return nil
+}
+
+func (f *fakeScrobbler) ScrobbleAttempts() int32 {
+	return f.scrobbleAttempts.Load()
 }
 
 func (f *fakeScrobbler) GetNowPlayingCalled() bool {
@@ -1251,13 +1267,13 @@ func (f *fakeScrobbler) GetTrack() *model.MediaFile {
 }
 
 func (f *fakeScrobbler) IsAuthorized(ctx context.Context, userId string) bool {
-	return f.Error == nil && f.Authorized
+	return f.getError() == nil && f.Authorized
 }
 
 func (f *fakeScrobbler) NowPlaying(ctx context.Context, userId string, track *model.MediaFile, position int) error {
 	f.nowPlayingCalled.Store(true)
-	if f.Error != nil {
-		return f.Error
+	if err := f.getError(); err != nil {
+		return err
 	}
 	f.userID.Store(&userId)
 	// Capture username from context (this is what plugin scrobblers do)
@@ -1289,16 +1305,17 @@ func (f *fakeScrobbler) Scrobble(ctx context.Context, userId string, s Scrobble)
 	}
 	f.LastScrobble.Store(&s)
 	f.ScrobbleCalled.Store(true)
-	if f.Error != nil {
-		return f.Error
+	f.scrobbleAttempts.Add(1)
+	if err := f.getError(); err != nil {
+		return err
 	}
 	return nil
 }
 
 func (f *fakeScrobbler) PlaybackReport(ctx context.Context, info PlaybackSession) error {
 	f.PlaybackReportCalled.Store(true)
-	if f.Error != nil {
-		return f.Error
+	if err := f.getError(); err != nil {
+		return err
 	}
 	f.userID.Store(new(info.UserId))
 	f.LastPlaybackReport.Store(&info)

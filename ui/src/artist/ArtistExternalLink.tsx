@@ -48,7 +48,7 @@ const ArtistExternalLinks = ({
     // No agent may be enabled to supply a canonical URL, so fall back to a name-based one.
     const lastFMUrl =
       (lastFMlink && isLastFmURL(lastFMlink[2]) && lastFMlink[2]) ||
-      (isLastFmURL(artistInfo?.lastFmUrl) && artistInfo.lastFmUrl) ||
+      (isLastFmURL(artistInfo?.lastFmUrl) && artistInfo?.lastFmUrl) ||
       (record.name &&
         `https://last.fm/music/${encodeURIComponent(record.name)}`)
     if (lastFMUrl) {

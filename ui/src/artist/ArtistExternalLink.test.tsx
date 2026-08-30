@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { TestContext } from 'ra-test'
+import { TestContext } from '../test/TestContext'
 import ArtistExternalLinks from './ArtistExternalLink'
 
 const { mockConfig } = vi.hoisted(() => ({

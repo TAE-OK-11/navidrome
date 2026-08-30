@@ -42,13 +42,8 @@ var _ = Describe("MediaStreamer", func() {
 		ds.MediaFile(ctx).(*tests.MockMediaFileRepo).SetData(model.MediaFiles{
 			{ID: "123", Path: "tests/fixtures/test.mp3", Suffix: "mp3", BitRate: 128, Duration: 257.0},
 		})
-<<<<<<< HEAD
 		testCache = stream.NewTranscodingCache()
-		Eventually(func() bool { return testCache.Available(context.TODO()) }).Should(BeTrue())
-=======
-		testCache := stream.NewTranscodingCache()
 		Eventually(func() bool { return testCache.Available(context.TODO()) }, 10*time.Second).Should(BeTrue())
->>>>>>> bd6b7a66 (test: increase timeout for cache availability checks to 10 seconds)
 		streamer = stream.NewMediaStreamer(ds, ffmpeg, testCache)
 	})
 	AfterEach(func() {

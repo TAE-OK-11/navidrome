@@ -281,7 +281,7 @@ var _ = Describe("client", func() {
 		It("returns RetryLaterError on 429", func() {
 			httpClient.Res = http.Response{
 				StatusCode: 429,
-				Header:     http.Header{"X-RateLimit-Reset-In": []string{"42"}},
+				Header:     http.Header{"X-Ratelimit-Reset-In": []string{"42"}},
 				Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
 			}
 			_, err := client.getSimilarArtists(context.Background(), mbid, 2)
@@ -365,7 +365,7 @@ var _ = Describe("client", func() {
 		It("returns RetryLaterError on 429", func() {
 			httpClient.Res = http.Response{
 				StatusCode: 429,
-				Header:     http.Header{"X-RateLimit-Reset-In": []string{"42"}},
+				Header:     http.Header{"X-Ratelimit-Reset-In": []string{"42"}},
 				Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
 			}
 			_, err := client.getSimilarRecordings(context.Background(), mbid, 2)

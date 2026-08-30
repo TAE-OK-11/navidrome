@@ -407,7 +407,7 @@ func (p *phaseFolders) readTagsBisect(readTags func(...string) (map[string]metad
 	if len(result) < len(paths) {
 		return result, errors.Join(joined, fmt.Errorf("metadata extraction incomplete: got %d of %d files", len(result), len(paths)))
 	}
-	return result, joined
+	return result, nil
 }
 
 func (p *phaseFolders) probeMissingAudioProperties(track *model.MediaFile, libPath, filePath string, audioProbe ffmpeg.FFmpeg) {

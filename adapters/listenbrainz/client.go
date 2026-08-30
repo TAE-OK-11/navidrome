@@ -319,6 +319,19 @@ type artist struct {
 	Score int    `json:"score"`
 }
 
+func decodeLabsJSON[T any](resp *http.Response, dest *T) error {
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return retryLaterErr(resp.Header)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ListenBrainz: HTTP Error, Status: (%d)", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return fmt.Errorf("ListenBrainz: HTTP Error, Status: (%d)", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *client) getSimilarArtists(ctx context.Context, mbid string, limit int) ([]artist, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, labsBase+"similar-artists/json", nil)
 	req.Header.Add("Content-Type", "application/json; charset=UTF-8")
@@ -334,12 +347,10 @@ func (c *client) getSimilarArtists(ctx context.Context, mbid string, limit int) 
 	}
 
 	defer resp.Body.Close()
-	decoder := json.NewDecoder(resp.Body)
 
 	var artists []artist
-	jsonErr := decoder.Decode(&artists)
-	if jsonErr != nil {
-		return nil, fmt.Errorf("ListenBrainz: HTTP Error, Status: (%d)", resp.StatusCode)
+	if err := decodeLabsJSON(resp, &artists); err != nil {
+		return nil, err
 	}
 
 	if len(artists) > limit {
@@ -373,12 +384,10 @@ func (c *client) getSimilarRecordings(ctx context.Context, mbid string, limit in
 	}
 
 	defer resp.Body.Close()
-	decoder := json.NewDecoder(resp.Body)
 
 	var recordings []recording
-	jsonErr := decoder.Decode(&recordings)
-	if jsonErr != nil {
-		return nil, fmt.Errorf("ListenBrainz: HTTP Error, Status: (%d)", resp.StatusCode)
+	if err := decodeLabsJSON(resp, &recordings); err != nil {
+		return nil, err
 	}
 
 	// For whatever reason, labs API isn't guaranteed to give results in the proper order

@@ -99,7 +99,7 @@ func NewFileCache(name, cacheSize, cacheFolder string, maxItems int, getReader R
 		log.Info("Finished initializing cache", "cache", fc.name, "maxSize", fc.cacheSize, "elapsedTime", time.Since(start))
 		fc.ready.Store(true)
 		if err != nil {
-			log.Error(fmt.Sprintf("Cache %s will be DISABLED due to previous errors", "name"), fc.name, err)
+			log.Error(fmt.Sprintf("Cache %s will be DISABLED due to previous errors", fc.name), fc.name, err)
 		}
 		if fc.disabled {
 			log.Debug("Cache DISABLED", "cache", fc.name, "size", fc.cacheSize)

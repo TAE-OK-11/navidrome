@@ -540,7 +540,11 @@ func (e *Engine) indexAlbums(ctx context.Context, ds model.DataStore, appendDocu
 }
 
 func (e *Engine) deltaAlbums(ctx context.Context, ds model.DataStore, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
-	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Gt{"album.imported_at": since}})
+	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Or{
+		squirrel.Gt{"album.created_at": since},
+		squirrel.Gt{"album.updated_at": since},
+		squirrel.Gt{"album.imported_at": since},
+	}})
 	if err != nil {
 		return fmt.Errorf("loading album deltas for Rust search: %w", err)
 	}
@@ -713,7 +717,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.encoder.Encode(req); err != nil {
 		finishCancellation()
-		e.stopWorker()
+		e.failWorker(readOnly, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -721,7 +725,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.writer.Flush(); err != nil {
 		finishCancellation()
-		e.stopWorker()
+		e.failWorker(readOnly, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -730,7 +734,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	var resp response
 	if err := w.decoder.Decode(&resp); err != nil {
 		finishCancellation()
-		e.stopWorker()
+		e.failWorker(readOnly, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -738,7 +742,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	finishCancellation()
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		e.stopWorker()
+		e.failWorker(readOnly, ctx)
 		return response{}, ctxErr
 	}
 	if resp.Protocol != protocolVersion {
@@ -784,6 +788,26 @@ func (e *Engine) ensureWorker() (*worker, error) {
 	}
 	e.worker.encoder.SetEscapeHTML(false)
 	return e.worker, nil
+}
+
+func (e *Engine) failWorker(readOnly bool, ctx context.Context) {
+	if readOnly && (errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
+		e.releaseWorker()
+		return
+	}
+	e.stopWorker()
+}
+
+func (e *Engine) releaseWorker() {
+	if e.worker == nil {
+		return
+	}
+	_ = e.worker.stdin.Close()
+	if e.worker.cmd.Process != nil {
+		_ = e.worker.cmd.Process.Kill()
+	}
+	_ = e.worker.cmd.Wait()
+	e.worker = nil
 }
 
 func (e *Engine) stopWorker() {

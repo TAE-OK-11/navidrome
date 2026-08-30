@@ -21,6 +21,26 @@ func TestRoundTripCancellationDoesNotWaitForBusyWorker(t *testing.T) {
 	}
 }
 
+func TestRoundTripCancellationKeepsReadyIndex(t *testing.T) {
+	t.Parallel()
+
+	engine := New()
+	engine.ready.Store(true)
+	engine.indexed.Store(1234)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := engine.roundTrip(ctx, request{Op: "search_all"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("roundTrip() error = %v, want context.Canceled", err)
+	}
+	if !engine.ready.Load() {
+		t.Fatal("ready index should stay available after read-only cancellation")
+	}
+	if engine.indexed.Load() != 1234 {
+		t.Fatalf("indexed count = %d, want 1234", engine.indexed.Load())
+	}
+}
+
 func TestScanGenerationUsesLatestLibraryChange(t *testing.T) {
 	t.Parallel()
 

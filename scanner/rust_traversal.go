@@ -190,7 +190,7 @@ func (s *scannerWorkerSlot) stream(
 		worker.kill()
 		close(cancelDone)
 	})
-	pendingWarnings, err := worker.stream(request, folders)
+		pendingWarnings, err := worker.stream(ctx, request, folders)
 	if !stopCancel() {
 		<-cancelDone
 	}
@@ -243,7 +243,16 @@ func startScannerWorker(binary string) (*scannerWorker, error) {
 	}, nil
 }
 
-func (w *scannerWorker) stream(request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
+func sendRustFolder(ctx context.Context, folders chan<- *rustScanFolder, folder *rustScanFolder) error {
+	select {
+	case folders <- folder:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *scannerWorker) stream(ctx context.Context, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
 	if err := w.encoder.Encode(request); err != nil {
 		return nil, fmt.Errorf("writing Rust scanner request: %w", err)
 	}
@@ -269,7 +278,9 @@ func (w *scannerWorker) stream(request rustScanRequest, folders chan<- *rustScan
 			if seen > maxRustScanEntries {
 				return warnings, errors.New("Rust scanner exceeded folder safety limit")
 			}
-			folders <- event.Folder
+			if err := sendRustFolder(ctx, folders, event.Folder); err != nil {
+				return warnings, err
+			}
 		case "folder_summary":
 			if event.Folder == nil || event.Folder.Path == "" || event.Folder.Hash == "" {
 				return warnings, errors.New("Rust scanner returned an invalid folder summary event")
@@ -278,9 +289,11 @@ func (w *scannerWorker) stream(request rustScanRequest, folders chan<- *rustScan
 			if seen > maxRustScanEntries {
 				return warnings, errors.New("Rust scanner exceeded folder safety limit")
 			}
-			folders <- &rustScanFolder{
+			if err := sendRustFolder(ctx, folders, &rustScanFolder{
 				Path: event.Folder.Path,
 				Hash: event.Folder.Hash,
+			}); err != nil {
+				return warnings, err
 			}
 		case "warning":
 			if event.Message != "" {

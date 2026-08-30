@@ -278,6 +278,19 @@ var _ = Describe("client", func() {
 			Expect(httpClient.SavedRequest.Header.Get("Content-Type")).To(Equal("application/json; charset=UTF-8"))
 		})
 
+		It("returns RetryLaterError on 429", func() {
+			httpClient.Res = http.Response{
+				StatusCode: 429,
+				Header:     http.Header{"X-RateLimit-Reset-In": []string{"42"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
+			}
+			_, err := client.getSimilarArtists(context.Background(), mbid, 2)
+			Expect(errors.Is(err, agents.ErrRetryLater)).To(BeTrue())
+			retry, ok := errors.AsType[*agents.RetryLaterError](err)
+			Expect(ok).To(BeTrue())
+			Expect(retry.RetryIn).To(Equal(42 * time.Second))
+		})
+
 		It("handles real data properly", func() {
 			f, _ := os.Open("tests/fixtures/listenbrainz.labs.similar-artists.json")
 			httpClient.Res = http.Response{Body: f, StatusCode: 200}
@@ -347,6 +360,19 @@ var _ = Describe("client", func() {
 			Expect(httpClient.SavedRequest.Method).To(Equal(http.MethodGet))
 			Expect(httpClient.SavedRequest.URL.String()).To(Equal(getUrl("1")))
 			Expect(httpClient.SavedRequest.Header.Get("Content-Type")).To(Equal("application/json; charset=UTF-8"))
+		})
+
+		It("returns RetryLaterError on 429", func() {
+			httpClient.Res = http.Response{
+				StatusCode: 429,
+				Header:     http.Header{"X-RateLimit-Reset-In": []string{"42"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":"rate limited"}`)),
+			}
+			_, err := client.getSimilarRecordings(context.Background(), mbid, 2)
+			Expect(errors.Is(err, agents.ErrRetryLater)).To(BeTrue())
+			retry, ok := errors.AsType[*agents.RetryLaterError](err)
+			Expect(ok).To(BeTrue())
+			Expect(retry.RetryIn).To(Equal(42 * time.Second))
 		})
 
 		It("handles real data properly", func() {

@@ -69,14 +69,15 @@ func callSearch[T any](ctx context.Context, s searchFunc[T], q string, options m
 			*result, err = s(q, options)
 			if err != nil {
 				logSearchFailure(ctx, "Error searching "+typ, q, time.Since(start), err)
-			} else {
-				log.Trace(ctx, "Search for "+typ+" completed", "query", q, "elapsed", time.Since(start))
+				return err
 			}
+			log.Trace(ctx, "Search for "+typ+" completed", "query", q, "elapsed", time.Since(start))
 			return nil
 		}
 		*result, err = s(q, options)
 		if err != nil {
 			logSearchFailure(ctx, "Error searching", q, 0, err)
+			return err
 		}
 		return nil
 	}

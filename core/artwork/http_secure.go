@@ -10,6 +10,8 @@ import (
 	"net/netip"
 	"strconv"
 	"time"
+
+	"github.com/navidrome/navidrome/utils/httpclient"
 )
 
 func maxExternalArtworkResponseSize() int64 {
@@ -93,7 +95,7 @@ func newArtworkHTTPClient() *http.Client {
 	transport.DialContext = dialer.DialContext
 	return &http.Client{
 		Timeout:   5 * time.Second,
-		Transport: transport,
+		Transport: httpclient.NewTransport(transport),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")

@@ -3,6 +3,9 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/gohugoio/hashstructure"
 	"github.com/navidrome/navidrome/model"
@@ -52,9 +55,41 @@ func (s Song) Equals(other Song) bool {
 	return h1 == h2
 }
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")
+
+// ErrRetryLater is the zero-delay RetryLaterError: the provider is temporarily unavailable
+// or throttling us, but did not say for how long.
+var ErrRetryLater = &RetryLaterError{}
+
+// RetryLaterError asks callers to back off, optionally for the delay the provider requested.
+type RetryLaterError struct {
+	RetryIn time.Duration
+}
+
+func (e *RetryLaterError) Error() string {
+	if e.RetryIn > 0 {
+		return fmt.Sprintf("retry later (in %s)", e.RetryIn)
+	}
+	return "retry later"
+}
+
+func (e *RetryLaterError) Is(target error) bool {
+	_, ok := target.(*RetryLaterError)
+	return ok
+}
+
+const MaxRetryIn = time.Hour
+const maxRetryInSeconds = int(MaxRetryIn / time.Second)
+
+// ParseRetryIn reads a provider's delay given in seconds. Anything unparseable or
+// non-positive means unspecified.
+func ParseRetryIn(seconds string) time.Duration {
+	secs, err := strconv.ParseInt(seconds, 10, 64)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(min(secs, int64(maxRetryInSeconds))) * time.Second
+}
 
 // AlbumInfoRetriever provides album info (no images)
 type AlbumInfoRetriever interface {

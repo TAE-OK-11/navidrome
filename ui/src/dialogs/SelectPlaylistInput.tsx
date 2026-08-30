@@ -15,7 +15,7 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { useGetList, useTranslate } from 'react-admin'
-import { isWritable } from '../common'
+import { isWritable, canChangeTracks } from '../common'
 import type { PlaylistRecord, PlaylistSelection } from '../types/records'
 
 const PlaylistSearchField = ({
@@ -224,7 +224,7 @@ export const SelectPlaylistInput = ({
   })
 
   const options = (data as PlaylistRecord[]).filter((option) =>
-    isWritable(option.ownerId),
+    canChangeTracks(option),
   )
 
   // Filter playlists based on search text

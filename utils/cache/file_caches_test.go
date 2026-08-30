@@ -294,6 +294,51 @@ var _ = Describe("File Caches", func() {
 				}).Should(BeTrue())
 			})
 
+			It("gets a writer that can report failures to readers", func() {
+				fc := callNewFileCache("test", "10MB", "test", 0, nil)
+				_, w, err := fc.cache.Get("capability")
+				Expect(err).To(BeNil())
+				DeferCleanup(func() { _ = w.Close() })
+
+				_, ok := w.(interface{ CloseWithError(error) error })
+				Expect(ok).To(BeTrue(), "fscache writer lost CloseWithError; check the go.mod replace directive")
+			})
+
+			It("fails the reader with the cause instead of a clean EOF", func() {
+				fc := callNewFileCache("test", "10MB", "test", 0, func(ctx context.Context, arg Item) (io.Reader, error) {
+					return &partialThenErrReader{data: []byte("PARTIAL"), err: errors.New("transcoder died")}, nil
+				})
+				s, err := fc.Get(context.Background(), &testArg{"inband"})
+				Expect(err).To(BeNil())
+				DeferCleanup(func() { _ = s.Close() })
+
+				_, err = io.ReadAll(s)
+				Expect(err).To(MatchError(ContainSubstring("transcoder died")))
+			})
+
+			It("fails a reader that joined mid-write with the same cause", func() {
+				pr, pw := io.Pipe()
+				fc := callNewFileCache("test", "10MB", "test", 0, func(ctx context.Context, arg Item) (io.Reader, error) {
+					return pr, nil
+				})
+				s1, err := fc.Get(context.Background(), &testArg{"joined"})
+				Expect(err).To(BeNil())
+				DeferCleanup(func() { _ = s1.Close() })
+
+				_, err = pw.Write([]byte("PARTIAL"))
+				Expect(err).To(BeNil())
+
+				s2, err := fc.Get(context.Background(), &testArg{"joined"})
+				Expect(err).To(BeNil())
+				DeferCleanup(func() { _ = s2.Close() })
+				Expect(s2.Cached).To(BeTrue())
+
+				Expect(pw.CloseWithError(errors.New("transcoder died"))).To(Succeed())
+
+				_, err = io.ReadAll(s2)
+				Expect(err).To(MatchError(ContainSubstring("transcoder died")))
+			})
+
 			It("does not write a completion marker when the write fails after partial bytes", func() {
 				// Mimics a transcode that produces real output and then dies:
 				// the bytes land on disk, but the entry must NOT be marked complete.
@@ -306,8 +351,6 @@ var _ = Describe("File Caches", func() {
 				_ = s.Close()
 
 				dataPath := fcSpreadFS(fc).KeyMapper((&testArg{"partial"}).Key())
-				// The marker must never appear for a failed write. Give the async
-				// writer time to finish, then assert the marker stays absent.
 				Consistently(func() bool {
 					_, e := os.Stat(dataPath + ".complete")
 					return os.IsNotExist(e)

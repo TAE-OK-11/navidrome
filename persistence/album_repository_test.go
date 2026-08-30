@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -13,15 +14,17 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
+	"github.com/navidrome/navidrome/utils/slice"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("AlbumRepository", func() {
 	var albumRepo *albumRepository
+	var ctx context.Context
 
 	BeforeEach(func() {
-		ctx := request.WithUser(GinkgoT().Context(), model.User{ID: "userid", UserName: "johndoe"})
+		ctx = request.WithUser(GinkgoT().Context(), model.User{ID: "userid", UserName: "johndoe"})
 		albumRepo = NewAlbumRepository(ctx, GetDBXBuilder()).(*albumRepository)
 	})
 

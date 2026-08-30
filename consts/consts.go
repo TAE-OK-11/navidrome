@@ -185,7 +185,7 @@ var (
 	}
 )
 
-var HTTPUserAgent = "Navidrome" + "/" + Version
+var HTTPUserAgent = "Navidrome/" + Version + " - https://github.com/navidrome"
 
 var (
 	VariousArtists = "Various Artists"

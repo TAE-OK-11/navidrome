@@ -148,6 +148,29 @@ build: check_go_env buildjs ##@Build Build the project
 	go build -ldflags="-X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" -tags=$(GO_BUILD_TAGS)
 .PHONY: build
 
+GO_PGO_ENABLED ?= true
+GO_PGO_BENCHTIME ?= 3s
+PGO_OUTPUT ?= default.pgo
+
+build-release: check_go_env buildjs ##@Build Build an optimized release binary (thin LTO profile + fat LTO + PGO)
+	@if [ "$(GO_PGO_ENABLED)" = "true" ]; then \
+		echo "Collecting Go PGO profile with thin LTO..."; \
+		PGO_BUILD_TAGS="$(GO_BUILD_TAGS)" GO_PGO_BENCHTIME="$(GO_PGO_BENCHTIME)" PGO_OUTPUT="$(PGO_OUTPUT)" \
+			eval "$$(./release/cgo-lto-env.sh thin)" && \
+			CGO_ENABLED=1 ./release/pgo-train.sh; \
+		PGO_FLAG="-pgo=$(PGO_OUTPUT)"; \
+	else \
+		echo "Go PGO disabled; building with fat LTO only"; \
+		PGO_FLAG="-pgo=off"; \
+	fi; \
+	eval "$$(./release/cgo-lto-env.sh fat)" && \
+	CGO_ENABLED=1 go build \
+		$${PGO_FLAG} \
+		-trimpath \
+		-ldflags="-w -s -X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" \
+		-tags=$(GO_BUILD_TAGS)
+.PHONY: build-release
+
 buildall: deprecated build
 .PHONY: buildall
 

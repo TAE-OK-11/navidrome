@@ -45,3 +45,6 @@ go.work*
 
 # Temp benchmark files
 zz_*_test.go
+
+# Generated Go PGO profile (see release/pgo-train.sh)
+default.pgo

@@ -3,10 +3,45 @@
 #
 # Run with thin LTO enabled (see release/cgo-lto-env.sh) so profile collection
 # stays fast while still exercising CGO-heavy paths.
+#
+# Environment:
+#   GO_PGO_BENCHTIME        heavy workloads (default: 3s local, 1s in JBS)
+#   GO_PGO_LIGHT_BENCHTIME  light workloads (default: 250ms)
+#   PGO_OUTPUT              merged profile path (default: default.pgo)
+#   PGO_PROFILE_DIR         per-workload .pprof directory (default: /tmp/pgo)
+#   PGO_BUILD_TAGS          go test -tags value
+#   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
+#   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
+#
+# Final scenario (14 workloads, overlaps removed):
+#
+#   Domain          | Name            | Benchmark
+#   ----------------+-----------------+------------------------------------------
+#   Scanner         | scan            | BenchmarkScan
+#   DB / search     | db_tags         | BenchmarkUnmarshalTags
+#   DB / search     | search_fts      | BenchmarkSearchFTS5QueryCached
+#   API             | api_json        | BenchmarkSubsonicJSONMarshal
+#   API             | api_auth        | BenchmarkAuthUserCacheHit
+#   API             | api_urls        | BenchmarkImageURL
+#   API             | api_sse         | BenchmarkSSEWriteEvent
+#   Streaming       | stream_decide   | BenchmarkLegacyStreamDecision
+#   Streaming       | stream_cache    | BenchmarkStreamMediaCacheHit
+#   Artwork         | artwork         | BenchmarkResizeFullPipeline/.../to_300
+#   Compression     | compress_stream | BenchmarkCompressionReadFrom/zstd
+#   HTTP/2 public   | h2_api          | BenchmarkHTTP2CompressedAPIResponse
+#   HTTP/2 public   | h2_stream       | BenchmarkHTTP2StreamingResponse
+#   HTTP/2 H3 bridge| h2_h3_bridge    | BenchmarkHTTP2InheritedBridgeRoundTrip
+#
+# Removed as redundant with the workloads above:
+#   - BenchmarkCompressionLargeSingleWrite  -> h2_api (Write compress) + compress_stream (ReadFrom)
+#   - BenchmarkCopy                       -> h2_stream (pooled copy over HTTP/2)
+#   - BenchmarkAuthenticatedHTTP3Bridge   -> h2_h3_bridge (auth + compress + private H2)
+#   - BenchmarkToSQLArgsMediaFile           -> scan (SQLite insert during ScanAll)
 set -eu
 
 OUTPUT="${PGO_OUTPUT:-default.pgo}"
-BENCHTIME="${GO_PGO_BENCHTIME:-3s}"
+HEAVY_BENCHTIME="${GO_PGO_BENCHTIME:-3s}"
+LIGHT_BENCHTIME="${GO_PGO_LIGHT_BENCHTIME:-250ms}"
 PROFILE_DIR="${PGO_PROFILE_DIR:-/tmp/pgo}"
 
 if [ -z "${PGO_BUILD_TAGS:-}" ]; then
@@ -20,12 +55,14 @@ fi
 mkdir -p "$(dirname "$OUTPUT")"
 mkdir -p "${PROFILE_DIR}"
 
+PROFILE_FILES=""
+
 train() {
   name="$1"
   package="$2"
   benchmark="$3"
   benchtime="$4"
-  echo "[pgo] training ${name} (${package} ${benchmark})"
+  echo "[pgo] training ${name} (${package} ${benchmark}, benchtime=${benchtime})"
   go test \
     -run='^$' \
     -bench="${benchmark}" \
@@ -35,20 +72,47 @@ train() {
     -cpuprofile="${PROFILE_DIR}/${name}.pprof" \
     "${package}"
   test -s "${PROFILE_DIR}/${name}.pprof"
+  PROFILE_FILES="${PROFILE_FILES} ${PROFILE_DIR}/${name}.pprof"
 }
 
-train compression ./server '^BenchmarkCompressionLargeSingleWrite$' "${BENCHTIME}"
-train api ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${BENCHTIME}"
-train scanner ./scanner '^BenchmarkScan$' "${BENCHTIME}"
-train streaming ./core/stream '^BenchmarkLegacyStreamDecision$' 250ms
+echo "[pgo] starting training: heavy=${HEAVY_BENCHTIME} light=${LIGHT_BENCHTIME}"
 
+# Scanner (CGO + SQLite + optional Rust worker)
+train scan ./scanner '^BenchmarkScan$' "${HEAVY_BENCHTIME}"
+
+# DB reads and search query preparation
+train db_tags ./persistence '^BenchmarkUnmarshalTags$' "${HEAVY_BENCHTIME}"
+train search_fts ./persistence '^BenchmarkSearchFTS5QueryCached$' "${LIGHT_BENCHTIME}"
+
+# Subsonic / native API hot paths
+train api_json ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${HEAVY_BENCHTIME}"
+train api_auth ./server/subsonic '^BenchmarkAuthUserCacheHit$' "${LIGHT_BENCHTIME}"
+train api_urls ./core/publicurl '^BenchmarkImageURL$' "${LIGHT_BENCHTIME}"
+train api_sse ./server/events '^BenchmarkSSEWriteEvent$' "${LIGHT_BENCHTIME}"
+
+# Playback streaming
+train stream_decide ./core/stream '^BenchmarkLegacyStreamDecision$' "${LIGHT_BENCHTIME}"
+train stream_cache ./server/subsonic '^BenchmarkStreamMediaCacheHit$' "${LIGHT_BENCHTIME}"
+
+# Cover art (optional Rust metadata worker)
+train artwork ./core/artwork '^BenchmarkResizeFullPipeline/jpeg/1000x1000_to_300$' "${HEAVY_BENCHTIME}"
+
+# Adaptive compression on streaming response bodies (ReadFrom path)
+train compress_stream ./server '^BenchmarkCompressionReadFrom/zstd$' "${HEAVY_BENCHTIME}"
+
+# Public TLS HTTP/2 (replaces isolated compression Write + pooled copy micro-bench)
+train h2_api ./server '^BenchmarkHTTP2CompressedAPIResponse$' "${HEAVY_BENCHTIME}"
+train h2_stream ./server '^BenchmarkHTTP2StreamingResponse$' "${LIGHT_BENCHTIME}"
+
+# H3 companion private HTTP/2 bridge (auth middleware + compress + framing)
+train h2_h3_bridge ./server '^BenchmarkHTTP2InheritedBridgeRoundTrip$' "${HEAVY_BENCHTIME}"
+
+echo "[pgo] merging $(echo "${PROFILE_FILES}" | wc -w | tr -d ' ') profiles"
 go tool pprof \
   -proto \
   -output="${OUTPUT}" \
-  "${PROFILE_DIR}/compression.pprof" \
-  "${PROFILE_DIR}/api.pprof" \
-  "${PROFILE_DIR}/scanner.pprof" \
-  "${PROFILE_DIR}/streaming.pprof"
+  ${PROFILE_FILES}
 
 test -s "${OUTPUT}"
 echo "[pgo] merged profile written to ${OUTPUT} ($(wc -c <"${OUTPUT}") bytes)"
+go tool pprof -top -nodecount=15 "${OUTPUT}" || true

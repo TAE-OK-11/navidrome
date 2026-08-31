@@ -83,3 +83,30 @@ func BenchmarkCompressionLargeSingleWrite(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkCompressionReadFrom(b *testing.B) {
+	payload := make([]byte, largeCompressedResponseSize)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+
+	b.Run("zstd", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(payload)))
+		for b.Loop() {
+			underlying := &readerFromResponseWriter{header: make(http.Header)}
+			underlying.header.Set("Content-Type", "application/json")
+			w := &compressResponseWriter{
+				ResponseWriter: underlying,
+				accepted:       acceptedCompressions{zstd: true},
+				path:           "/rest/example",
+			}
+			if _, err := w.ReadFrom(bytes.NewReader(payload)); err != nil {
+				b.Fatal(err)
+			}
+			if err := w.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}

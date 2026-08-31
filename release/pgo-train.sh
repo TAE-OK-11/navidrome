@@ -45,9 +45,14 @@ train() {
 }
 
 train compression ./server '^BenchmarkCompressionLargeSingleWrite$' "${BENCHTIME}"
+train compression_readfrom ./server '^BenchmarkCompressionReadFrom$' "${BENCHTIME}"
 train api ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${BENCHTIME}"
+train api_auth ./server/subsonic '^BenchmarkAuthUserCacheHit$' 250ms
+train api_urls ./core/publicurl '^BenchmarkImageURL$' 250ms
+train api_sse ./server/events '^BenchmarkSSEWriteEvent$' 250ms
 train scanner ./scanner '^BenchmarkScan$' "${BENCHTIME}"
 train streaming ./core/stream '^BenchmarkLegacyStreamDecision$' 250ms
+train stream_cache ./server/subsonic '^BenchmarkStreamMediaCacheHit$' 250ms
 train db_sqlargs ./persistence '^BenchmarkToSQLArgsMediaFile$' "${BENCHTIME}"
 train db_tags ./persistence '^BenchmarkUnmarshalTags$' "${BENCHTIME}"
 train artwork ./core/artwork '^BenchmarkResizeFullPipeline/jpeg/1000x1000_to_300$' "${BENCHTIME}"

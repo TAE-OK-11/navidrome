@@ -63,6 +63,8 @@ RUN --mount=type=bind,source=. \
 
 ARG GIT_SHA
 ARG GIT_TAG
+ARG GO_PGO_ENABLED=true
+ARG GO_PGO_BENCHTIME=3s
 
 RUN --mount=type=bind,source=. \
     --mount=from=ui,source=/build,target=./ui/build,ro \
@@ -72,8 +74,20 @@ RUN --mount=type=bind,source=. \
     xx-go --wrap
     export CGO_ENABLED=1
     BUILD_TAGS=$(./release/build-tags.sh)
+    if [ "${GO_PGO_ENABLED}" = "true" ]; then
+      eval "$(./release/cgo-lto-env.sh thin)"
+      PGO_BUILD_TAGS="${BUILD_TAGS}" \
+        GO_PGO_BENCHTIME="${GO_PGO_BENCHTIME}" \
+        PGO_OUTPUT=/tmp/default.pgo \
+        ./release/pgo-train.sh
+    fi
+    eval "$(./release/cgo-lto-env.sh fat)"
+    PGO_FLAG="-pgo=off"
+    if [ "${GO_PGO_ENABLED}" = "true" ] && [ -s /tmp/default.pgo ]; then
+      PGO_FLAG="-pgo=/tmp/default.pgo"
+    fi
     # -latomic is required on 32-bit arm (arm/v6, arm/v7) so SQLite's 64-bit atomics resolve.
-    go build -tags="${BUILD_TAGS}" -ldflags="-w -s \
+    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -ldflags="-w -s \
         -linkmode=external -extldflags '-latomic' \
         -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
         -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
@@ -107,6 +121,8 @@ RUN --mount=type=bind,source=. \
 
 ARG GIT_SHA
 ARG GIT_TAG
+ARG GO_PGO_ENABLED=true
+ARG GO_PGO_BENCHTIME=3s
 
 RUN --mount=type=bind,source=. \
     --mount=from=ui,source=/build,target=./ui/build,ro \
@@ -140,7 +156,21 @@ RUN --mount=type=bind,source=. \
     fi
 
     BUILD_TAGS=$(./release/build-tags.sh)
-    go build -tags="${BUILD_TAGS}" -ldflags="${LD_EXTRA} -w -s \
+    if [ "${GO_PGO_ENABLED}" = "true" ]; then
+      eval "$(./release/cgo-lto-env.sh thin)"
+      PGO_BUILD_TAGS="${BUILD_TAGS}" \
+        GO_PGO_BENCHTIME="${GO_PGO_BENCHTIME}" \
+        PGO_OUTPUT=/tmp/default.pgo \
+        ./release/pgo-train.sh
+    fi
+
+    eval "$(./release/cgo-lto-env.sh fat)"
+    PGO_FLAG="-pgo=off"
+    if [ "${GO_PGO_ENABLED}" = "true" ] && [ -s /tmp/default.pgo ]; then
+      PGO_FLAG="-pgo=/tmp/default.pgo"
+    fi
+
+    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -ldflags="${LD_EXTRA} -w -s \
         -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
         -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
         -o /out/navidrome${EXT} .

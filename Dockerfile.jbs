@@ -69,6 +69,7 @@ ARG JBS_GOMEMLIMIT_MIN_MIB=192
 ARG JBS_GOMEMLIMIT_MAX_MIB=4096
 
 ARG CPU_OPTIMIZATION_FLAGS="-O3 -march=znver3 -mtune=znver3 -DNDEBUG -ffunction-sections -fdata-sections -fno-semantic-interposition -pipe -fno-plt"
+ARG LLVM_THIN_LTO_FLAGS="-flto=thin"
 ARG LLVM_FAT_LTO_FLAGS="-flto=full"
 ARG LLD_FLAGS="-fuse-ld=lld -Wl,-O2 -Wl,--lto-O3 -Wl,--gc-sections -Wl,--icf=safe -Wl,--as-needed -Wl,-z,relro,-z,now -Wl,--build-id=none"
 ARG GO_PGO_ENABLED=true
@@ -1306,6 +1307,7 @@ FROM ${GOLANG_IMAGE} AS gobuilder
 ARG NAVIDROME_REF
 ARG NAVIDROME_BUILD_CORES
 ARG CPU_OPTIMIZATION_FLAGS
+ARG LLVM_THIN_LTO_FLAGS
 ARG LLVM_FAT_LTO_FLAGS
 ARG LLD_FLAGS
 ARG GOAMD64_VERSION
@@ -1372,14 +1374,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
 ENV GOAMD64=${GOAMD64_VERSION} \
     CGO_ENABLED=1 \
     CC=clang \
-    CXX=clang++ \
-    CGO_CFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS} ${SQLITE_EXTRA_CFLAGS}" \
-    CGO_CXXFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS}" \
-    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS}"
+    CXX=clang++
 
 # Generate a reproducible Go PGO profile from Navidrome's own representative
-# hot-path benchmarks. Separate profiles keep each workload visible before
-# pprof merges them into the profile consumed by the final application build.
+# hot-path benchmarks. Use thin LTO here to keep profile collection fast; the
+# final application build below switches to full (fat) LTO with the merged profile.
 RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     set -eux; \
@@ -1387,38 +1386,17 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
       echo '[gobuilder] Go PGO training disabled'; \
       exit 0; \
     fi; \
-    mkdir -p /tmp/pgo; \
-    BUILD_TAGS='netgo osusergo sqlite_fts5 sqlite_foreign_keys sqlite_stat4 embed'; \
-    train() { \
-      name="$1"; \
-      package="$2"; \
-      benchmark="$3"; \
-      benchtime="$4"; \
-      go test \
-        -run='^$' \
-        -bench="${benchmark}" \
-        -benchtime="${benchtime}" \
-        -count=1 \
-        -tags="${BUILD_TAGS}" \
-        -cpuprofile="/tmp/pgo/${name}.pprof" \
-        "${package}"; \
-      test -s "/tmp/pgo/${name}.pprof"; \
-    }; \
-    train compression ./server '^BenchmarkCompressionLargeSingleWrite$' "${GO_PGO_BENCHTIME}"; \
-    train api ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${GO_PGO_BENCHTIME}"; \
-    ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
-      train scanner ./scanner '^BenchmarkScan$' "${GO_PGO_BENCHTIME}"; \
-    train streaming ./core/stream '^BenchmarkLegacyStreamDecision$' 250ms; \
-    go tool pprof \
-      -proto \
-      -output=/tmp/default.pgo \
-      /tmp/pgo/compression.pprof \
-      /tmp/pgo/api.pprof \
-      /tmp/pgo/scanner.pprof \
-      /tmp/pgo/streaming.pprof; \
-    test -s /tmp/default.pgo; \
-    go tool pprof -top -nodecount=20 /tmp/default.pgo; \
-    printf '[gobuilder] merged Go PGO profile: %s bytes\n' "$(wc -c </tmp/default.pgo)"
+    export CGO_CFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_THIN_LTO_FLAGS} ${SQLITE_EXTRA_CFLAGS}" && \
+    export CGO_CXXFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_THIN_LTO_FLAGS}" && \
+    export CGO_LDFLAGS="${LLVM_THIN_LTO_FLAGS} ${LLD_FLAGS}" && \
+    PGO_BUILD_TAGS='netgo osusergo sqlite_fts5 sqlite_foreign_keys sqlite_stat4 embed' \
+      GO_PGO_BENCHTIME="${GO_PGO_BENCHTIME}" \
+      PGO_OUTPUT=/tmp/default.pgo \
+      ./release/pgo-train.sh
+
+ENV CGO_CFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS} ${SQLITE_EXTRA_CFLAGS}" \
+    CGO_CXXFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_FAT_LTO_FLAGS}" \
+    CGO_LDFLAGS="${LLVM_FAT_LTO_FLAGS} ${LLD_FLAGS}"
 
 RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,target=/go/pkg/mod,sharing=locked \

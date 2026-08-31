@@ -30,7 +30,8 @@
 #   - Drop production source maps and unused builder packages
 #   - Use LLVM full (fat) LTO for every native component and final CGO link
 #   - Train Go PGO with thin LTO, then apply the merged profile on the fat LTO build
-#     (compression, API, scan, stream decision, DB marshal, tags, artwork, stream copy)
+#     (compression, API, scan, stream decision, DB marshal, tags, artwork, stream copy,
+#      public HTTP/2 API/streaming, inherited H3 bridge HTTP/2, bridge auth)
 #
 # NOTE:
 #   Base images are pinned to the current multi-platform index digests

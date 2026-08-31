@@ -52,6 +52,10 @@ train db_sqlargs ./persistence '^BenchmarkToSQLArgsMediaFile$' "${BENCHTIME}"
 train db_tags ./persistence '^BenchmarkUnmarshalTags$' "${BENCHTIME}"
 train artwork ./core/artwork '^BenchmarkResizeFullPipeline/jpeg/1000x1000_to_300$' "${BENCHTIME}"
 train stream_copy ./utils/ioutils '^BenchmarkCopy$' 250ms
+train h2_api ./server '^BenchmarkHTTP2CompressedAPIResponse$' "${BENCHTIME}"
+train h2_stream ./server '^BenchmarkHTTP2StreamingResponse$' 250ms
+train h2_bridge ./server '^BenchmarkHTTP2InheritedBridgeRoundTrip$' "${BENCHTIME}"
+train h3_bridge ./server '^BenchmarkAuthenticatedHTTP3Bridge$' 250ms
 
 go tool pprof \
   -proto \

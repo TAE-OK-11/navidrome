@@ -87,7 +87,8 @@ var _ = Describe("encodeMediafileShare", func() {
 	It("includes the share ID in the token", func() {
 		exp := new(time.Now().Add(time.Hour))
 		s := model.Share{ID: "shareABC", Format: "mp3", MaxBitRate: 320, ExpiresAt: exp}
-		token := encodeMediafileShare(s, "mf-999")
+		token, err := encodeMediafileShare(s, "mf-999")
+		Expect(err).NotTo(HaveOccurred())
 		info, err := decodeStreamInfo(token)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(info.shareID).To(Equal("shareABC"))
@@ -98,7 +99,8 @@ var _ = Describe("encodeMediafileShare", func() {
 
 	It("creates a non-expiring token when share has no expiry", func() {
 		s := model.Share{ID: "shareXYZ", ExpiresAt: nil}
-		token := encodeMediafileShare(s, "mf-111")
+		token, err := encodeMediafileShare(s, "mf-111")
+		Expect(err).NotTo(HaveOccurred())
 		info, err := decodeStreamInfo(token)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(info.shareID).To(Equal("shareXYZ"))

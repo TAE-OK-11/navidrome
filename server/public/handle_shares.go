@@ -39,7 +39,12 @@ func (pub *Router) handleShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s = pub.mapShareInfo(r, *s)
+	s, err = pub.mapShareInfo(r, *s)
+	if err != nil {
+		log.Error(r.Context(), "Error preparing share", "id", id, err)
+		http.Error(w, "Error preparing share", http.StatusInternalServerError)
+		return
+	}
 	server.IndexWithShare(pub.ds, ui.BuildAssets(), s)(w, r)
 }
 
@@ -57,7 +62,12 @@ func (pub *Router) handleM3U(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s = pub.mapShareToM3U(r, *s)
+	s, err = pub.mapShareToM3U(r, *s)
+	if err != nil {
+		log.Error(r.Context(), "Error preparing share playlist", "id", id, err)
+		http.Error(w, "Error preparing share playlist", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "audio/x-mpegurl")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(s.ToM3U8())) //nolint:gosec
@@ -80,21 +90,28 @@ func checkShareError(ctx context.Context, w http.ResponseWriter, err error, id s
 	}
 }
 
-func (pub *Router) mapShareInfo(r *http.Request, s model.Share) *model.Share {
+func (pub *Router) mapShareInfo(r *http.Request, s model.Share) (*model.Share, error) {
 	s.URL = ShareURL(r, s.ID)
 	s.ImageURL = publicurl.ImageURL(r, s.CoverArtID(), conf.Server.UICoverArtSize)
 	for i := range s.Tracks {
-		s.Tracks[i].ID = encodeMediafileShare(s, s.Tracks[i].ID)
+		id, err := encodeMediafileShare(s, s.Tracks[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		s.Tracks[i].ID = id
 	}
-	return &s
+	return &s, nil
 }
 
-func (pub *Router) mapShareToM3U(r *http.Request, s model.Share) *model.Share {
+func (pub *Router) mapShareToM3U(r *http.Request, s model.Share) (*model.Share, error) {
 	for i := range s.Tracks {
-		id := encodeMediafileShare(s, s.Tracks[i].ID)
+		id, err := encodeMediafileShare(s, s.Tracks[i].ID)
+		if err != nil {
+			return nil, err
+		}
 		s.Tracks[i].Path = publicurl.PublicURL(r, path.Join(consts.URLPathPublic, "s", id), nil)
 	}
-	return &s
+	return &s, nil
 }
 
 // encodeMediafileShare builds the signed token embedded in a public share link
@@ -113,13 +130,12 @@ func (pub *Router) mapShareToM3U(r *http.Request, s model.Share) *model.Share {
 // track is actually a member of it. An attacker who can forge these tokens
 // necessarily already holds the signing secret, which also signs real user
 // sessions, so that scenario is out of scope for the share boundary specifically.
-func encodeMediafileShare(s model.Share, id string) string {
+func encodeMediafileShare(s model.Share, id string) (string, error) {
 	claims := auth.Claims{
 		ID:      id,
 		Format:  s.Format,
 		BitRate: s.MaxBitRate,
 		ShareID: s.ID,
 	}
-	token, _ := auth.CreateExpiringPublicToken(V(s.ExpiresAt), claims)
-	return token
+	return auth.CreateExpiringPublicToken(V(s.ExpiresAt), claims)
 }

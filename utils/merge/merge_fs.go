@@ -33,7 +33,14 @@ func (m FS) Open(name string) (fs.File, error) {
 		return file, nil
 	}
 
-	baseDir, _ := m.Base.Open(name)
+	baseDir, err := m.Base.Open(name)
+	if err != nil {
+		_ = file.Close()
+		if errors.Is(err, fs.ErrNotExist) {
+			return file, nil
+		}
+		return nil, err
+	}
 	defer func() {
 		_ = baseDir.Close()
 		_ = file.Close()

@@ -590,6 +590,10 @@
     "listenBrainzLinkFailure": "ListenBrainz could not be linked: %{error}",
     "listenBrainzUnlinkSuccess": "ListenBrainz unlinked and scrobbling disabled",
     "listenBrainzUnlinkFailure": "ListenBrainz could not be unlinked",
+    "libreFmLinkSuccess": "Libre.fm successfully linked and scrobbling enabled",
+    "libreFmLinkFailure": "Libre.fm could not be linked",
+    "libreFmUnlinkSuccess": "Libre.fm unlinked and scrobbling disabled",
+    "libreFmUnlinkFailure": "Libre.fm could not be unlinked",
     "openIn": {
       "lastfm": "Open in Last.fm",
       "musicbrainz": "Open in MusicBrainz"
@@ -625,6 +629,8 @@
         "lastfmNotConfigured": "Last.fm API-Key is not configured",
         "lastfmScrobbling": "Scrobble to Last.fm",
         "listenBrainzScrobbling": "Scrobble to ListenBrainz",
+        "libreFmScrobbling": "Scrobble to Libre.fm",
+        "libreFmNotConfigured": "Libre.fm API key is not configured",
         "replaygain": "ReplayGain Mode",
         "preAmp": "ReplayGain PreAmp (dB)",
         "gain": {

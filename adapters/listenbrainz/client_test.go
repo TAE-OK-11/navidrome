@@ -25,7 +25,7 @@ var _ = Describe("client", func() {
 	var client *client
 	BeforeEach(func() {
 		httpClient = &tests.FakeHttpClient{}
-		client = newClient("BASE_URL/", httpClient)
+		client = newClient("https://api.listenbrainz.org/1/", "https://labs.api.listenbrainz.org/", httpClient)
 	})
 
 	Describe("listenBrainzResponse", func() {
@@ -55,7 +55,7 @@ var _ = Describe("client", func() {
 			_, err := client.validateToken(context.Background(), "LB-TOKEN")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(httpClient.SavedRequest.Method).To(Equal(http.MethodGet))
-			Expect(httpClient.SavedRequest.URL.String()).To(Equal("BASE_URL/validate-token"))
+			Expect(httpClient.SavedRequest.URL.String()).To(Equal("https://api.listenbrainz.org/1/validate-token"))
 			Expect(httpClient.SavedRequest.Header.Get("Authorization")).To(Equal("Token LB-TOKEN"))
 			Expect(httpClient.SavedRequest.Header.Get("Content-Type")).To(Equal("application/json; charset=UTF-8"))
 		})
@@ -96,7 +96,7 @@ var _ = Describe("client", func() {
 			It("formats the request properly", func() {
 				Expect(client.updateNowPlaying(context.Background(), "LB-TOKEN", li)).To(Succeed())
 				Expect(httpClient.SavedRequest.Method).To(Equal(http.MethodPost))
-				Expect(httpClient.SavedRequest.URL.String()).To(Equal("BASE_URL/submit-listens"))
+				Expect(httpClient.SavedRequest.URL.String()).To(Equal("https://api.listenbrainz.org/1/submit-listens"))
 				Expect(httpClient.SavedRequest.Header.Get("Authorization")).To(Equal("Token LB-TOKEN"))
 				Expect(httpClient.SavedRequest.Header.Get("Content-Type")).To(Equal("application/json; charset=UTF-8"))
 
@@ -114,7 +114,7 @@ var _ = Describe("client", func() {
 			It("formats the request properly", func() {
 				Expect(client.scrobble(context.Background(), "LB-TOKEN", li)).To(Succeed())
 				Expect(httpClient.SavedRequest.Method).To(Equal(http.MethodPost))
-				Expect(httpClient.SavedRequest.URL.String()).To(Equal("BASE_URL/submit-listens"))
+				Expect(httpClient.SavedRequest.URL.String()).To(Equal("https://api.listenbrainz.org/1/submit-listens"))
 				Expect(httpClient.SavedRequest.Header.Get("Authorization")).To(Equal("Token LB-TOKEN"))
 				Expect(httpClient.SavedRequest.Header.Get("Content-Type")).To(Equal("application/json; charset=UTF-8"))
 
@@ -528,6 +528,43 @@ var _ = Describe("client", func() {
 			retry, ok := errors.AsType[*agents.RetryLaterError](err)
 			Expect(ok).To(BeTrue())
 			Expect(retry.RetryIn).To(Equal(7 * time.Second))
+		})
+
+		It("returns RetryLaterError on a 429 from makeGenericRequest", func() {
+			httpClient.Res = http.Response{
+				StatusCode: 429,
+				Header:     http.Header{"X-Ratelimit-Reset-In": []string{"5"}},
+				Body:       io.NopCloser(strings.NewReader(`{"code":429,"error":"rate limited"}`)),
+			}
+			_, err := client.getArtistUrl(context.Background(), "d2a92ee2-27ce-4e71-bfc5-12e34fe8ef56")
+			Expect(errors.Is(err, agents.ErrRetryLater)).To(BeTrue())
+			retry, ok := errors.AsType[*agents.RetryLaterError](err)
+			Expect(ok).To(BeTrue())
+			Expect(retry.RetryIn).To(Equal(5 * time.Second))
+		})
+	})
+
+	Describe("configured endpoints", func() {
+		It("uses listenbrainz.baseurl for metadata and popularity calls", func() {
+			custom := newClient("https://lb.example.org/v1/", "https://labs.example.org/", httpClient)
+			httpClient.Res = http.Response{
+				Body:       io.NopCloser(strings.NewReader(`[]`)),
+				StatusCode: 200,
+			}
+			_, err := custom.getArtistUrl(context.Background(), "d2a92ee2-27ce-4e71-bfc5-12e34fe8ef56")
+			Expect(err).To(MatchError(ErrorNotFound))
+			Expect(httpClient.SavedRequest.URL.String()).To(Equal(
+				"https://lb.example.org/v1/metadata/artist?artist_mbids=d2a92ee2-27ce-4e71-bfc5-12e34fe8ef56",
+			))
+		})
+
+		It("uses listenbrainz.labsbaseurl for similar-artists calls", func() {
+			custom := newClient("https://lb.example.org/v1/", "https://labs.example.org/", httpClient)
+			httpClient.Res = http.Response{Body: io.NopCloser(strings.NewReader(`[]`)), StatusCode: 200}
+			_, err := custom.getSimilarArtists(context.Background(), "d2a92ee2-27ce-4e71-bfc5-12e34fe8ef56", 5)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(httpClient.SavedRequest.URL.Host).To(Equal("labs.example.org"))
+			Expect(httpClient.SavedRequest.URL.Path).To(Equal("/similar-artists/json"))
 		})
 	})
 })

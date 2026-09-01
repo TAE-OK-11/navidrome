@@ -92,5 +92,11 @@ func checkExternalCredentials() {
 		} else {
 			log.Debug("ListenBrainz integration is ENABLED", "ListenBrainz.BaseURL", conf.Server.ListenBrainz.BaseURL)
 		}
+
+		if !conf.Server.LibreFM.Enabled {
+			log.Info("Libre.fm integration is DISABLED")
+		} else {
+			log.Debug("Libre.fm integration is ENABLED", "LibreFM.BaseURL", conf.Server.LibreFM.BaseURL)
+		}
 	}
 }

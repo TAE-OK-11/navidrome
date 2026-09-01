@@ -38,7 +38,7 @@ const PlayerEdit = (props) => (
       </ReferenceInput>
       <SelectInput source="maxBitRate" resettable choices={BITRATE_CHOICES} />
       <BooleanInput source="reportRealPath" fullWidth />
-      {(config.lastFMEnabled || config.listenBrainzEnabled) && (
+      {(config.lastFMEnabled || config.listenBrainzEnabled || config.libreFMEnabled) && (
         <BooleanInput source="scrobbleEnabled" fullWidth />
       )}
       <TextField source="client" />

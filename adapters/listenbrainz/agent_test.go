@@ -33,7 +33,7 @@ var _ = Describe("listenBrainzAgent", func() {
 		_ = ds.UserProps(ctx).Put("user-1", sessionKeyProperty, "SK-1")
 		httpClient = &tests.FakeHttpClient{}
 		agent = listenBrainzConstructor(ds)
-		agent.client = newClient("http://localhost:8080", httpClient)
+		agent.client = newClient("http://localhost:8080", "http://labs.localhost:8080", httpClient)
 		track = &model.MediaFile{
 			ID:                "123",
 			Title:             "Track Title",
@@ -174,6 +174,19 @@ var _ = Describe("listenBrainzAgent", func() {
 			err := agent.Scrobble(ctx, "user-1", sc)
 			Expect(err).To(MatchError(scrobbler.ErrUnrecoverable))
 		})
+
+		It("keeps a 429 scrobble for retry and carries the delay", func() {
+			httpClient.Res = http.Response{
+				StatusCode: 429,
+				Header:     http.Header{"X-Ratelimit-Reset-In": []string{"7"}},
+				Body:       io.NopCloser(bytes.NewBufferString(`{"code":429,"error":"rate limited"}`)),
+			}
+			err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: time.Now()})
+			Expect(errors.Is(err, scrobbler.ErrRetryLater)).To(BeTrue())
+			retry, ok := errors.AsType[*agents.RetryLaterError](err)
+			Expect(ok).To(BeTrue())
+			Expect(retry.RetryIn).To(Equal(7 * time.Second))
+		})
 	})
 
 	Describe("GetArtistUrl", func() {
@@ -181,7 +194,7 @@ var _ = Describe("listenBrainzAgent", func() {
 		var httpClient *tests.FakeHttpClient
 		BeforeEach(func() {
 			httpClient = &tests.FakeHttpClient{}
-			client := newClient("BASE_URL", httpClient)
+			client := newClient("https://api.listenbrainz.org/1/", "https://labs.api.listenbrainz.org/", httpClient)
 			agent = listenBrainzConstructor(ds)
 			agent.client = client
 		})
@@ -228,7 +241,7 @@ var _ = Describe("listenBrainzAgent", func() {
 		var httpClient *tests.FakeHttpClient
 		BeforeEach(func() {
 			httpClient = &tests.FakeHttpClient{}
-			client := newClient("BASE_URL", httpClient)
+			client := newClient("https://api.listenbrainz.org/1/", "https://labs.api.listenbrainz.org/", httpClient)
 			agent = listenBrainzConstructor(ds)
 			agent.client = client
 		})
@@ -335,7 +348,7 @@ var _ = Describe("listenBrainzAgent", func() {
 
 		BeforeEach(func() {
 			httpClient = &tests.FakeHttpClient{}
-			client := newClient("BASE_URL", httpClient)
+			client := newClient("https://api.listenbrainz.org/1/", "https://labs.api.listenbrainz.org/", httpClient)
 			agent = listenBrainzConstructor(ds)
 			agent.client = client
 		})
@@ -395,7 +408,7 @@ var _ = Describe("listenBrainzAgent", func() {
 
 		BeforeEach(func() {
 			httpClient = &tests.FakeHttpClient{}
-			client := newClient("BASE_URL", httpClient)
+			client := newClient("https://api.listenbrainz.org/1/", "https://labs.api.listenbrainz.org/", httpClient)
 			agent = listenBrainzConstructor(ds)
 			agent.client = client
 		})

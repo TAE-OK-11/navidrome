@@ -121,6 +121,7 @@ type configOptions struct {
 	LastFM                          lastfmOptions       `json:",omitzero"`
 	Deezer                          deezerOptions       `json:",omitzero"`
 	ListenBrainz                    listenBrainzOptions `json:",omitzero"`
+	LibreFM                         librefmOptions      `json:",omitzero"`
 	EnableScrobbleHistory           bool
 	Tags                            map[string]TagConf `json:",omitempty"`
 	Agents                          string
@@ -218,8 +219,18 @@ type deezerOptions struct {
 type listenBrainzOptions struct {
 	Enabled         bool
 	BaseURL         string
+	LabsBaseURL     string
 	ArtistAlgorithm string
 	TrackAlgorithm  string
+}
+
+type librefmOptions struct {
+	Enabled                 bool
+	ApiKey                  string //nolint:gosec
+	Secret                  string //nolint:gosec
+	BaseURL                 string
+	AuthURL                 string
+	ScrobbleFirstArtistOnly bool
 }
 
 type httpHeaderOptions struct {
@@ -610,6 +621,7 @@ func disableExternalServices() {
 	Server.LastFM.Enabled = false
 	Server.Deezer.Enabled = false
 	Server.ListenBrainz.Enabled = false
+	Server.LibreFM.Enabled = false
 	Server.Agents = ""
 	if Server.UILoginBackgroundURL == consts.DefaultUILoginBackgroundURL {
 		Server.UILoginBackgroundURL = consts.DefaultUILoginBackgroundURLOffline
@@ -898,8 +910,13 @@ func setViperDefaults() {
 	viper.SetDefault("deezer.language", consts.DefaultInfoLanguage)
 	viper.SetDefault("listenbrainz.enabled", true)
 	viper.SetDefault("listenbrainz.baseurl", consts.DefaultListenBrainzBaseURL)
+	viper.SetDefault("listenbrainz.labsbaseurl", consts.DefaultListenBrainzLabsBaseURL)
 	viper.SetDefault("listenbrainz.artistalgorithm", consts.DefaultListenBrainzArtistAlgorithm)
 	viper.SetDefault("listenbrainz.trackalgorithm", consts.DefaultListenBrainzTrackAlgorithm)
+	viper.SetDefault("librefm.enabled", true)
+	viper.SetDefault("librefm.baseurl", consts.DefaultLibreFMBaseURL)
+	viper.SetDefault("librefm.authurl", consts.DefaultLibreFMAuthURL)
+	viper.SetDefault("librefm.scrobblefirstartistonly", false)
 	viper.SetDefault("enablescrobblehistory", true)
 	viper.SetDefault("httpheaders.frameoptions", "DENY")
 	viper.SetDefault("backup.path", "")

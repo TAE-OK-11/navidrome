@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/wire"
 	"github.com/navidrome/navidrome/adapters/lastfm"
+	"github.com/navidrome/navidrome/adapters/librefm"
 	"github.com/navidrome/navidrome/adapters/listenbrainz"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/agents"
@@ -37,6 +38,7 @@ var allProviders = wire.NewSet(
 	public.New,
 	persistence.New,
 	lastfm.NewRouter,
+	librefm.NewRouter,
 	listenbrainz.NewRouter,
 	events.GetBroker,
 	scanner.New,
@@ -92,6 +94,12 @@ func CreateLastFMRouter() *lastfm.Router {
 }
 
 func CreateListenBrainzRouter() *listenbrainz.Router {
+	panic(wire.Build(
+		allProviders,
+	))
+}
+
+func CreateLibreFMRouter() *librefm.Router {
 	panic(wire.Build(
 		allProviders,
 	))

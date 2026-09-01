@@ -27,6 +27,7 @@ import (
 	// Import adapters to register them
 	_ "github.com/navidrome/navidrome/adapters/deezer"
 	_ "github.com/navidrome/navidrome/adapters/lastfm"
+	_ "github.com/navidrome/navidrome/adapters/librefm"
 	_ "github.com/navidrome/navidrome/adapters/listenbrainz"
 	_ "github.com/navidrome/navidrome/adapters/lofty"
 )
@@ -147,6 +148,9 @@ func startServer(ctx context.Context, subsonicRouter http.Handler) func() error 
 		}
 		if conf.Server.ListenBrainz.Enabled {
 			a.MountRouter("ListenBrainz Auth", consts.URLPathNativeAPI+"/listenbrainz", CreateListenBrainzRouter())
+		}
+		if conf.Server.LibreFM.Enabled {
+			a.MountRouter("Libre.fm Auth", consts.URLPathNativeAPI+"/librefm", CreateLibreFMRouter())
 		}
 		if conf.Server.Prometheus.Enabled {
 			p := CreatePrometheus()

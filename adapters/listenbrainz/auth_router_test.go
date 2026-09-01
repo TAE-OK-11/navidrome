@@ -24,7 +24,7 @@ var _ = Describe("ListenBrainz Auth Router", func() {
 	BeforeEach(func() {
 		sk = &fakeSessionKeys{KeyName: sessionKeyProperty}
 		httpClient = &tests.FakeHttpClient{}
-		cl := newClient("http://localhost/", httpClient)
+		cl := newClient("http://localhost/", "http://labs.localhost/", httpClient)
 		r = Router{
 			sessionKeys: sk,
 			client:      cl,

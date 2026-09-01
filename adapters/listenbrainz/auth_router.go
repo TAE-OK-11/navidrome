@@ -41,7 +41,7 @@ func NewRouter(ds model.DataStore) *Router {
 	}
 	r.Handler = r.routes()
 	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
-	r.client = newClient(conf.Server.ListenBrainz.BaseURL, hc)
+	r.client = newClient(conf.Server.ListenBrainz.BaseURL, conf.Server.ListenBrainz.LabsBaseURL, hc)
 	return r
 }
 
@@ -98,6 +98,12 @@ func (s *Router) link(w http.ResponseWriter, r *http.Request) {
 	u, _ := request.UserFrom(r.Context())
 	resp, err := s.client.validateToken(r.Context(), payload.Token)
 	if err != nil {
+		var retryLater *agents.RetryLaterError
+		if errors.As(err, &retryLater) {
+			log.Warn(r.Context(), "ListenBrainz token validation rate-limited", "userId", u.ID, err)
+			_ = rest.RespondWithError(w, http.StatusServiceUnavailable, "ListenBrainz is temporarily unavailable. Please try again later.")
+			return
+		}
 		log.Error(r.Context(), "Could not validate ListenBrainz token", "userId", u.ID, "requestId", middleware.GetReqID(r.Context()), err)
 		_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return

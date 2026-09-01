@@ -34,11 +34,14 @@ const (
 )
 
 type request struct {
-	Files                   []inputFile                      `json:"files"`
-	TagMappings             map[string]metadataworker.TagMappingExport `json:"tag_mappings,omitempty"`
-	ArtistSplitExceptions   []string                         `json:"artist_split_exceptions,omitempty"`
-	PIDConfig               map[string]any                   `json:"pid_config,omitempty"`
-	LibraryID               int                              `json:"library_id,omitempty"`
+	Files                 []inputFile                                `json:"files"`
+	TagMappings           map[string]metadataworker.TagMappingExport `json:"tag_mappings,omitempty"`
+	ArtistSplitExceptions []string                                   `json:"artist_split_exceptions,omitempty"`
+	ArtistsSplit          []string                                   `json:"artists_split,omitempty"`
+	RolesSplit            []string                                   `json:"roles_split,omitempty"`
+	ArtistJoiner          string                                     `json:"artist_joiner,omitempty"`
+	PIDConfig             map[string]any                             `json:"pid_config,omitempty"`
+	LibraryID             int                                        `json:"library_id,omitempty"`
 }
 
 type inputFile struct {
@@ -253,6 +256,9 @@ func (e *extractor) buildRequest(ctx context.Context, files []string) (request, 
 		Files:                 inputs,
 		TagMappings:           scanConfig.TagMappings,
 		ArtistSplitExceptions: scanConfig.ArtistSplitExceptions,
+		ArtistsSplit:          scanConfig.ArtistsSplit,
+		RolesSplit:            scanConfig.RolesSplit,
+		ArtistJoiner:          scanConfig.ArtistJoiner,
 		PIDConfig:             scanConfig.PIDConfig,
 		LibraryID:             scanConfig.LibraryID,
 	}, nil

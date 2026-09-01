@@ -5,6 +5,38 @@ use std::path::Path;
 
 use serde::Serialize;
 
+use crate::tag_clean;
+
+const DEFAULT_ARTISTS_SPLIT: &[&str] = &[" / ", " feat. ", " feat ", " ft. ", " ft ", "; "];
+const DEFAULT_ROLES_SPLIT: &[&str] = &["/", ";"];
+const DEFAULT_ARTIST_JOINER: &str = " • ";
+
+/// Participant-splitting options mirrored from mappings.yaml and Scanner config.
+#[derive(Debug, Clone)]
+pub struct MapMediaConfig {
+    pub artists_split: Vec<String>,
+    pub roles_split: Vec<String>,
+    pub artist_split_exceptions: Vec<String>,
+    pub artist_joiner: String,
+}
+
+impl Default for MapMediaConfig {
+    fn default() -> Self {
+        Self::with_defaults()
+    }
+}
+
+impl MapMediaConfig {
+    pub fn with_defaults() -> Self {
+        Self {
+            artists_split: DEFAULT_ARTISTS_SPLIT.iter().map(|s| (*s).to_owned()).collect(),
+            roles_split: DEFAULT_ROLES_SPLIT.iter().map(|s| (*s).to_owned()).collect(),
+            artist_split_exceptions: Vec::new(),
+            artist_joiner: DEFAULT_ARTIST_JOINER.to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ScanArtist {
     name: String,
@@ -92,7 +124,7 @@ struct ScanMediaFile {
 }
 
 pub fn map_to_json(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: Option<&str>) -> Option<String> {
-    map_to_json_with_pid(tags, path, lyrics_json, None, 0, "")
+    map_to_json_with_pid(tags, path, lyrics_json, None, 0, "", None)
 }
 
 pub fn map_to_json_with_pid(
@@ -102,8 +134,10 @@ pub fn map_to_json_with_pid(
     pid_config: Option<&crate::compute_pid::PidConfig>,
     library_id: i32,
     file_path: &str,
+    map_config: Option<&MapMediaConfig>,
 ) -> Option<String> {
-    let mut mapped = map_tags(tags, path, lyrics_json.unwrap_or("[]"))?;
+    let config = map_config.cloned().unwrap_or_default();
+    let mut mapped = map_tags(tags, path, lyrics_json.unwrap_or("[]"), &config)?;
     if let Some(config) = pid_config {
         let input = crate::compute_pid::PidInput {
             library_id,
@@ -127,15 +161,20 @@ pub fn map_to_json_with_pid(
     serde_json::to_string(&mapped).ok()
 }
 
-fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str) -> Option<ScanMediaFile> {
+fn map_tags(
+    tags: &HashMap<String, Vec<String>>,
+    path: &Path,
+    lyrics_json: &str,
+    config: &MapMediaConfig,
+) -> Option<ScanMediaFile> {
     let title = first_ref(tags, "title");
     let album = first_ref(tags, "album");
     if title.is_empty() && album.is_empty() {
         return None;
     }
 
-    let artist = display_artist(tags);
-    let album_artist = display_album_artist(tags);
+    let artist = display_artist(tags, config);
+    let album_artist = display_album_artist(tags, config);
     let (original_date, release_date, date) = map_dates(tags);
     let (track_number, _) = track_tuple(tags);
     let (disc_number, _) = disc_tuple(tags);
@@ -189,7 +228,7 @@ fn map_tags(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: &str)
             first_ref(tags, "replaygain_track_gain"),
             first_ref(tags, "r128_track_gain"),
         ),
-        participants: map_participants(tags, &artist, &album_artist),
+        participants: map_participants(tags, &artist, &album_artist, config),
         tags: map_album_tags(tags),
         pid: String::new(),
         album_id: String::new(),
@@ -281,11 +320,20 @@ fn map_participants(
     tags: &HashMap<String, Vec<String>>,
     display_artist: &str,
     display_album_artist: &str,
+    config: &MapMediaConfig,
 ) -> HashMap<String, Vec<ScanArtist>> {
     let mut out = HashMap::new();
     out.insert(
         "artist".to_owned(),
-        artists_from_tags(tags, "artist", "artists", "artistsort", "musicbrainz_artistid"),
+        artists_from_tags(
+            tags,
+            "artist",
+            "artists",
+            "artistsort",
+            "musicbrainz_artistid",
+            &config.artists_split,
+            &config.artist_split_exceptions,
+        ),
     );
     let mut album_artists = artists_from_tags(
         tags,
@@ -293,6 +341,8 @@ fn map_participants(
         "albumartists",
         "albumartistsort",
         "musicbrainz_albumartistid",
+        &config.artists_split,
+        &config.artist_split_exceptions,
     );
     if album_artists.is_empty() {
         album_artists.push(fallback_album_artist(
@@ -314,7 +364,15 @@ fn map_participants(
         ("remixer", "remixer", "remixersort", "musicbrainz_remixerid"),
         ("djmixer", "djmixer", "djmixersort", "musicbrainz_djmixerid"),
     ] {
-        let artists = artists_from_tags(tags, key, key, sort_key, mbid_key);
+        let artists = artists_from_tags(
+            tags,
+            key,
+            key,
+            sort_key,
+            mbid_key,
+            &config.roles_split,
+            &config.artist_split_exceptions,
+        );
         if !artists.is_empty() {
             out.insert(role.to_owned(), artists);
         }
@@ -332,13 +390,10 @@ fn artists_from_tags(
     plural: &str,
     sort_key: &str,
     mbid_key: &str,
+    split: &[String],
+    exceptions: &[String],
 ) -> Vec<ScanArtist> {
-    let names = filtered_value_refs(tags, plural);
-    let names = if names.is_empty() {
-        filtered_value_refs(tags, single)
-    } else {
-        names
-    };
+    let names = get_participant_values(tags, single, plural, split, exceptions);
     if names.is_empty() {
         return Vec::new();
     }
@@ -349,9 +404,15 @@ fn artists_from_tags(
         .enumerate()
         .map(|(idx, name)| {
             scan_artist(
-                name,
-                sorts.and_then(|values| values.get(idx)).map(String::as_str).unwrap_or_default(),
-                mbids.and_then(|values| values.get(idx)).map(String::as_str).unwrap_or_default(),
+                &name,
+                sorts
+                    .and_then(|values| values.get(idx))
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+                mbids
+                    .and_then(|values| values.get(idx))
+                    .map(String::as_str)
+                    .unwrap_or_default(),
             )
         })
         .fold(Vec::new(), |mut artists, artist| {
@@ -361,6 +422,31 @@ fn artists_from_tags(
             artists.push(artist);
             artists
         })
+}
+
+/// Mirrors Go getArtistValues / getRoleValues participant splitting.
+fn get_participant_values(
+    tags: &HashMap<String, Vec<String>>,
+    single: &str,
+    plural: &str,
+    split: &[String],
+    exceptions: &[String],
+) -> Vec<String> {
+    let multi: Vec<String> = filtered_value_refs(tags, plural)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if !multi.is_empty() {
+        return multi;
+    }
+    let single_vals: Vec<String> = filtered_value_refs(tags, single)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if single_vals.len() != 1 {
+        return single_vals;
+    }
+    tag_clean::split_participant_values(&single_vals, split, exceptions)
 }
 
 fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
@@ -388,32 +474,32 @@ fn fallback_album_artist(display_album_artist: &str, artist_role: &[ScanArtist])
     scan_artist(display_album_artist, "", "")
 }
 
-fn display_artist(tags: &HashMap<String, Vec<String>>) -> String {
+fn display_artist(tags: &HashMap<String, Vec<String>>, config: &MapMediaConfig) -> String {
     let values = unique_non_empty_refs(filtered_value_refs(tags, "artists"));
     let values = if values.is_empty() {
         unique_non_empty_refs(filtered_value_refs(tags, "artist"))
     } else {
         values
     };
-    join_artists(&values)
+    join_artists(&values, &config.artist_joiner)
 }
 
-fn display_album_artist(tags: &HashMap<String, Vec<String>>) -> String {
+fn display_album_artist(tags: &HashMap<String, Vec<String>>, config: &MapMediaConfig) -> String {
     let values = unique_non_empty_refs(filtered_value_refs(tags, "albumartists"));
     let values = if values.is_empty() {
         unique_non_empty_refs(filtered_value_refs(tags, "albumartist"))
     } else {
         values
     };
-    let joined = join_artists(&values);
+    let joined = join_artists(&values, &config.artist_joiner);
     if !joined.is_empty() {
         return joined;
     }
-    display_artist(tags)
+    display_artist(tags, config)
 }
 
-fn join_artists(values: &[&str]) -> String {
-    values.join(" • ")
+fn join_artists(values: &[&str], joiner: &str) -> String {
+    values.join(joiner)
 }
 
 fn unique_non_empty_refs(values: Vec<&str>) -> Vec<&str> {
@@ -613,6 +699,48 @@ fn sanitize_sort_no_article(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn splits_feat_artists_into_participants() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert(
+            "artist".to_owned(),
+            vec!["Artist Name feat. Someone Else".to_owned()],
+        );
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""artist":"Artist Name feat. Someone Else""#));
+        assert!(json.contains(r#""name":"Artist Name""#));
+        assert!(json.contains(r#""name":"Someone Else""#));
+    }
+
+    #[test]
+    fn respects_artist_split_exceptions() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert(
+            "artist".to_owned(),
+            vec!["Someone feat. Else".to_owned()],
+        );
+        let config = MapMediaConfig {
+            artist_split_exceptions: vec!["Someone feat. Else".to_owned()],
+            ..MapMediaConfig::with_defaults()
+        };
+        let json = map_to_json_with_pid(
+            &tags,
+            Path::new("music/song.mp3"),
+            Some("[]"),
+            None,
+            0,
+            "",
+            Some(&config),
+        )
+        .expect("json");
+        assert!(json.contains(r#""name":"Someone feat. Else""#));
+        assert!(!json.contains(r#""name":"Someone""#));
+    }
 
     #[test]
     fn maps_basic_tags() {

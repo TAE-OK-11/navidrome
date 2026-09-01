@@ -42,6 +42,12 @@ struct Request {
     #[serde(default)]
     artist_split_exceptions: Vec<String>,
     #[serde(default)]
+    artists_split: Vec<String>,
+    #[serde(default)]
+    roles_split: Vec<String>,
+    #[serde(default)]
+    artist_joiner: String,
+    #[serde(default)]
     pid_config: Option<compute_pid::PidConfig>,
     #[serde(default)]
     library_id: i32,
@@ -328,6 +334,24 @@ fn parse_file(path: &Path, request: &Request) -> Result<Metadata> {
     let properties = tagged.properties();
     let has_picture = tagged.tags().iter().any(|tag| !tag.pictures().is_empty());
     let lyrics_json = lyrics::parse_tags_to_json(&tags);
+    let map_config = map_media::MapMediaConfig {
+        artists_split: if request.artists_split.is_empty() {
+            map_media::MapMediaConfig::with_defaults().artists_split
+        } else {
+            request.artists_split.clone()
+        },
+        roles_split: if request.roles_split.is_empty() {
+            map_media::MapMediaConfig::with_defaults().roles_split
+        } else {
+            request.roles_split.clone()
+        },
+        artist_split_exceptions: request.artist_split_exceptions.clone(),
+        artist_joiner: if request.artist_joiner.is_empty() {
+            map_media::MapMediaConfig::with_defaults().artist_joiner
+        } else {
+            request.artist_joiner.clone()
+        },
+    };
     let media_file_json = map_media::map_to_json_with_pid(
         &tags,
         path,
@@ -335,6 +359,7 @@ fn parse_file(path: &Path, request: &Request) -> Result<Metadata> {
         request.pid_config.as_ref(),
         request.library_id,
         &path.to_string_lossy(),
+        Some(&map_config),
     );
 
     Ok(Metadata {

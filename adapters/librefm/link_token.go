@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	linkTokenScope = "librefm-link"
+	linkTokenScope = "librefm-link" //nolint:gosec // G101 false positive, JWT scope name not a credential
 	linkTokenTTL   = 5 * time.Minute
 )
 

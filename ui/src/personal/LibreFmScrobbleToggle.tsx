@@ -118,7 +118,9 @@ export const LibreFmScrobbleToggle = () => {
           setLinked(false)
           notify('message.libreFmUnlinkSuccess', { type: 'success' })
         })
-        .catch(() => notify('message.libreFmUnlinkFailure', { type: 'warning' }))
+        .catch(() =>
+          notify('message.libreFmUnlinkFailure', { type: 'warning' }),
+        )
     }
   }
 

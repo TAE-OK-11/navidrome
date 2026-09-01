@@ -220,9 +220,12 @@ func (api *Router) hydrateRustSongs(ctx context.Context, ids []string) (model.Me
 	if len(ids) == 0 {
 		return model.MediaFiles{}, nil
 	}
-	values, err := api.ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: And{
-		Eq{"media_file.id": ids}, Eq{"media_file.missing": false},
-	}})
+	values, err := api.ds.MediaFile(ctx).GetAll(model.QueryOptions{
+		Filters: And{
+			Eq{"media_file.id": ids}, Eq{"media_file.missing": false},
+		},
+		ExcludeHeavyFields: true,
+	})
 	if err != nil {
 		return nil, err
 	}

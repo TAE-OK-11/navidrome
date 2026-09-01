@@ -53,6 +53,18 @@ func (pls Playlist) RefreshDelay() time.Duration {
 	return conf.Server.SmartPlaylistRefreshDelay
 }
 
+// NeedsSmartPlaylistRefresh reports whether a smart playlist owned by usr should
+// be re-evaluated based on EvaluatedAt and RefreshDelay.
+func NeedsSmartPlaylistRefresh(pls *Playlist, usr User) bool {
+	if !pls.IsSmartPlaylist() {
+		return false
+	}
+	if pls.EvaluatedAt != nil && time.Since(*pls.EvaluatedAt) < pls.RefreshDelay() {
+		return false
+	}
+	return pls.OwnerID == usr.ID
+}
+
 func (pls Playlist) MediaFiles() MediaFiles {
 	if len(pls.Tracks) == 0 {
 		return nil

@@ -388,6 +388,9 @@ type tagCond struct {
 }
 
 func (e tagCond) ToSql() (string, []any, error) {
+	if IsIndexedTag(model.TagName(e.tag)) {
+		return indexedTagCondSQL(e.tag, e.cond, e.numeric, e.not)
+	}
 	var cond string
 	var args []any
 	var err error
@@ -404,6 +407,31 @@ func (e tagCond) ToSql() (string, []any, error) {
 		cond = "not " + cond
 	}
 	return cond, args, err
+}
+
+func indexedTagCondSQL(tagName string, innerCond squirrel.Sqlizer, numeric, negate bool) (string, []any, error) {
+	base := `exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ?`
+	if innerCond == nil {
+		cond := base + `)`
+		if negate {
+			cond = "not " + cond
+		}
+		return cond, []any{tagName}, nil
+	}
+	innerSQL, args, err := innerCond.ToSql()
+	if err != nil {
+		return "", nil, err
+	}
+	if numeric {
+		innerSQL = strings.ReplaceAll(innerSQL, "value", "CAST(tag.tag_value AS REAL)")
+	} else {
+		innerSQL = strings.ReplaceAll(innerSQL, "value", "tag.tag_value")
+	}
+	cond := base + " and " + innerSQL + ")"
+	if negate {
+		cond = "not " + cond
+	}
+	return cond, append([]any{tagName}, args...), nil
 }
 
 type roleCond struct {
@@ -585,6 +613,9 @@ type tagCondGroup struct {
 }
 
 func (g tagCondGroup) ToSql() (string, []any, error) {
+	if IsIndexedTag(model.TagName(g.tag)) {
+		return indexedTagCondGroupSQL(g)
+	}
 	innerParts := make([]string, 0, len(g.conds))
 	var allArgs []any
 	for _, c := range g.conds {
@@ -604,6 +635,30 @@ func (g tagCondGroup) ToSql() (string, []any, error) {
 		cond = "not " + cond
 	}
 	return cond, allArgs, nil
+}
+
+func indexedTagCondGroupSQL(g tagCondGroup) (string, []any, error) {
+	innerParts := make([]string, 0, len(g.conds))
+	var allArgs []any
+	for _, c := range g.conds {
+		part, args, err := c.ToSql()
+		if err != nil {
+			return "", nil, err
+		}
+		if g.numeric {
+			part = strings.ReplaceAll(part, "value", "CAST(tag.tag_value AS REAL)")
+		} else {
+			part = strings.ReplaceAll(part, "value", "tag.tag_value")
+		}
+		innerParts = append(innerParts, part)
+		allArgs = append(allArgs, args...)
+	}
+	cond := fmt.Sprintf(`exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ? and (%s))`,
+		strings.Join(innerParts, " OR "))
+	if g.not {
+		cond = "not " + cond
+	}
+	return cond, append([]any{g.tag}, allArgs...), nil
 }
 
 func singleField(values map[string]any) (string, any, criteria.FieldInfo, bool) {
@@ -833,7 +888,11 @@ func sortExpr(sortField string) (string, bool) {
 	var mapped string
 	switch {
 	case info.IsTag:
-		mapped = "COALESCE(json_extract(media_file.tags, '$." + info.Name() + "[0].value'), '')"
+		if IsIndexedTag(model.TagName(info.Name())) {
+			mapped = fmt.Sprintf(`COALESCE((select tag.tag_value from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = '%s' order by tag.tag_value limit 1), '')`, info.Name())
+		} else {
+			mapped = "COALESCE(json_extract(media_file.tags, '$." + info.Name() + "[0].value'), '')"
+		}
 	case info.IsRole:
 		mapped = "COALESCE(json_extract(media_file.participants, '$." + info.Name() + "[0].name'), '')"
 	default:

@@ -288,19 +288,18 @@ func (r *playlistRepository) refreshCounters(pls *model.Playlist) error {
 func (r *playlistRepository) loadTracks(sel SelectBuilder, id string) (model.PlaylistTracks, error) {
 	sel = r.applyLibraryFilter(sel, "f")
 	userID := loggedUser(r.ctx).ID
+	trackCols := []string{
+		"coalesce(starred, 0) as starred",
+		"starred_at",
+		"coalesce(play_count, 0) as play_count",
+		"play_date",
+		"coalesce(rating, 0) as rating",
+		"rated_at",
+	}
+	trackCols = append(trackCols, browseMediaFileColumnExprs("f")...)
+	trackCols = append(trackCols, "playlist_tracks.*")
 	tracksQuery := sel.
-		Columns(
-			"coalesce(starred, 0) as starred",
-			"starred_at",
-			"coalesce(play_count, 0) as play_count",
-			"play_date",
-			"coalesce(rating, 0) as rating",
-			"rated_at",
-			"f.*",
-			"playlist_tracks.*",
-			"library.path as library_path",
-			"library.name as library_name",
-		).
+		Columns(trackCols...).
 		LeftJoin("annotation on (" +
 			"annotation.item_id = media_file_id" +
 			" AND annotation.item_type = 'media_file'" +

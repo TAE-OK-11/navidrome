@@ -91,6 +91,7 @@ type Router struct {
 	sonic             *sonicsvc.Sonic
 	genreCache        genreResponseCache
 	musicFoldersCache musicFoldersResponseCache
+	artistIndexCache  artistIndexCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
 }

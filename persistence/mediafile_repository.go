@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -250,11 +251,36 @@ func (r *mediaFileRepository) UpdateProbeData(id string, data string) error {
 }
 
 func (r *mediaFileRepository) selectMediaFile(options ...model.QueryOptions) SelectBuilder {
-	sql := r.newSelect(options...).Columns("media_file.*", "library.path as library_path", "library.name as library_name").
+	columns := []string{"media_file.*", "library.path as library_path", "library.name as library_name"}
+	if len(options) > 0 && options[0].ExcludeHeavyFields {
+		columns = browseMediaFileColumnExprs("media_file")
+	}
+	sql := r.newSelect(options...).Columns(columns...).
 		LeftJoin("library on media_file.library_id = library.id")
 	sql = r.withAnnotation(sql, "media_file.id")
 	sql = r.withBookmark(sql, "media_file.id")
 	return r.applyLibraryFilter(sql)
+}
+
+func browseMediaFileColumnExprs(table string) []string {
+	cols := []string{
+		"id", "library_id", "path", "title", "album", "artist", "album_artist",
+		"sort_title", "sort_album_name", "sort_artist_name", "sort_album_artist_name",
+		"order_title", "order_album_name", "order_artist_name", "order_album_artist_name",
+		"genre", "compilation", "track_number", "disc_number", "disc_subtitle",
+		"duration", "size", "suffix", "bit_rate", "sample_rate", "bit_depth", "channels", "codec",
+		"explicit_status", "original_year", "original_date", "release_year", "release_date",
+		"year", "date", "mbz_recording_id", "mbz_release_track_id", "mbz_album_id",
+		"mbz_release_group_id", "mbz_album_type", "rg_album_peak", "rg_album_gain",
+		"rg_track_peak", "rg_track_gain", "created_at", "updated_at", "album_id",
+		"artist_id", "album_artist_id", "catalog_num", "comment", "bpm", "tags", "participants",
+	}
+	out := make([]string, 0, len(cols)+2)
+	for _, col := range cols {
+		out = append(out, table+"."+col)
+	}
+	out = append(out, "library.path as library_path", "library.name as library_name")
+	return out
 }
 
 func (r *mediaFileRepository) Get(id string) (*model.MediaFile, error) {
@@ -346,7 +372,7 @@ func (r *mediaFileRepository) GetRandom(options ...model.QueryOptions) (model.Me
 
 	// Re-shuffle in Phase 2: `WHERE rowid IN (...)` returns rows in ascending rowid order, not
 	// the random order from Phase 1. Sorting only the (<=Max) hydrated rows is negligible.
-	sq := r.selectMediaFile().Where(Eq{"media_file.rowid": rowids}).OrderBy("random()")
+	sq := r.selectMediaFile(opt).Where(Eq{"media_file.rowid": rowids}).OrderBy("random()")
 	var res dbMediaFiles
 	if err := r.queryAll(sq, &res); err != nil {
 		return nil, err
@@ -355,17 +381,22 @@ func (r *mediaFileRepository) GetRandom(options ...model.QueryOptions) (model.Me
 }
 
 func (r *mediaFileRepository) GetAllByTags(tag model.TagName, values []string, options ...model.QueryOptions) (model.MediaFiles, error) {
-	placeholders := make([]string, len(values))
-	args := make([]any, len(values))
-	for i, v := range values {
-		placeholders[i] = "?"
-		args[i] = v
+	var tagFilter Sqlizer
+	if IsIndexedTag(tag) {
+		tagFilter = SongTags.ByTagValues(tag, values)
+	} else {
+		placeholders := make([]string, len(values))
+		args := make([]any, len(values))
+		for i, v := range values {
+			placeholders[i] = "?"
+			args[i] = v
+		}
+		tagFilter = Expr(
+			fmt.Sprintf("exists (select 1 from json_tree(media_file.tags, '$.%s') where key='value' and value in (%s))",
+				tag, strings.Join(placeholders, ",")),
+			args...,
+		)
 	}
-	tagFilter := Expr(
-		fmt.Sprintf("exists (select 1 from json_tree(media_file.tags, '$.%s') where key='value' and value in (%s))",
-			tag, strings.Join(placeholders, ",")),
-		args...,
-	)
 
 	var opts model.QueryOptions
 	if len(options) > 0 {
@@ -393,7 +424,10 @@ func (r *mediaFileRepository) GetCursor(options ...model.QueryOptions) (model.Me
 // Library-qualified paths search within the specified library, while unqualified paths
 // search across all libraries for backward compatibility.
 func (r *mediaFileRepository) FindByPaths(paths []string) (model.MediaFiles, error) {
-	query := Or{}
+	// One IN list per library instead of one OR term per path: SQLite abandons the
+	// path index at just two OR-ed equality terms and scans the whole table.
+	byLibrary := map[int][]string{}
+	var unqualified []string
 
 	for _, path := range paths {
 		parts := strings.SplitN(path, ":", 2)
@@ -404,15 +438,22 @@ func (r *mediaFileRepository) FindByPaths(paths []string) (model.MediaFiles, err
 				// Invalid format, skip
 				continue
 			}
-			relativePath := parts[1]
-			query = append(query, And{
-				Eq{"path collate nocase": relativePath},
-				Eq{"library_id": libraryID},
-			})
+			byLibrary[libraryID] = append(byLibrary[libraryID], parts[1])
 		} else {
 			// Unqualified path: search across all libraries
-			query = append(query, Eq{"path collate nocase": path})
+			unqualified = append(unqualified, path)
 		}
+	}
+
+	query := Or{}
+	for _, libraryID := range slices.Sorted(maps.Keys(byLibrary)) {
+		query = append(query, And{
+			Eq{"path collate nocase": byLibrary[libraryID]},
+			Eq{"library_id": libraryID},
+		})
+	}
+	if len(unqualified) > 0 {
+		query = append(query, Eq{"path collate nocase": unqualified})
 	}
 
 	if len(query) == 0 {

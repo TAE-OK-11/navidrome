@@ -12,6 +12,14 @@ import (
 )
 
 var _ = Describe("Smart playlist criteria SQL", func() {
+	const (
+		indexedTagIs       = "exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ? and tag.tag_value = ?)"
+		indexedTagIsNot    = "not exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ? and tag.tag_value = ?)"
+		indexedTagContains = "exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ? and tag.tag_value LIKE ?)"
+		indexedTagMissing  = "not exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ?)"
+		indexedTagPresent  = "exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ?)"
+	)
+
 	BeforeEach(func() {
 		criteria.AddRoles([]string{"artist", "composer", "producer"})
 		criteria.AddTagNames([]string{"genre", "mood", "releasetype", "recordingdate", "replaygain_album_gain"})
@@ -99,12 +107,12 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 		// numeric list case) — otherwise a NULL column would diverge from the original.
 		Entry("is bool list keeps coalesce", criteria.Is{"loved": []any{true}},
 			"COALESCE(annotation.starred, false) IN (?)", true),
-		Entry("tag is", criteria.Is{"genre": "Rock"}, "exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value' and value = ?)", "Rock"),
-		Entry("tag is not", criteria.IsNot{"genre": "Rock"}, "not exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value' and value = ?)", "Rock"),
-		Entry("tag contains", criteria.Contains{"genre": "Rock"}, "exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value' and value LIKE ?)", "%Rock%"),
-		Entry("tag not contains", criteria.NotContains{"genre": "Rock"}, "not exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value' and value LIKE ?)", "%Rock%"),
+		Entry("tag is", criteria.Is{"genre": "Rock"}, indexedTagIs, "genre", "Rock"),
+		Entry("tag is not", criteria.IsNot{"genre": "Rock"}, indexedTagIsNot, "genre", "Rock"),
+		Entry("tag contains", criteria.Contains{"genre": "Rock"}, indexedTagContains, "genre", "%Rock%"),
+		Entry("tag not contains", criteria.NotContains{"genre": "Rock"}, "not "+indexedTagContains, "genre", "%Rock%"),
 		Entry("numeric tag", criteria.Lt{"rate": 6}, "exists (select 1 from json_tree(media_file.tags, '$.rate') where key='value' and CAST(value AS REAL) < ?)", 6),
-		Entry("tag alias", criteria.Is{"albumtype": "album"}, "exists (select 1 from json_tree(media_file.tags, '$.releasetype') where key='value' and value = ?)", "album"),
+		Entry("tag alias", criteria.Is{"albumtype": "album"}, indexedTagIs, "releasetype", "album"),
 		Entry("field alias via tag registration", criteria.Is{"recordingdate": "2024-01-01"}, "media_file.date = ?", "2024-01-01"),
 		Entry("role is", criteria.Is{"artist": "u2"}, "exists (select 1 from media_file_artists mfa join artist on artist.id = mfa.artist_id where mfa.media_file_id = media_file.id and mfa.role = ? and artist.name = ?)", "artist", "u2"),
 		Entry("role contains", criteria.Contains{"composer": "Lennon"}, "exists (select 1 from media_file_artists mfa join artist on artist.id = mfa.artist_id where mfa.media_file_id = media_file.id and mfa.role = ? and artist.name LIKE ?)", "composer", "%Lennon%"),
@@ -114,20 +122,16 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 		Entry("rgAlbumGain gt", criteria.Gt{"rgAlbumGain": -6.0}, "media_file.rg_album_gain > ?", -6.0),
 		Entry("rgTrackPeak lt", criteria.Lt{"rgTrackPeak": 1.0}, "media_file.rg_track_peak < ?", 1.0),
 		// isMissing — tags
-		Entry("isMissing tag [true]", criteria.IsMissing{"genre": true},
-			"not exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value')"),
-		Entry("isMissing tag [false]", criteria.IsMissing{"genre": false},
-			"exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value')"),
+		Entry("isMissing tag [true]", criteria.IsMissing{"genre": true}, indexedTagMissing, "genre"),
+		Entry("isMissing tag [false]", criteria.IsMissing{"genre": false}, indexedTagPresent, "genre"),
 		// isMissing — roles
 		Entry("isMissing role [true]", criteria.IsMissing{"artist": true},
 			"not exists (select 1 from media_file_artists mfa where mfa.media_file_id = media_file.id and mfa.role = ?)", "artist"),
 		Entry("isMissing role [false]", criteria.IsMissing{"artist": false},
 			"exists (select 1 from media_file_artists mfa where mfa.media_file_id = media_file.id and mfa.role = ?)", "artist"),
 		// isPresent — tags
-		Entry("isPresent tag [true]", criteria.IsPresent{"genre": true},
-			"exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value')"),
-		Entry("isPresent tag [false]", criteria.IsPresent{"genre": false},
-			"not exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value')"),
+		Entry("isPresent tag [true]", criteria.IsPresent{"genre": true}, indexedTagPresent, "genre"),
+		Entry("isPresent tag [false]", criteria.IsPresent{"genre": false}, indexedTagMissing, "genre"),
 		// isPresent — roles
 		Entry("isPresent role [true]", criteria.IsPresent{"composer": true},
 			"exists (select 1 from media_file_artists mfa where mfa.media_file_id = media_file.id and mfa.role = ?)", "composer"),
@@ -284,7 +288,9 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 		})
 
 		It("sorts by tag fields", func() {
-			Expect(newSmartPlaylistCriteria(criteria.Criteria{Sort: "genre"}).OrderBy()).To(Equal("COALESCE(json_extract(media_file.tags, '$.genre[0].value'), '') asc"))
+			Expect(newSmartPlaylistCriteria(criteria.Criteria{Sort: "genre"}).OrderBy()).To(Equal(
+				`COALESCE((select tag.tag_value from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = 'genre' order by tag.tag_value limit 1), '') asc`,
+			))
 		})
 
 		It("sorts by role fields", func() {
@@ -296,7 +302,9 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 		})
 
 		It("sorts by albumtype alias", func() {
-			Expect(newSmartPlaylistCriteria(criteria.Criteria{Sort: "albumtype"}).OrderBy()).To(Equal("COALESCE(json_extract(media_file.tags, '$.releasetype[0].value'), '') asc"))
+			Expect(newSmartPlaylistCriteria(criteria.Criteria{Sort: "albumtype"}).OrderBy()).To(Equal(
+				`COALESCE((select tag.tag_value from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = 'releasetype' order by tag.tag_value limit 1), '') asc`,
+			))
 		})
 
 		It("sorts by random", func() {
@@ -445,8 +453,8 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 
 			sql, args, err := sqlizer.ToSql()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(sql).To(Equal("(exists (select 1 from json_tree(media_file.tags, '$.genre') where key='value' and (value LIKE ? OR value LIKE ? OR value LIKE ?)))"))
-			Expect(args).To(HaveExactElements("%Rock%", "%Metal%", "%Punk%"))
+			Expect(sql).To(Equal("(exists (select 1 from media_file_tags mft join tag on tag.id = mft.tag_id where mft.media_file_id = media_file.id and tag.tag_name = ? and (tag.tag_value LIKE ? OR tag.tag_value LIKE ? OR tag.tag_value LIKE ?)))"))
+			Expect(args).To(HaveExactElements("genre", "%Rock%", "%Metal%", "%Punk%"))
 		})
 
 		It("does not merge tag conditions from different tags", func() {
@@ -490,8 +498,8 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 			// Two merged EXISTS: one for roles, one for tags
 			Expect(strings.Count(sql, "exists")).To(Equal(2))
 			Expect(sql).To(ContainSubstring("artist.name LIKE ? OR artist.name LIKE ?"))
-			Expect(sql).To(ContainSubstring("value LIKE ? OR value LIKE ?"))
-			Expect(args).To(HaveLen(2 + 2 + 1)) // 2 tag patterns + 2 role patterns + 1 role name
+			Expect(sql).To(ContainSubstring("tag.tag_value LIKE ? OR tag.tag_value LIKE ?"))
+			Expect(args).To(HaveLen(2 + 2 + 1 + 1)) // 2 tag patterns + tag name + 2 role patterns + 1 role name
 		})
 
 		It("merges negated role conditions in an AND group into a single NOT EXISTS", func() {
@@ -536,8 +544,8 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 			sql, args, err := sqlizer.ToSql()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.Count(sql, "not exists")).To(Equal(1))
-			Expect(sql).To(ContainSubstring("value LIKE ? OR value LIKE ?"))
-			Expect(args).To(HaveExactElements("%Rock%", "%Metal%"))
+			Expect(sql).To(ContainSubstring("tag.tag_value LIKE ? OR tag.tag_value LIKE ?"))
+			Expect(args).To(HaveExactElements("genre", "%Rock%", "%Metal%"))
 		})
 
 		It("does not merge a single negated condition with a positive one of the same role in AND", func() {

@@ -803,7 +803,7 @@ func setViperDefaults() {
 	viper.SetDefault("autoimportplaylists", true)
 	viper.SetDefault("defaultplaylistpublicvisibility", false)
 	viper.SetDefault("playlistspath", "")
-	viper.SetDefault("smartPlaylistRefreshDelay", 5*time.Second)
+	viper.SetDefault("smartPlaylistRefreshDelay", time.Hour)
 	viper.SetDefault("enabledownloads", true)
 	viper.SetDefault("enableexternalservices", true)
 	viper.SetDefault("enablem3uexternalalbumart", false)

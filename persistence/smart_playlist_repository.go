@@ -76,11 +76,10 @@ func (r *playlistRepository) shouldRefreshSmartPlaylist(pls *model.Playlist, usr
 	if !pls.IsSmartPlaylist() {
 		return false
 	}
-	if pls.EvaluatedAt != nil && time.Since(*pls.EvaluatedAt) < pls.RefreshDelay() {
-		return false
-	}
-	if pls.OwnerID != usr.ID {
-		log.Trace(r.ctx, "Not refreshing smart playlist from other user", "playlist", pls.Name, "id", pls.ID)
+	if !model.NeedsSmartPlaylistRefresh(pls, *usr) {
+		if pls.OwnerID != usr.ID {
+			log.Trace(r.ctx, "Not refreshing smart playlist from other user", "playlist", pls.Name, "id", pls.ID)
+		}
 		return false
 	}
 	return true

@@ -59,7 +59,7 @@ func getPlaylist(pls playlists.Playlists) http.HandlerFunc {
 }
 
 func getPlaylistTrack(pls playlists.Playlists) http.HandlerFunc {
-	return playlistTracksHandler(pls, rest.Get, func(*http.Request) bool { return true })
+	return playlistTracksHandler(pls, rest.Get, func(*http.Request) bool { return false })
 }
 
 func createPlaylistFromM3U(pls playlists.Playlists) http.HandlerFunc {

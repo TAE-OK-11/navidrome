@@ -94,8 +94,9 @@ func AlbumsByYear(fromYear, toYear int) Options {
 
 func SongsByAlbum(albumId string) Options {
 	return addDefaultFilters(Options{
-		Filters: Eq{"album_id": albumId},
-		Sort:    "album",
+		Filters:            Eq{"album_id": albumId},
+		Sort:               "album",
+		ExcludeHeavyFields: true,
 	})
 }
 
@@ -103,8 +104,9 @@ func SongsByAlbum(albumId string) Options {
 // album order.
 func SongsByArtistID(artistId string) Options {
 	return addDefaultFilters(Options{
-		Sort:    "album",
-		Filters: persistence.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
+		Sort:               "album",
+		Filters:            persistence.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
+		ExcludeHeavyFields: true,
 	})
 }
 
@@ -121,6 +123,7 @@ func SongsByGenreAndYearRange(genre string, fromYear, toYear int) Options {
 		ff = append(ff, LtOrEq{"year": toYear})
 	}
 	options.Filters = ff
+	options.ExcludeHeavyFields = true
 	return addDefaultFilters(options)
 }
 
@@ -161,7 +164,11 @@ func AlbumsByGenre(genre string) Options {
 }
 
 func SongsByGenre(genre string) Options {
-	return addDefaultFilters(Options{Sort: "name", Filters: persistence.SongGenres.ByName(genre)})
+	return addDefaultFilters(Options{
+		Sort:               "name",
+		Filters:            persistence.SongGenres.ByName(genre),
+		ExcludeHeavyFields: true,
+	})
 }
 
 func ByRating() Options {

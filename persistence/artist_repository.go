@@ -34,6 +34,12 @@ type dbArtist struct {
 	LibraryStatsJSON string `structs:"-" json:"-"`
 }
 
+type dbArtistIndex struct {
+	*model.Artist     `structs:",flatten"`
+	AlbumArtistAlbums int64 `db:"albumartist_album_count"`
+	MainCreditAlbums  int64 `db:"maincredit_album_count"`
+}
+
 type dbSimilarArtist struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
@@ -119,9 +125,21 @@ func (a *dbArtist) PostMapArgs(m map[string]any) error {
 	return nil
 }
 
-type dbArtists []dbArtist
+func (a *dbArtistIndex) PostScan() error {
+	if a.Artist == nil {
+		a.Artist = &model.Artist{}
+	}
+	a.Artist.Stats = map[model.Role]model.ArtistStats{
+		model.RoleAlbumArtist: {AlbumCount: int(a.AlbumArtistAlbums)},
+		model.RoleMainCredit:  {AlbumCount: int(a.MainCreditAlbums)},
+	}
+	a.Artist.AlbumCount = int(a.AlbumArtistAlbums)
+	return nil
+}
 
-func (dba dbArtists) toModels() model.Artists {
+type dbArtistIndexes []dbArtistIndex
+
+func (dba dbArtistIndexes) toModels() model.Artists {
 	res := make(model.Artists, len(dba))
 	for i := range dba {
 		res[i] = *dba[i].Artist
@@ -199,6 +217,31 @@ func (r *artistRepository) selectArtist(options ...model.QueryOptions) SelectBui
 	query = r.applyLibraryFilterToArtistQuery(query)
 	query = query.GroupBy("artist.id")
 	return r.withAnnotation(query, "artist.id")
+}
+
+func (r *artistRepository) selectArtistForIndex(options ...model.QueryOptions) SelectBuilder {
+	query := r.newSelect(options...).Columns(
+		"artist.id",
+		"artist.name",
+		"artist.order_artist_name",
+		"artist.sort_artist_name",
+		"artist.mbz_artist_id",
+		"sum(cast(coalesce(json_extract(library_artist.stats, '$.albumartist.a'), 0) as integer)) as albumartist_album_count",
+		"sum(cast(coalesce(json_extract(library_artist.stats, '$.maincredit.a'), 0) as integer)) as maincredit_album_count",
+	)
+	query = r.applyLibraryFilterToArtistQuery(query)
+	query = query.GroupBy("artist.id")
+	return r.withAnnotation(query, "artist.id")
+}
+
+type dbArtists []dbArtist
+
+func (dba dbArtists) toModels() model.Artists {
+	res := make(model.Artists, len(dba))
+	for i := range dba {
+		res[i] = *dba[i].Artist
+	}
+	return res
 }
 
 func (r *artistRepository) CountAll(options ...model.QueryOptions) (int64, error) {
@@ -308,7 +351,7 @@ func (r *artistRepository) GetIndex(includeMissing bool, libraryIds []int, roles
 		options.Filters = And{options.Filters, libFilter}
 	}
 
-	artists, err := r.GetAll(options)
+	artists, err := r.getIndexArtists(options)
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +364,20 @@ func (r *artistRepository) GetIndex(includeMissing bool, libraryIds []int, roles
 		return cmp.Compare(a.ID, b.ID)
 	})
 	return result, nil
+}
+
+func (r *artistRepository) getIndexArtists(options model.QueryOptions) (model.Artists, error) {
+	sel := r.selectArtistForIndex(options)
+	var dba dbArtistIndexes
+	if err := r.queryAll(sel, &dba); err != nil {
+		return nil, err
+	}
+	for i := range dba {
+		if err := (&dba[i]).PostScan(); err != nil {
+			return nil, err
+		}
+	}
+	return dba.toModels(), nil
 }
 
 func (r *artistRepository) purgeEmpty() error {
@@ -397,12 +454,11 @@ set missing = (artist.id not in (select artist_id from artists_with_non_missing_
 func (r *artistRepository) RefreshPlayCounts() (int64, error) {
 	query := Expr(`
 with play_counts as (
-    select user_id, atom as artist_id, sum(play_count) as total_play_count, max(play_date) as last_play_date
+    select annotation.user_id, mfa.artist_id, sum(annotation.play_count) as total_play_count, max(annotation.play_date) as last_play_date
     from media_file
-    join annotation on item_id = media_file.id
-    left join json_tree(participants, '$.artist') as jt
-    where atom is not null and key = 'id'
-    group by user_id, atom
+    join annotation on annotation.item_id = media_file.id and annotation.item_type = 'media_file'
+    join media_file_artists mfa on mfa.media_file_id = media_file.id
+    group by annotation.user_id, mfa.artist_id
 )
 insert into annotation (user_id, item_id, item_type, play_count, play_date)
 select user_id, artist_id, 'artist', total_play_count, last_play_date

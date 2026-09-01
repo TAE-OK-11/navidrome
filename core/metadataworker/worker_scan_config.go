@@ -13,6 +13,9 @@ type TagMappingExport struct {
 type WorkerScanConfig struct {
 	TagMappings           map[string]TagMappingExport `json:"tag_mappings,omitempty"`
 	ArtistSplitExceptions []string                    `json:"artist_split_exceptions,omitempty"`
+	ArtistsSplit          []string                    `json:"artists_split,omitempty"`
+	RolesSplit            []string                    `json:"roles_split,omitempty"`
+	ArtistJoiner          string                      `json:"artist_joiner,omitempty"`
 	PIDConfig             map[string]any              `json:"pid_config,omitempty"`
 	LibraryID             int                         `json:"library_id,omitempty"`
 }

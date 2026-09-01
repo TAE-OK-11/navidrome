@@ -21,6 +21,9 @@ func workerScanConfig(libraryID int) metadataworker.WorkerScanConfig {
 	return metadataworker.WorkerScanConfig{
 		TagMappings:           tagMappings,
 		ArtistSplitExceptions: append([]string(nil), conf.Server.Scanner.ArtistSplitExceptions...),
+		ArtistsSplit:          append([]string(nil), model.TagArtistsConf().Split...),
+		RolesSplit:            append([]string(nil), model.TagRolesConf().Split...),
+		ArtistJoiner:          conf.Server.Scanner.ArtistJoiner,
 		PIDConfig: map[string]any{
 			"track":                conf.Server.PID.Track,
 			"album":                conf.Server.PID.Album,

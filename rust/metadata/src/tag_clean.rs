@@ -264,6 +264,29 @@ fn filter_duplicated_or_empty_values(values: &[String]) -> Vec<String> {
     result
 }
 
+/// Splits participant tag values using the global artists/roles separators and
+/// optional artist split exceptions (mirrors Go splitParticipantValues).
+pub fn split_participant_values(
+    values: &[String],
+    split: &[String],
+    exceptions: &[String],
+) -> Vec<String> {
+    if split.is_empty() {
+        return filter_duplicated_or_empty_values(values);
+    }
+    let split_rx = compile_split_regex(split);
+    let exceptions_rx = compile_exceptions_regex(exceptions);
+    let mut result = Vec::new();
+    for value in values {
+        result.extend(split_value(
+            value,
+            split_rx.as_ref(),
+            exceptions_rx.as_ref(),
+        ));
+    }
+    filter_duplicated_or_empty_values(&result)
+}
+
 fn sanitize_all(
     file_path: &str,
     tags: &mut HashMap<String, Vec<String>>,

@@ -13,6 +13,8 @@ import (
 	"github.com/navidrome/navidrome/model"
 )
 
+const albumRefreshBatchSize = 100
+
 // phaseRefreshAlbums is responsible for refreshing albums that have been
 // newly added or changed during the scan process. This phase ensures that
 // the album information in the database is up-to-date by performing the
@@ -46,6 +48,34 @@ func (p *phaseRefreshAlbums) producer() ppl.Producer[*model.Album] {
 
 func (p *phaseRefreshAlbums) produce(put func(album *model.Album)) error {
 	count := 0
+	batch := make([]*model.Album, 0, albumRefreshBatchSize)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		ids := make([]string, len(batch))
+		for i, album := range batch {
+			ids[i] = album.ID
+		}
+		mfs, err := p.ds.MediaFile(p.ctx).GetAll(model.QueryOptions{
+			Filters: squirrel.Eq{"album_id": ids},
+		})
+		if err != nil {
+			return fmt.Errorf("loading media files for album batch: %w", err)
+		}
+		byAlbum := make(map[string]model.MediaFiles, len(batch))
+		for _, mf := range mfs {
+			byAlbum[mf.AlbumID] = append(byAlbum[mf.AlbumID], mf)
+		}
+		for _, album := range batch {
+			if refreshed := p.filterUnmodifiedWithTracks(album, byAlbum[album.ID]); refreshed != nil {
+				put(refreshed)
+			}
+		}
+		batch = batch[:0]
+		return nil
+	}
+
 	for _, lib := range p.state.libraries {
 		cursor, err := p.ds.Album(p.ctx).GetTouchedAlbums(lib.ID)
 		if err != nil {
@@ -57,8 +87,16 @@ func (p *phaseRefreshAlbums) produce(put func(album *model.Album)) error {
 				return fmt.Errorf("loading touched albums: %w", err)
 			}
 			count++
-			put(&album)
+			batch = append(batch, &album)
+			if len(batch) >= albumRefreshBatchSize {
+				if err := flush(); err != nil {
+					return err
+				}
+			}
 		}
+	}
+	if err := flush(); err != nil {
+		return err
 	}
 	if count == 0 {
 		log.Debug(p.ctx, "Scanner: No albums needing refresh")
@@ -70,22 +108,16 @@ func (p *phaseRefreshAlbums) produce(put func(album *model.Album)) error {
 
 func (p *phaseRefreshAlbums) stages() []ppl.Stage[*model.Album] {
 	return []ppl.Stage[*model.Album]{
-		ppl.NewStage(p.filterUnmodified, ppl.Name("filter unmodified"), ppl.Concurrency(5)),
 		ppl.NewStage(p.refreshAlbum, ppl.Name("refresh albums")),
 	}
 }
 
-func (p *phaseRefreshAlbums) filterUnmodified(album *model.Album) (*model.Album, error) {
-	mfs, err := p.ds.MediaFile(p.ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"album_id": album.ID}})
-	if err != nil {
-		log.Error(p.ctx, "Error loading media files for album", "album_id", album.ID, err)
-		return nil, err
-	}
+func (p *phaseRefreshAlbums) filterUnmodifiedWithTracks(album *model.Album, mfs model.MediaFiles) *model.Album {
 	if len(mfs) == 0 {
 		log.Debug(p.ctx, "Scanner: album has no media files. Skipping", "album_id", album.ID,
 			"name", album.Name, "songCount", album.SongCount, "updatedAt", album.UpdatedAt)
 		p.skipped.Add(1)
-		return nil, nil
+		return nil
 	}
 
 	newAlbum := mfs.ToAlbum()
@@ -93,9 +125,9 @@ func (p *phaseRefreshAlbums) filterUnmodified(album *model.Album) (*model.Album,
 		log.Trace("Scanner: album is up to date. Skipping", "album_id", album.ID,
 			"name", album.Name, "songCount", album.SongCount, "updatedAt", album.UpdatedAt)
 		p.skipped.Add(1)
-		return nil, nil
+		return nil
 	}
-	return &newAlbum, nil
+	return &newAlbum
 }
 
 func (p *phaseRefreshAlbums) refreshAlbum(album *model.Album) (*model.Album, error) {

@@ -101,6 +101,19 @@ var _ = Describe("FS", func() {
 		Expect(list).To(HaveLen(1))
 		Expect(list[0].Name()).To(Equal("3333.txt"))
 	})
+
+	It("reads overlay-only directories when base is missing", func() {
+		_f(overlayName, "only-in-overlay.txt")
+
+		dir, err := mergedDir.Open(".")
+		Expect(err).To(BeNil())
+
+		list, err := dir.(fs.ReadDirFile).ReadDir(-1)
+		Expect(err).To(BeNil())
+
+		Expect(list).To(HaveLen(1))
+		Expect(list[0].Name()).To(Equal("only-in-overlay.txt"))
+	})
 })
 
 func _f(dir, name string, content ...string) string {

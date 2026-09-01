@@ -50,7 +50,11 @@ func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 			return "", 0, err
 		}
 		defer resp.Body.Close()
-		return c.serializeResponse(resp), c.ttl, nil
+		serialized, err := c.serializeResponse(resp)
+		if err != nil {
+			return "", 0, err
+		}
+		return serialized, c.ttl, nil
 	})
 	log.Trace(req.Context(), "CachedHTTPClient.Do", "key", key, "cached", cached, "elapsed", time.Since(start), err)
 	if err != nil {
@@ -104,10 +108,12 @@ func (c *HTTPClient) cacheKeyAndRequest(req *http.Request) (string, *http.Reques
 	return key.String(), cachedReq, nil
 }
 
-func (c *HTTPClient) serializeResponse(resp *http.Response) string {
+func (c *HTTPClient) serializeResponse(resp *http.Response) (string, error) {
 	var b = &bytes.Buffer{}
-	_ = resp.Write(b)
-	return b.String()
+	if err := resp.Write(b); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 func (c *HTTPClient) deserializeResponse(req *http.Request, respStr string) (*http.Response, error) {

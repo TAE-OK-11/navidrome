@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +22,7 @@ func (s *localStorage) Start(ctx context.Context) (<-chan string, error) {
 	output := make(chan string, 500)
 
 	started := make(chan struct{})
+	failed := make(chan error, 1)
 	go func() {
 		defer close(input)
 		defer close(output)
@@ -29,7 +31,9 @@ func (s *localStorage) Start(ctx context.Context) (<-chan string, error) {
 		log.Debug(ctx, "Starting watcher", "lib", libPath)
 		err := notify.Watch(libPath, input, WatchEvents)
 		if err != nil {
+			s.watching.Store(false)
 			log.Error("Error starting watcher", "lib", libPath, err)
+			failed <- fmt.Errorf("starting watcher on %s: %w", libPath, err)
 			return
 		}
 		defer notify.Stop(input)
@@ -51,7 +55,11 @@ func (s *localStorage) Start(ctx context.Context) (<-chan string, error) {
 	}()
 	select {
 	case <-started:
+	case err := <-failed:
+		return nil, err
 	case <-ctx.Done():
+		s.watching.Store(false)
+		return nil, ctx.Err()
 	}
 	return output, nil
 }

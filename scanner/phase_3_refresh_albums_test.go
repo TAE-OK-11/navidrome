@@ -47,6 +47,9 @@ var _ = Describe("phaseRefreshAlbums", func() {
 			albumRepo.SetData(model.Albums{
 				{LibraryID: 1, ID: "album1", Name: "Album 1"},
 			})
+			mfRepo.SetData(model.MediaFiles{
+				{AlbumID: "album1", Title: "Song 1", Album: "Changed Name"},
+			})
 
 			var produced []*model.Album
 			err := phase.produce(func(album *model.Album) {
@@ -69,35 +72,31 @@ var _ = Describe("phaseRefreshAlbums", func() {
 		})
 	})
 
-	Describe("filterUnmodified", func() {
+	Describe("filterUnmodifiedWithTracks", func() {
 		It("filters out unmodified albums", func() {
 			album := &model.Album{ID: "album1", Name: "Album 1", SongCount: 1,
 				FolderIDs: []string{"folder1"}, Discs: model.Discs{1: ""}}
-			mfRepo.SetData(model.MediaFiles{
+			mfs := model.MediaFiles{
 				{AlbumID: "album1", Title: "Song 1", Album: "Album 1", FolderID: "folder1"},
-			})
+			}
 
-			result, err := phase.filterUnmodified(album)
-			Expect(err).ToNot(HaveOccurred())
+			result := phase.filterUnmodifiedWithTracks(album, mfs)
 			Expect(result).To(BeNil())
 		})
 		It("keep modified albums", func() {
 			album := &model.Album{ID: "album1", Name: "Album 1"}
-			mfRepo.SetData(model.MediaFiles{
+			mfs := model.MediaFiles{
 				{AlbumID: "album1", Title: "Song 1", Album: "Album 2"},
-			})
+			}
 
-			result, err := phase.filterUnmodified(album)
-			Expect(err).ToNot(HaveOccurred())
+			result := phase.filterUnmodifiedWithTracks(album, mfs)
 			Expect(result).ToNot(BeNil())
 			Expect(result.ID).To(Equal("album1"))
 		})
 		It("skips albums with no media files", func() {
 			album := &model.Album{ID: "album1", Name: "Album 1"}
-			mfRepo.SetData(model.MediaFiles{})
 
-			result, err := phase.filterUnmodified(album)
-			Expect(err).ToNot(HaveOccurred())
+			result := phase.filterUnmodifiedWithTracks(album, nil)
 			Expect(result).To(BeNil())
 		})
 	})

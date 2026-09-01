@@ -244,7 +244,11 @@ func (w *watcher) processLibraryEvents(ctx context.Context, lib *model.Library, 
 		case <-ctx.Done():
 			log.Debug(ctx, "Watcher stopped due to context cancellation", "libraryID", lib.ID, "name", lib.Name)
 			return nil
-		case path := <-events:
+		case path, ok := <-events:
+			if !ok {
+				log.Warn(ctx, "Watcher event channel closed", "libraryID", lib.ID, "name", lib.Name)
+				return fmt.Errorf("watcher event channel closed")
+			}
 			path, err := filepath.Rel(absLibPath, path)
 			if err != nil {
 				log.Error(ctx, "Error getting relative path", "libraryID", lib.ID, "absolutePath", absLibPath, "path", path, err)

@@ -159,7 +159,7 @@ var _ = Describe("buildPlaylist", func() {
 
 	Describe("smart playlist", func() {
 		evaluatedAt := time.Date(2023, 2, 20, 15, 45, 0, 0, time.UTC)
-		validUntil := evaluatedAt.Add(5 * time.Second)
+		validUntil := evaluatedAt.Add(time.Hour)
 
 		BeforeEach(func() {
 			createdAt := time.Date(2023, 1, 15, 10, 30, 0, 0, time.UTC)

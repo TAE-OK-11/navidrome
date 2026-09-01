@@ -47,6 +47,17 @@ type musicFoldersResponseCacheEntry struct {
 	value   *responses.MusicFolders
 }
 
+type artistIndexCacheEntry struct {
+	expires  time.Time
+	indexes  model.ArtistIndexes
+	modified int64
+}
+
+type artistIndexCache struct {
+	mu      sync.RWMutex
+	entries map[string]artistIndexCacheEntry
+}
+
 func (c *genreResponseCache) get(key string, now time.Time) (*responses.Genres, bool) {
 	c.mu.RLock()
 	entry, ok := c.entries[key]
@@ -119,6 +130,64 @@ func (c *musicFoldersResponseCache) put(key string, now time.Time, value *respon
 	c.entries[key] = musicFoldersResponseCacheEntry{value: &copied, expires: now.Add(genreResponseCacheTTL)}
 }
 
+func (c *artistIndexCache) get(key string, now time.Time) (model.ArtistIndexes, int64, bool) {
+	c.mu.RLock()
+	entry, ok := c.entries[key]
+	c.mu.RUnlock()
+	if !ok || !now.Before(entry.expires) {
+		if ok {
+			c.mu.Lock()
+			delete(c.entries, key)
+			c.mu.Unlock()
+		}
+		return nil, 0, false
+	}
+	return entry.indexes, entry.modified, true
+}
+
+func (c *artistIndexCache) put(key string, now time.Time, indexes model.ArtistIndexes, modified int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]artistIndexCacheEntry)
+	}
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
+		for existingKey, entry := range c.entries {
+			if !now.Before(entry.expires) {
+				delete(c.entries, existingKey)
+			}
+		}
+		if len(c.entries) >= genreResponseCacheLimit {
+			for existingKey := range c.entries {
+				delete(c.entries, existingKey)
+				break
+			}
+		}
+	}
+	c.entries[key] = artistIndexCacheEntry{indexes: indexes, modified: modified, expires: now.Add(genreResponseCacheTTL)}
+}
+
+func artistIndexCacheKey(libIds []int, lastScan string) string {
+	ids := append([]int(nil), libIds...)
+	slices.Sort(ids)
+	var key strings.Builder
+	key.Grow(len(ids)*6 + len(lastScan) + len(conf.Server.IndexGroups) + 8)
+	for _, id := range ids {
+		key.WriteString(strconv.Itoa(id))
+		key.WriteByte(',')
+	}
+	key.WriteString(lastScan)
+	key.WriteByte('|')
+	key.WriteString(conf.Server.IndexGroups)
+	if conf.Server.Subsonic.ArtistParticipations {
+		key.WriteString("|part")
+	}
+	if conf.Server.PreferSortTags {
+		key.WriteString("|sort")
+	}
+	return key.String()
+}
+
 func genreResponseCacheKey(user model.User) string {
 	if user.IsAdmin {
 		return "admin"
@@ -175,6 +244,12 @@ func (api *Router) getArtist(r *http.Request, libIds []int, ifModifiedSince time
 
 	var indexes model.ArtistIndexes
 	if lastScan.After(ifModifiedSince) {
+		cacheKey := artistIndexCacheKey(libIds, lastScanStr)
+		now := time.Now()
+		if cached, modified, ok := api.artistIndexCache.get(cacheKey, now); ok {
+			return cached, modified, nil
+		}
+
 		indexes, err = api.ds.Artist(ctx).GetIndex(false, libIds, model.RoleAlbumArtist)
 		if err != nil {
 			log.Error(ctx, "Error retrieving Indexes", err)
@@ -184,6 +259,7 @@ func (api *Router) getArtist(r *http.Request, libIds []int, ifModifiedSince time
 			log.Debug(ctx, "No artists found in library", "libId", libIds)
 			return nil, 0, newError(responses.ErrorDataNotFound, "Library not found or empty")
 		}
+		api.artistIndexCache.put(cacheKey, now, indexes, lastScan.UnixMilli())
 	}
 
 	return indexes, lastScan.UnixMilli(), err
@@ -244,8 +320,10 @@ func (api *Router) GetIndexes(r *http.Request) (*responses.Subsonic, error) {
 
 func (api *Router) GetArtists(r *http.Request) (*responses.Subsonic, error) {
 	musicFolderIds, _ := selectedMusicFolderIds(r, false)
+	p := req.Params(r)
+	ifModifiedSince := p.TimeOr("ifModifiedSince", time.Time{})
 
-	res, err := api.getArtistIndexID3(r, musicFolderIds, time.Time{})
+	res, err := api.getArtistIndexID3(r, musicFolderIds, ifModifiedSince)
 	if err != nil {
 		return nil, err
 	}

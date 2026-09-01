@@ -156,6 +156,7 @@ func (api *Router) getStarredItems(r *http.Request) (model.Artists, model.Albums
 		// Query starred media files
 		func() error {
 			mediaFileOpts := filter.ApplyLibraryFilter(filter.ByStarred(), musicFolderIds)
+			mediaFileOpts.ExcludeHeavyFields = true
 			var err error
 			mediaFiles, err = api.ds.MediaFile(ctx).GetAll(mediaFileOpts)
 			if err != nil {

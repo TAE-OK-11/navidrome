@@ -14,6 +14,8 @@ type QueryOptions struct {
 	Offset  int
 	Filters squirrel.Sqlizer
 	Seed    string // for random sorting
+	// ExcludeHeavyFields omits large media_file columns (lyrics, probe_data) on browse paths.
+	ExcludeHeavyFields bool
 }
 
 type ResourceRepository interface {

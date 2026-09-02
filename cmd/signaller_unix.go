@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/model"
 )
 
 const triggerScanSignal = syscall.SIGUSR1
 
-func startSignaller(ctx context.Context) func() error {
+func startSignaller(ctx context.Context, scanner model.Scanner) func() error {
 	log.Info(ctx, "Starting signaler")
-	scanner := CreateScanner(ctx)
 
 	return func() error {
 		var sigChan = make(chan os.Signal, 1)

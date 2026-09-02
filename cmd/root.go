@@ -3,23 +3,23 @@ package cmd
 import (
 	"context"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/metrics"
+	"github.com/navidrome/navidrome/core/playback"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/plugins"
 	"github.com/navidrome/navidrome/resources"
 	"github.com/navidrome/navidrome/scanner"
 	"github.com/navidrome/navidrome/scheduler"
-	"github.com/navidrome/navidrome/server/backgrounds"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -82,33 +82,33 @@ func postRun() {
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
 	preflightRustWorkers(ctx)
-	subsonicRouter := CreateSubsonicAPIRouter(ctx)
 	g, ctx := errgroup.WithContext(ctx)
-	g.Go(startServer(ctx, subsonicRouter))
-	g.Go(startSignaller(ctx))
+	app := CreateApp(ctx)
+	g.Go(startServer(ctx, app))
+	g.Go(startSignaller(ctx, app.Scanner))
 	if schedulerRequired() {
 		g.Go(startScheduler(ctx))
 	}
 	if conf.Server.Jukebox.Enabled {
-		g.Go(startPlaybackServer(ctx))
+		g.Go(startPlaybackServer(ctx, app.Playback))
 	}
 	if conf.Server.Backup.Schedule != "" {
 		g.Go(schedulePeriodicBackup(ctx))
 	}
 	if conf.Server.EnableInsightsCollector {
-		g.Go(startInsightsCollector(ctx))
+		g.Go(startInsightsCollector(ctx, app.Insights))
 	}
 	if conf.Server.EnableScheduledDBAnalyze {
 		g.Go(scheduleDBAnalyzer(ctx))
 	}
 	if conf.Server.Plugins.Enabled {
-		g.Go(startPluginManager(ctx, subsonicRouter))
+		g.Go(startPluginManager(ctx, app.Plugins))
 	}
-	g.Go(runInitialScan(ctx))
+	g.Go(runInitialScan(ctx, app.DataStore, app.Scanner))
 	if conf.Server.Scanner.Enabled {
-		g.Go(startScanWatcher(ctx))
+		g.Go(startScanWatcher(ctx, app.Watcher))
 		if conf.Server.Scanner.Schedule != "" {
-			g.Go(schedulePeriodicScan(ctx))
+			g.Go(schedulePeriodicScan(ctx, app.Scanner))
 		}
 	} else {
 		log.Warn(ctx, "Automatic Scanning is DISABLED")
@@ -137,36 +137,9 @@ func mainContext(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 // startServer starts the Navidrome web server, adding all the necessary routers.
-func startServer(ctx context.Context, subsonicRouter http.Handler) func() error {
+func startServer(ctx context.Context, app *App) func() error {
 	return func() error {
-		a := CreateServer()
-		a.MountRouter("Native API", consts.URLPathNativeAPI, CreateNativeAPIRouter(ctx))
-		a.MountRouter("Subsonic API", consts.URLPathSubsonicAPI, subsonicRouter)
-		a.MountRouter("Public Endpoints", consts.URLPathPublic, CreatePublicRouter())
-		if conf.Server.LastFM.Enabled {
-			a.MountRouter("LastFM Auth", consts.URLPathNativeAPI+"/lastfm", CreateLastFMRouter())
-		}
-		if conf.Server.ListenBrainz.Enabled {
-			a.MountRouter("ListenBrainz Auth", consts.URLPathNativeAPI+"/listenbrainz", CreateListenBrainzRouter())
-		}
-		if conf.Server.LibreFM.Enabled {
-			a.MountRouter("Libre.fm Auth", consts.URLPathNativeAPI+"/librefm", CreateLibreFMRouter())
-		}
-		if conf.Server.Prometheus.Enabled {
-			p := CreatePrometheus()
-			// blocking call because takes <100ms but useful if fails
-			p.WriteInitialMetrics(ctx)
-			a.MountRouter("Prometheus metrics", conf.Server.Prometheus.MetricsPath, p.GetHandler())
-		}
-		if conf.Server.DevEnableProfiler && profilerAllowedAddress(conf.Server.Address) {
-			a.MountRouter("Profiling", "/debug", middleware.Profiler())
-		} else if conf.Server.DevEnableProfiler {
-			log.Warn("Profiler disabled because the server address is not loopback-only", "address", conf.Server.Address)
-		}
-		if strings.HasPrefix(conf.Server.UILoginBackgroundURL, "/") {
-			a.MountRouter("Background images", conf.Server.UILoginBackgroundURL, backgrounds.NewHandler())
-		}
-		return a.Run(ctx, conf.Server.Address, conf.Server.Port, conf.Server.TLSCert, conf.Server.TLSKey)
+		return app.runHTTP(ctx)
 	}
 }
 
@@ -187,7 +160,7 @@ func profilerAllowedAddress(address string) bool {
 }
 
 // schedulePeriodicScan schedules a periodic scan of the music library, if configured.
-func schedulePeriodicScan(ctx context.Context) func() error {
+func schedulePeriodicScan(ctx context.Context, s model.Scanner) func() error {
 	return func() error {
 		schedule := conf.Server.Scanner.Schedule
 		if schedule == "" {
@@ -195,7 +168,6 @@ func schedulePeriodicScan(ctx context.Context) func() error {
 			return nil
 		}
 
-		s := CreateScanner(ctx)
 		schedulerInstance := scheduler.GetInstance()
 
 		log.Info("Scheduling periodic scan", "schedule", schedule)
@@ -225,9 +197,8 @@ func pidHashChanged(ds model.DataStore) (bool, error) {
 }
 
 // runInitialScan runs an initial scan of the music library if needed.
-func runInitialScan(ctx context.Context) func() error {
+func runInitialScan(ctx context.Context, ds model.DataStore, s model.Scanner) func() error {
 	return func() error {
-		ds := CreateDataStore()
 		fullScanRequired, err := ds.Property(ctx).DefaultGet(consts.FullScanAfterMigrationFlagKey, "0")
 		if err != nil {
 			return err
@@ -243,7 +214,6 @@ func runInitialScan(ctx context.Context) func() error {
 		scanNeeded := conf.Server.Scanner.Enabled && (conf.Server.Scanner.ScanOnStartup || inProgress || fullScanRequired == "1")
 		time.Sleep(2 * time.Second) // Wait 2 seconds before the initial scan
 		if scanNeeded {
-			s := CreateScanner(ctx)
 			switch {
 			case fullScanRequired == "1":
 				log.Warn(ctx, "Full scan required after migration")
@@ -270,13 +240,12 @@ func runInitialScan(ctx context.Context) func() error {
 	}
 }
 
-func startScanWatcher(ctx context.Context) func() error {
+func startScanWatcher(ctx context.Context, w scanner.Watcher) func() error {
 	return func() error {
 		if conf.Server.Scanner.WatcherWait == 0 {
 			log.Debug("Folder watcher is DISABLED")
 			return nil
 		}
-		w := CreateScanWatcher(ctx)
 		err := w.Run(ctx)
 		if err != nil {
 			log.Error("Error starting watcher", err)
@@ -354,7 +323,7 @@ func startScheduler(ctx context.Context) func() error {
 }
 
 // startInsightsCollector starts the Navidrome Insight Collector, if configured.
-func startInsightsCollector(ctx context.Context) func() error {
+func startInsightsCollector(ctx context.Context, ic metrics.Insights) func() error {
 	return func() error {
 		if !conf.Server.EnableInsightsCollector {
 			log.Info(ctx, "Insight Collector is DISABLED")
@@ -366,7 +335,6 @@ func startInsightsCollector(ctx context.Context) func() error {
 		case <-ctx.Done():
 			return nil
 		}
-		ic := CreateInsights()
 		ic.Run(ctx)
 		return nil
 	}
@@ -374,27 +342,24 @@ func startInsightsCollector(ctx context.Context) func() error {
 
 // startPlaybackServer starts the Navidrome playback server, if configured.
 // It is responsible for the Jukebox functionality
-func startPlaybackServer(ctx context.Context) func() error {
+func startPlaybackServer(ctx context.Context, playbackInstance playback.PlaybackServer) func() error {
 	return func() error {
 		if !conf.Server.Jukebox.Enabled {
 			log.Debug("Jukebox is DISABLED")
 			return nil
 		}
 		log.Info(ctx, "Starting Jukebox service")
-		playbackInstance := GetPlaybackServer()
 		return playbackInstance.Run(ctx)
 	}
 }
 
 // startPluginManager starts the plugin manager, if configured.
-func startPluginManager(ctx context.Context, subsonicRouter http.Handler) func() error {
+func startPluginManager(ctx context.Context, manager *plugins.Manager) func() error {
 	return func() error {
 		if !conf.Server.Plugins.Enabled {
 			log.Debug("Plugin system is DISABLED")
 			return nil
 		}
-		manager := getPluginManager()
-		manager.SetSubsonicRouter(subsonicRouter)
 		log.Info(ctx, "Starting plugin manager")
 		return manager.Start(ctx)
 	}

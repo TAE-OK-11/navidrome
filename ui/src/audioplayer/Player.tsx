@@ -398,7 +398,7 @@ const Player = () => {
       }
       setHeartbeatTrackId(null)
     },
-    [dispatch, currentTrackId, reportStopped],
+    [dispatch, currentTrackId],
   )
 
   const onAudioEnded = useCallback(
@@ -456,7 +456,7 @@ const Player = () => {
       dispatch(clearQueue())
       reject()
     })
-  }, [dispatch, currentTrackId])
+  }, [dispatch, currentTrackId, reportStopped])
 
   if (!visible) {
     document.title = 'Navidrome'

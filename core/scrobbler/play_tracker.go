@@ -342,6 +342,69 @@ func (p *playTracker) tryRecordScrobble(ctx context.Context, clientId string, mf
 	return true
 }
 
+func (p *playTracker) reportPlaybackStopped(
+	ctx context.Context,
+	params ReportPlaybackParams,
+	player model.Player,
+	user model.User,
+	clientId, client string,
+	now time.Time,
+) error {
+	p.sessionsMu.Lock()
+	info, getErr := p.playMap.Get(clientId)
+	scrobbleTime := now
+	if getErr == nil && info.MediaFile.ID == params.MediaId {
+		scrobbleTime = info.Start.Add(time.Duration(params.PositionMs) * time.Millisecond)
+	}
+	differentTrack := getErr == nil && info.MediaFile.ID != params.MediaId
+	if !differentTrack {
+		p.playMap.Remove(clientId)
+	}
+	p.sessionsMu.Unlock()
+
+	var loadedMF *model.MediaFile
+	if !params.IgnoreScrobble && player.ScrobbleEnabled {
+		mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
+		if err != nil {
+			return err
+		}
+		loadedMF = mf
+		if scrobbleEligible(mf.Duration, params.PositionMs) {
+			p.tryRecordScrobble(ctx, clientId, mf, scrobbleTime)
+		}
+	}
+	if differentTrack {
+		log.Trace(ctx, "Ignoring out-of-order stopped report for different track", "clientId", clientId, "stoppedMediaId", params.MediaId, "currentMediaId", info.MediaFile.ID)
+		return nil
+	}
+	stoppedInfo := PlaybackSession{
+		UserId:       user.ID,
+		Username:     user.UserName,
+		PlayerId:     clientId,
+		PlayerName:   client,
+		State:        params.State,
+		PositionMs:   params.PositionMs,
+		PlaybackRate: params.PlaybackRate,
+		LastReport:   now,
+	}
+	if getErr == nil {
+		stoppedInfo.MediaFile = info.MediaFile
+		stoppedInfo.Start = info.Start
+	} else {
+		mf := loadedMF
+		if mf == nil {
+			var mfErr error
+			mf, mfErr = p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
+			if mfErr != nil {
+				return mfErr
+			}
+		}
+		stoppedInfo.MediaFile = *mf
+	}
+	p.enqueuePlaybackReport(ctx, stoppedInfo)
+	return nil
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -427,58 +490,9 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		p.enqueuePlaybackReport(ctx, info)
 
 	case StateStopped:
-		p.sessionsMu.Lock()
-		info, getErr := p.playMap.Get(clientId)
-		scrobbleTime := now
-		if getErr == nil && info.MediaFile.ID == params.MediaId {
-			scrobbleTime = info.Start.Add(time.Duration(params.PositionMs) * time.Millisecond)
+		if err := p.reportPlaybackStopped(ctx, params, player, user, clientId, client, now); err != nil {
+			return err
 		}
-		differentTrack := getErr == nil && info.MediaFile.ID != params.MediaId
-		if !differentTrack {
-			p.playMap.Remove(clientId)
-		}
-		p.sessionsMu.Unlock()
-
-		var loadedMF *model.MediaFile
-		if !params.IgnoreScrobble && player.ScrobbleEnabled {
-			mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
-			if err != nil {
-				return err
-			}
-			loadedMF = mf
-			if scrobbleEligible(mf.Duration, params.PositionMs) {
-				p.tryRecordScrobble(ctx, clientId, mf, scrobbleTime)
-			}
-		}
-		if differentTrack {
-			log.Trace(ctx, "Ignoring out-of-order stopped report for different track", "clientId", clientId, "stoppedMediaId", params.MediaId, "currentMediaId", info.MediaFile.ID)
-			return nil
-		}
-		stoppedInfo := PlaybackSession{
-			UserId:       user.ID,
-			Username:     user.UserName,
-			PlayerId:     clientId,
-			PlayerName:   client,
-			State:        params.State,
-			PositionMs:   params.PositionMs,
-			PlaybackRate: params.PlaybackRate,
-			LastReport:   now,
-		}
-		if getErr == nil {
-			stoppedInfo.MediaFile = info.MediaFile
-			stoppedInfo.Start = info.Start
-		} else {
-			mf := loadedMF
-			if mf == nil {
-				var mfErr error
-				mf, mfErr = p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
-				if mfErr != nil {
-					return mfErr
-				}
-			}
-			stoppedInfo.MediaFile = *mf
-		}
-		p.enqueuePlaybackReport(ctx, stoppedInfo)
 	}
 
 	if conf.Server.EnableNowPlaying {

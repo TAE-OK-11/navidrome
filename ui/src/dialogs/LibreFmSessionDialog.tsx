@@ -68,10 +68,10 @@ export const LibreFmSessionDialog = ({ setLinked }) => {
     inputRef.current?.focus()
   }
 
-  const closeDialog = () => {
+  const closeDialog = useCallback(() => {
     openedTab.current?.close()
     dispatch(closeLibreFmSessionDialog())
-  }
+  }, [dispatch])
 
   const handleSave = useCallback(
     (event) => {
@@ -101,7 +101,7 @@ export const LibreFmSessionDialog = ({ setLinked }) => {
           event.stopPropagation()
         })
     },
-    [dispatch, notify, sessionKey, setLinked],
+    [closeDialog, notify, sessionKey, setLinked],
   )
 
   const startBrowserAuth = () => {

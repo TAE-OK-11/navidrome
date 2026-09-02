@@ -66,12 +66,6 @@ func (c *entityResponseCache) put(key string, now time.Time, value *responses.Su
 	c.entries[key] = entityResponseCacheEntry{value: value, expires: now.Add(entityResponseCacheTTL)}
 }
 
-func (c *entityResponseCache) delete(key string) {
-	c.mu.Lock()
-	delete(c.entries, key)
-	c.mu.Unlock()
-}
-
 func (c *entityResponseCache) deleteBySuffix(suffix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

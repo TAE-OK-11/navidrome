@@ -2,6 +2,7 @@ package apikeys
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestDeleteReturnsNotFoundForMissingKey(t *testing.T) {
 	service := New(ds)
 
 	err := service.Delete(context.Background(), "user-1", "missing")
-	if err == nil || err != model.ErrNotFound {
+	if err == nil || !errors.Is(err, model.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

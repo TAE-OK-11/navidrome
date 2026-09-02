@@ -149,6 +149,10 @@ export type ListenBrainzTokenDialogState = {
   open: boolean
 }
 
+export type LibreFmSessionDialogState = {
+  open: boolean
+}
+
 export type SaveQueueDialogState = {
   open: boolean
 }
@@ -162,6 +166,7 @@ export type NavidromeRootState = {
   downloadMenuDialog: DownloadMenuDialogState
   expandInfoDialog: ExpandInfoDialogState
   listenBrainzTokenDialog: ListenBrainzTokenDialogState
+  libreFmSessionDialog: LibreFmSessionDialogState
   saveQueueDialog: SaveQueueDialogState
   shareDialog: ShareDialogState
   activity: ActivityState

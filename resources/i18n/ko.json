@@ -149,6 +149,7 @@
         "currentPassword": "현재 비밀번호",
         "newPassword": "새 비밀번호",
         "token": "토큰",
+        "sessionKey": "세션 키",
         "libraries": "라이브러리"
       },
       "helperTexts": {
@@ -165,7 +166,10 @@
       },
       "message": {
         "listenBrainzToken": "ListenBrainz 사용자 토큰을 입력하세요.",
+        "libreFmSessionKey": "Libre.fm 세션 키를 입력하거나 브라우저에서 인증하세요.",
         "clickHereForToken": "여기를 클릭하여 토큰을 얻으세요",
+        "clickHereForSessionKey": "여기를 클릭하여 세션 키를 얻으세요",
+        "libreFmBrowserAuth": "브라우저에서 인증",
         "selectAllLibraries": "모든 라이브러리 선택",
         "adminAutoLibraries": "관리자 사용자는 자동으로 모든 라이브러리에 접속할 수 있음"
       }
@@ -495,6 +499,10 @@
     "listenBrainzLinkFailure": "ListenBrainz를 연결할 수 없음: %{error}",
     "listenBrainzUnlinkSuccess": "ListenBrainz가 연결 해제되었고 스크로블링이 비활성화되었음",
     "listenBrainzUnlinkFailure": "ListenBrainz를 연결 해제할 수 없음",
+    "libreFmLinkSuccess": "Libre.fm이 성공적으로 연결되었고, 다음 사용자로 스크로블링이 활성화되었음: %{user}",
+    "libreFmLinkFailure": "Libre.fm을 연결할 수 없음: %{error}",
+    "libreFmUnlinkSuccess": "Libre.fm 연결 해제 및 스크로블링 비활성화",
+    "libreFmUnlinkFailure": "Libre.fm을 연결 해제할 수 없음",
     "openIn": {
       "lastfm": "Last.fm에서 열기",
       "musicbrainz": "MusicBrainz에서 열기"
@@ -530,6 +538,7 @@
         "lastfmNotConfigured": "Last.fm API 키가 구성되지 않았음",
         "lastfmScrobbling": "Last.fm으로 스크로블",
         "listenBrainzScrobbling": "ListenBrainz로 스크로블",
+        "libreFmScrobbling": "Libre.fm으로 스크로블",
         "replaygain": "리플레이게인 모드",
         "preAmp": "리플레이게인 프리앰프 (dB)",
         "gain": {

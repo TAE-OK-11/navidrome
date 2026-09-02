@@ -8,6 +8,8 @@ export const EXTENDED_INFO_OPEN = 'EXTENDED_INFO_OPEN'
 export const EXTENDED_INFO_CLOSE = 'EXTENDED_INFO_CLOSE'
 export const LISTENBRAINZ_TOKEN_OPEN = 'LISTENBRAINZ_TOKEN_OPEN'
 export const LISTENBRAINZ_TOKEN_CLOSE = 'LISTENBRAINZ_TOKEN_CLOSE'
+export const LIBREFM_SESSION_OPEN = 'LIBREFM_SESSION_OPEN'
+export const LIBREFM_SESSION_CLOSE = 'LIBREFM_SESSION_CLOSE'
 export const SAVE_QUEUE_OPEN = 'SAVE_QUEUE_OPEN'
 export const SAVE_QUEUE_CLOSE = 'SAVE_QUEUE_CLOSE'
 export const DOWNLOAD_MENU_ALBUM = 'album'
@@ -77,6 +79,14 @@ export const openListenBrainzTokenDialog = () => ({
 
 export const closeListenBrainzTokenDialog = () => ({
   type: LISTENBRAINZ_TOKEN_CLOSE,
+})
+
+export const openLibreFmSessionDialog = () => ({
+  type: LIBREFM_SESSION_OPEN,
+})
+
+export const closeLibreFmSessionDialog = () => ({
+  type: LIBREFM_SESSION_CLOSE,
 })
 
 export const openSaveQueueDialog = () => ({

@@ -914,6 +914,8 @@ func setViperDefaults() {
 	viper.SetDefault("listenbrainz.artistalgorithm", consts.DefaultListenBrainzArtistAlgorithm)
 	viper.SetDefault("listenbrainz.trackalgorithm", consts.DefaultListenBrainzTrackAlgorithm)
 	viper.SetDefault("librefm.enabled", true)
+	viper.SetDefault("librefm.apikey", consts.DefaultLibreFMApiKey)
+	viper.SetDefault("librefm.secret", consts.DefaultLibreFMSecret)
 	viper.SetDefault("librefm.baseurl", consts.DefaultLibreFMBaseURL)
 	viper.SetDefault("librefm.authurl", consts.DefaultLibreFMAuthURL)
 	viper.SetDefault("librefm.scrobblefirstartistonly", false)

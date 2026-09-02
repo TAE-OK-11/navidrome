@@ -13,6 +13,8 @@ import {
   EXTENDED_INFO_CLOSE,
   LISTENBRAINZ_TOKEN_OPEN,
   LISTENBRAINZ_TOKEN_CLOSE,
+  LIBREFM_SESSION_OPEN,
+  LIBREFM_SESSION_CLOSE,
   SAVE_QUEUE_OPEN,
   SAVE_QUEUE_CLOSE,
   SHARE_MENU_OPEN,
@@ -23,6 +25,7 @@ import type {
   DownloadMenuDialogState,
   ExpandInfoDialogState,
   ListenBrainzTokenDialogState,
+  LibreFmSessionDialogState,
   SaveQueueDialogState,
   ShareDialogState,
   UnknownAction,
@@ -175,6 +178,29 @@ export const listenBrainzTokenDialogReducer = (
         open: true,
       }
     case LISTENBRAINZ_TOKEN_CLOSE:
+      return {
+        ...previousState,
+        open: false,
+      }
+    default:
+      return previousState
+  }
+}
+
+export const libreFmSessionDialogReducer = (
+  previousState: LibreFmSessionDialogState = {
+    open: false,
+  },
+  payload: UnknownAction,
+): LibreFmSessionDialogState => {
+  const { type } = payload
+  switch (type) {
+    case LIBREFM_SESSION_OPEN:
+      return {
+        ...previousState,
+        open: true,
+      }
+    case LIBREFM_SESSION_CLOSE:
       return {
         ...previousState,
         open: false,

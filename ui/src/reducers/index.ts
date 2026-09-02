@@ -17,6 +17,7 @@ export type {
   ExpandInfoDialogState,
   LibraryState,
   ListenBrainzTokenDialogState,
+  LibreFmSessionDialogState,
   NavidromeRootState,
   PersistedState,
   PlayerState,

@@ -1,4 +1,10 @@
-import React, { createRef, useCallback, useEffect, useRef, useState } from 'react'
+import React, {
+  createRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import {
   Button,
   Dialog,
@@ -46,10 +52,7 @@ export const LibreFmSessionDialog = ({ setLinked }) => {
             notify('message.libreFmLinkSuccess', { type: 'success' })
             openedTab.current?.close()
             dispatch(closeLibreFmSessionDialog())
-          } else if (
-            openedTab.current?.closed === true ||
-            --checks <= 0
-          ) {
+          } else if (openedTab.current?.closed === true || --checks <= 0) {
             setAuthPolling(false)
           }
         })
@@ -192,7 +195,11 @@ export const LibreFmSessionDialog = ({ setLinked }) => {
         {authPolling && <LinearProgress />}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClickClose} disabled={checking || authPolling} color="primary">
+        <Button
+          onClick={handleClickClose}
+          disabled={checking || authPolling}
+          color="primary"
+        >
           {translate('ra.action.cancel')}
         </Button>
         <Button

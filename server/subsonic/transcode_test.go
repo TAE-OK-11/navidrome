@@ -226,7 +226,7 @@ var _ = Describe("Transcode endpoints", func() {
 			Expect(resp.TranscodeDecision.SourceStream.AudioBitrate).To(Equal(int32(320_000)))
 		})
 
-		It("filters AAC from transcoding profiles", func() {
+		It("passes AAC transcoding profiles through to the decider", func() {
 			mockMFRepo.SetData(model.MediaFiles{
 				{ID: "song-1", Suffix: "opus", Codec: "opus", BitRate: 128, Channels: 2, SampleRate: 48000},
 			})
@@ -245,8 +245,7 @@ var _ = Describe("Transcode endpoints", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mockTD.capturedClient).ToNot(BeNil())
-			Expect(mockTD.capturedClient.TranscodingProfiles).To(HaveLen(1))
-			Expect(mockTD.capturedClient.TranscodingProfiles[0].AudioCodec).To(Equal("mp3"))
+			Expect(mockTD.capturedClient.TranscodingProfiles).To(HaveLen(3))
 		})
 
 		It("includes transcode stream when transcoding", func() {

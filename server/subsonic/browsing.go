@@ -12,7 +12,6 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/publicurl"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -447,14 +446,18 @@ func (api *Router) loadAlbum(r *http.Request, id string) (*responses.Subsonic, e
 func (api *Router) GetAlbumInfo(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, err := p.String("id")
-	ctx := r.Context()
-
 	if err != nil {
 		return nil, err
 	}
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "albumInfo", id), func() (*responses.Subsonic, error) {
+		return api.loadAlbumInfo(r, id)
+	})
+}
+
+func (api *Router) loadAlbumInfo(r *http.Request, id string) (*responses.Subsonic, error) {
+	ctx := r.Context()
 
 	album, err := api.provider.UpdateAlbumInfo(ctx, id)
-
 	if err != nil {
 		return nil, err
 	}
@@ -462,9 +465,10 @@ func (api *Router) GetAlbumInfo(r *http.Request) (*responses.Subsonic, error) {
 	response := newResponse()
 	response.AlbumInfo = &responses.AlbumInfo{}
 	response.AlbumInfo.Notes = album.Description
-	response.AlbumInfo.SmallImageUrl = publicurl.ImageURL(r, album.CoverArtID(), 300)
-	response.AlbumInfo.MediumImageUrl = publicurl.ImageURL(r, album.CoverArtID(), 600)
-	response.AlbumInfo.LargeImageUrl = publicurl.ImageURL(r, album.CoverArtID(), 1200)
+	small, medium, large := entityImageURLs(r, album.SmallImageUrl, album.MediumImageUrl, album.LargeImageUrl, album.CoverArtID())
+	response.AlbumInfo.SmallImageUrl = small
+	response.AlbumInfo.MediumImageUrl = medium
+	response.AlbumInfo.LargeImageUrl = large
 
 	response.AlbumInfo.LastFmUrl = album.ExternalUrl
 	response.AlbumInfo.MusicBrainzID = album.MbzAlbumID
@@ -548,9 +552,10 @@ func (api *Router) getArtistInfo(r *http.Request) (*responses.ArtistInfoBase, *m
 
 	base := responses.ArtistInfoBase{}
 	base.Biography = artist.Biography
-	base.SmallImageUrl = publicurl.ImageURL(r, artist.CoverArtID(), 300)
-	base.MediumImageUrl = publicurl.ImageURL(r, artist.CoverArtID(), 600)
-	base.LargeImageUrl = publicurl.ImageURL(r, artist.CoverArtID(), 1200)
+	small, medium, large := entityImageURLs(r, artist.SmallImageUrl, artist.MediumImageUrl, artist.LargeImageUrl, artist.CoverArtID())
+	base.SmallImageUrl = small
+	base.MediumImageUrl = medium
+	base.LargeImageUrl = large
 	base.LastFmUrl = artist.ExternalUrl
 	base.MusicBrainzID = artist.MbzArtistID
 
@@ -558,41 +563,61 @@ func (api *Router) getArtistInfo(r *http.Request) (*responses.ArtistInfoBase, *m
 }
 
 func (api *Router) GetArtistInfo(r *http.Request) (*responses.Subsonic, error) {
+	p := req.Params(r)
+	id, err := p.String("id")
+	if err != nil {
+		return nil, err
+	}
+	count := p.IntOr("count", 20)
+	includeNotPresent := p.BoolOr("includeNotPresent", false)
+	cacheKey := entityResponseCacheKey(r, "artistInfo", id+"|"+strconv.Itoa(count)+"|"+strconv.FormatBool(includeNotPresent))
+	return api.cachedSubsonicResponse(r, cacheKey, func() (*responses.Subsonic, error) {
+		return api.loadArtistInfo(r, false)
+	})
+}
+
+func (api *Router) GetArtistInfo2(r *http.Request) (*responses.Subsonic, error) {
+	p := req.Params(r)
+	id, err := p.String("id")
+	if err != nil {
+		return nil, err
+	}
+	count := p.IntOr("count", 20)
+	includeNotPresent := p.BoolOr("includeNotPresent", false)
+	cacheKey := entityResponseCacheKey(r, "artistInfo2", id+"|"+strconv.Itoa(count)+"|"+strconv.FormatBool(includeNotPresent))
+	return api.cachedSubsonicResponse(r, cacheKey, func() (*responses.Subsonic, error) {
+		return api.loadArtistInfo(r, true)
+	})
+}
+
+func (api *Router) loadArtistInfo(r *http.Request, useID3 bool) (*responses.Subsonic, error) {
 	base, similarArtists, err := api.getArtistInfo(r)
 	if err != nil {
 		return nil, err
 	}
 
 	response := newResponse()
+	if useID3 {
+		response.ArtistInfo2 = &responses.ArtistInfo2{}
+		response.ArtistInfo2.ArtistInfoBase = *base
+		for _, s := range *similarArtists {
+			similar := toArtistID3(r, s)
+			if s.ID == "" {
+				similar.Id = "-1"
+			}
+			response.ArtistInfo2.SimilarArtist = append(response.ArtistInfo2.SimilarArtist, similar)
+		}
+		return response, nil
+	}
+
 	response.ArtistInfo = &responses.ArtistInfo{}
 	response.ArtistInfo.ArtistInfoBase = *base
-
 	for _, s := range *similarArtists {
 		similar := toArtist(r, s)
 		if s.ID == "" {
 			similar.Id = "-1"
 		}
 		response.ArtistInfo.SimilarArtist = append(response.ArtistInfo.SimilarArtist, similar)
-	}
-	return response, nil
-}
-
-func (api *Router) GetArtistInfo2(r *http.Request) (*responses.Subsonic, error) {
-	base, similarArtists, err := api.getArtistInfo(r)
-	if err != nil {
-		return nil, err
-	}
-
-	response := newResponse()
-	response.ArtistInfo2 = &responses.ArtistInfo2{}
-	response.ArtistInfo2.ArtistInfoBase = *base
-
-	for _, s := range *similarArtists {
-		similar := toArtistID3(r, s)
-		if s.ID == "" {
-			similar.Id = "-1"
-		}
-		response.ArtistInfo2.SimilarArtist = append(response.ArtistInfo2.SimilarArtist, similar)
 	}
 	return response, nil
 }

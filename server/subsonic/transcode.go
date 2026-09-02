@@ -221,8 +221,12 @@ func isValidComparison(c string) bool {
 
 // toResponseStreamDetails converts a core StreamDetails to the API response type.
 func toResponseStreamDetails(sd *stream.Details) *responses.StreamDetails {
+	protocol := sd.Protocol
+	if protocol == "" {
+		protocol = stream.ProtocolHTTP
+	}
 	return &responses.StreamDetails{
-		Protocol:        stream.ProtocolHTTP, // TODO: derive from decision when HLS support is added
+		Protocol:        protocol,
 		Container:       sd.Container,
 		Codec:           sd.Codec,
 		AudioBitrate:    int32(kbpsToBps(sd.Bitrate)),
@@ -269,16 +273,6 @@ func (api *Router) GetTranscodeDecision(w http.ResponseWriter, r *http.Request) 
 		return nil, newError(responses.ErrorGeneric, "%v", err)
 	}
 	clientInfo := clientInfoReq.toCoreClientInfo()
-
-	// TODO: Remove this filter once AAC transcoding works reliably
-	// with streaming clients (Sonos, etc).
-	// See https://github.com/navidrome/navidrome/discussions/4832#discussioncomment-16068231
-	clientInfo.TranscodingProfiles = slices.DeleteFunc(clientInfo.TranscodingProfiles, func(p stream.Profile) bool {
-		if p.AudioCodec != "" {
-			return stream.IsAACCodec(p.AudioCodec)
-		}
-		return stream.IsAACCodec(p.Container)
-	})
 
 	// Honor the player's forced transcoding format, falling back to normal
 	// negotiation when the client can't play it (issue #5583).

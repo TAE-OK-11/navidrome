@@ -176,6 +176,7 @@ type TranscodeDecision struct {
 // Details describes audio stream properties.
 // Bitrate is in kilobits per second (kbps).
 type Details struct {
+	Protocol   string // OpenSubsonic stream protocol (http, hls)
 	Container  string
 	Codec      string
 	Profile    string // Audio profile (e.g., "LC", "HE-AACv2"). Populated from ffprobe data.

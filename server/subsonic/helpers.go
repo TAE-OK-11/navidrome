@@ -557,6 +557,19 @@ func buildOSAlbumID3(ctx context.Context, album model.Album) *responses.OpenSubs
 	return &dir
 }
 
+func entityImageURLs(r *http.Request, small, medium, large string, coverArt model.ArtworkID) (string, string, string) {
+	if small == "" {
+		small = publicurl.ImageURL(r, coverArt, 300)
+	}
+	if medium == "" {
+		medium = publicurl.ImageURL(r, coverArt, 600)
+	}
+	if large == "" {
+		large = publicurl.ImageURL(r, coverArt, 1200)
+	}
+	return small, medium, large
+}
+
 func recordLabels(labels []string) []responses.RecordLabel {
 	response := make([]responses.RecordLabel, len(labels))
 	for i, label := range labels {

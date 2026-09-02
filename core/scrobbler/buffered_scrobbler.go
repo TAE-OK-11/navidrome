@@ -208,35 +208,33 @@ func (b *bufferedScrobbler) processUserQueue(ctx context.Context, userId string)
 			return false, 0
 		}
 		log.Debug(ctx, "Sending scrobble", "scrobbler", b.service, "track", entry.Title, "artist", entry.Artist)
+		if dequeueErr := dequeueWithRetry(buffer, entry); dequeueErr != nil {
+			log.Error(ctx, "Could not dequeue scrobble before send", "userId", entry.UserID,
+				"track", entry.Title, "artist", entry.Artist, "scrobbler", b.service, dequeueErr)
+			return false, 0
+		}
 		err = s.Scrobble(ctx, entry.UserID, Scrobble{
 			MediaFile: entry.MediaFile,
 			TimeStamp: entry.PlayTime,
 		})
 		if retry, ok := errors.AsType[*agents.RetryLaterError](err); ok {
+			if enqueueErr := buffer.Enqueue(b.service, entry.UserID, entry.MediaFile.ID, entry.PlayTime); enqueueErr != nil {
+				log.Error(ctx, "Scrobble failed and could not be re-enqueued", "userId", entry.UserID,
+					"track", entry.Title, "artist", entry.Artist, "scrobbler", b.service, enqueueErr)
+			}
 			log.Warn(ctx, "Could not send scrobble. Will be retried", "userId", entry.UserID,
 				"track", entry.Title, "artist", entry.Artist, "scrobbler", b.service, err)
 			return false, retry.RetryIn
 		}
 		if err != nil {
 			if errors.Is(err, ErrNotAuthorized) {
-				log.Warn(ctx, "Dropping buffered scrobble: user no longer linked to service",
+				log.Warn(ctx, "Dropping scrobble: user no longer linked to service",
 					"scrobbler", b.service, "userId", entry.UserID,
 					"artist", entry.Artist, "track", entry.Title, err)
 			} else {
 				log.Error(ctx, "Error sending scrobble to service. Discarding", "scrobbler", b.service,
 					"userId", entry.UserID, "artist", entry.Artist, "track", entry.Title, err)
 			}
-		}
-		if dequeueErr := dequeueWithRetry(buffer, entry); dequeueErr != nil {
-			if err == nil {
-				log.Error(ctx, "Scrobble was sent but could not be removed from buffer after retries",
-					"userId", entry.UserID, "track", entry.Title, "artist", entry.Artist,
-					"scrobbler", b.service, dequeueErr)
-			} else {
-				log.Error(ctx, "Error removing entry from scrobble buffer", "userId", entry.UserID,
-					"track", entry.Title, "artist", entry.Artist, "scrobbler", b.service, dequeueErr)
-			}
-			return false, 0
 		}
 	}
 }

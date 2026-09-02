@@ -23,6 +23,11 @@ const (
 	StatePaused   = "paused"
 	StateStopped  = "stopped"
 	StateExpired  = "expired"
+
+	// minScrobbleDurationSec matches Last.fm / Libre.fm / ListenBrainz agent rules.
+	minScrobbleDurationSec = 30
+	// restartPositionMs clears scrobble dedup when playback resumes near the start.
+	restartPositionMs = int64(15_000)
 )
 
 var ValidStates = map[string]bool{
@@ -93,6 +98,7 @@ type playTracker struct {
 	broker            events.Broker
 	playMap           cache.SimpleCache[string, PlaybackSession]
 	scrobbleDedup     cache.SimpleCache[string, scrobbleDedupMarker]
+	scrobbleDedupMu   sync.Mutex
 	sessionsMu        sync.Mutex // serializes playMap check-then-write across concurrent reports
 	builtinScrobblers map[string]Scrobbler
 	pluginScrobblers  map[string]Scrobbler
@@ -124,10 +130,10 @@ func NewPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
-		ds:            ds,
-		playMap:       m,
-		scrobbleDedup: cache.NewSimpleCache[string, scrobbleDedupMarker](),
-		broker:        broker,
+		ds:                ds,
+		playMap:           m,
+		scrobbleDedup:     cache.NewSimpleCache[string, scrobbleDedupMarker](),
+		broker:            broker,
 		builtinScrobblers: make(map[string]Scrobbler),
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
@@ -297,6 +303,18 @@ func clientIdFromContext(ctx context.Context, fallback string) string {
 	return fallback
 }
 
+func scrobbleThresholdMs(durationSec float32) int64 {
+	trackDurationMs := int64(durationSec * 1000)
+	return min(trackDurationMs*50/100, 240_000)
+}
+
+func scrobbleEligible(durationSec float32, positionMs int64) bool {
+	if durationSec <= minScrobbleDurationSec {
+		return false
+	}
+	return positionMs >= scrobbleThresholdMs(durationSec)
+}
+
 func (p *playTracker) clearScrobbleDedup(userId, mediaId string) {
 	p.scrobbleDedup.Remove(scrobbleDedupKey(userId, mediaId))
 }
@@ -304,17 +322,21 @@ func (p *playTracker) clearScrobbleDedup(userId, mediaId string) {
 func (p *playTracker) tryRecordScrobble(ctx context.Context, clientId string, mf *model.MediaFile, playTime time.Time) bool {
 	u, _ := request.UserFrom(ctx)
 	key := scrobbleDedupKey(u.ID, mf.ID)
+
+	p.scrobbleDedupMu.Lock()
+	defer p.scrobbleDedupMu.Unlock()
 	if _, err := p.scrobbleDedup.Get(key); err == nil {
 		log.Trace(ctx, "Skipping duplicate scrobble", "userId", u.ID, "clientId", clientId, "mediaId", mf.ID)
 		return false
 	}
-	_ = p.scrobbleDedup.AddWithTTL(key, scrobbleDedupMarker{}, scrobbleDedupTTL(mf.Duration))
 
 	err := p.incPlay(ctx, mf, playTime)
 	if err != nil {
 		log.Warn(ctx, "Error updating play counts", "id", mf.ID, "track", mf.Title, "user", u.UserName, err)
 		return false
 	}
+	_ = p.scrobbleDedup.AddWithTTL(key, scrobbleDedupMarker{}, scrobbleDedupTTL(mf.Duration))
+
 	log.Info(ctx, "Scrobbled", "title", mf.Title, "artist", mf.Artist, "user", u.UserName, "timestamp", playTime)
 	p.dispatchScrobble(ctx, mf, playTime)
 	return true
@@ -369,6 +391,9 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		p.enqueuePlaybackReport(ctx, info)
 
 	case StatePlaying, StatePaused:
+		if params.State == StatePlaying && params.PositionMs <= restartPositionMs {
+			p.clearScrobbleDedup(user.ID, params.MediaId)
+		}
 		info, getErr := p.playMap.Get(clientId)
 		if getErr != nil || info.MediaFile.ID != params.MediaId {
 			mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
@@ -402,6 +427,18 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 		p.enqueuePlaybackReport(ctx, info)
 
 	case StateStopped:
+		p.sessionsMu.Lock()
+		info, getErr := p.playMap.Get(clientId)
+		scrobbleTime := now
+		if getErr == nil && info.MediaFile.ID == params.MediaId {
+			scrobbleTime = info.Start.Add(time.Duration(params.PositionMs) * time.Millisecond)
+		}
+		differentTrack := getErr == nil && info.MediaFile.ID != params.MediaId
+		if !differentTrack {
+			p.playMap.Remove(clientId)
+		}
+		p.sessionsMu.Unlock()
+
 		var loadedMF *model.MediaFile
 		if !params.IgnoreScrobble && player.ScrobbleEnabled {
 			mf, err := p.ds.MediaFile(ctx).GetWithParticipants(params.MediaId)
@@ -409,23 +446,14 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 				return err
 			}
 			loadedMF = mf
-			trackDurationMs := int64(mf.Duration * 1000)
-			threshold := min(trackDurationMs*50/100, 240_000)
-			if params.PositionMs >= threshold {
-				p.tryRecordScrobble(ctx, clientId, mf, now)
+			if scrobbleEligible(mf.Duration, params.PositionMs) {
+				p.tryRecordScrobble(ctx, clientId, mf, scrobbleTime)
 			}
 		}
-		p.sessionsMu.Lock()
-		info, getErr := p.playMap.Get(clientId)
-		// A late stop for a previous track must not end the current session nor reach
-		// playback reporters, or presence-style plugins would clear the active track.
-		if getErr == nil && info.MediaFile.ID != params.MediaId {
-			p.sessionsMu.Unlock()
+		if differentTrack {
 			log.Trace(ctx, "Ignoring out-of-order stopped report for different track", "clientId", clientId, "stoppedMediaId", params.MediaId, "currentMediaId", info.MediaFile.ID)
 			return nil
 		}
-		p.playMap.Remove(clientId)
-		p.sessionsMu.Unlock()
 		stoppedInfo := PlaybackSession{
 			UserId:       user.ID,
 			Username:     user.UserName,
@@ -505,14 +533,21 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 			log.Error(ctx, "Cannot find track for scrobbling", "id", s.TrackID, "user", username, err)
 			continue
 		}
-		if !player.ScrobbleEnabled {
+		if player.ScrobbleEnabled {
+			clientId := clientIdFromContext(ctx, player.ID)
+			if p.tryRecordScrobble(ctx, clientId, mf, s.Timestamp) {
+				success++
+				event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
+			}
 			continue
 		}
-		clientId := clientIdFromContext(ctx, player.ID)
-		if p.tryRecordScrobble(ctx, clientId, mf, s.Timestamp) {
-			success++
-			event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
+		err = p.incPlay(ctx, mf, s.Timestamp)
+		if err != nil {
+			log.Error(ctx, "Error updating play counts", "id", mf.ID, "track", mf.Title, "user", username, err)
+			continue
 		}
+		success++
+		event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
 	}
 
 	if success > 0 {

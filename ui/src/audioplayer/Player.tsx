@@ -93,6 +93,17 @@ const Player = () => {
     subsonic.reportPlayback(trackId, posMs, 'stopped')
   }, [])
 
+  const reportStoppedKeepalive = useCallback(
+    (trackId: string, posMs: number) => {
+      if (lastStoppedTrackIdRef.current === trackId) {
+        return
+      }
+      lastStoppedTrackIdRef.current = trackId
+      subsonic.reportPlaybackKeepalive(trackId, posMs, 'stopped')
+    },
+    [],
+  )
+
   useInterval(
     () => {
       if (heartbeatTrackId && !stoppedRef.current) {
@@ -215,10 +226,9 @@ const Player = () => {
       ) {
         stoppedRef.current = true
         try {
-          subsonic.reportPlaybackKeepalive(
+          reportStoppedKeepalive(
             currentTrackIdRef.current,
             lastPositionMsRef.current,
-            'stopped',
           )
         } catch {
           // fetch/sendBeacon may throw; ignore
@@ -232,7 +242,7 @@ const Player = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('pagehide', handlePageHide)
     }
-  }, [audioInstance])
+  }, [audioInstance, reportStoppedKeepalive])
 
   const defaultOptions = useMemo(
     () => ({

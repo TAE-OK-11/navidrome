@@ -68,6 +68,7 @@ const Player = () => {
   const [heartbeatTrackId, setHeartbeatTrackId] = useState<string | null>(null)
   const lastPositionMsRef = useRef(0)
   const currentTrackIdRef = useRef<string | null>(null)
+  const lastStoppedTrackIdRef = useRef<string | null>(null)
   const stoppedRef = useRef(false)
   const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(
     null,
@@ -83,6 +84,25 @@ const Player = () => {
   playerStateRef.current = playerState
 
   currentTrackIdRef.current = currentTrackId
+
+  const reportStopped = useCallback((trackId: string, posMs: number) => {
+    if (lastStoppedTrackIdRef.current === trackId) {
+      return
+    }
+    lastStoppedTrackIdRef.current = trackId
+    subsonic.reportPlayback(trackId, posMs, 'stopped')
+  }, [])
+
+  const reportStoppedKeepalive = useCallback(
+    (trackId: string, posMs: number) => {
+      if (lastStoppedTrackIdRef.current === trackId) {
+        return
+      }
+      lastStoppedTrackIdRef.current = trackId
+      subsonic.reportPlaybackKeepalive(trackId, posMs, 'stopped')
+    },
+    [],
+  )
 
   useInterval(
     () => {
@@ -206,10 +226,9 @@ const Player = () => {
       ) {
         stoppedRef.current = true
         try {
-          subsonic.reportPlaybackKeepalive(
+          reportStoppedKeepalive(
             currentTrackIdRef.current,
             lastPositionMsRef.current,
-            'stopped',
           )
         } catch {
           // fetch/sendBeacon may throw; ignore
@@ -223,7 +242,7 @@ const Player = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('pagehide', handlePageHide)
     }
-  }, [audioInstance])
+  }, [audioInstance, reportStoppedKeepalive])
 
   const defaultOptions = useMemo(
     () => ({
@@ -330,6 +349,7 @@ const Player = () => {
           lastPositionMsRef.current = posMs
           const isNewTrack = info.trackId !== currentTrackId
           if (isNewTrack) {
+            lastStoppedTrackIdRef.current = null
             subsonic
               .reportPlayback(info.trackId, posMs, 'starting')
               .then(() =>
@@ -362,15 +382,11 @@ const Player = () => {
 
   const onAudioPlayTrackChange = useCallback(() => {
     if (currentTrackId) {
-      subsonic.reportPlayback(
-        currentTrackId,
-        lastPositionMsRef.current,
-        'stopped',
-      )
+      reportStopped(currentTrackId, lastPositionMsRef.current)
     }
     setHeartbeatTrackId(null)
     setCurrentTrackId(null)
-  }, [currentTrackId])
+  }, [currentTrackId, reportStopped])
 
   const onAudioPause = useCallback(
     (info) => {
@@ -389,7 +405,7 @@ const Player = () => {
     (currentPlayId, audioLists, info) => {
       if (currentTrackId && !info.isRadio) {
         const posMs = Math.floor((info.duration || 0) * 1000)
-        subsonic.reportPlayback(currentTrackId, posMs, 'stopped')
+        reportStopped(currentTrackId, posMs)
       }
       setHeartbeatTrackId(null)
       setCurrentTrackId(null)
@@ -399,7 +415,7 @@ const Player = () => {
         // eslint-disable-next-line no-console
         .catch((e) => console.log('Keepalive error:', e))
     },
-    [dispatch, dataProvider, currentTrackId],
+    [dispatch, dataProvider, currentTrackId, reportStopped],
   )
 
   const onCoverClick = useCallback((mode, audioLists, audioInfo) => {
@@ -433,18 +449,14 @@ const Player = () => {
   const onBeforeDestroy = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (currentTrackId && !playerStateRef.current?.current?.isRadio) {
-        subsonic.reportPlayback(
-          currentTrackId,
-          lastPositionMsRef.current,
-          'stopped',
-        )
+        reportStopped(currentTrackId, lastPositionMsRef.current)
       }
       setHeartbeatTrackId(null)
       setCurrentTrackId(null)
       dispatch(clearQueue())
       reject()
     })
-  }, [dispatch, currentTrackId])
+  }, [dispatch, currentTrackId, reportStopped])
 
   if (!visible) {
     document.title = 'Navidrome'

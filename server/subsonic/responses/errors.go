@@ -15,7 +15,7 @@ const (
 	ErrorDataNotFound       int32 = 70
 )
 
-var errors = map[int32]string{
+var errorMessages = map[int32]string{ //nolint:gosec // Subsonic API error text, not credentials
 	ErrorGeneric:            "A generic error",
 	ErrorMissingParameter:   "Required parameter is missing",
 	ErrorClientTooOld:       "Incompatible Subsonic REST protocol version. Client must upgrade",
@@ -31,8 +31,8 @@ var errors = map[int32]string{
 }
 
 func ErrorMsg(code int32) string {
-	if v, found := errors[code]; found {
+	if v, found := errorMessages[code]; found {
 		return v
 	}
-	return errors[ErrorGeneric]
+	return errorMessages[ErrorGeneric]
 }

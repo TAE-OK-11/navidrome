@@ -1,6 +1,8 @@
 package subsonic
 
 import (
+	"errors"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -15,8 +17,8 @@ var _ = Describe("API key auth params", func() {
 		err := validateAPIKeyAuthParams(p)
 		Expect(err).To(HaveOccurred())
 		var subErr subError
-		Expect(err).To(BeAssignableToTypeOf(subErr))
-		Expect(err.(subError).code).To(Equal(responses.ErrorConflictingAuth))
+		Expect(errors.As(err, &subErr)).To(BeTrue())
+		Expect(subErr.code).To(Equal(responses.ErrorConflictingAuth))
 	})
 
 	It("rejects apiKey combined with password auth", func() {
@@ -24,7 +26,9 @@ var _ = Describe("API key auth params", func() {
 		_, p := req.WithParams(r)
 		err := validateAPIKeyAuthParams(p)
 		Expect(err).To(HaveOccurred())
-		Expect(err.(subError).code).To(Equal(responses.ErrorConflictingAuth))
+		var subErr subError
+		Expect(errors.As(err, &subErr)).To(BeTrue())
+		Expect(subErr.code).To(Equal(responses.ErrorConflictingAuth))
 	})
 
 	It("accepts apiKey alone", func() {

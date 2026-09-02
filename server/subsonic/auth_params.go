@@ -5,7 +5,7 @@ import (
 	"github.com/navidrome/navidrome/utils/req"
 )
 
-const apiKeyHelpURL = "https://www.navidrome.org/docs/getting-started/login/#api-access"
+const apiKeyHelpURL = "https://www.navidrome.org/docs/getting-started/login/#api-access" //nolint:gosec // documentation URL, not a credential
 
 func hasAPIKeyAuth(p *req.Values) bool {
 	return p.StringOr("apiKey", "") != ""

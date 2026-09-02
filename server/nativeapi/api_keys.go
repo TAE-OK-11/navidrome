@@ -2,6 +2,7 @@ package nativeapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -81,7 +82,7 @@ func deleteAPIKey(service *apikeys.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		if err := service.Delete(r.Context(), user.ID, id); err != nil {
 			status := http.StatusInternalServerError
-			if err == model.ErrNotAuthorized {
+			if errors.Is(err, model.ErrNotAuthorized) {
 				status = http.StatusForbidden
 			}
 			_ = rest.RespondWithError(w, status, err.Error())

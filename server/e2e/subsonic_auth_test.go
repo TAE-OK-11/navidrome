@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"net/http/httptest"
 	"net/url"
 	"strings"

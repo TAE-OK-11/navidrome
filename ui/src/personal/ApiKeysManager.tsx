@@ -102,7 +102,11 @@ export const ApiKeysManager = () => {
           onChange={(event) => setName(event.target.value)}
           disabled={loading}
         />
-        <Button variant="contained" onClick={createKey} disabled={loading || !name.trim()}>
+        <Button
+          variant="contained"
+          onClick={createKey}
+          disabled={loading || !name.trim()}
+        >
           {translate('menu.personal.options.apiKeyCreate')}
         </Button>
       </Box>
@@ -111,7 +115,11 @@ export const ApiKeysManager = () => {
           <ListItem
             key={key.id}
             secondaryAction={
-              <IconButton edge="end" onClick={() => deleteKey(key.id)} disabled={loading}>
+              <IconButton
+                edge="end"
+                onClick={() => deleteKey(key.id)}
+                disabled={loading}
+              >
                 <DeleteIcon />
               </IconButton>
             }
@@ -136,8 +144,15 @@ export const ApiKeysManager = () => {
           </ListItem>
         ))}
       </List>
-      <Dialog open={createdToken != null} onClose={() => setCreatedToken(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>{translate('menu.personal.options.apiKeyCreatedTitle')}</DialogTitle>
+      <Dialog
+        open={createdToken != null}
+        onClose={() => setCreatedToken(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {translate('menu.personal.options.apiKeyCreatedTitle')}
+        </DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
             {translate('menu.personal.options.apiKeyCreatedWarning')}

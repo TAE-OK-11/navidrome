@@ -50,14 +50,14 @@ func parseSubsonicVersion(v string) ([3]int, error) {
 func validateClientVersion(clientVersion string) error {
 	cmp, err := compareSubsonicVersion(clientVersion, Version)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // tolerate malformed client version strings
 	}
 	if cmp > 0 {
 		return newError(responses.ErrorServerTooOld)
 	}
 	cmp, err = compareSubsonicVersion(clientVersion, MinSupportedVersion)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // tolerate malformed client version strings
 	}
 	if cmp < 0 {
 		return newError(responses.ErrorClientTooOld)

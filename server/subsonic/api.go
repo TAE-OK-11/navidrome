@@ -92,6 +92,7 @@ type Router struct {
 	genreCache        genreResponseCache
 	musicFoldersCache musicFoldersResponseCache
 	artistIndexCache  artistIndexCache
+	albumListCache    albumListCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
 }

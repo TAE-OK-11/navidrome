@@ -132,7 +132,7 @@ func toArtistID3(r *http.Request, a model.Artist) responses.ArtistID3 {
 
 func toOSArtistID3(ctx context.Context, a model.Artist) *responses.OpenSubsonicArtistID3 {
 	player, _ := request.PlayerFrom(ctx)
-	if strings.Contains(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
 		return nil
 	}
 	artist := responses.OpenSubsonicArtistID3{
@@ -429,7 +429,7 @@ func childFromAlbum(ctx context.Context, al model.Album) responses.Child {
 
 func osChildFromAlbum(ctx context.Context, al model.Album) *responses.OpenSubsonicChild {
 	player, _ := request.PlayerFrom(ctx)
-	if strings.Contains(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
 		return nil
 	}
 	child := responses.OpenSubsonicChild{}
@@ -520,7 +520,7 @@ func buildAlbumID3(ctx context.Context, album model.Album) responses.AlbumID3 {
 
 func buildOSAlbumID3(ctx context.Context, album model.Album) *responses.OpenSubsonicAlbumID3 {
 	player, _ := request.PlayerFrom(ctx)
-	if strings.Contains(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
 		return nil
 	}
 	dir := responses.OpenSubsonicAlbumID3{}

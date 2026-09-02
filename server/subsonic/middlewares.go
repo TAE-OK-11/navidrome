@@ -108,6 +108,11 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 		ctx = request.WithUsername(ctx, username)
 		ctx = request.WithClient(ctx, client)
 		ctx = request.WithVersion(ctx, version)
+		if err := validateClientVersion(version); err != nil {
+			log.Warn(ctx, "API: Incompatible client version", "client", client, "version", version)
+			sendError(w, r, err)
+			return
+		}
 		if log.IsGreaterOrEqualTo(log.LevelDebug) {
 			log.Debug(ctx, "API: New request", "path", r.URL.Path, "username", username, "client", client, "version", version)
 		}

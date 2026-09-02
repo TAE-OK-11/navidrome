@@ -19,6 +19,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core"
+	"github.com/navidrome/navidrome/core/apikeys"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/log"
@@ -173,31 +174,20 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 						return
 					}
 
-					claims, authErr := auth.Validate(apiKey)
-					if authErr != nil {
-						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
-						log.Warn(ctx, "API: Invalid API key", "remoteAddr", r.RemoteAddr, authErr)
-						sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
-						return
-					}
-					usr, err = users.get(ctx, "apikey\x00"+claims.UserID, func(loadCtx context.Context) (*model.User, error) {
-						return ds.User(loadCtx).Get(claims.UserID)
+					usr, err = users.get(ctx, "apikey\x00"+apiKey, func(loadCtx context.Context) (*model.User, error) {
+						return apikeys.New(ds).Authenticate(loadCtx, apiKey)
 					})
 					if errors.Is(err, context.Canceled) {
 						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "apiKey", "remoteAddr", r.RemoteAddr, err)
 						return
 					}
-					if errors.Is(err, model.ErrNotFound) {
-						log.Warn(ctx, "API: Invalid API key", "auth", "apiKey", "userId", claims.UserID, "remoteAddr", r.RemoteAddr, err)
-						err = model.ErrInvalidAuth
-					} else if err != nil {
-						log.Error(ctx, "API: Error authenticating API key", "userId", claims.UserID, "remoteAddr", r.RemoteAddr, err)
-					}
 					if err != nil {
+						log.Warn(ctx, "API: Invalid API key", "remoteAddr", r.RemoteAddr, err)
 						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
-					} else {
-						failures.succeeded(failureKey)
+						sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
+						return
 					}
+					failures.succeeded(failureKey)
 				} else {
 				username, _ := request.UsernameFrom(ctx)
 				if username == "" {

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/navidrome/navidrome/core/apikeys"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
@@ -16,7 +17,26 @@ var _ = Describe("Subsonic API key authentication", func() {
 		setupTestDB()
 	})
 
-	It("authenticates with apiKey and returns tokenInfo", func() {
+	It("authenticates with a dedicated API key", func() {
+		service := apikeys.New(ds)
+		_, token, err := service.Create(context.Background(), adminUser.ID, apikeys.CreateInput{Name: "e2e"})
+		Expect(err).ToNot(HaveOccurred())
+
+		w := httptest.NewRecorder()
+		q := url.Values{}
+		q.Add("apiKey", token)
+		q.Add("v", "1.16.1")
+		q.Add("c", "test-client")
+		q.Add("f", "json")
+		r := httptest.NewRequest("GET", "/tokenInfo?"+q.Encode(), nil)
+		router.ServeHTTP(w, r)
+
+		resp := parseJSONResponse(w)
+		Expect(resp.Status).To(Equal(responses.StatusOK))
+		Expect(resp.TokenInfo.Username).To(Equal(adminUser.UserName))
+	})
+
+	It("authenticates with login JWT apiKey", func() {
 		token, err := auth.CreateToken(&adminUser)
 		Expect(err).ToNot(HaveOccurred())
 

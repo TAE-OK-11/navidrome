@@ -9,6 +9,7 @@ import { ListenBrainzScrobbleToggle } from './ListenBrainzScrobbleToggle'
 import { LibreFmScrobbleToggle } from './LibreFmScrobbleToggle'
 import config from '../config'
 import { ReplayGainToggle } from './ReplayGainToggle'
+import { ApiKeysManager } from './ApiKeysManager'
 
 const Personal = () => {
   const translate = useTranslate()
@@ -25,6 +26,7 @@ const Personal = () => {
         {config.lastFMEnabled && <LastfmScrobbleToggle />}
         {config.listenBrainzEnabled && <ListenBrainzScrobbleToggle />}
         {config.libreFMEnabled && <LibreFmScrobbleToggle />}
+        <ApiKeysManager />
       </SimpleForm>
     </Card>
   )

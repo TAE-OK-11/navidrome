@@ -45,6 +45,8 @@ type PlaybackSession struct {
 	LastReport   time.Time
 }
 
+type scrobbleDedupMarker struct{}
+
 type Submission struct {
 	TrackID   string
 	Timestamp time.Time
@@ -90,6 +92,7 @@ type playTracker struct {
 	ds                model.DataStore
 	broker            events.Broker
 	playMap           cache.SimpleCache[string, PlaybackSession]
+	scrobbleDedup     cache.SimpleCache[string, scrobbleDedupMarker]
 	sessionsMu        sync.Mutex // serializes playMap check-then-write across concurrent reports
 	builtinScrobblers map[string]Scrobbler
 	pluginScrobblers  map[string]Scrobbler
@@ -121,9 +124,10 @@ func NewPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
-		ds:                ds,
-		playMap:           m,
-		broker:            broker,
+		ds:            ds,
+		playMap:       m,
+		scrobbleDedup: cache.NewSimpleCache[string, scrobbleDedupMarker](),
+		broker:        broker,
 		builtinScrobblers: make(map[string]Scrobbler),
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
@@ -274,6 +278,48 @@ func activePlaybackTTL(durationSec float32, positionMs int64, rate float64, hear
 	return ttl
 }
 
+func scrobbleDedupKey(userId, mediaId string) string {
+	return userId + "\x00" + mediaId
+}
+
+func scrobbleDedupTTL(durationSec float32) time.Duration {
+	ttl := time.Duration(durationSec)*time.Second + 30*time.Second
+	if ttl < 2*time.Minute {
+		return 2 * time.Minute
+	}
+	return ttl
+}
+
+func clientIdFromContext(ctx context.Context, fallback string) string {
+	if id, ok := request.ClientUniqueIdFrom(ctx); ok && id != "" {
+		return id
+	}
+	return fallback
+}
+
+func (p *playTracker) clearScrobbleDedup(userId, mediaId string) {
+	p.scrobbleDedup.Remove(scrobbleDedupKey(userId, mediaId))
+}
+
+func (p *playTracker) tryRecordScrobble(ctx context.Context, clientId string, mf *model.MediaFile, playTime time.Time) bool {
+	u, _ := request.UserFrom(ctx)
+	key := scrobbleDedupKey(u.ID, mf.ID)
+	if _, err := p.scrobbleDedup.Get(key); err == nil {
+		log.Trace(ctx, "Skipping duplicate scrobble", "userId", u.ID, "clientId", clientId, "mediaId", mf.ID)
+		return false
+	}
+	_ = p.scrobbleDedup.AddWithTTL(key, scrobbleDedupMarker{}, scrobbleDedupTTL(mf.Duration))
+
+	err := p.incPlay(ctx, mf, playTime)
+	if err != nil {
+		log.Warn(ctx, "Error updating play counts", "id", mf.ID, "track", mf.Title, "user", u.UserName, err)
+		return false
+	}
+	log.Info(ctx, "Scrobbled", "title", mf.Title, "artist", mf.Artist, "user", u.UserName, "timestamp", playTime)
+	p.dispatchScrobble(ctx, mf, playTime)
+	return true
+}
+
 func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackParams) error {
 	player, _ := request.PlayerFrom(ctx)
 	user, _ := request.UserFrom(ctx)
@@ -284,6 +330,8 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 
 	switch params.State {
 	case StateStarting:
+		u, _ := request.UserFrom(ctx)
+		p.clearScrobbleDedup(u.ID, params.MediaId)
 		// Clients may send starting/playing unordered; a late "starting" must not downgrade
 		// a playing session, or position estimation freezes until the next report.
 		if p.hasPlayingSession(clientId, params.MediaId) {
@@ -364,11 +412,7 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 			trackDurationMs := int64(mf.Duration * 1000)
 			threshold := min(trackDurationMs*50/100, 240_000)
 			if params.PositionMs >= threshold {
-				err = p.incPlay(ctx, mf, now)
-				if err != nil {
-					log.Warn(ctx, "Error updating play counts", "id", mf.ID, "track", mf.Title, "user", user.UserName, err)
-				}
-				p.dispatchScrobble(ctx, mf, now)
+				p.tryRecordScrobble(ctx, clientId, mf, now)
 			}
 		}
 		p.sessionsMu.Lock()
@@ -461,16 +505,13 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 			log.Error(ctx, "Cannot find track for scrobbling", "id", s.TrackID, "user", username, err)
 			continue
 		}
-		err = p.incPlay(ctx, mf, s.Timestamp)
-		if err != nil {
-			log.Error(ctx, "Error updating play counts", "id", mf.ID, "track", mf.Title, "user", username, err)
-		} else {
+		if !player.ScrobbleEnabled {
+			continue
+		}
+		clientId := clientIdFromContext(ctx, player.ID)
+		if p.tryRecordScrobble(ctx, clientId, mf, s.Timestamp) {
 			success++
 			event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
-			log.Info(ctx, "Scrobbled", "title", mf.Title, "artist", mf.Artist, "user", username, "timestamp", s.Timestamp)
-			if player.ScrobbleEnabled {
-				p.dispatchScrobble(ctx, mf, s.Timestamp)
-			}
 		}
 	}
 

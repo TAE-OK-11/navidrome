@@ -90,6 +90,11 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(s.Seekable()).To(BeFalse())
 			Expect(s.Duration()).To(Equal(float32(257.0)))
 		})
+		It("routes raw direct play with transcodeOffset through the transcode pipeline", func() {
+			s, err := streamer.NewStream(ctx, mf, stream.Request{Format: "raw", Offset: 30})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(s.Seekable()).To(BeFalse())
+		})
 		It("does not consume a non-seekable transcode stream for HEAD requests", func() {
 			reader := &readTrackingCloser{reads: make(chan struct{}, 1)}
 			s := stream.NewStream(mf, "mp3", 64, reader)

@@ -221,12 +221,8 @@ func isValidComparison(c string) bool {
 
 // toResponseStreamDetails converts a core StreamDetails to the API response type.
 func toResponseStreamDetails(sd *stream.Details) *responses.StreamDetails {
-	protocol := sd.Protocol
-	if protocol == "" {
-		protocol = stream.ProtocolHTTP
-	}
 	return &responses.StreamDetails{
-		Protocol:        protocol,
+		Protocol:        stream.DeliverableStreamProtocol(sd.Protocol),
 		Container:       sd.Container,
 		Codec:           sd.Codec,
 		AudioBitrate:    int32(kbpsToBps(sd.Bitrate)),
@@ -380,6 +376,12 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 		return nil, nil
 	}
 
+	offset := p.IntOr("offset", 0)
+	if offset < 0 {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return nil, nil
+	}
+
 	if !isValidMediaType(mediaType) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return nil, nil
@@ -398,7 +400,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}
 
 	// Validate the token and resolve streaming parameters
-	streamReq, err := api.transcodeDecision.ResolveRequestFromToken(ctx, transcodeParamsToken, mf, p.IntOr("offset", 0))
+	streamReq, err := api.transcodeDecision.ResolveRequestFromToken(ctx, transcodeParamsToken, mf, offset)
 	if err != nil {
 		switch {
 		case errors.Is(err, stream.ErrTokenInvalid), errors.Is(err, stream.ErrTokenStale):
@@ -432,6 +434,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(mediaStream.Duration()), 'G', -1, 32))
 
 	n, err := mediaStream.Serve(ctx, w, r)
 	if err != nil {

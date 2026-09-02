@@ -133,6 +133,19 @@ const (
 	ProtocolHLS  = "hls"
 )
 
+// DeliverableStreamProtocol returns the protocol clients should use with
+// getTranscodeStream. Navidrome serves progressive HTTP only; HLS profiles are
+// accepted during negotiation but delivery is always via getTranscodeStream.
+func DeliverableStreamProtocol(protocol string) string {
+	if strings.EqualFold(protocol, ProtocolHLS) {
+		return ProtocolHTTP
+	}
+	if protocol == "" {
+		return ProtocolHTTP
+	}
+	return strings.ToLower(protocol)
+}
+
 // Comparison operators (OpenSubsonic spec enum)
 const (
 	ComparisonEquals           = "Equals"

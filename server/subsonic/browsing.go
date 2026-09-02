@@ -19,6 +19,7 @@ import (
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
+	"github.com/navidrome/navidrome/utils/run"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -373,6 +374,12 @@ func (api *Router) GetMusicDirectory(r *http.Request) (*responses.Subsonic, erro
 func (api *Router) GetArtist(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "artist", id), func() (*responses.Subsonic, error) {
+		return api.loadArtist(r, id)
+	})
+}
+
+func (api *Router) loadArtist(r *http.Request, id string) (*responses.Subsonic, error) {
 	ctx := r.Context()
 
 	artist, err := api.ds.Artist(ctx).Get(id)
@@ -396,22 +403,39 @@ func (api *Router) GetArtist(r *http.Request) (*responses.Subsonic, error) {
 func (api *Router) GetAlbum(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "album", id), func() (*responses.Subsonic, error) {
+		return api.loadAlbum(r, id)
+	})
+}
 
+func (api *Router) loadAlbum(r *http.Request, id string) (*responses.Subsonic, error) {
 	ctx := r.Context()
 
-	album, err := api.ds.Album(ctx).Get(id)
-	if errors.Is(err, model.ErrNotFound) {
-		log.Error(ctx, "Requested AlbumID not found ", "id", id)
-		return nil, newError(responses.ErrorDataNotFound, "Album not found")
-	}
+	var album *model.Album
+	var mfs model.MediaFiles
+	err := run.Parallel(
+		func() error {
+			var err error
+			album, err = api.ds.Album(ctx).Get(id)
+			if errors.Is(err, model.ErrNotFound) {
+				log.Error(ctx, "Requested AlbumID not found ", "id", id)
+				return newError(responses.ErrorDataNotFound, "Album not found")
+			}
+			if err != nil {
+				log.Error(ctx, "Error retrieving album", "id", id, err)
+			}
+			return err
+		},
+		func() error {
+			var err error
+			mfs, err = api.ds.MediaFile(ctx).GetAll(filter.SongsByAlbum(id))
+			if err != nil {
+				log.Error(ctx, "Error retrieving tracks from album", "id", id, err)
+			}
+			return err
+		},
+	)()
 	if err != nil {
-		log.Error(ctx, "Error retrieving album", "id", id, err)
-		return nil, err
-	}
-
-	mfs, err := api.ds.MediaFile(ctx).GetAll(filter.SongsByAlbum(id))
-	if err != nil {
-		log.Error(ctx, "Error retrieving tracks from album", "id", id, "name", album.Name, err)
 		return nil, err
 	}
 
@@ -451,6 +475,12 @@ func (api *Router) GetAlbumInfo(r *http.Request) (*responses.Subsonic, error) {
 func (api *Router) GetSong(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "song", id), func() (*responses.Subsonic, error) {
+		return api.loadSong(r, id)
+	})
+}
+
+func (api *Router) loadSong(r *http.Request, id string) (*responses.Subsonic, error) {
 	ctx := r.Context()
 
 	mf, err := api.ds.MediaFile(ctx).Get(id)

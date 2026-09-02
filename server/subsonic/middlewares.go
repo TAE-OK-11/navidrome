@@ -80,8 +80,14 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r, p := req.WithParams(r)
 
+		apiKey := p.StringOr("apiKey", "")
+
 		username, _ := fromInternalOrProxyAuth(r)
-		if username == "" {
+		if apiKey != "" && username != "" {
+			sendError(w, r, newErrorWithHelp(responses.ErrorConflictingAuth, apiKeyHelpURL))
+			return
+		}
+		if username == "" && apiKey == "" {
 			var err error
 			username, err = p.String("u")
 			if err != nil {
@@ -105,7 +111,9 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 		}
 
 		ctx := r.Context()
-		ctx = request.WithUsername(ctx, username)
+		if username != "" {
+			ctx = request.WithUsername(ctx, username)
+		}
 		ctx = request.WithClient(ctx, client)
 		ctx = request.WithVersion(ctx, version)
 		if err := validateClientVersion(version); err != nil {
@@ -148,6 +156,49 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				}
 			} else {
 				p := req.Params(r)
+				if err := validatePasswordAuthParams(p); err != nil {
+					sendError(w, r, err)
+					return
+				}
+				apiKey := p.StringOr("apiKey", "")
+				if apiKey != "" {
+					if err := validateAPIKeyAuthParams(p); err != nil {
+						sendError(w, r, err)
+						return
+					}
+					failureKey := authenticationFailureKey(r)
+					if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
+						w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+						sendError(w, r, newError(responses.ErrorAuthenticationFail))
+						return
+					}
+
+					claims, authErr := auth.Validate(apiKey)
+					if authErr != nil {
+						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+						log.Warn(ctx, "API: Invalid API key", "remoteAddr", r.RemoteAddr, authErr)
+						sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
+						return
+					}
+					usr, err = users.get(ctx, "apikey\x00"+claims.UserID, func(loadCtx context.Context) (*model.User, error) {
+						return ds.User(loadCtx).Get(claims.UserID)
+					})
+					if errors.Is(err, context.Canceled) {
+						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "apiKey", "remoteAddr", r.RemoteAddr, err)
+						return
+					}
+					if errors.Is(err, model.ErrNotFound) {
+						log.Warn(ctx, "API: Invalid API key", "auth", "apiKey", "userId", claims.UserID, "remoteAddr", r.RemoteAddr, err)
+						err = model.ErrInvalidAuth
+					} else if err != nil {
+						log.Error(ctx, "API: Error authenticating API key", "userId", claims.UserID, "remoteAddr", r.RemoteAddr, err)
+					}
+					if err != nil {
+						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+					} else {
+						failures.succeeded(failureKey)
+					}
+				} else {
 				username, _ := request.UsernameFrom(ctx)
 				if username == "" {
 					username = p.StringOr("u", "")
@@ -186,9 +237,15 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				} else {
 					failures.succeeded(failureKey)
 				}
+				}
 			}
 
 			if err != nil {
+				p := req.Params(r)
+				if p.StringOr("apiKey", "") != "" {
+					sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
+					return
+				}
 				sendError(w, r, newError(responses.ErrorAuthenticationFail))
 				return
 			}

@@ -36,13 +36,19 @@ func newResponse() *responses.Subsonic {
 type subError struct {
 	code     int32
 	messages []any
+	helpUrl  string
 }
 
 func newError(code int32, message ...any) error {
-	return subError{
-		code:     code,
-		messages: message,
-	}
+	return subError{code: code, messages: message}
+}
+
+func newErrorWithHelp(code int32, helpUrl string, message ...any) error {
+	return subError{code: code, messages: message, helpUrl: helpUrl}
+}
+
+func (e subError) HelpUrl() string {
+	return e.helpUrl
 }
 
 // errSubsonic and Unwrap are used to allow `errors.Is(err, errSubsonic)` to work

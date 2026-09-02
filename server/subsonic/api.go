@@ -93,6 +93,7 @@ type Router struct {
 	musicFoldersCache musicFoldersResponseCache
 	artistIndexCache  artistIndexCache
 	albumListCache    albumListCache
+	entityCache       entityResponseCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
 }
@@ -155,6 +156,7 @@ func (api *Router) routes() http.Handler {
 		// Lightweight system endpoints do not need player registration.
 		h(r, "ping", api.Ping)
 		h(r, "getLicense", api.GetLicense)
+		h(r, "tokenInfo", api.GetTokenInfo)
 		h(r, "getMusicFolders", api.GetMusicFolders)
 		h(r, "getGenres", api.GetGenres)
 		h(r, "getScanStatus", api.GetScanStatus)
@@ -383,7 +385,7 @@ func errorResponse(err error) *responses.Subsonic {
 	subErr := mapToSubsonicError(err)
 	response := newResponse()
 	response.Status = responses.StatusFailed
-	response.Error = &responses.Error{Code: subErr.code, Message: subErr.Error()}
+	response.Error = &responses.Error{Code: subErr.code, Message: subErr.Error(), HelpUrl: subErr.HelpUrl()}
 	return response
 }
 

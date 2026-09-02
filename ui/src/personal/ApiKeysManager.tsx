@@ -31,22 +31,6 @@ type CreateAPIKeyResponse = {
   token: string
 }
 
-const formatExpiry = (expiresAt: string | undefined, translate: (key: string) => string) => {
-  if (!expiresAt) {
-    return translate('menu.personal.options.apiKeyNoExpiry')
-  }
-  const expiry = new Date(expiresAt)
-  if (Number.isNaN(expiry.getTime())) {
-    return null
-  }
-  if (expiry.getTime() <= Date.now()) {
-    return translate('menu.personal.options.apiKeyExpired')
-  }
-  return translate('menu.personal.options.apiKeyExpires', {
-    date: expiry.toLocaleString(),
-  })
-}
-
 export const ApiKeysManager = () => {
   const translate = useTranslate()
   const notify = useNotify()
@@ -55,6 +39,22 @@ export const ApiKeysManager = () => {
   const [expiresAt, setExpiresAt] = useState('')
   const [loading, setLoading] = useState(false)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
+
+  const formatExpiry = (keyExpiresAt?: string) => {
+    if (!keyExpiresAt) {
+      return translate('menu.personal.options.apiKeyNoExpiry')
+    }
+    const expiry = new Date(keyExpiresAt)
+    if (Number.isNaN(expiry.getTime())) {
+      return null
+    }
+    if (expiry.getTime() <= Date.now()) {
+      return translate('menu.personal.options.apiKeyExpired')
+    }
+    return translate('menu.personal.options.apiKeyExpires', {
+      date: expiry.toLocaleString(),
+    })
+  }
 
   const loadKeys = useCallback(() => {
     setLoading(true)
@@ -171,7 +171,7 @@ export const ApiKeysManager = () => {
                       date: new Date(key.createdAt).toLocaleString(),
                     })
                   : null,
-                formatExpiry(key.expiresAt, translate),
+                formatExpiry(key.expiresAt),
               ]
                 .filter(Boolean)
                 .join(' · ')}

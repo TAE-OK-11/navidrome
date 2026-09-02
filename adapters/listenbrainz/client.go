@@ -9,17 +9,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/log"
-)
-
-const (
-	lbzApiUrl = "https://api.listenbrainz.org/1/"
-	labsBase  = "https://labs.api.listenbrainz.org/"
 )
 
 // retryLaterErr reads the wait ListenBrainz asked for via X-RateLimit-Reset-In.
@@ -44,13 +38,14 @@ type httpDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-func newClient(baseURL string, hc httpDoer) *client {
-	return &client{baseURL, hc}
+func newClient(baseURL, labsBaseURL string, hc httpDoer) *client {
+	return &client{baseURL: baseURL, labsBaseURL: labsBaseURL, hc: hc}
 }
 
 type client struct {
-	baseURL string
-	hc      httpDoer
+	baseURL     string
+	labsBaseURL string
+	hc          httpDoer
 }
 
 type listenBrainzResponse struct {
@@ -152,12 +147,11 @@ func (c *client) scrobble(ctx context.Context, apiKey string, li listenInfo) err
 }
 
 func (c *client) path(endpoint string) (string, error) {
-	u, err := url.Parse(c.baseURL)
-	if err != nil {
-		return "", err
-	}
-	u.Path = path.Join(u.Path, endpoint)
-	return u.String(), nil
+	return url.JoinPath(c.baseURL, endpoint)
+}
+
+func (c *client) labsPath(endpoint string) (string, error) {
+	return url.JoinPath(c.labsBaseURL, endpoint)
 }
 
 func (c *client) makeAuthenticatedRequest(ctx context.Context, method string, endpoint string, r *listenBrainzRequest) (*listenBrainzResponse, error) {
@@ -219,7 +213,11 @@ type lbzHttpError struct {
 }
 
 func (c *client) makeGenericRequest(ctx context.Context, method string, endpoint string, params url.Values) (*http.Response, error) {
-	req, _ := http.NewRequestWithContext(ctx, method, lbzApiUrl+endpoint, nil)
+	uri, err := c.path(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, method, uri, nil)
 	req.Header.Add("Content-Type", "application/json; charset=UTF-8")
 	req.URL.RawQuery = params.Encode()
 
@@ -333,7 +331,11 @@ func decodeLabsJSON[T any](resp *http.Response, dest *T) error {
 }
 
 func (c *client) getSimilarArtists(ctx context.Context, mbid string, limit int) ([]artist, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, labsBase+"similar-artists/json", nil)
+	uri, err := c.labsPath("similar-artists/json")
+	if err != nil {
+		return nil, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 	req.Header.Add("Content-Type", "application/json; charset=UTF-8")
 	req.URL.RawQuery = url.Values{
 		"artist_mbids": []string{mbid}, "algorithm": []string{conf.Server.ListenBrainz.ArtistAlgorithm},
@@ -370,7 +372,11 @@ type recording struct {
 }
 
 func (c *client) getSimilarRecordings(ctx context.Context, mbid string, limit int) ([]recording, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, labsBase+"similar-recordings/json", nil)
+	uri, err := c.labsPath("similar-recordings/json")
+	if err != nil {
+		return nil, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 	req.Header.Add("Content-Type", "application/json; charset=UTF-8")
 	req.URL.RawQuery = url.Values{
 		"recording_mbids": []string{mbid}, "algorithm": []string{conf.Server.ListenBrainz.TrackAlgorithm},

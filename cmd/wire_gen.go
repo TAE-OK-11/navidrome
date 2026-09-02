@@ -10,6 +10,7 @@ import (
 	"context"
 	"github.com/google/wire"
 	"github.com/navidrome/navidrome/adapters/lastfm"
+	"github.com/navidrome/navidrome/adapters/librefm"
 	"github.com/navidrome/navidrome/adapters/listenbrainz"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/agents"
@@ -39,6 +40,7 @@ import (
 import (
 	_ "github.com/navidrome/navidrome/adapters/deezer"
 	_ "github.com/navidrome/navidrome/adapters/lastfm"
+	_ "github.com/navidrome/navidrome/adapters/librefm"
 	_ "github.com/navidrome/navidrome/adapters/listenbrainz"
 	_ "github.com/navidrome/navidrome/adapters/lofty"
 )
@@ -150,6 +152,13 @@ func CreateListenBrainzRouter() *listenbrainz.Router {
 	return router
 }
 
+func CreateLibreFMRouter() *librefm.Router {
+	sqlDB := db.Db()
+	dataStore := persistence.New(sqlDB)
+	router := librefm.NewRouter(dataStore)
+	return router
+}
+
 func CreateInsights() metrics.Insights {
 	sqlDB := db.Db()
 	dataStore := persistence.New(sqlDB)
@@ -221,7 +230,7 @@ func getPluginManager() *plugins.Manager {
 
 // wire_injectors.go:
 
-var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, subsonic.New, nativeapi.New, public.New, persistence.New, lastfm.NewRouter, listenbrainz.NewRouter, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(nativeapi.PluginManager), new(*plugins.Manager)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
+var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, subsonic.New, nativeapi.New, public.New, persistence.New, lastfm.NewRouter, librefm.NewRouter, listenbrainz.NewRouter, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(nativeapi.PluginManager), new(*plugins.Manager)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
 
 func GetPluginManager(ctx context.Context) *plugins.Manager {
 	manager := getPluginManager()

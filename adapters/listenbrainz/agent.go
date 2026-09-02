@@ -35,7 +35,7 @@ func listenBrainzConstructor(ds model.DataStore) *listenBrainzAgent {
 	}
 	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
 	chc := cache.NewHTTPClient(hc, consts.DefaultHttpClientTimeOut)
-	l.client = newClient(l.baseURL, chc)
+	l.client = newClient(conf.Server.ListenBrainz.BaseURL, conf.Server.ListenBrainz.LabsBaseURL, chc)
 	return l
 }
 
@@ -99,19 +99,21 @@ func (l *listenBrainzAgent) Scrobble(ctx context.Context, userId string, s scrob
 	if err == nil {
 		return nil
 	}
+	var retryLater *agents.RetryLaterError
+	if errors.As(err, &retryLater) {
+		return errors.Join(err, scrobbler.ErrRetryLater)
+	}
 	var lbErr *listenBrainzError
-	isListenBrainzError := errors.As(err, &lbErr)
-	if !isListenBrainzError {
-		log.Warn(ctx, "ListenBrainz Scrobble returned HTTP error", "track", s.Title, err)
-		return errors.Join(err, scrobbler.ErrRetryLater)
+	if errors.As(err, &lbErr) {
+		if lbErr.Code == 500 || lbErr.Code == 502 || lbErr.Code == 503 || lbErr.Code == 504 {
+			log.Warn(ctx, "ListenBrainz Scrobble temporarily unavailable; will retry later",
+				"track", s.Title, "code", lbErr.Code, "error", lbErr.Message)
+			return errors.Join(err, scrobbler.ErrRetryLater)
+		}
+		return errors.Join(err, scrobbler.ErrUnrecoverable)
 	}
-	// Transient upstream/rate-limit responses should stay buffered and retry later.
-	if lbErr.Code == 429 || lbErr.Code == 500 || lbErr.Code == 502 || lbErr.Code == 503 || lbErr.Code == 504 {
-		log.Warn(ctx, "ListenBrainz Scrobble temporarily unavailable; will retry later",
-			"track", s.Title, "code", lbErr.Code, "error", lbErr.Message)
-		return errors.Join(err, scrobbler.ErrRetryLater)
-	}
-	return errors.Join(err, scrobbler.ErrUnrecoverable)
+	log.Warn(ctx, "ListenBrainz Scrobble returned HTTP error", "track", s.Title, err)
+	return errors.Join(err, scrobbler.ErrRetryLater)
 }
 
 func (l *listenBrainzAgent) IsAuthorized(ctx context.Context, userId string) bool {

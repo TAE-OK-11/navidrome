@@ -30,6 +30,7 @@ const defaultConfig = {
   devSidebarPlaylists: true,
   lastFMEnabled: true,
   listenBrainzEnabled: true,
+  libreFMEnabled: true,
   enableExternalServices: true,
   enableCoverAnimation: true,
   enableNowPlaying: true,

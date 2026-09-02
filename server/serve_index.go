@@ -73,6 +73,7 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			"devUIShowConfig":           conf.Server.DevUIShowConfig,
 			"devNewEventStream":         conf.Server.DevNewEventStream,
 			"listenBrainzEnabled":       conf.Server.ListenBrainz.Enabled,
+			"libreFMEnabled":            conf.Server.LibreFM.Enabled,
 			"enableExternalServices":    conf.Server.EnableExternalServices,
 			"enableReplayGain":          conf.Server.EnableReplayGain,
 			"defaultDownsamplingFormat": conf.Server.DefaultDownsamplingFormat,

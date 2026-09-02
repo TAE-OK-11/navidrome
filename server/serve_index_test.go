@@ -96,6 +96,7 @@ var _ = Describe("serveIndex", func() {
 		Entry("devShowArtistPage", func() { conf.Server.DevShowArtistPage = true }, "devShowArtistPage", true),
 		Entry("devUIShowConfig", func() { conf.Server.DevUIShowConfig = true }, "devUIShowConfig", true),
 		Entry("listenBrainzEnabled", func() { conf.Server.ListenBrainz.Enabled = true }, "listenBrainzEnabled", true),
+		Entry("libreFMEnabled", func() { conf.Server.LibreFM.Enabled = true }, "libreFMEnabled", true),
 		Entry("enableReplayGain", func() { conf.Server.EnableReplayGain = true }, "enableReplayGain", true),
 		Entry("enableExternalServices", func() { conf.Server.EnableExternalServices = true }, "enableExternalServices", true),
 		Entry("devActivityPanel", func() { conf.Server.DevActivityPanel = true }, "devActivityPanel", true),

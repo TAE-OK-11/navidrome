@@ -98,7 +98,7 @@ export const ListenBrainzTokenDialog = ({ setLinked }) => {
           <DialogContentText>
             {translate('resources.user.message.listenBrainzToken')}{' '}
             <Link
-              href="https://listenbrainz.org/profile/"
+              href="https://listenbrainz.org/settings/"
               onClick={handleLinkClick}
               target="_blank"
             >

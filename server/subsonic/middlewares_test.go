@@ -155,6 +155,24 @@ var _ = Describe("Middlewares", func() {
 			Expect(w.Body.String()).To(ContainSubstring(`code="10"`))
 			Expect(next.called).To(BeFalse())
 		})
+
+		It("rejects clients older than the minimum supported version", func() {
+			r := newGetRequest("u=user", "v=1.7.0", "c=test")
+			cp := checkRequiredParameters(next)
+			cp.ServeHTTP(w, r)
+
+			Expect(w.Body.String()).To(ContainSubstring(`code="20"`))
+			Expect(next.called).To(BeFalse())
+		})
+
+		It("rejects clients newer than the server version", func() {
+			r := newGetRequest("u=user", "v=9.9.9", "c=test")
+			cp := checkRequiredParameters(next)
+			cp.ServeHTTP(w, r)
+
+			Expect(w.Body.String()).To(ContainSubstring(`code="30"`))
+			Expect(next.called).To(BeFalse())
+		})
 	})
 
 	Describe("Authenticate", func() {

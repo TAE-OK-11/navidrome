@@ -98,8 +98,27 @@ var _ = Describe("Radio", func() {
 			})
 		})
 
+		Context("with a client name that is a substring of a legacy client", func() {
+			BeforeEach(func() {
+				DeferCleanup(configtest.SetupConfig())
+				conf.Server.Subsonic.LegacyClients = "legacy-client"
+				player := model.Player{Client: "legacy"}
+				ctx = request.WithPlayer(ctx, player)
+			})
+
+			It("still includes OpenSubsonic fields", func() {
+				r := httptest.NewRequest("GET", "/rest/getInternetRadios", nil)
+				r = r.WithContext(ctx)
+
+				response, err := api.GetInternetRadios(r)
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(response.InternetRadioStations.Radios[0].OpenSubsonicRadio).ToNot(BeNil())
+			})
+		})
+
 		Context("when no player in context", func() {
-			It("does not include coverArt (empty client matches legacy list)", func() {
+			It("includes OpenSubsonic fields when client is unknown", func() {
 				DeferCleanup(configtest.SetupConfig())
 				conf.Server.Subsonic.LegacyClients = "legacy-client"
 
@@ -109,7 +128,7 @@ var _ = Describe("Radio", func() {
 				response, err := api.GetInternetRadios(r)
 
 				Expect(err).ToNot(HaveOccurred())
-				Expect(response.InternetRadioStations.Radios[0].OpenSubsonicRadio).To(BeNil())
+				Expect(response.InternetRadioStations.Radios[0].OpenSubsonicRadio).ToNot(BeNil())
 			})
 		})
 

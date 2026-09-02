@@ -19,6 +19,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core"
+	"github.com/navidrome/navidrome/core/apikeys"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/log"
@@ -80,8 +81,14 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r, p := req.WithParams(r)
 
+		apiKey := p.StringOr("apiKey", "")
+
 		username, _ := fromInternalOrProxyAuth(r)
-		if username == "" {
+		if apiKey != "" && username != "" {
+			sendError(w, r, newErrorWithHelp(responses.ErrorConflictingAuth, apiKeyHelpURL))
+			return
+		}
+		if username == "" && apiKey == "" {
 			var err error
 			username, err = p.String("u")
 			if err != nil {
@@ -105,9 +112,16 @@ func checkRequiredParameters(next http.Handler) http.Handler {
 		}
 
 		ctx := r.Context()
-		ctx = request.WithUsername(ctx, username)
+		if username != "" {
+			ctx = request.WithUsername(ctx, username)
+		}
 		ctx = request.WithClient(ctx, client)
 		ctx = request.WithVersion(ctx, version)
+		if err := validateClientVersion(version); err != nil {
+			log.Warn(ctx, "API: Incompatible client version", "client", client, "version", version)
+			sendError(w, r, err)
+			return
+		}
 		if log.IsGreaterOrEqualTo(log.LevelDebug) {
 			log.Debug(ctx, "API: New request", "path", r.URL.Path, "username", username, "client", client, "version", version)
 		}
@@ -143,47 +157,85 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				}
 			} else {
 				p := req.Params(r)
-				username, _ := request.UsernameFrom(ctx)
-				if username == "" {
-					username = p.StringOr("u", "")
-				}
-				pass := p.StringOr("p", "")
-				token := p.StringOr("t", "")
-				salt := p.StringOr("s", "")
-				jwt := p.StringOr("jwt", "")
-				failureKey := authenticationFailureKey(r)
-				if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
-					w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
-					sendError(w, r, newError(responses.ErrorAuthenticationFail))
-					return
-				}
-
-				usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
-					return ds.User(loadCtx).FindByUsernameWithPassword(username)
-				})
-				if errors.Is(err, context.Canceled) {
-					log.Debug(ctx, "API: Request canceled when authenticating", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-					return
-				}
-				switch {
-				case errors.Is(err, model.ErrNotFound):
-					log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-				case err != nil:
-					log.Error(ctx, "API: Error authenticating username", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-				default:
-					err = validateCredentials(usr, pass, token, salt, jwt)
-					if err != nil {
-						log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+				apiKey := p.StringOr("apiKey", "")
+				if apiKey != "" {
+					if err := validateAPIKeyAuthParams(p); err != nil {
+						sendError(w, r, err)
+						return
 					}
-				}
-				if err != nil {
-					failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
-				} else {
+					failureKey := authenticationFailureKey(r)
+					if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
+						w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+						sendError(w, r, newError(responses.ErrorAuthenticationFail))
+						return
+					}
+
+					usr, err = users.get(ctx, "apikey\x00"+apiKey, func(loadCtx context.Context) (*model.User, error) {
+						return apikeys.New(ds).Authenticate(loadCtx, apiKey)
+					})
+					if errors.Is(err, context.Canceled) {
+						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "apiKey", "remoteAddr", r.RemoteAddr, err)
+						return
+					}
+					if err != nil {
+						log.Warn(ctx, "API: Invalid API key", "remoteAddr", r.RemoteAddr, err)
+						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+						sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
+						return
+					}
 					failures.succeeded(failureKey)
+				} else {
+					if err := validatePasswordAuthParams(p); err != nil {
+						sendError(w, r, err)
+						return
+					}
+					username, _ := request.UsernameFrom(ctx)
+					if username == "" {
+						username = p.StringOr("u", "")
+					}
+					pass := p.StringOr("p", "")
+					token := p.StringOr("t", "")
+					salt := p.StringOr("s", "")
+					jwt := p.StringOr("jwt", "")
+					failureKey := authenticationFailureKey(r)
+					if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
+						w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+						sendError(w, r, newError(responses.ErrorAuthenticationFail))
+						return
+					}
+
+					usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
+						return ds.User(loadCtx).FindByUsernameWithPassword(username)
+					})
+					if errors.Is(err, context.Canceled) {
+						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+						return
+					}
+					switch {
+					case errors.Is(err, model.ErrNotFound):
+						log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+					case err != nil:
+						log.Error(ctx, "API: Error authenticating username", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+					default:
+						err = validateCredentials(usr, pass, token, salt, jwt)
+						if err != nil {
+							log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+						}
+					}
+					if err != nil {
+						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+					} else {
+						failures.succeeded(failureKey)
+					}
 				}
 			}
 
 			if err != nil {
+				p := req.Params(r)
+				if p.StringOr("apiKey", "") != "" {
+					sendError(w, r, newErrorWithHelp(responses.ErrorInvalidAPIKey, apiKeyHelpURL))
+					return
+				}
 				sendError(w, r, newError(responses.ErrorAuthenticationFail))
 				return
 			}

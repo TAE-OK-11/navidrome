@@ -3,18 +3,114 @@ package subsonic
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 	"github.com/navidrome/navidrome/utils/run"
 	"github.com/navidrome/navidrome/utils/slice"
 )
+
+const (
+	albumListCacheTTL   = 45 * time.Second
+	albumListCacheLimit = 128
+)
+
+type albumListCacheEntry struct {
+	expires time.Time
+	albums  model.Albums
+	count   int64
+}
+
+type albumListCache struct {
+	mu      sync.RWMutex
+	entries map[string]albumListCacheEntry
+}
+
+func (c *albumListCache) get(key string, now time.Time) (model.Albums, int64, bool) {
+	c.mu.RLock()
+	entry, ok := c.entries[key]
+	c.mu.RUnlock()
+	if !ok || !now.Before(entry.expires) {
+		if ok {
+			c.mu.Lock()
+			delete(c.entries, key)
+			c.mu.Unlock()
+		}
+		return nil, 0, false
+	}
+	return entry.albums, entry.count, true
+}
+
+func (c *albumListCache) put(key string, now time.Time, albums model.Albums, count int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]albumListCacheEntry)
+	}
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= albumListCacheLimit {
+		for candidate, value := range c.entries {
+			if !now.Before(value.expires) {
+				delete(c.entries, candidate)
+			}
+		}
+	}
+	if len(c.entries) >= albumListCacheLimit {
+		var oldestKey string
+		var oldestExpiry time.Time
+		for candidate, value := range c.entries {
+			if oldestKey == "" || value.expires.Before(oldestExpiry) {
+				oldestKey, oldestExpiry = candidate, value.expires
+			}
+		}
+		delete(c.entries, oldestKey)
+	}
+	c.entries[key] = albumListCacheEntry{albums: albums, count: count, expires: now.Add(albumListCacheTTL)}
+}
+
+func albumListCacheKey(r *http.Request, typ string, musicFolderIds []int, offset, size int, genre string, fromYear, toYear int) string {
+	user, ok := request.UserFrom(r.Context())
+	userKey := ""
+	if ok {
+		userKey = genreResponseCacheKey(user)
+	}
+	ids := append([]int(nil), musicFolderIds...)
+	slices.Sort(ids)
+	var key strings.Builder
+	key.Grow(64 + len(ids)*4 + len(genre))
+	key.WriteString(typ)
+	key.WriteByte('|')
+	key.WriteString(userKey)
+	key.WriteByte('|')
+	key.WriteString(strconv.Itoa(offset))
+	key.WriteByte('|')
+	key.WriteString(strconv.Itoa(size))
+	key.WriteByte('|')
+	for _, id := range ids {
+		key.WriteString(strconv.Itoa(id))
+		key.WriteByte(',')
+	}
+	if genre != "" {
+		key.WriteByte('|')
+		key.WriteString(genre)
+	}
+	if fromYear != 0 || toYear != 0 {
+		key.WriteByte('|')
+		key.WriteString(strconv.Itoa(fromYear))
+		key.WriteByte('-')
+		key.WriteString(strconv.Itoa(toYear))
+	}
+	return key.String()
+}
 
 func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	p := req.Params(r)
@@ -23,6 +119,8 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 		return nil, 0, err
 	}
 
+	var genre string
+	var fromYear, toYear int
 	var opts filter.Options
 	switch typ {
 	case "newest":
@@ -42,17 +140,17 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	case "highest":
 		opts = filter.ByRating()
 	case "byGenre":
-		genre, err := p.String("genre")
+		genre, err = p.String("genre")
 		if err != nil {
 			return nil, 0, err
 		}
 		opts = filter.AlbumsByGenre(genre)
 	case "byYear":
-		fromYear, err := p.Int("fromYear")
+		fromYear, err = p.Int("fromYear")
 		if err != nil {
 			return nil, 0, err
 		}
-		toYear, err := p.Int("toYear")
+		toYear, err = p.Int("toYear")
 		if err != nil {
 			return nil, 0, err
 		}
@@ -71,17 +169,45 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 
 	opts.Offset = p.IntOr("offset", 0)
 	opts.Max = min(p.IntOr("size", 10), 500)
-	albums, err := api.ds.Album(r.Context()).GetAll(opts)
 
-	if err != nil {
-		log.Error(r, "Error retrieving albums", err)
-		return nil, 0, newError(responses.ErrorGeneric, "internal error")
+	cacheable := typ != "random"
+	now := time.Now()
+	if cacheable {
+		cacheKey := albumListCacheKey(r, typ, musicFolderIds, opts.Offset, opts.Max, genre, fromYear, toYear)
+		if albums, count, ok := api.albumListCache.get(cacheKey, now); ok {
+			return albums, count, nil
+		}
 	}
 
-	count, err := api.ds.Album(r.Context()).CountAll(opts)
+	var albums model.Albums
+	var count int64
+	err = run.Parallel(
+		func() error {
+			var err error
+			albums, err = api.ds.Album(r.Context()).GetAll(opts)
+			if err != nil {
+				log.Error(r, "Error retrieving albums", err)
+				return newError(responses.ErrorGeneric, "internal error")
+			}
+			return nil
+		},
+		func() error {
+			var err error
+			count, err = api.ds.Album(r.Context()).CountAll(opts)
+			if err != nil {
+				log.Error(r, "Error counting albums", err)
+				return newError(responses.ErrorGeneric, "internal error")
+			}
+			return nil
+		},
+	)()
 	if err != nil {
-		log.Error(r, "Error counting albums", err)
-		return nil, 0, newError(responses.ErrorGeneric, "internal error")
+		return nil, 0, err
+	}
+
+	if cacheable {
+		cacheKey := albumListCacheKey(r, typ, musicFolderIds, opts.Offset, opts.Max, genre, fromYear, toYear)
+		api.albumListCache.put(cacheKey, now, albums, count)
 	}
 
 	return albums, count, nil

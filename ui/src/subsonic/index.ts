@@ -35,7 +35,7 @@ const url = (
   params.append('t', token)
   params.append('s', salt)
   params.append('f', 'json')
-  params.append('v', '1.8.0')
+  params.append('v', '1.16.1')
   params.append('c', 'NavidromeUI')
   if (id != null && id !== '') params.append('id', String(id))
   if (options) {

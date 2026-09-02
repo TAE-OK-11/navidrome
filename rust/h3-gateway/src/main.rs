@@ -694,6 +694,7 @@ async fn proxy_request_inner(
 
     let compression = decoded.compression;
     let body = request_body(recv, read_fin);
+    let request_path = decoded.uri.path().to_string();
     let mut request = Request::builder()
         .method(decoded.method)
         .uri(decoded.uri)
@@ -713,7 +714,7 @@ async fn proxy_request_inner(
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
     drop(request_permit);
-    let body_idle_timeout = response_body_idle_timeout(decoded.uri.path());
+    let body_idle_timeout = response_body_idle_timeout(&request_path);
     forward_response(
         response,
         &mut send,

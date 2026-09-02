@@ -10,6 +10,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/criteria"
 	"github.com/navidrome/navidrome/model/request"
+	"github.com/navidrome/navidrome/server/responsecache"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -33,11 +34,19 @@ type playlistRepositoryWrapper struct {
 }
 
 func (r *playlistRepositoryWrapper) Save(entity any) (string, error) {
-	return r.service.savePlaylist(r.ctx, entity.(*model.Playlist))
+	id, err := r.service.savePlaylist(r.ctx, entity.(*model.Playlist))
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return id, err
 }
 
 func (r *playlistRepositoryWrapper) Update(id string, entity any, cols ...string) error {
-	return r.service.updatePlaylistEntity(r.ctx, id, entity.(*model.Playlist), cols...)
+	err := r.service.updatePlaylistEntity(r.ctx, id, entity.(*model.Playlist), cols...)
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return err
 }
 
 func (r *playlistRepositoryWrapper) Delete(id string) error {

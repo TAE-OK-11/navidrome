@@ -170,7 +170,7 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	opts.Offset = p.IntOr("offset", 0)
 	opts.Max = min(p.IntOr("size", 10), 500)
 
-	cacheable := typ != "random"
+	cacheable := typ != "random" && typ != "recent" && typ != "frequent"
 	now := time.Now()
 	if cacheable {
 		cacheKey := albumListCacheKey(r, typ, musicFolderIds, opts.Offset, opts.Max, genre, fromYear, toYear)

@@ -30,6 +30,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server"
 	"github.com/navidrome/navidrome/server/events"
+	"github.com/navidrome/navidrome/server/responsecache"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 )
@@ -132,7 +133,15 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		}()
 	}
 	r.Handler = r.routes()
+	r.registerResponseCacheHooks()
 	return r
+}
+
+func (api *Router) registerResponseCacheHooks() {
+	responsecache.RegisterPlaylistsInvalidator(func() {
+		api.entityCache.deleteBySuffix("|playlists")
+	})
+	responsecache.RegisterEntityInvalidator(api.entityCache.deleteByEntityID)
 }
 
 func (api *Router) routes() http.Handler {

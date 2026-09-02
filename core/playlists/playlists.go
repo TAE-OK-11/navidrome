@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
+	"github.com/navidrome/navidrome/server/responsecache"
 )
 
 type Playlists interface {
@@ -130,6 +131,9 @@ func (s *playlists) Create(ctx context.Context, playlistId string, name string, 
 		playlistId = pls.ID
 		return err
 	})
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
 	return playlistId, err
 }
 
@@ -146,7 +150,11 @@ func (s *playlists) Delete(ctx context.Context, id string) error {
 		}
 	}
 
-	return s.ds.Playlist(ctx).Delete(id)
+	if err := s.ds.Playlist(ctx).Delete(id); err != nil {
+		return err
+	}
+	responsecache.InvalidatePlaylists()
+	return nil
 }
 
 func (s *playlists) Update(ctx context.Context, playlistID string,
@@ -182,7 +190,11 @@ func (s *playlists) Update(ctx context.Context, playlistID string,
 					return err
 				}
 			}
-			return s.updateMetadata(ctx, tx, pls, name, comment, public)
+			if err := s.updateMetadata(ctx, tx, pls, name, comment, public); err != nil {
+				return err
+			}
+			responsecache.InvalidatePlaylists()
+			return nil
 		}
 
 		if len(idsToAdd) > 0 {
@@ -191,10 +203,17 @@ func (s *playlists) Update(ctx context.Context, playlistID string,
 			}
 		}
 		if name == nil && comment == nil && public == nil {
+			if len(idsToAdd) > 0 {
+				responsecache.InvalidatePlaylists()
+			}
 			return nil
 		}
 		// Reuse the playlist from checkWritable (no tracks loaded, so Put only refreshes counters)
-		return s.updateMetadata(ctx, tx, pls, name, comment, public)
+		if err := s.updateMetadata(ctx, tx, pls, name, comment, public); err != nil {
+			return err
+		}
+		responsecache.InvalidatePlaylists()
+		return nil
 	})
 }
 
@@ -247,46 +266,70 @@ func (s *playlists) AddTracks(ctx context.Context, playlistID string, ids []stri
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return 0, err
 	}
-	return s.ds.Playlist(ctx).Tracks(playlistID, false).Add(ids)
+	count, err := s.ds.Playlist(ctx).Tracks(playlistID, false).Add(ids)
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return count, err
 }
 
 func (s *playlists) AddAlbums(ctx context.Context, playlistID string, albumIds []string) (int, error) {
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return 0, err
 	}
-	return s.ds.Playlist(ctx).Tracks(playlistID, false).AddAlbums(albumIds)
+	count, err := s.ds.Playlist(ctx).Tracks(playlistID, false).AddAlbums(albumIds)
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return count, err
 }
 
 func (s *playlists) AddArtists(ctx context.Context, playlistID string, artistIds []string) (int, error) {
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return 0, err
 	}
-	return s.ds.Playlist(ctx).Tracks(playlistID, false).AddArtists(artistIds)
+	count, err := s.ds.Playlist(ctx).Tracks(playlistID, false).AddArtists(artistIds)
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return count, err
 }
 
 func (s *playlists) AddDiscs(ctx context.Context, playlistID string, discs []model.DiscID) (int, error) {
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return 0, err
 	}
-	return s.ds.Playlist(ctx).Tracks(playlistID, false).AddDiscs(discs)
+	count, err := s.ds.Playlist(ctx).Tracks(playlistID, false).AddDiscs(discs)
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return count, err
 }
 
 func (s *playlists) RemoveTracks(ctx context.Context, playlistID string, trackIds []string) error {
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return err
 	}
-	return s.ds.WithTx(func(tx model.DataStore) error {
+	err := s.ds.WithTx(func(tx model.DataStore) error {
 		return tx.Playlist(ctx).Tracks(playlistID, false).Delete(trackIds...)
 	})
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return err
 }
 
 func (s *playlists) ReorderTrack(ctx context.Context, playlistID string, pos int, newPos int) error {
 	if _, err := s.checkTracksEditable(ctx, playlistID); err != nil {
 		return err
 	}
-	return s.ds.WithTx(func(tx model.DataStore) error {
+	err := s.ds.WithTx(func(tx model.DataStore) error {
 		return tx.Playlist(ctx).Tracks(playlistID, false).Reorder(pos, newPos)
 	})
+	if err == nil {
+		responsecache.InvalidatePlaylists()
+	}
+	return err
 }
 
 // --- Cover art operations ---
@@ -304,7 +347,11 @@ func (s *playlists) SetImage(ctx context.Context, playlistID string, reader io.R
 	}
 
 	pls.UploadedImage = filename
-	return s.ds.Playlist(ctx).Put(pls)
+	if err := s.ds.Playlist(ctx).Put(pls); err != nil {
+		return err
+	}
+	responsecache.InvalidatePlaylists()
+	return nil
 }
 
 func (s *playlists) RemoveImage(ctx context.Context, playlistID string) error {
@@ -318,5 +365,9 @@ func (s *playlists) RemoveImage(ctx context.Context, playlistID string) error {
 	}
 
 	pls.UploadedImage = ""
-	return s.ds.Playlist(ctx).Put(pls)
+	if err := s.ds.Playlist(ctx).Put(pls); err != nil {
+		return err
+	}
+	responsecache.InvalidatePlaylists()
+	return nil
 }

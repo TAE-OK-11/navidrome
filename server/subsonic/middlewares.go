@@ -170,9 +170,8 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 						return
 					}
 
-					usr, err = users.get(ctx, "apikey\x00"+apiKey, func(loadCtx context.Context) (*model.User, error) {
-						return apikeys.New(ds).Authenticate(loadCtx, apiKey)
-					})
+					// API keys are not cached: revocation and expiry must take effect immediately.
+					usr, err = apikeys.New(ds).Authenticate(ctx, apiKey)
 					if errors.Is(err, context.Canceled) {
 						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "apiKey", "remoteAddr", r.RemoteAddr, err)
 						return

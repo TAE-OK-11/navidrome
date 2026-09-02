@@ -2,6 +2,7 @@ package subsonic
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,6 +70,20 @@ func (c *entityResponseCache) delete(key string) {
 	c.mu.Lock()
 	delete(c.entries, key)
 	c.mu.Unlock()
+}
+
+func (c *entityResponseCache) deleteBySuffix(suffix string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.entries {
+		if strings.HasSuffix(key, suffix) {
+			delete(c.entries, key)
+		}
+	}
+}
+
+func (c *entityResponseCache) deleteByEntityID(id string) {
+	c.deleteBySuffix("|" + id)
 }
 
 func entityResponseCacheKey(r *http.Request, kind, id string) string {

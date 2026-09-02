@@ -64,29 +64,40 @@ func (r *scrobbleBufferRepository) Enqueue(service, userId, mediaFileId string, 
 }
 
 func (r *scrobbleBufferRepository) Next(service string, userId string) (*model.ScrobbleEntry, error) {
-	// Put `s.*` last or else m.id overrides s.id
-	sql := Select().Columns("m.*, s.*").
-		From(r.tableName+" s").
-		LeftJoin("media_file m on m.id = s.media_file_id").
-		Where(And{
-			Eq{"service": service},
-			Eq{"user_id": userId},
-		}).
-		OrderBy("play_time", "s.rowid").Limit(1)
+	for {
+		// Put `s.*` last or else m.id overrides s.id
+		sql := Select().Columns("m.*, s.*").
+			From(r.tableName+" s").
+			LeftJoin("media_file m on m.id = s.media_file_id").
+			Where(And{
+				Eq{"service": service},
+				Eq{"user_id": userId},
+			}).
+			OrderBy("play_time", "s.rowid").Limit(1)
 
-	var res dbScrobbleBuffer
-	err := r.queryOne(sql, &res)
-	if errors.Is(err, model.ErrNotFound) {
-		return nil, nil
+		var res dbScrobbleBuffer
+		err := r.queryOne(sql, &res)
+		if errors.Is(err, model.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if res.ScrobbleEntry == nil || res.ScrobbleEntry.MediaFileID == "" {
+			return nil, nil
+		}
+		if res.dbMediaFile.MediaFile == nil || res.dbMediaFile.MediaFile.ID == "" {
+			if err := r.delete(Eq{"id": res.ScrobbleEntry.ID}); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		res.ScrobbleEntry.Participants, err = r.getParticipants(&res.ScrobbleEntry.MediaFile)
+		if err != nil {
+			return nil, err
+		}
+		return res.ScrobbleEntry, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	res.ScrobbleEntry.Participants, err = r.getParticipants(&res.ScrobbleEntry.MediaFile)
-	if err != nil {
-		return nil, err
-	}
-	return res.ScrobbleEntry, nil
 }
 
 func (r *scrobbleBufferRepository) Dequeue(entry *model.ScrobbleEntry) error {

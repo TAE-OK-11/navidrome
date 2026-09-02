@@ -45,8 +45,17 @@ func (api *Router) CreateBookmark(r *http.Request) (*responses.Subsonic, error) 
 
 	comment, _ := p.String("comment")
 	position := p.Int64Or("position", 0)
+	if position < 0 {
+		return nil, newError(responses.ErrorGeneric, "position must be non-negative")
+	}
 
 	repo := api.ds.MediaFile(r.Context())
+	if _, err := repo.Get(id); err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			return nil, newError(responses.ErrorDataNotFound, "media file not found")
+		}
+		return nil, err
+	}
 	err = repo.AddBookmark(id, comment, position)
 	if err != nil {
 		return nil, err
@@ -114,7 +123,7 @@ func (api *Router) SavePlayQueue(r *http.Request) (*responses.Subsonic, error) {
 		return model.MediaFile{ID: id}
 	})
 
-	currentIndex := 0
+	currentIndex := -1
 	for i, id := range ids {
 		if id == currentID {
 			currentIndex = i

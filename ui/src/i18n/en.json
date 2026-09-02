@@ -172,10 +172,8 @@
       },
       "message": {
         "listenBrainzToken": "Enter your ListenBrainz user token.",
-        "libreFmSessionKey": "Enter your Libre.fm session key, or authorize in the browser.",
+        "libreFmSessionKey": "Advanced: paste a Libre.fm session key from another scrobbler. Normal linking uses the Last.fm 2.0 browser flow (not OAuth) via the toggle above.",
         "clickHereForToken": "Click here to get your token",
-        "clickHereForSessionKey": "Click here to get your session key",
-        "libreFmBrowserAuth": "Authorize in browser",
         "selectAllLibraries": "Select all libraries",
         "adminAutoLibraries": "Admin users automatically have access to all libraries"
       }
@@ -634,6 +632,7 @@
         "lastfmScrobbling": "Scrobble to Last.fm",
         "listenBrainzScrobbling": "Scrobble to ListenBrainz",
         "libreFmScrobbling": "Scrobble to Libre.fm",
+        "libreFmManualSessionKey": "Enter session key manually",
         "replaygain": "ReplayGain Mode",
         "preAmp": "ReplayGain PreAmp (dB)",
         "gain": {

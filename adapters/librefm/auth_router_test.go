@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"time"
 
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/core/auth"
@@ -25,7 +26,11 @@ var _ = Describe("auth_router", func() {
 		router     *Router
 	)
 
-	const userID = "user-1"
+	const (
+		userID     = "user-1"
+		victimID   = "victim-user-id"
+		attackerID = "attacker-user-id"
+	)
 
 	BeforeEach(func() {
 		userProps = &tests.MockedUserPropsRepo{}
@@ -50,6 +55,13 @@ var _ = Describe("auth_router", func() {
 	storedSessionKey := func(uid string) string {
 		key, _ := userProps.Get(uid, sessionKeyProperty)
 		return key
+	}
+
+	stubGetSessionOK := func(sessionKey string) {
+		httpClient.Res = http.Response{
+			Body:       io.NopCloser(bytes.NewBufferString(`{"session":{"name":"testuser","key":"` + sessionKey + `"}}`)),
+			StatusCode: 200,
+		}
 	}
 
 	Describe("getLinkStatus", func() {
@@ -109,6 +121,81 @@ var _ = Describe("auth_router", func() {
 
 			Expect(rec.Code).To(Equal(http.StatusBadRequest))
 			Expect(storedSessionKey(userID)).To(BeEmpty())
+		})
+	})
+
+	Describe("callback", func() {
+		It("stores the session key under the user encoded in the signed token", func() {
+			stubGetSessionOK("LEGIT_SESSION")
+			linkToken, err := createLinkToken(victimID)
+			Expect(err).ToNot(HaveOccurred())
+
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?uid="+linkToken+"&token=LIBREFM_TOKEN", nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusOK))
+			Expect(storedSessionKey(victimID)).To(Equal("LEGIT_SESSION"))
+		})
+
+		It("rejects a raw (unsigned) uid value", func() {
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?uid="+victimID+"&token=LIBREFM_TOKEN", nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusBadRequest))
+			Expect(storedSessionKey(victimID)).To(BeEmpty())
+			Expect(httpClient.SavedRequest).To(BeNil())
+		})
+
+		It("rejects an expired link token", func() {
+			expiredToken, err := auth.EncodeToken(map[string]any{
+				"uid":   victimID,
+				"scope": linkTokenScope,
+				"exp":   time.Now().Add(-1 * time.Minute).UTC().Unix(),
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?uid="+expiredToken+"&token=LIBREFM_TOKEN", nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusBadRequest))
+			Expect(storedSessionKey(victimID)).To(BeEmpty())
+			Expect(httpClient.SavedRequest).To(BeNil())
+		})
+
+		It("writes only under the user encoded in the token", func() {
+			stubGetSessionOK("ATTACKER_SESSION")
+			attackerToken, err := createLinkToken(attackerID)
+			Expect(err).ToNot(HaveOccurred())
+
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?uid="+attackerToken+"&token=LIBREFM_TOKEN&user="+victimID, nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusOK))
+			Expect(storedSessionKey(attackerID)).To(Equal("ATTACKER_SESSION"))
+			Expect(storedSessionKey(victimID)).To(BeEmpty())
+		})
+
+		It("returns 400 when uid is missing", func() {
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?token=LIBREFM_TOKEN", nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 400 when token is missing", func() {
+			linkToken, err := createLinkToken(victimID)
+			Expect(err).ToNot(HaveOccurred())
+
+			req := httptest.NewRequest(http.MethodGet, "/link/callback?uid="+linkToken, nil)
+			rec := httptest.NewRecorder()
+			router.callback(rec, req)
+
+			Expect(rec.Code).To(Equal(http.StatusBadRequest))
 		})
 	})
 })

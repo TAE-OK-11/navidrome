@@ -166,10 +166,8 @@
       },
       "message": {
         "listenBrainzToken": "ListenBrainz 사용자 토큰을 입력하세요.",
-        "libreFmSessionKey": "Libre.fm 세션 키를 입력하거나 브라우저에서 인증하세요.",
+        "libreFmSessionKey": "고급: 다른 스크로블러에서 받은 Libre.fm 세션 키를 붙여넣으세요. 일반 연결은 위 토글에서 Last.fm 2.0 브라우저 인증(OAuth 아님)을 사용합니다.",
         "clickHereForToken": "여기를 클릭하여 토큰을 얻으세요",
-        "clickHereForSessionKey": "여기를 클릭하여 세션 키를 얻으세요",
-        "libreFmBrowserAuth": "브라우저에서 인증",
         "selectAllLibraries": "모든 라이브러리 선택",
         "adminAutoLibraries": "관리자 사용자는 자동으로 모든 라이브러리에 접속할 수 있음"
       }
@@ -539,6 +537,7 @@
         "lastfmScrobbling": "Last.fm으로 스크로블",
         "listenBrainzScrobbling": "ListenBrainz로 스크로블",
         "libreFmScrobbling": "Libre.fm으로 스크로블",
+        "libreFmManualSessionKey": "세션 키 수동 입력",
         "replaygain": "리플레이게인 모드",
         "preAmp": "리플레이게인 프리앰프 (dB)",
         "gain": {

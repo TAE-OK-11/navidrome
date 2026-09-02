@@ -26,7 +26,7 @@ type librefmAgent struct {
 }
 
 func librefmConstructor(ds model.DataStore) *librefmAgent {
-	if !conf.Server.LibreFM.Enabled || conf.Server.LibreFM.ApiKey == "" || conf.Server.LibreFM.Secret == "" {
+	if !conf.Server.LibreFM.Enabled {
 		return nil
 	}
 	l := &librefmAgent{
@@ -35,7 +35,7 @@ func librefmConstructor(ds model.DataStore) *librefmAgent {
 	}
 	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
 	chc := cache.NewHTTPClient(hc, consts.DefaultHttpClientTimeOut)
-	l.client = newClient(conf.Server.LibreFM.ApiKey, conf.Server.LibreFM.Secret, conf.Server.LibreFM.BaseURL, chc)
+	l.client = newClient(effectiveApiKey(), effectiveSecret(), conf.Server.LibreFM.BaseURL, chc)
 	return l
 }
 

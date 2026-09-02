@@ -90,6 +90,9 @@ const (
 	DefaultListenBrainzTrackAlgorithm  = "session_based_days_9000_session_300_contribution_5_threshold_15_limit_50_skip_30"
 	DefaultLibreFMBaseURL              = "https://libre.fm/2.0/"
 	DefaultLibreFMAuthURL              = "https://libre.fm/api/auth/"
+	// GNU FM does not require formal API registration; arbitrary key/secret pairs work.
+	DefaultLibreFMApiKey               = "navidrome"
+	DefaultLibreFMSecret               = "navidrome"
 
 	DefaultScannerExtractor = "lofty"
 	DefaultWatcherWait      = 5 * time.Second

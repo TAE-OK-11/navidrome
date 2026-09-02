@@ -155,6 +155,7 @@
         "currentPassword": "Current Password",
         "newPassword": "New Password",
         "token": "Token",
+        "sessionKey": "Session Key",
         "libraries": "Libraries"
       },
       "helperTexts": {
@@ -171,7 +172,10 @@
       },
       "message": {
         "listenBrainzToken": "Enter your ListenBrainz user token.",
+        "libreFmSessionKey": "Enter your Libre.fm session key, or authorize in the browser.",
         "clickHereForToken": "Click here to get your token",
+        "clickHereForSessionKey": "Click here to get your session key",
+        "libreFmBrowserAuth": "Authorize in browser",
         "selectAllLibraries": "Select all libraries",
         "adminAutoLibraries": "Admin users automatically have access to all libraries"
       }
@@ -590,8 +594,8 @@
     "listenBrainzLinkFailure": "ListenBrainz could not be linked: %{error}",
     "listenBrainzUnlinkSuccess": "ListenBrainz unlinked and scrobbling disabled",
     "listenBrainzUnlinkFailure": "ListenBrainz could not be unlinked",
-    "libreFmLinkSuccess": "Libre.fm successfully linked and scrobbling enabled",
-    "libreFmLinkFailure": "Libre.fm could not be linked",
+    "libreFmLinkSuccess": "Libre.fm successfully linked and scrobbling enabled as user: %{user}",
+    "libreFmLinkFailure": "Libre.fm could not be linked: %{error}",
     "libreFmUnlinkSuccess": "Libre.fm unlinked and scrobbling disabled",
     "libreFmUnlinkFailure": "Libre.fm could not be unlinked",
     "openIn": {
@@ -630,7 +634,6 @@
         "lastfmScrobbling": "Scrobble to Last.fm",
         "listenBrainzScrobbling": "Scrobble to ListenBrainz",
         "libreFmScrobbling": "Scrobble to Libre.fm",
-        "libreFmNotConfigured": "Libre.fm API key is not configured",
         "replaygain": "ReplayGain Mode",
         "preAmp": "ReplayGain PreAmp (dB)",
         "gain": {

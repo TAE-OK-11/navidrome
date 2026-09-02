@@ -82,6 +82,20 @@ func (c *client) getSession(ctx context.Context, token string) (string, error) {
 	return response.Session.Key, nil
 }
 
+func (c *client) validateSessionKey(ctx context.Context, sessionKey string) (string, error) {
+	params := url.Values{}
+	params.Add("method", "user.getInfo")
+	params.Add("sk", sessionKey)
+	response, err := c.makeRequest(ctx, http.MethodGet, params, true)
+	if err != nil {
+		return "", err
+	}
+	if response.User.Name == "" {
+		return "", fmt.Errorf("invalid session key")
+	}
+	return response.User.Name, nil
+}
+
 type ScrobbleInfo struct {
 	artist      string
 	track       string

@@ -3,8 +3,9 @@ package librefm
 import (
 	"bytes"
 	"context"
-	_ "embed"
+	"encoding/json"
 	"errors"
+	_ "embed"
 	"net/http"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 //go:embed token_received.html
 var tokenReceivedPage []byte
 
+const maxLinkRequestBodySize = 8 << 10
+
 type Router struct {
 	http.Handler
 	ds          model.DataStore
@@ -38,8 +41,8 @@ type Router struct {
 func NewRouter(ds model.DataStore) *Router {
 	r := &Router{
 		ds:          ds,
-		apiKey:      conf.Server.LibreFM.ApiKey,
-		secret:      conf.Server.LibreFM.Secret,
+		apiKey:      effectiveApiKey(),
+		secret:      effectiveSecret(),
 		authURL:     conf.Server.LibreFM.AuthURL,
 		sessionKeys: &agents.SessionKeys{DataStore: ds, KeyName: sessionKeyProperty},
 	}
@@ -57,6 +60,7 @@ func (s *Router) routes() http.Handler {
 		r.Use(server.JWTRefresher)
 
 		r.Get("/link", s.getLinkStatus)
+		r.Put("/link", s.link)
 		r.Delete("/link", s.unlink)
 	})
 
@@ -67,7 +71,8 @@ func (s *Router) routes() http.Handler {
 
 func (s *Router) getLinkStatus(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
-		"apiKey": s.apiKey,
+		"apiKey":  s.apiKey,
+		"authUrl": s.authURL,
 	}
 	u, _ := request.UserFrom(r.Context())
 	key, err := s.sessionKeys.Get(r.Context(), u.ID)
@@ -86,6 +91,56 @@ func (s *Router) getLinkStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	resp["linkToken"] = linkToken
 	_ = rest.RespondWithJSON(w, http.StatusOK, resp)
+}
+
+func (s *Router) link(w http.ResponseWriter, r *http.Request) {
+	type sessionPayload struct {
+		SessionKey string `json:"sessionKey"`
+	}
+	var payload sessionPayload
+	r.Body = http.MaxBytesReader(w, r.Body, maxLinkRequestBodySize)
+	err := json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			_ = rest.RespondWithError(w, http.StatusRequestEntityTooLarge, "Request body too large")
+			return
+		}
+		_ = rest.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	if payload.SessionKey == "" {
+		_ = rest.RespondWithError(w, http.StatusBadRequest, "Session key is required")
+		return
+	}
+
+	u, _ := request.UserFrom(r.Context())
+	username, err := s.client.validateSessionKey(r.Context(), payload.SessionKey)
+	if err != nil {
+		var retryLater *agents.RetryLaterError
+		if errors.As(err, &retryLater) {
+			log.Warn(r.Context(), "Libre.fm session key validation rate-limited", "userId", u.ID, err)
+			_ = rest.RespondWithError(w, http.StatusServiceUnavailable, "Libre.fm is temporarily unavailable. Please try again later.")
+			return
+		}
+		var lfErr *libreFMError
+		if errors.As(err, &lfErr) && (lfErr.Code == 9 || lfErr.Code == 4) {
+			_ = rest.RespondWithError(w, http.StatusBadRequest, "Invalid session key")
+			return
+		}
+		log.Error(r.Context(), "Could not validate Libre.fm session key", "userId", u.ID, "requestId", middleware.GetReqID(r.Context()), err)
+		_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = s.sessionKeys.Put(r.Context(), u.ID, payload.SessionKey)
+	if err != nil {
+		log.Error("Could not save Libre.fm session key", "userId", u.ID, "requestId", middleware.GetReqID(r.Context()), err)
+		_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	_ = rest.RespondWithJSON(w, http.StatusOK, map[string]any{"status": true, "user": username})
 }
 
 func (s *Router) unlink(w http.ResponseWriter, r *http.Request) {

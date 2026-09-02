@@ -5,8 +5,13 @@ type Response struct {
 	Message    string     `json:"message"`
 	Token      string     `json:"token"`
 	Session    Session    `json:"session"`
+	User       User       `json:"user"`
 	NowPlaying NowPlaying `json:"nowplaying"`
 	Scrobbles  Scrobbles  `json:"scrobbles"`
+}
+
+type User struct {
+	Name string `json:"name"`
 }
 
 type Session struct {

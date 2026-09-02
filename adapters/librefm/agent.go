@@ -10,6 +10,7 @@ import (
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/utils/cache"
 	"github.com/navidrome/navidrome/utils/httpclient"
 )
 
@@ -33,7 +34,8 @@ func librefmConstructor(ds model.DataStore) *librefmAgent {
 		sessionKeys: &agents.SessionKeys{DataStore: ds, KeyName: sessionKeyProperty},
 	}
 	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
-	l.client = newClient(conf.Server.LibreFM.ApiKey, conf.Server.LibreFM.Secret, conf.Server.LibreFM.BaseURL, hc)
+	chc := cache.NewHTTPClient(hc, consts.DefaultHttpClientTimeOut)
+	l.client = newClient(conf.Server.LibreFM.ApiKey, conf.Server.LibreFM.Secret, conf.Server.LibreFM.BaseURL, chc)
 	return l
 }
 
@@ -92,6 +94,11 @@ func (l *librefmAgent) Scrobble(ctx context.Context, userId string, s scrobbler.
 	})
 	if err == nil {
 		return nil
+	}
+	var rejected *scrobbleRejectedError
+	if errors.As(err, &rejected) {
+		log.Warn(ctx, "Libre.fm scrobble rejected by service", "track", s.Title, err)
+		return errors.Join(err, scrobbler.ErrUnrecoverable)
 	}
 	var lfErr *libreFMError
 	if errors.As(err, &lfErr) {

@@ -397,6 +397,11 @@ func (l *lastfmAgent) Scrobble(ctx context.Context, userId string, s scrobbler.S
 	if err == nil {
 		return nil
 	}
+	var rejected *scrobbleRejectedError
+	if errors.As(err, &rejected) {
+		log.Warn(ctx, "Last.fm scrobble rejected by service", "track", s.Title, err)
+		return errors.Join(err, scrobbler.ErrUnrecoverable)
+	}
 	var lfErr *lastFMError
 	isLastFMError := errors.As(err, &lfErr)
 	if !isLastFMError {

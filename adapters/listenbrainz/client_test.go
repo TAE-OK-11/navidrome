@@ -122,6 +122,17 @@ var _ = Describe("client", func() {
 				f, _ := os.ReadFile("tests/fixtures/listenbrainz.scrobble.request.json")
 				Expect(body).To(MatchJSON(f))
 			})
+
+			It("returns an error when the service rejects the scrobble", func() {
+				httpClient.Res = http.Response{
+					Body:       io.NopCloser(bytes.NewBufferString(`{"status": "failed"}`)),
+					StatusCode: 200,
+				}
+				err := client.scrobble(context.Background(), "LB-TOKEN", li)
+				Expect(err).To(HaveOccurred())
+				var rejected *scrobbleRejectedError
+				Expect(errors.As(err, &rejected)).To(BeTrue())
+			})
 		})
 	})
 

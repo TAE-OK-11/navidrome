@@ -80,6 +80,14 @@ var _ = Describe("BufferedScrobbler", func() {
 		Expect(scr.GetUsername()).To(Equal("alice"))
 	})
 
+	It("drops buffered scrobbles when the user is no longer authorized", func() {
+		track := model.MediaFile{ID: "123", Title: "Test Track", Artist: "Test Artist"}
+		scr.SetError(ErrNotAuthorized)
+		Expect(bs.Scrobble(ctx, "user1", Scrobble{MediaFile: track, TimeStamp: time.Now()})).To(Succeed())
+		Eventually(func() int32 { return scr.ScrobbleAttempts() }).Should(Equal(int32(1)))
+		Eventually(buffer.Length).Should(Equal(int64(0)))
+	})
+
 	It("stops the background goroutine when Stop is called", func() {
 		// Replace the real run method with one that signals when it exits
 		done := make(chan struct{})

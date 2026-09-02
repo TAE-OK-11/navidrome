@@ -33,6 +33,18 @@ func (e *libreFMError) Error() string {
 	return fmt.Sprintf("libre.fm error(%d): %s", e.Code, e.Message)
 }
 
+type scrobbleRejectedError struct {
+	Code string
+	Text string
+}
+
+func (e *scrobbleRejectedError) Error() string {
+	if e.Text != "" {
+		return fmt.Sprintf("libre.fm: scrobble rejected (code=%s): %s", e.Code, e.Text)
+	}
+	return fmt.Sprintf("libre.fm: scrobble rejected (code=%s)", e.Code)
+}
+
 type httpDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -120,12 +132,16 @@ func (c *client) scrobble(ctx context.Context, sessionKey string, info ScrobbleI
 		return err
 	}
 	if resp.Scrobbles.Scrobble.IgnoredMessage.Code != "" && resp.Scrobbles.Scrobble.IgnoredMessage.Code != "0" {
-		log.Warn(ctx, "Libre.fm: scrobble was ignored", "code", resp.Scrobbles.Scrobble.IgnoredMessage.Code,
-			"text", resp.Scrobbles.Scrobble.IgnoredMessage.Text, "info", info)
+		return &scrobbleRejectedError{
+			Code: resp.Scrobbles.Scrobble.IgnoredMessage.Code,
+			Text: resp.Scrobbles.Scrobble.IgnoredMessage.Text,
+		}
 	}
 	if resp.Scrobbles.Attr.Accepted != 1 {
-		log.Warn(ctx, "Libre.fm: scrobble was not accepted", "code", resp.Scrobbles.Scrobble.IgnoredMessage.Code,
-			"text", resp.Scrobbles.Scrobble.IgnoredMessage.Text, "info", info)
+		return &scrobbleRejectedError{
+			Code: resp.Scrobbles.Scrobble.IgnoredMessage.Code,
+			Text: resp.Scrobbles.Scrobble.IgnoredMessage.Text,
+		}
 	}
 	return nil
 }

@@ -175,6 +175,26 @@ var _ = Describe("listenBrainzAgent", func() {
 			Expect(err).To(MatchError(scrobbler.ErrUnrecoverable))
 		})
 
+		It("returns ErrUnrecoverable when the service rejects the scrobble", func() {
+			httpClient.Res = http.Response{
+				Body:       io.NopCloser(bytes.NewBufferString(`{"status": "failed"}`)),
+				StatusCode: 200,
+			}
+
+			err := agent.Scrobble(ctx, "user-1", sc)
+			Expect(err).To(MatchError(scrobbler.ErrUnrecoverable))
+		})
+
+		It("skips songs with less than 31 seconds", func() {
+			short := sc
+			short.Duration = 29
+			httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(`{"status": "ok"}`)), StatusCode: 200}
+
+			err := agent.Scrobble(ctx, "user-1", short)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(httpClient.SavedRequest).To(BeNil())
+		})
+
 		It("keeps a 429 scrobble for retry and carries the delay", func() {
 			httpClient.Res = http.Response{
 				StatusCode: 429,

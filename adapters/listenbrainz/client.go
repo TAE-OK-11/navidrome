@@ -34,6 +34,14 @@ func (e *listenBrainzError) Error() string {
 	return fmt.Sprintf("ListenBrainz error(%d): %s", e.Code, e.Message)
 }
 
+type scrobbleRejectedError struct {
+	Status string
+}
+
+func (e *scrobbleRejectedError) Error() string {
+	return fmt.Sprintf("ListenBrainz: scrobble not accepted (status=%q)", e.Status)
+}
+
 type httpDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -123,7 +131,7 @@ func (c *client) updateNowPlaying(ctx context.Context, apiKey string, li listenI
 		return err
 	}
 	if resp.Status != "ok" {
-		log.Warn(ctx, "ListenBrainz: NowPlaying was not accepted", "status", resp.Status)
+		return &scrobbleRejectedError{Status: resp.Status}
 	}
 	return nil
 }
@@ -141,7 +149,7 @@ func (c *client) scrobble(ctx context.Context, apiKey string, li listenInfo) err
 		return err
 	}
 	if resp.Status != "ok" {
-		log.Warn(ctx, "ListenBrainz: Scrobble was not accepted", "status", resp.Status)
+		return &scrobbleRejectedError{Status: resp.Status}
 	}
 	return nil
 }

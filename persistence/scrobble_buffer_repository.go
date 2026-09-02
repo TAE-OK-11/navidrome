@@ -94,11 +94,11 @@ func (r *scrobbleBufferRepository) Next(service string, userId string) (*model.S
 }
 
 func (r *scrobbleBufferRepository) cleanupOrphans(service, userId string) error {
-	del := Delete(r.tableName+" s").
+	del := Delete(r.tableName).
 		Where(And{
-			Eq{"s.service": service},
-			Eq{"s.user_id": userId},
-			Expr("NOT EXISTS (SELECT 1 FROM media_file m WHERE m.id = s.media_file_id)"),
+			Eq{"service": service},
+			Eq{"user_id": userId},
+			Expr("NOT EXISTS (SELECT 1 FROM media_file m WHERE m.id = " + r.tableName + ".media_file_id)"),
 		})
 	_, err := r.executeSQL(del)
 	return err

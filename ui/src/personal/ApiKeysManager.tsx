@@ -162,7 +162,7 @@ export const ApiKeysManager = () => {
             multiline
             minRows={3}
             value={createdToken || ''}
-            InputProps={{ readOnly: true }}
+            slotProps={{ htmlInput: { readOnly: true } }}
           />
         </DialogContent>
         <DialogActions>

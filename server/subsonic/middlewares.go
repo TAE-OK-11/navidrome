@@ -157,10 +157,6 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 				}
 			} else {
 				p := req.Params(r)
-				if err := validatePasswordAuthParams(p); err != nil {
-					sendError(w, r, err)
-					return
-				}
 				apiKey := p.StringOr("apiKey", "")
 				if apiKey != "" {
 					if err := validateAPIKeyAuthParams(p); err != nil {
@@ -189,44 +185,48 @@ func authenticate(ds model.DataStore) func(next http.Handler) http.Handler {
 					}
 					failures.succeeded(failureKey)
 				} else {
-				username, _ := request.UsernameFrom(ctx)
-				if username == "" {
-					username = p.StringOr("u", "")
-				}
-				pass := p.StringOr("p", "")
-				token := p.StringOr("t", "")
-				salt := p.StringOr("s", "")
-				jwt := p.StringOr("jwt", "")
-				failureKey := authenticationFailureKey(r)
-				if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
-					w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
-					sendError(w, r, newError(responses.ErrorAuthenticationFail))
-					return
-				}
-
-				usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
-					return ds.User(loadCtx).FindByUsernameWithPassword(username)
-				})
-				if errors.Is(err, context.Canceled) {
-					log.Debug(ctx, "API: Request canceled when authenticating", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-					return
-				}
-				switch {
-				case errors.Is(err, model.ErrNotFound):
-					log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-				case err != nil:
-					log.Error(ctx, "API: Error authenticating username", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
-				default:
-					err = validateCredentials(usr, pass, token, salt, jwt)
-					if err != nil {
-						log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+					if err := validatePasswordAuthParams(p); err != nil {
+						sendError(w, r, err)
+						return
 					}
-				}
-				if err != nil {
-					failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
-				} else {
-					failures.succeeded(failureKey)
-				}
+					username, _ := request.UsernameFrom(ctx)
+					if username == "" {
+						username = p.StringOr("u", "")
+					}
+					pass := p.StringOr("p", "")
+					token := p.StringOr("t", "")
+					salt := p.StringOr("s", "")
+					jwt := p.StringOr("jwt", "")
+					failureKey := authenticationFailureKey(r)
+					if retryAfter, allowed := failures.allow(failureKey, time.Now(), conf.Server.AuthRequestLimit, conf.Server.AuthWindowLength); !allowed {
+						w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+						sendError(w, r, newError(responses.ErrorAuthenticationFail))
+						return
+					}
+
+					usr, err = users.get(ctx, "password\x00"+username, func(loadCtx context.Context) (*model.User, error) {
+						return ds.User(loadCtx).FindByUsernameWithPassword(username)
+					})
+					if errors.Is(err, context.Canceled) {
+						log.Debug(ctx, "API: Request canceled when authenticating", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+						return
+					}
+					switch {
+					case errors.Is(err, model.ErrNotFound):
+						log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+					case err != nil:
+						log.Error(ctx, "API: Error authenticating username", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+					default:
+						err = validateCredentials(usr, pass, token, salt, jwt)
+						if err != nil {
+							log.Warn(ctx, "API: Invalid login", "auth", "subsonic", "username", username, "remoteAddr", r.RemoteAddr, err)
+						}
+					}
+					if err != nil {
+						failures.failed(failureKey, time.Now(), conf.Server.AuthWindowLength)
+					} else {
+						failures.succeeded(failureKey)
+					}
 				}
 			}
 

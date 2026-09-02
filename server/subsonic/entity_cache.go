@@ -65,6 +65,12 @@ func (c *entityResponseCache) put(key string, now time.Time, value *responses.Su
 	c.entries[key] = entityResponseCacheEntry{value: value, expires: now.Add(entityResponseCacheTTL)}
 }
 
+func (c *entityResponseCache) delete(key string) {
+	c.mu.Lock()
+	delete(c.entries, key)
+	c.mu.Unlock()
+}
+
 func entityResponseCacheKey(r *http.Request, kind, id string) string {
 	user, ok := request.UserFrom(r.Context())
 	userKey := ""

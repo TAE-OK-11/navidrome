@@ -60,6 +60,8 @@ const BRIDGE_RESPONSE_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
 // Stall protection for inherited HTTP/2 bodies. Idle (not total) so long media
 // streams can run for hours while still closing wedged upstream responses.
 const BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+// Transcode startup and slow clients can stall longer than API responses.
+const BRIDGE_MEDIA_RESPONSE_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 const API_COMPRESSION_MIN_SIZE: usize = 256;
 const LARGE_COMPRESSED_RESPONSE_SIZE: usize = 16 * 1024;
 const HUGE_COMPRESSED_RESPONSE_SIZE: usize = 256 * 1024;
@@ -692,6 +694,7 @@ async fn proxy_request_inner(
 
     let compression = decoded.compression;
     let body = request_body(recv, read_fin);
+    let request_path = decoded.uri.path().to_string();
     let mut request = Request::builder()
         .method(decoded.method)
         .uri(decoded.uri)
@@ -711,12 +714,13 @@ async fn proxy_request_inner(
             .context("timed out waiting for inherited HTTP/2 response headers")?
             .context("inherited HTTP/2 bridge request failed")?;
     drop(request_permit);
+    let body_idle_timeout = response_body_idle_timeout(&request_path);
     forward_response(
         response,
         &mut send,
         &context.alt_svc,
         compression,
-        BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT,
+        body_idle_timeout,
     )
     .await
 }
@@ -902,6 +906,7 @@ fn is_api_path(path: &str) -> bool {
 }
 
 fn is_media_path(path: &str) -> bool {
+    let path = path.strip_suffix(".view").unwrap_or(path);
     path.ends_with("/rest/stream")
         || path.ends_with("/rest/download")
         || path.ends_with("/rest/gettranscodestream")
@@ -910,6 +915,21 @@ fn is_media_path(path: &str) -> bool {
         || path.contains("/share/s/")
         || path.contains("/share/d/")
         || path.contains("/share/img/")
+}
+
+fn response_body_idle_timeout(path: &str) -> Duration {
+    let path = path.split_once('?').map_or(path, |(path, _)| path);
+    let normalized_storage = path
+        .bytes()
+        .any(|byte| byte.is_ascii_uppercase())
+        .then(|| path.to_ascii_lowercase());
+    let normalized = normalized_storage.as_deref().unwrap_or(path);
+    let normalized = normalized.strip_suffix(".view").unwrap_or(normalized);
+    if is_media_path(normalized) {
+        BRIDGE_MEDIA_RESPONSE_BODY_IDLE_TIMEOUT
+    } else {
+        BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT
+    }
 }
 
 fn is_sensitive_auth_path(path: &str) -> bool {
@@ -1669,5 +1689,21 @@ mod tests {
             rate.admit(ip),
             Err(AdmissionRejection::RateLimited)
         ));
+    }
+
+    #[test]
+    fn media_paths_include_view_suffix_and_use_longer_idle_timeout() {
+        assert!(is_media_path("/rest/stream.view"));
+        assert!(is_media_path("/rest/getTranscodeStream.view"));
+        assert!(!is_media_path("/rest/ping.view"));
+
+        assert_eq!(
+            response_body_idle_timeout("/rest/stream.view"),
+            BRIDGE_MEDIA_RESPONSE_BODY_IDLE_TIMEOUT
+        );
+        assert_eq!(
+            response_body_idle_timeout("/rest/ping"),
+            BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT
+        );
     }
 }

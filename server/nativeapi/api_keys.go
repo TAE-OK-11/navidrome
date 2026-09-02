@@ -82,8 +82,11 @@ func deleteAPIKey(service *apikeys.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		if err := service.Delete(r.Context(), user.ID, id); err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, model.ErrNotAuthorized) {
+			switch {
+			case errors.Is(err, model.ErrNotAuthorized):
 				status = http.StatusForbidden
+			case errors.Is(err, model.ErrNotFound):
+				status = http.StatusNotFound
 			}
 			_ = rest.RespondWithError(w, status, err.Error())
 			return

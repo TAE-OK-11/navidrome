@@ -226,7 +226,7 @@ var _ = Describe("Transcode endpoints", func() {
 			Expect(resp.TranscodeDecision.SourceStream.AudioBitrate).To(Equal(int32(320_000)))
 		})
 
-		It("filters AAC from transcoding profiles", func() {
+		It("passes AAC transcoding profiles through to the decider", func() {
 			mockMFRepo.SetData(model.MediaFiles{
 				{ID: "song-1", Suffix: "opus", Codec: "opus", BitRate: 128, Channels: 2, SampleRate: 48000},
 			})
@@ -245,8 +245,7 @@ var _ = Describe("Transcode endpoints", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mockTD.capturedClient).ToNot(BeNil())
-			Expect(mockTD.capturedClient.TranscodingProfiles).To(HaveLen(1))
-			Expect(mockTD.capturedClient.TranscodingProfiles[0].AudioCodec).To(Equal("mp3"))
+			Expect(mockTD.capturedClient.TranscodingProfiles).To(HaveLen(3))
 		})
 
 		It("includes transcode stream when transcoding", func() {
@@ -279,6 +278,32 @@ var _ = Describe("Transcode endpoints", func() {
 			Expect(resp.TranscodeDecision.TranscodeReasons).To(ConsistOf("container not supported"))
 			Expect(resp.TranscodeDecision.TranscodeStream).ToNot(BeNil())
 			Expect(resp.TranscodeDecision.TranscodeStream.Container).To(Equal("mp3"))
+		})
+
+		It("maps hls protocol to http in stream details", func() {
+			mockMFRepo.SetData(model.MediaFiles{
+				{ID: "song-3", Suffix: "flac", Codec: "FLAC", BitRate: 1000, Channels: 2, SampleRate: 44100},
+			})
+			mockTD.decision = &stream.TranscodeDecision{
+				MediaID:       "song-3",
+				CanTranscode:  true,
+				TargetFormat:  "mp3",
+				TargetBitrate: 256,
+				SourceStream:  stream.Details{Container: "flac", Codec: "flac", Protocol: stream.ProtocolHTTP},
+				TranscodeStream: &stream.Details{
+					Container: "mp3",
+					Codec:     "mp3",
+					Protocol:  stream.ProtocolHLS,
+					Bitrate:   256,
+				},
+			}
+			mockTD.token = "token"
+
+			r := newJSONPostRequest("mediaId=song-3&mediaType=song", "{}")
+			resp, err := router.GetTranscodeDecision(w, r)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp.TranscodeDecision.TranscodeStream.Protocol).To(Equal("http"))
 		})
 
 		Describe("player MaxBitRate cap", func() {
@@ -430,6 +455,14 @@ var _ = Describe("Transcode endpoints", func() {
 
 		It("returns 400 when transcodeParams is missing", func() {
 			r := newGetRequest("mediaId=123", "mediaType=song")
+			resp, err := router.GetTranscodeStream(w, r)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resp).To(BeNil())
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 400 for negative offset", func() {
+			r := newGetRequest("mediaId=123", "mediaType=song", "transcodeParams=abc", "offset=-1")
 			resp, err := router.GetTranscodeStream(w, r)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp).To(BeNil())

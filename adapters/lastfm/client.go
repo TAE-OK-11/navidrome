@@ -171,9 +171,11 @@ func (c *client) updateNowPlaying(ctx context.Context, sessionKey string, info S
 	if err != nil {
 		return err
 	}
-	if resp.NowPlaying.IgnoredMessage.Code != "0" {
-		log.Warn(ctx, "LastFM: NowPlaying was ignored", "code", resp.NowPlaying.IgnoredMessage.Code,
-			"text", resp.NowPlaying.IgnoredMessage.Text)
+	if code := resp.NowPlaying.IgnoredMessage.Code; code != "" && code != "0" {
+		return &scrobbleRejectedError{
+			Code: resp.NowPlaying.IgnoredMessage.Code,
+			Text: resp.NowPlaying.IgnoredMessage.Text,
+		}
 	}
 	return nil
 }

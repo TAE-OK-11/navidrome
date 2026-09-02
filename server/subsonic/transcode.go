@@ -222,7 +222,7 @@ func isValidComparison(c string) bool {
 // toResponseStreamDetails converts a core StreamDetails to the API response type.
 func toResponseStreamDetails(sd *stream.Details) *responses.StreamDetails {
 	return &responses.StreamDetails{
-		Protocol:        stream.ProtocolHTTP, // TODO: derive from decision when HLS support is added
+		Protocol:        stream.DeliverableStreamProtocol(sd.Protocol),
 		Container:       sd.Container,
 		Codec:           sd.Codec,
 		AudioBitrate:    int32(kbpsToBps(sd.Bitrate)),
@@ -269,16 +269,6 @@ func (api *Router) GetTranscodeDecision(w http.ResponseWriter, r *http.Request) 
 		return nil, newError(responses.ErrorGeneric, "%v", err)
 	}
 	clientInfo := clientInfoReq.toCoreClientInfo()
-
-	// TODO: Remove this filter once AAC transcoding works reliably
-	// with streaming clients (Sonos, etc).
-	// See https://github.com/navidrome/navidrome/discussions/4832#discussioncomment-16068231
-	clientInfo.TranscodingProfiles = slices.DeleteFunc(clientInfo.TranscodingProfiles, func(p stream.Profile) bool {
-		if p.AudioCodec != "" {
-			return stream.IsAACCodec(p.AudioCodec)
-		}
-		return stream.IsAACCodec(p.Container)
-	})
 
 	// Honor the player's forced transcoding format, falling back to normal
 	// negotiation when the client can't play it (issue #5583).
@@ -386,6 +376,12 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 		return nil, nil
 	}
 
+	offset := p.IntOr("offset", 0)
+	if offset < 0 {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return nil, nil
+	}
+
 	if !isValidMediaType(mediaType) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return nil, nil
@@ -404,7 +400,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}
 
 	// Validate the token and resolve streaming parameters
-	streamReq, err := api.transcodeDecision.ResolveRequestFromToken(ctx, transcodeParamsToken, mf, p.IntOr("offset", 0))
+	streamReq, err := api.transcodeDecision.ResolveRequestFromToken(ctx, transcodeParamsToken, mf, offset)
 	if err != nil {
 		switch {
 		case errors.Is(err, stream.ErrTokenInvalid), errors.Is(err, stream.ErrTokenStale):
@@ -438,6 +434,7 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 	}()
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(mediaStream.Duration()), 'G', -1, 32))
 
 	n, err := mediaStream.Serve(ctx, w, r)
 	if err != nil {

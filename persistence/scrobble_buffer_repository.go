@@ -64,10 +64,14 @@ func (r *scrobbleBufferRepository) Enqueue(service, userId, mediaFileId string, 
 }
 
 func (r *scrobbleBufferRepository) Next(service string, userId string) (*model.ScrobbleEntry, error) {
+	if err := r.cleanupOrphans(service, userId); err != nil {
+		return nil, err
+	}
+
 	// Put `s.*` last or else m.id overrides s.id
 	sql := Select().Columns("m.*, s.*").
 		From(r.tableName+" s").
-		LeftJoin("media_file m on m.id = s.media_file_id").
+		InnerJoin("media_file m on m.id = s.media_file_id").
 		Where(And{
 			Eq{"service": service},
 			Eq{"user_id": userId},
@@ -87,6 +91,17 @@ func (r *scrobbleBufferRepository) Next(service string, userId string) (*model.S
 		return nil, err
 	}
 	return res.ScrobbleEntry, nil
+}
+
+func (r *scrobbleBufferRepository) cleanupOrphans(service, userId string) error {
+	del := Delete(r.tableName+" s").
+		Where(And{
+			Eq{"s.service": service},
+			Eq{"s.user_id": userId},
+			Expr("NOT EXISTS (SELECT 1 FROM media_file m WHERE m.id = s.media_file_id)"),
+		})
+	_, err := r.executeSQL(del)
+	return err
 }
 
 func (r *scrobbleBufferRepository) Dequeue(entry *model.ScrobbleEntry) error {

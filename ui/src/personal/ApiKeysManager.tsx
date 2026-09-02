@@ -36,8 +36,25 @@ export const ApiKeysManager = () => {
   const notify = useNotify()
   const [keys, setKeys] = useState<APIKey[]>([])
   const [name, setName] = useState('')
+  const [expiresAt, setExpiresAt] = useState('')
   const [loading, setLoading] = useState(false)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
+
+  const formatExpiry = (keyExpiresAt?: string) => {
+    if (!keyExpiresAt) {
+      return translate('menu.personal.options.apiKeyNoExpiry')
+    }
+    const expiry = new Date(keyExpiresAt)
+    if (Number.isNaN(expiry.getTime())) {
+      return null
+    }
+    if (expiry.getTime() <= Date.now()) {
+      return translate('menu.personal.options.apiKeyExpired')
+    }
+    return translate('menu.personal.options.apiKeyExpires', {
+      date: expiry.toLocaleString(),
+    })
+  }
 
   const loadKeys = useCallback(() => {
     setLoading(true)
@@ -61,14 +78,19 @@ export const ApiKeysManager = () => {
       return
     }
     setLoading(true)
+    const payload: { name: string; expiresAt?: string } = { name: trimmed }
+    if (expiresAt) {
+      payload.expiresAt = new Date(expiresAt).toISOString()
+    }
     httpClient('/api/apikey', {
       method: 'POST',
-      body: JSON.stringify({ name: trimmed }),
+      body: JSON.stringify(payload),
     })
       .then((response) => {
-        const payload = response.json as CreateAPIKeyResponse
-        setCreatedToken(payload.token)
+        const body = response.json as CreateAPIKeyResponse
+        setCreatedToken(body.token)
         setName('')
+        setExpiresAt('')
         loadKeys()
       })
       .catch(() => {
@@ -93,7 +115,7 @@ export const ApiKeysManager = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {translate('menu.personal.options.apiKeysHelp')}
       </Typography>
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <TextField
           size="small"
           fullWidth
@@ -101,11 +123,23 @@ export const ApiKeysManager = () => {
           value={name}
           onChange={(event) => setName(event.target.value)}
           disabled={loading}
+          sx={{ flex: '1 1 220px' }}
+        />
+        <TextField
+          size="small"
+          type="datetime-local"
+          label={translate('menu.personal.options.apiKeyExpiresAt')}
+          value={expiresAt}
+          onChange={(event) => setExpiresAt(event.target.value)}
+          disabled={loading}
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{ flex: '0 1 240px' }}
         />
         <Button
           variant="contained"
           onClick={createKey}
           disabled={loading || !name.trim()}
+          sx={{ alignSelf: 'center' }}
         >
           {translate('menu.personal.options.apiKeyCreate')}
         </Button>
@@ -137,6 +171,7 @@ export const ApiKeysManager = () => {
                       date: new Date(key.createdAt).toLocaleString(),
                     })
                   : null,
+                formatExpiry(key.expiresAt),
               ]
                 .filter(Boolean)
                 .join(' · ')}

@@ -133,6 +133,19 @@ const (
 	ProtocolHLS  = "hls"
 )
 
+// DeliverableStreamProtocol returns the protocol clients should use with
+// getTranscodeStream. Navidrome serves progressive HTTP only; HLS profiles are
+// accepted during negotiation but delivery is always via getTranscodeStream.
+func DeliverableStreamProtocol(protocol string) string {
+	if strings.EqualFold(protocol, ProtocolHLS) {
+		return ProtocolHTTP
+	}
+	if protocol == "" {
+		return ProtocolHTTP
+	}
+	return strings.ToLower(protocol)
+}
+
 // Comparison operators (OpenSubsonic spec enum)
 const (
 	ComparisonEquals           = "Equals"
@@ -176,6 +189,7 @@ type TranscodeDecision struct {
 // Details describes audio stream properties.
 // Bitrate is in kilobits per second (kbps).
 type Details struct {
+	Protocol   string // OpenSubsonic stream protocol (http, hls)
 	Container  string
 	Codec      string
 	Profile    string // Audio profile (e.g., "LC", "HE-AACv2"). Populated from ffprobe data.

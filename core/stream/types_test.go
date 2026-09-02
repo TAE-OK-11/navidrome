@@ -131,3 +131,17 @@ var _ = Describe("ClientInfo", func() {
 		})
 	})
 })
+
+var _ = Describe("DeliverableStreamProtocol", func() {
+	It("maps hls to http", func() {
+		Expect(DeliverableStreamProtocol(ProtocolHLS)).To(Equal(ProtocolHTTP))
+	})
+
+	It("defaults empty protocol to http", func() {
+		Expect(DeliverableStreamProtocol("")).To(Equal(ProtocolHTTP))
+	})
+
+	It("preserves http", func() {
+		Expect(DeliverableStreamProtocol(ProtocolHTTP)).To(Equal(ProtocolHTTP))
+	})
+})

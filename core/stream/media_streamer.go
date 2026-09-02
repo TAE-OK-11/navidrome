@@ -98,8 +98,16 @@ func (ms *mediaStreamer) NewStream(ctx context.Context, mf *model.MediaFile, req
 	format = req.Format
 	bitRate = req.BitRate
 	if format == "" || format == "raw" {
-		format = "raw"
-		bitRate = 0
+		if req.Offset > 0 {
+			// transcodeOffset is implemented via ffmpeg -ss; raw file handles ignore it.
+			format = mf.Suffix
+			if bitRate <= 0 {
+				bitRate = mf.BitRate
+			}
+		} else {
+			format = "raw"
+			bitRate = 0
+		}
 	}
 	s := &Stream{ctx: ctx, mf: mf, format: format, bitRate: bitRate}
 	filePath := mf.AbsolutePath()

@@ -642,6 +642,10 @@
         "apiKeyNeverUsed": "Never used",
         "apiKeyCreatedTitle": "API key created",
         "apiKeyCreatedWarning": "Copy this key now. You will not be able to see it again.",
+        "apiKeyExpiresAt": "Expires (optional)",
+        "apiKeyExpires": "Expires %{date}",
+        "apiKeyNoExpiry": "No expiration",
+        "apiKeyExpired": "Expired",
         "replaygain": "ReplayGain Mode",
         "preAmp": "ReplayGain PreAmp (dB)",
         "gain": {

@@ -114,6 +114,7 @@ func (s *deciderService) evaluateDecision(ctx context.Context, decision *Transco
 		for _, profile := range clientInfo.DirectPlayProfiles {
 			if reason := s.checkDirectPlayProfile(src, &profile, clientInfo); reason == "" {
 				decision.CanDirectPlay = true
+				decision.SourceStream.Protocol = directPlayProtocol(&profile)
 				decision.TranscodeReasons = nil // Clear any previously collected reasons
 				break
 			} else {
@@ -159,6 +160,7 @@ func (s *deciderService) evaluateDecision(ctx context.Context, decision *Transco
 
 func buildSourceStream(mf *model.MediaFile, probe *ffmpeg.AudioProbeResult) Details {
 	sd := Details{
+		Protocol:  ProtocolHTTP,
 		Container: mf.Suffix,
 		Duration:  mf.Duration,
 		Size:      mf.Size,
@@ -272,8 +274,7 @@ func matchesPCMWAVBridge(src *Details, profile *DirectPlayProfile) bool {
 // checkDirectPlayProfile returns "" if the profile matches (direct play OK),
 // or a typed reason string if it doesn't match.
 func (s *deciderService) checkDirectPlayProfile(src *Details, profile *DirectPlayProfile, clientInfo *ClientInfo) string {
-	// Check protocol (only http for now)
-	if len(profile.Protocols) > 0 && !containsIgnoreCase(profile.Protocols, ProtocolHTTP) {
+	if len(profile.Protocols) > 0 && !supportsStreamProtocol(profile.Protocols) {
 		return "protocol not supported"
 	}
 
@@ -309,8 +310,7 @@ func (s *deciderService) checkDirectPlayProfile(src *Details, profile *DirectPla
 // response container when a codec fallback occurs, e.g., "mp4"→"aac").
 // Returns nil, "" if the profile cannot produce a valid output.
 func (s *deciderService) computeTranscodedStream(ctx context.Context, lookup *transcodeLookup, src *Details, profile *Profile, clientInfo *ClientInfo) (*Details, string) {
-	// Check protocol (only http for now)
-	if profile.Protocol != "" && !strings.EqualFold(profile.Protocol, ProtocolHTTP) {
+	if profile.Protocol != "" && !isSupportedStreamProtocol(profile.Protocol) {
 		log.Trace(ctx, "Skipping transcoding profile: unsupported protocol", "protocol", profile.Protocol)
 		return nil, ""
 	}
@@ -335,6 +335,7 @@ func (s *deciderService) computeTranscodedStream(ctx context.Context, lookup *tr
 	}
 
 	ts := &Details{
+		Protocol:   transcodingProtocol(profile),
 		Container:  responseContainer,
 		Codec:      strings.ToLower(profile.AudioCodec),
 		SampleRate: normalizeSourceSampleRate(src.SampleRate, src.Codec),
@@ -576,4 +577,38 @@ func (s *deciderService) ensureProbed(ctx context.Context, mf *model.MediaFile) 
 		"profile", result.Profile, "bitRate", result.BitRate,
 		"sampleRate", result.SampleRate, "bitDepth", result.BitDepth, "channels", result.Channels)
 	return result, nil
+}
+
+func supportsStreamProtocol(protocols []string) bool {
+	for _, protocol := range protocols {
+		if isSupportedStreamProtocol(protocol) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSupportedStreamProtocol(protocol string) bool {
+	return strings.EqualFold(protocol, ProtocolHTTP) || strings.EqualFold(protocol, ProtocolHLS)
+}
+
+func directPlayProtocol(profile *DirectPlayProfile) string {
+	if len(profile.Protocols) == 0 {
+		return ProtocolHTTP
+	}
+	// Prefer progressive HTTP when the client advertises both.
+	if containsIgnoreCase(profile.Protocols, ProtocolHTTP) {
+		return ProtocolHTTP
+	}
+	if containsIgnoreCase(profile.Protocols, ProtocolHLS) {
+		return ProtocolHLS
+	}
+	return ProtocolHTTP
+}
+
+func transcodingProtocol(profile *Profile) string {
+	if profile.Protocol != "" {
+		return strings.ToLower(profile.Protocol)
+	}
+	return ProtocolHTTP
 }

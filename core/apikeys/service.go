@@ -52,6 +52,9 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 	}
 
 	now := time.Now()
+	if input.ExpiresAt != nil && input.ExpiresAt.Before(now) {
+		return nil, "", errors.New("expiresAt must be in the future")
+	}
 	key := &model.UserAPIKey{
 		ID:           id.NewRandom(),
 		UserID:       userID,

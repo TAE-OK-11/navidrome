@@ -14,6 +14,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/events"
+	"github.com/navidrome/navidrome/server/responsecache"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 )
@@ -27,6 +28,10 @@ func (api *Router) SetRating(r *http.Request) (*responses.Subsonic, error) {
 	rating, err := p.Int("rating")
 	if err != nil {
 		return nil, err
+	}
+
+	if rating < 0 || rating > 5 {
+		return nil, newError(responses.ErrorGeneric, "rating must be between 0 and 5")
 	}
 
 	log.Debug(r, "Setting rating", "rating", rating, "id", id)
@@ -67,6 +72,7 @@ func (api *Router) setRating(ctx context.Context, id string, rating int) error {
 	}
 	event := &events.RefreshResource{}
 	api.broker.SendMessage(ctx, event.With(resource, id))
+	responsecache.InvalidateEntity(id)
 	return nil
 }
 
@@ -152,6 +158,7 @@ func (api *Router) setStar(ctx context.Context, star bool, ids ...string) error 
 		// serializes as a "{*:*}" wildcard, forcing every client to refresh.
 		if changed {
 			api.broker.SendMessage(ctx, event)
+			responsecache.InvalidateEntities(ids...)
 		}
 		return nil
 	})
@@ -180,11 +187,14 @@ func (api *Router) Scrobble(r *http.Request) (*responses.Subsonic, error) {
 		err := api.scrobblerSubmit(ctx, ids, times)
 		if err != nil {
 			log.Error(ctx, "Error registering scrobbles", "ids", ids, "times", times, err)
+			return nil, err
 		}
+		responsecache.InvalidateEntities(ids...)
 	} else {
 		err := api.scrobblerNowPlaying(ctx, ids[0], position)
 		if err != nil {
 			log.Error(ctx, "Error setting NowPlaying", "id", ids[0], err)
+			return nil, err
 		}
 	}
 

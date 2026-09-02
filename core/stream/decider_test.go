@@ -1215,6 +1215,33 @@ var _ = Describe("Decider", func() {
 				Expect(decision.TargetBitrate).To(Equal(256)) // aac default from mock
 			})
 
+			It("advertises hls protocol on transcoded streams when requested", func() {
+				mf := withProbe(&model.MediaFile{ID: "1", Suffix: "flac", Codec: "FLAC", BitRate: 1000, Channels: 2, SampleRate: 44100, BitDepth: new(16)})
+				ci := &ClientInfo{
+					TranscodingProfiles: []Profile{
+						{Container: "mp3", AudioCodec: "mp3", Protocol: ProtocolHLS},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanTranscode).To(BeTrue())
+				Expect(decision.TranscodeStream).ToNot(BeNil())
+				Expect(decision.TranscodeStream.Protocol).To(Equal(ProtocolHLS))
+			})
+
+			It("prefers http over hls for direct play when both are advertised", func() {
+				mf := withProbe(&model.MediaFile{ID: "1", Suffix: "mp3", Codec: "mp3", BitRate: 320, Channels: 2, SampleRate: 44100})
+				ci := &ClientInfo{
+					DirectPlayProfiles: []DirectPlayProfile{
+						{Containers: []string{"mp3"}, AudioCodecs: []string{"mp3"}, Protocols: []string{ProtocolHLS, ProtocolHTTP}},
+					},
+				}
+				decision, err := svc.MakeDecision(ctx, mf, ci, TranscodeOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(decision.CanDirectPlay).To(BeTrue())
+				Expect(decision.SourceStream.Protocol).To(Equal(ProtocolHTTP))
+			})
+
 			It("falls back to 256 for unknown format", func() {
 				bitrate := lookupDefaultBitrate(ctx, ds, "xyz")
 				Expect(bitrate).To(Equal(fallbackBitrate))

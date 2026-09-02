@@ -27,6 +27,9 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	maxBitRate := p.IntOr("maxBitRate", 0)
 	format, _ := p.String("format")
 	timeOffset := p.IntOr("timeOffset", 0)
+	if timeOffset < 0 {
+		return nil, newError(responses.ErrorGeneric, "invalid timeOffset")
+	}
 
 	mf, err := api.mediaFileForStreaming(ctx, id)
 	if err != nil {

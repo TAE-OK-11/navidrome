@@ -547,6 +547,10 @@
         "apiKeyNeverUsed": "사용 기록 없음",
         "apiKeyCreatedTitle": "API 키가 생성되었습니다",
         "apiKeyCreatedWarning": "지금 이 키를 복사해 두세요. 다시 표시되지 않습니다.",
+        "apiKeyExpiresAt": "만료일 (선택)",
+        "apiKeyExpires": "만료 %{date}",
+        "apiKeyNoExpiry": "만료 없음",
+        "apiKeyExpired": "만료됨",
         "replaygain": "리플레이게인 모드",
         "preAmp": "리플레이게인 프리앰프 (dB)",
         "gain": {

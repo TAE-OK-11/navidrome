@@ -15,14 +15,6 @@ import (
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
-func (api *Router) invalidatePlaylistsCache(ctx context.Context) {
-	user, ok := request.UserFrom(ctx)
-	if !ok {
-		return
-	}
-	api.entityCache.delete(genreResponseCacheKey(user) + "|playlists")
-}
-
 func (api *Router) GetPlaylists(r *http.Request) (*responses.Subsonic, error) {
 	ctx := r.Context()
 	user, ok := request.UserFrom(ctx)
@@ -93,7 +85,6 @@ func (api *Router) CreatePlaylist(r *http.Request) (*responses.Subsonic, error) 
 		log.Error(r, err)
 		return nil, err
 	}
-	api.invalidatePlaylistsCache(ctx)
 	return api.getPlaylist(ctx, id)
 }
 
@@ -111,7 +102,6 @@ func (api *Router) DeletePlaylist(r *http.Request) (*responses.Subsonic, error) 
 		log.Error(r, err)
 		return nil, err
 	}
-	api.invalidatePlaylistsCache(r.Context())
 	return newResponse(), nil
 }
 
@@ -147,7 +137,6 @@ func (api *Router) UpdatePlaylist(r *http.Request) (*responses.Subsonic, error) 
 		log.Error(r, "Error updating playlist", "id", playlistId, err)
 		return nil, err
 	}
-	api.invalidatePlaylistsCache(r.Context())
 	return newResponse(), nil
 }
 

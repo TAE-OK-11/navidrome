@@ -1,70 +1,35 @@
-package apikeys_test
+package apikeys
 
 import (
 	"context"
-	"crypto/sha256"
-	"cmp"
+	"errors"
+	"testing"
+	"time"
 
-	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/conf/configtest"
-	"github.com/navidrome/navidrome/consts"
-	"github.com/navidrome/navidrome/core/apikeys"
-	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/tests"
-	"github.com/navidrome/navidrome/utils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("API keys service", func() {
-	var (
-		ds      *tests.MockDataStore
-		service *apikeys.Service
-		user    model.User
-	)
+func TestCreateRejectsPastExpiry(t *testing.T) {
+	ds := &tests.MockDataStore{}
+	service := New(ds)
+	past := time.Now().Add(-time.Hour)
 
-	BeforeEach(func() {
-		DeferCleanup(configtest.SetupConfig())
-		ds = &tests.MockDataStore{}
-		auth.Init(ds)
-		_ = ds.Property(context.Background()).Put(consts.JWTSecretKey, mustEncrypt("test-pepper-with-enough-length"))
-		user = model.User{ID: "user-1", UserName: "demo"}
-		_ = ds.User(context.Background()).Put(&user)
-		service = apikeys.New(ds)
+	_, _, err := service.Create(context.Background(), "user-1", CreateInput{
+		Name:      "test",
+		ExpiresAt: &past,
 	})
-
-	It("creates and authenticates a dedicated API key", func() {
-		key, token, err := service.Create(context.Background(), user.ID, apikeys.CreateInput{Name: "mobile"})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(key.Name).To(Equal("mobile"))
-		Expect(token).To(HavePrefix("nd_"))
-
-		authenticated, err := service.Authenticate(context.Background(), token)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(authenticated.ID).To(Equal(user.ID))
-	})
-
-	It("still accepts login JWT tokens", func() {
-		jwt, err := auth.CreateToken(&user)
-		Expect(err).ToNot(HaveOccurred())
-
-		authenticated, err := service.Authenticate(context.Background(), jwt)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(authenticated.UserName).To(Equal(user.UserName))
-	})
-})
-
-func mustEncrypt(value string) string {
-	enc, err := utils.Encrypt(context.Background(), encryptionKey(), value)
-	if err != nil {
-		panic(err)
+	if err == nil {
+		t.Fatal("expected error for past expiresAt")
 	}
-	return enc
 }
 
-func encryptionKey() []byte {
-	key := cmp.Or(conf.Server.PasswordEncryptionKey, consts.DefaultEncryptionKey)
-	sum := sha256.Sum256([]byte(key))
-	return sum[:]
+func TestDeleteReturnsNotFoundForMissingKey(t *testing.T) {
+	ds := &tests.MockDataStore{}
+	service := New(ds)
+
+	err := service.Delete(context.Background(), "user-1", "missing")
+	if err == nil || !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
 }

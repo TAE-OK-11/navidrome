@@ -907,14 +907,19 @@ fn is_api_path(path: &str) -> bool {
 
 fn is_media_path(path: &str) -> bool {
     let path = path.strip_suffix(".view").unwrap_or(path);
-    path.ends_with("/rest/stream")
-        || path.ends_with("/rest/download")
-        || path.ends_with("/rest/gettranscodestream")
-        || path.ends_with("/rest/getcoverart")
-        || path.ends_with("/rest/getavatar")
-        || path.contains("/share/s/")
-        || path.contains("/share/d/")
-        || path.contains("/share/img/")
+    let normalized = if path.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        path.to_ascii_lowercase()
+    } else {
+        path.to_string()
+    };
+    normalized.ends_with("/rest/stream")
+        || normalized.ends_with("/rest/download")
+        || normalized.ends_with("/rest/gettranscodestream")
+        || normalized.ends_with("/rest/getcoverart")
+        || normalized.ends_with("/rest/getavatar")
+        || normalized.contains("/share/s/")
+        || normalized.contains("/share/d/")
+        || normalized.contains("/share/img/")
 }
 
 fn response_body_idle_timeout(path: &str) -> Duration {

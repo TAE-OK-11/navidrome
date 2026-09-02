@@ -70,7 +70,7 @@ func CreateApp(ctx context.Context) *App {
 	library := core.NewLibrary(dataStore, modelScanner, watcher, broker, manager)
 	user := core.NewUser(dataStore, manager)
 	maintenance := core.NewMaintenance(dataStore)
-	nativeRouter := nativeapi.New(dataStore, share, playlistsPlaylists, insights, library, user, maintenance, manager, imageUploadService, cacheWarmer)
+	router := nativeapi.New(dataStore, share, playlistsPlaylists, insights, library, user, maintenance, manager, imageUploadService, cacheWarmer)
 	transcodingCache := stream.GetTranscodingCache()
 	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
 	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
@@ -82,10 +82,10 @@ func CreateApp(ctx context.Context) *App {
 	sonicSonic := sonic.New(dataStore, manager, matcherMatcher)
 	subsonicRouter := subsonic.New(dataStore, artworkArtwork, mediaStreamer, archiver, players, provider, modelScanner, broker, playlistsPlaylists, playTracker, share, playbackServer, metricsMetrics, lyricsLyrics, transcodeDecider, sonicSonic)
 	publicRouter := public.New(dataStore, artworkArtwork, mediaStreamer, share, archiver)
-	lastFMRouter := lastfm.NewRouter(dataStore)
-	listenBrainzRouter := listenbrainz.NewRouter(dataStore)
-	libreFMRouter := librefm.NewRouter(dataStore)
-	app := newApp(serverServer, nativeRouter, subsonicRouter, publicRouter, lastFMRouter, listenBrainzRouter, libreFMRouter, insights, metricsMetrics, modelScanner, watcher, playbackServer, manager, dataStore)
+	lastfmRouter := lastfm.NewRouter(dataStore)
+	listenbrainzRouter := listenbrainz.NewRouter(dataStore)
+	librefmRouter := librefm.NewRouter(dataStore)
+	app := newApp(serverServer, router, subsonicRouter, publicRouter, lastfmRouter, listenbrainzRouter, librefmRouter, insights, metricsMetrics, modelScanner, watcher, playbackServer, manager, dataStore)
 	return app
 }
 

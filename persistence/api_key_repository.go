@@ -23,7 +23,7 @@ func NewAPIKeyRepository(ctx context.Context, db dbx.Builder) model.UserAPIKeyRe
 }
 
 func (r *apiKeyRepository) Get(id string) (*model.UserAPIKey, error) {
-	sel := r.newSelect().Where(Eq{"id": id})
+	sel := r.newSelect().Columns("*").Where(Eq{"id": id})
 	var key model.UserAPIKey
 	if err := r.queryOne(sel, &key); err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func (r *apiKeyRepository) Get(id string) (*model.UserAPIKey, error) {
 }
 
 func (r *apiKeyRepository) GetByUserID(userID string) (model.UserAPIKeys, error) {
-	sel := r.newSelect().
+	sel := r.newSelect().Columns("*").
 		Where(Eq{"user_id": userID}).
 		OrderBy("created_at DESC")
 	var keys model.UserAPIKeys
@@ -43,7 +43,7 @@ func (r *apiKeyRepository) GetByUserID(userID string) (model.UserAPIKeys, error)
 }
 
 func (r *apiKeyRepository) FindByLookupPrefix(prefix string) (model.UserAPIKeys, error) {
-	sel := r.newSelect().Where(Eq{"lookup_prefix": prefix})
+	sel := r.newSelect().Columns("*").Where(Eq{"lookup_prefix": prefix})
 	var keys model.UserAPIKeys
 	if err := r.queryAll(sel, &keys); err != nil {
 		return nil, err

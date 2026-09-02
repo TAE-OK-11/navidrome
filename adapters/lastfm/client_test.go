@@ -210,6 +210,27 @@ var _ = Describe("client", func() {
 			Expect(bodyParams.Get("api_key")).To(Equal("API_KEY"))
 			Expect(bodyParams.Get("api_sig")).ToNot(BeEmpty())
 		})
+
+		It("returns an error when the service rejects the scrobble", func() {
+			httpClient.Res = http.Response{
+				Body: io.NopCloser(bytes.NewBufferString(
+					`{"scrobbles":{"scrobble":{"ignoredMessage":{"code":"4","#text":"too old"}},"@attr":{"accepted":0}}}`,
+				)),
+				StatusCode: 200,
+			}
+			info := ScrobbleInfo{
+				artist:      "U2",
+				track:       "One",
+				album:       "Achtung Baby",
+				trackNumber: 1,
+				duration:    276,
+				albumArtist: "U2",
+			}
+			err := client.scrobble(context.Background(), "SESSION_KEY", info)
+			Expect(err).To(HaveOccurred())
+			var rejected *scrobbleRejectedError
+			Expect(errors.As(err, &rejected)).To(BeTrue())
+		})
 	})
 
 	Describe("updateNowPlaying", func() {

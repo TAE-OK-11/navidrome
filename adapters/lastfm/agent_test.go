@@ -24,6 +24,7 @@ import (
 const (
 	lastfmError3 = `{"error":3,"message":"Invalid Method - No method with that name in this package","links":[]}`
 	lastfmError6 = `{"error":6,"message":"The artist you supplied could not be found","links":[]}`
+	lastfmScrobbleOK = `{"scrobbles":{"scrobble":{"ignoredMessage":{"code":"0"}},"@attr":{"accepted":1}}}`
 )
 
 var _ = Describe("lastfmAgent", func() {
@@ -377,7 +378,7 @@ var _ = Describe("lastfmAgent", func() {
 
 		Describe("NowPlaying", func() {
 			It("calls Last.fm with correct params", func() {
-				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString("{}")), StatusCode: 200}
+				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(lastfmScrobbleOK)), StatusCode: 200}
 
 				err := agent.NowPlaying(ctx, "user-1", track, 0)
 
@@ -407,7 +408,7 @@ var _ = Describe("lastfmAgent", func() {
 				})
 
 				It("uses only the first artist", func() {
-					httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString("{}")), StatusCode: 200}
+					httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(lastfmScrobbleOK)), StatusCode: 200}
 
 					err := agent.NowPlaying(ctx, "user-1", track, 0)
 
@@ -423,7 +424,7 @@ var _ = Describe("lastfmAgent", func() {
 		Describe("scrobble", func() {
 			It("calls Last.fm with correct params", func() {
 				ts := time.Now()
-				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString("{}")), StatusCode: 200}
+				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(lastfmScrobbleOK)), StatusCode: 200}
 
 				err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: ts})
 
@@ -450,7 +451,7 @@ var _ = Describe("lastfmAgent", func() {
 
 				It("uses only the first artist", func() {
 					ts := time.Now()
-					httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString("{}")), StatusCode: 200}
+					httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(lastfmScrobbleOK)), StatusCode: 200}
 
 					err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: ts})
 
@@ -464,7 +465,7 @@ var _ = Describe("lastfmAgent", func() {
 
 			It("skips songs with less than 31 seconds", func() {
 				track.Duration = 29
-				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString("{}")), StatusCode: 200}
+				httpClient.Res = http.Response{Body: io.NopCloser(bytes.NewBufferString(lastfmScrobbleOK)), StatusCode: 200}
 
 				err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: time.Now()})
 
@@ -511,6 +512,18 @@ var _ = Describe("lastfmAgent", func() {
 				httpClient.Res = http.Response{
 					Body:       io.NopCloser(bytes.NewBufferString(`{"error":8,"message":"Operation failed - Something else went wrong"}`)),
 					StatusCode: 400,
+				}
+
+				err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: time.Now()})
+				Expect(err).To(MatchError(scrobbler.ErrUnrecoverable))
+			})
+
+			It("returns ErrUnrecoverable when the service rejects the scrobble", func() {
+				httpClient.Res = http.Response{
+					Body: io.NopCloser(bytes.NewBufferString(
+						`{"scrobbles":{"scrobble":{"ignoredMessage":{"code":"4","#text":"too old"}},"@attr":{"accepted":0}}}`,
+					)),
+					StatusCode: 200,
 				}
 
 				err := agent.Scrobble(ctx, "user-1", scrobbler.Scrobble{MediaFile: *track, TimeStamp: time.Now()})

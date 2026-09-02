@@ -79,11 +79,20 @@ func (l *listenBrainzAgent) NowPlaying(ctx context.Context, userId string, track
 
 	li := l.formatListen(track)
 	err = l.client.updateNowPlaying(ctx, sk, li)
-	if err != nil {
-		log.Warn(ctx, "ListenBrainz updateNowPlaying returned error", "track", track.Title, err)
-		return errors.Join(err, scrobbler.ErrUnrecoverable)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if errors.Is(err, agents.ErrRetryLater) {
+		log.Warn(ctx, "ListenBrainz updateNowPlaying rate limited", "track", track.Title, err)
+		return err
+	}
+	var lbErr *listenBrainzError
+	if errors.As(err, &lbErr) && lbErr.Code >= 500 && lbErr.Code <= 504 {
+		log.Warn(ctx, "ListenBrainz updateNowPlaying temporarily unavailable", "track", track.Title, err)
+		return err
+	}
+	log.Warn(ctx, "ListenBrainz updateNowPlaying returned error", "track", track.Title, err)
+	return errors.Join(err, scrobbler.ErrUnrecoverable)
 }
 
 func (l *listenBrainzAgent) Scrobble(ctx context.Context, userId string, s scrobbler.Scrobble) error {
@@ -92,12 +101,21 @@ func (l *listenBrainzAgent) Scrobble(ctx context.Context, userId string, s scrob
 		return errors.Join(err, scrobbler.ErrNotAuthorized)
 	}
 
+	if s.Duration <= 30 {
+		log.Debug(ctx, "Skipping ListenBrainz scrobble for short song", "track", s.Title, "duration", s.Duration)
+		return nil
+	}
 	li := l.formatListen(&s.MediaFile)
 	li.ListenedAt = int(s.TimeStamp.Unix())
 	err = l.client.scrobble(ctx, sk, li)
 
 	if err == nil {
 		return nil
+	}
+	var rejected *scrobbleRejectedError
+	if errors.As(err, &rejected) {
+		log.Warn(ctx, "ListenBrainz scrobble rejected by service", "track", s.Title, err)
+		return errors.Join(err, scrobbler.ErrUnrecoverable)
 	}
 	var retryLater *agents.RetryLaterError
 	if errors.As(err, &retryLater) {

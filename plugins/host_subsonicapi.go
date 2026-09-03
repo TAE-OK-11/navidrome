@@ -4,15 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"path"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/plugins/host"
 )
 
@@ -28,42 +24,6 @@ var errSubsonicAPIResponseTooLarge = errors.New("SubsonicAPI response body excee
 // call handlers as functions instead of synthesizing an HTTP request.
 type SubsonicInvoker interface {
 	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (contentType string, body []byte, err error)
-}
-
-type cappedResponseRecorder struct {
-	*httptest.ResponseRecorder
-	limit     int64
-	remaining int64
-	err       error
-}
-
-func newCappedResponseRecorder(limit int64) *cappedResponseRecorder {
-	return &cappedResponseRecorder{
-		ResponseRecorder: httptest.NewRecorder(),
-		limit:            limit,
-		remaining:        limit,
-	}
-}
-
-func (r *cappedResponseRecorder) Write(p []byte) (int, error) {
-	if r.err != nil {
-		return 0, r.err
-	}
-
-	if int64(len(p)) <= r.remaining {
-		n, err := r.ResponseRecorder.Write(p)
-		r.remaining -= int64(n)
-		return n, err
-	}
-
-	n := 0
-	if r.remaining > 0 {
-		allowed := int(r.remaining)
-		n, _ = r.ResponseRecorder.Write(p[:allowed])
-		r.remaining -= int64(n)
-	}
-	r.err = fmt.Errorf("%w: %d bytes", errSubsonicAPIResponseTooLarge, r.limit)
-	return n, r.err
 }
 
 // subsonicAPIServiceImpl implements host.SubsonicAPIService.
@@ -97,8 +57,7 @@ func newSubsonicAPIService(pluginID string, router SubsonicRouter, ds model.Data
 	}
 }
 
-// executeRequest handles URL parsing, validation, permission checks, HTTP request creation,
-// and router invocation. Shared between Call and CallRaw.
+// executeRequest handles URL parsing, permission checks, and in-process Invoke.
 // If setJSON is true, the 'f=json' query parameter is added.
 func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string, setJSON bool) (string, []byte, error) {
 	// Parse the input URL
@@ -130,33 +89,18 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 
 	endpoint := path.Base(parsedURL.Path)
 
-	if inv, ok := s.router.(SubsonicInvoker); ok {
-		return inv.Invoke(ctx, endpoint, query, username, setJSON)
-	}
-	if s.router == nil {
+	inv, ok := s.router.(SubsonicInvoker)
+	if !ok || inv == nil {
 		return "", nil, fmt.Errorf("SubsonicAPI router not available")
 	}
-
-	finalURL := &url.URL{
-		Path:     "/" + endpoint,
-		RawQuery: query.Encode(),
-	}
-
-	cleanCtx := context.WithValue(ctx, chi.RouteCtxKey, (*chi.Context)(nil))
-	httpReq, err := http.NewRequestWithContext(cleanCtx, "GET", finalURL.String(), nil)
+	ct, body, err := inv.Invoke(ctx, endpoint, query, username, setJSON)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return "", nil, err
 	}
-
-	authCtx := request.WithInternalAuth(httpReq.Context(), username)
-	httpReq = httpReq.WithContext(authCtx)
-
-	recorder := newCappedResponseRecorder(subsonicAPIResponseBodyLimit)
-	s.router.ServeHTTP(recorder, httpReq)
-	if recorder.err != nil {
-		return "", nil, recorder.err
+	if int64(len(body)) > subsonicAPIResponseBodyLimit {
+		return "", nil, fmt.Errorf("%w: %d bytes", errSubsonicAPIResponseTooLarge, subsonicAPIResponseBodyLimit)
 	}
-	return recorder.Header().Get("Content-Type"), recorder.Body.Bytes(), nil
+	return ct, body, nil
 }
 
 func (s *subsonicAPIServiceImpl) Call(ctx context.Context, uri string) (string, error) {

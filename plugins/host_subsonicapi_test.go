@@ -11,11 +11,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/model"
@@ -458,11 +458,7 @@ var _ = Describe("SubsonicAPIService", func() {
 		It("preserves cancellation from the plugin callback context", func() {
 			started := make(chan struct{})
 			observed := make(chan error, 1)
-			blockingRouter := http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
-				close(started)
-				<-req.Context().Done()
-				observed <- req.Context().Err()
-			})
+			blockingRouter := &blockingSubsonicRouter{started: started, observed: observed}
 			service := newSubsonicAPIService("test-plugin", blockingRouter, dataStore, nil, true)
 			ctx, cancel := context.WithCancel(GinkgoT().Context())
 			DeferCleanup(cancel)
@@ -479,30 +475,8 @@ var _ = Describe("SubsonicAPIService", func() {
 			Eventually(done).Should(Receive(BeNil()))
 		})
 
-		It("removes parent Chi routing state without dropping the parent context", func() {
-			internalRouter := chi.NewRouter()
-			internalRouter.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("pong"))
-			})
-			service := newSubsonicAPIService("test-plugin", internalRouter, dataStore, nil, true)
-
-			outerRouter := chi.NewRouter()
-			outerRouter.Get("/invoke", func(w http.ResponseWriter, req *http.Request) {
-				response, err := service.Call(req.Context(), "/ping?u=testuser")
-				Expect(err).ToNot(HaveOccurred())
-				_, _ = w.Write([]byte(response))
-			})
-
-			recorder := httptest.NewRecorder()
-			outerRouter.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/invoke", nil))
-			Expect(recorder.Code).To(Equal(http.StatusOK))
-			Expect(recorder.Body.String()).To(Equal("pong"))
-		})
-
 		It("rejects responses that exceed the capture limit", func() {
-			largeRouter := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write(bytes.Repeat([]byte{'x'}, int(subsonicAPIResponseBodyLimit+1)))
-			})
+			largeRouter := &largeSubsonicRouter{}
 			service := newSubsonicAPIService("test-plugin", largeRouter, dataStore, nil, true)
 
 			_, _, err := service.CallRaw(GinkgoT().Context(), "/download?u=testuser")
@@ -520,23 +494,45 @@ type fakeSubsonicRouter struct {
 	lastRequest *http.Request
 }
 
-func (r *fakeSubsonicRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	r.lastRequest = req
+func (r *fakeSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
-	endpoint := path.Base(req.URL.Path)
-	switch endpoint {
+func (r *fakeSubsonicRouter) Invoke(ctx context.Context, endpoint string, query url.Values, username string, _ bool) (string, []byte, error) {
+	req := httptest.NewRequest(http.MethodGet, "/"+endpoint+"?"+query.Encode(), nil).WithContext(ctx)
+	r.lastRequest = req
+	switch path.Base(endpoint) {
 	case "getCoverArt":
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(fakePNGHeader)
+		return "image/png", fakePNGHeader, nil
 	default:
-		// Return a successful ping response
 		response := map[string]any{
 			"subsonic-response": map[string]any{
 				"status":  "ok",
 				"version": "1.16.1",
 			},
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(response)
+		var buf bytes.Buffer
+		_ = json.NewEncoder(&buf).Encode(response)
+		return "application/json", buf.Bytes(), nil
 	}
+}
+
+type blockingSubsonicRouter struct {
+	started  chan struct{}
+	observed chan error
+}
+
+func (r *blockingSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func (r *blockingSubsonicRouter) Invoke(ctx context.Context, _ string, _ url.Values, _ string, _ bool) (string, []byte, error) {
+	close(r.started)
+	<-ctx.Done()
+	r.observed <- ctx.Err()
+	return "application/json", nil, nil
+}
+
+type largeSubsonicRouter struct{}
+
+func (largeSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func (largeSubsonicRouter) Invoke(context.Context, string, url.Values, string, bool) (string, []byte, error) {
+	return "application/octet-stream", bytes.Repeat([]byte{'x'}, int(subsonicAPIResponseBodyLimit+1)), nil
 }

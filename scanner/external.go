@@ -2,10 +2,7 @@ package scanner
 
 import (
 	"context"
-	"encoding/gob"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 
@@ -25,8 +22,8 @@ const (
 // external process will be spawned with the same executable as the current process, and will run
 // the "scan" command with the "--subprocess" flag.
 //
-// Progress is streamed back over gRPC (ScanEvents). gob-over-stdout remains a fallback when the
-// progress listener cannot be started.
+// Progress is streamed back over gRPC (ScanEvents) onto the process-wide event bus. There is no
+// gob-over-stdout fallback: if the progress listener cannot start, the external scan fails.
 type scannerExternal struct{}
 
 func (s *scannerExternal) scanFolders(ctx context.Context, fullScan bool, targets []model.ScanTarget, progress chan<- *ProgressInfo) {
@@ -48,12 +45,13 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 	}
 
 	listener, listenErr := startProgressListener("")
-	useGRPC := listenErr == nil
 	if listenErr != nil {
-		log.Warn(ctx, "Scan progress gRPC listener unavailable; falling back to gob", listenErr)
-	} else {
-		defer listener.Stop()
+		emitExternalProgress(ctx, progress, &ProgressInfo{
+			Error: fmt.Sprintf("scan progress gRPC listener failed: %s", listenErr),
+		})
+		return
 	}
+	defer listener.Stop()
 
 	args := []string{
 		"scan",
@@ -61,9 +59,7 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 		"--configfile", conf.Server.ConfigFile,
 		"--datafolder", conf.Server.DataFolder.String(),
 		"--cachefolder", conf.Server.CacheFolder.String(),
-	}
-	if useGRPC {
-		args = append(args, "--progress-grpc", listener.addr)
+		"--progress-grpc", listener.addr,
 	}
 
 	if len(targets) > 0 {
@@ -73,10 +69,10 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 			return
 		}
 		defer cleanup()
-		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets), "grpc", useGRPC)
+		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets), "progress", listener.addr)
 		args = append(args, targetArgs...)
 	} else {
-		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe, "grpc", useGRPC)
+		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe, "progress", listener.addr)
 	}
 
 	if fullScan {
@@ -85,48 +81,10 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 
 	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Stderr = os.Stderr
-	if useGRPC {
-		cmd.Stdout = os.Stderr
-		if err := cmd.Run(); err != nil {
-			emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("external scanner failed: %s", err)})
-		}
-		return
+	cmd.Stdout = os.Stderr
+	if err := cmd.Run(); err != nil {
+		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("external scanner failed: %s", err)})
 	}
-
-	in, out := io.Pipe()
-	defer in.Close()
-	defer out.Close()
-	cmd.Stdout = out
-
-	if err := cmd.Start(); err != nil {
-		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to start scanner process: %s", err)})
-		return
-	}
-	go s.wait(cmd, out)
-
-	decoder := gob.NewDecoder(in)
-	for {
-		var p ProgressInfo
-		if err := decoder.Decode(&p); err != nil {
-			if !errors.Is(err, io.EOF) {
-				emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to read status from scanner: %s", err)})
-			}
-			break
-		}
-		emitExternalProgress(ctx, progress, &p)
-	}
-}
-
-func (s *scannerExternal) wait(cmd *exec.Cmd, out *io.PipeWriter) {
-	if err := cmd.Wait(); err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			_ = out.CloseWithError(fmt.Errorf("%s exited with non-zero status code: %w", cmd, exitErr))
-		} else {
-			_ = out.CloseWithError(fmt.Errorf("waiting %s cmd: %w", cmd, err))
-		}
-		return
-	}
-	_ = out.Close()
 }
 
 // targetArguments builds command-line arguments for the given scan targets.

@@ -24,7 +24,7 @@ func grpcClient() gen.ApiKeysClient {
 		}
 		proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-apikeys"), nil)
 		if err != nil {
-			log.Debug("Rust apikeys gRPC worker unavailable; using NDJSON fallback", err)
+			log.Warn("Rust apikeys gRPC worker unavailable; using NDJSON fallback", err)
 			return
 		}
 		cli := gen.NewApiKeysClient(proc.Conn)
@@ -32,7 +32,7 @@ func grpcClient() gen.ApiKeysClient {
 		defer cancel()
 		if _, err := cli.Health(healthCtx, &gen.HealthRequest{}); err != nil {
 			proc.Close()
-			log.Debug("Rust apikeys gRPC health failed; using NDJSON fallback", err)
+			log.Warn("Rust apikeys gRPC health failed; using NDJSON fallback", err)
 			return
 		}
 		grpcProc = proc

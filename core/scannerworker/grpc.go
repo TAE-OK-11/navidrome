@@ -25,7 +25,7 @@ func folderHashGRPC() gen.FolderHashClient {
 		}
 		proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-folder-hash"), nil)
 		if err != nil {
-			log.Debug("Rust folder-hash gRPC worker unavailable; using NDJSON fallback", err)
+			log.Warn("Rust folder-hash gRPC worker unavailable; using NDJSON fallback", err)
 			return
 		}
 		cli := gen.NewFolderHashClient(proc.Conn)
@@ -33,7 +33,7 @@ func folderHashGRPC() gen.FolderHashClient {
 		defer cancel()
 		if _, err := cli.Health(healthCtx, &gen.HealthRequest{}); err != nil {
 			proc.Close()
-			log.Debug("Rust folder-hash gRPC health failed; using NDJSON fallback", err)
+			log.Warn("Rust folder-hash gRPC health failed; using NDJSON fallback", err)
 			return
 		}
 		folderHashGRPCProc = proc

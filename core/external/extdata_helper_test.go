@@ -38,6 +38,10 @@ func (m *mockArtistRepo) Get(id string) (*model.Artist, error) {
 	return args.Get(0).(*model.Artist), args.Error(1)
 }
 
+func (m *mockArtistRepo) UpdateExternalInfo(_ *model.Artist) error {
+	return nil
+}
+
 // GetAll implements model.ArtistRepository.
 func (m *mockArtistRepo) GetAll(options ...model.QueryOptions) (model.Artists, error) {
 	argsSlice := make([]any, len(options))
@@ -154,6 +158,10 @@ func (m *mockAlbumRepo) Get(id string) (*model.Album, error) {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Album), args.Error(1)
+}
+
+func (m *mockAlbumRepo) UpdateExternalInfo(_ *model.Album) error {
+	return nil
 }
 
 // GetAll implements model.AlbumRepository.

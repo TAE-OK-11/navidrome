@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -70,14 +69,11 @@ func trackScanInteractively(ctx context.Context, progress <-chan *scanner.Progre
 	return changesDetected, errors.Join(scanErrors...)
 }
 
-func trackScanAsSubprocess(ctx context.Context, progress <-chan *scanner.ProgressInfo) {
-	encoder := gob.NewEncoder(os.Stdout)
-	for status := range pl.ReadOrDone(ctx, progress) {
-		err := encoder.Encode(status)
-		if err != nil {
-			log.Error(ctx, "Failed to encode status", err)
-		}
+func trackScanAsSubprocess(ctx context.Context, addr string, progress <-chan *scanner.ProgressInfo) error {
+	if addr == "" {
+		return errors.New("external scanner requires --progress-grpc")
 	}
+	return scanner.ReportProgressGRPC(ctx, addr, progress)
 }
 
 func runScanner(ctx context.Context) {
@@ -121,13 +117,9 @@ func runScanner(ctx context.Context) {
 
 	// Wait for the scanner to finish
 	if subprocess {
-		if progressGRPC != "" {
-			if err := scanner.ReportProgressGRPC(ctx, progressGRPC, progress); err != nil {
-				log.Error(ctx, "Failed to stream scan progress over gRPC", err)
-			}
-			return
+		if err := trackScanAsSubprocess(ctx, progressGRPC, progress); err != nil {
+			log.Fatal(ctx, "Failed to stream scan progress over gRPC", err)
 		}
-		trackScanAsSubprocess(ctx, progress)
 		return
 	}
 	changesDetected, scanErr := trackScanInteractively(ctx, progress)

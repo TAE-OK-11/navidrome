@@ -3,7 +3,6 @@ package external_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"net/url"
 	"time"
 
@@ -51,6 +50,10 @@ var _ = Describe("Provider - ArtistImage", func() {
 		agentsCombined = &mockAgents{
 			imageAgent: mockImageAgent,
 		}
+		agentsCombined.On("GetArtistMBID", mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+		agentsCombined.On("GetArtistBiography", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+		agentsCombined.On("GetArtistURL", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", nil).Maybe()
+		agentsCombined.On("GetSimilarArtists", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]agents.Artist{}, nil).Maybe()
 
 		provider = NewProvider(ds, agentsCombined, matcher.New(ds))
 
@@ -63,7 +66,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 
-		// Default successful image agent response
+		// Default successful image agent response (consumed by the background queue)
 		mockImageAgent.On("GetArtistImages", mock.Anything, "artist-1", "Artist One", "").
 			Return([]agents.ExternalImage{
 				{URL: "http://example.com/large.jpg", Size: 1000},
@@ -79,142 +82,94 @@ var _ = Describe("Provider - ArtistImage", func() {
 		mockImageAgent.AssertExpectations(GinkgoT())
 	})
 
-	It("returns the largest image URL when successful", func() {
-		// Arrange
-		expectedURL, _ := url.Parse("http://example.com/large.jpg")
+	It("enqueues a background fetch and returns ErrNotFound on cache miss", func() {
+		var logBuf bytes.Buffer
+		log.SetOutput(&logBuf)
+		defer log.SetOutput(GinkgoWriter)
+		log.SetLevel(log.LevelDebug)
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "artist-1")
 
-		// Assert
-		Expect(err).ToNot(HaveOccurred())
-		Expect(imgURL).To(Equal(expectedURL))
+		Expect(err).To(MatchError(model.ErrNotFound))
+		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
+		Expect(logBuf.String()).To(ContainSubstring("Artist image not cached, enqueuing background fetch"))
+		Eventually(func() bool { return artistImageAgentCalled(mockImageAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
+	})
+
+	It("fetches images asynchronously after a cache miss", func() {
+		_, err := provider.ArtistImage(ctx, "artist-1")
+		Expect(err).To(MatchError(model.ErrNotFound))
+
+		Eventually(func() bool {
+			for _, call := range mockImageAgent.Calls {
+				if call.Method == "GetArtistImages" {
+					return true
+				}
+			}
+			return false
+		}).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns ErrNotFound if the artist is not found in the DB", func() {
-		// Arrange
-
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "not-found")
 
-		// Assert
 		Expect(err).To(MatchError(model.ErrNotFound))
 		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "not-found")
 		mockImageAgent.AssertNotCalled(GinkgoT(), "GetArtistImages", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	It("returns the agent error if the agent fails", func() {
-		// Arrange
-		agentErr := errors.New("agent failure")
-		mockImageAgent.Mock = mock.Mock{} // Reset default expectation
-		mockImageAgent.On("GetArtistImages", ctx, "artist-1", "Artist One", "").Return(nil, agentErr).Once()
-
-		// Act
-		imgURL, err := provider.ArtistImage(ctx, "artist-1")
-
-		// Assert
-		Expect(err).To(MatchError(model.ErrNotFound)) // Corrected Expectation: The provider maps agent errors (other than canceled) to ErrNotFound if no image was found/populated
-		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
-	})
-
-	It("returns ErrNotFound if the agent returns ErrNotFound", func() {
-		// Arrange
-		mockImageAgent.Mock = mock.Mock{} // Reset default expectation
-		mockImageAgent.On("GetArtistImages", ctx, "artist-1", "Artist One", "").Return(nil, agents.ErrNotFound).Once()
-
-		// Act
-		imgURL, err := provider.ArtistImage(ctx, "artist-1")
-
-		// Assert
-		Expect(err).To(MatchError(model.ErrNotFound))
-		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
-	})
-
-	It("returns ErrNotFound if the agent returns no images", func() {
-		// Arrange
-		mockImageAgent.Mock = mock.Mock{} // Reset default expectation
-		mockImageAgent.On("GetArtistImages", ctx, "artist-1", "Artist One", "").Return([]agents.ExternalImage{}, nil).Once()
-
-		// Act
-		imgURL, err := provider.ArtistImage(ctx, "artist-1")
-
-		// Assert
-		Expect(err).To(MatchError(model.ErrNotFound)) // Implementation maps empty result to ErrNotFound
-		Expect(imgURL).To(BeNil())
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
-	})
-
-	It("returns context error if context is canceled before agent call", func() {
-		// Arrange
+	It("returns context error if context is canceled before enqueue", func() {
 		cctx, cancelCtx := context.WithCancel(context.Background())
-		mockArtistRepo.Mock = mock.Mock{} // Reset default expectation for artist repo as well
+		mockArtistRepo.Mock = mock.Mock{}
 		mockArtistRepo.On("Get", "artist-1").Return(&model.Artist{ID: "artist-1", Name: "Artist One"}, nil).Run(func(args mock.Arguments) {
-			cancelCtx() // Cancel context *during* the DB call simulation
+			cancelCtx()
 		}).Once()
 
-		// Act
 		imgURL, err := provider.ArtistImage(cctx, "artist-1")
 
-		// Assert
 		Expect(err).To(MatchError(context.Canceled))
 		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
 	})
 
-	It("derives artist ID from MediaFile ID", func() {
-		// getArtist: artist miss, then media file, then the real artist id
+	It("derives artist ID from MediaFile ID and still enqueues asynchronously", func() {
 		mockArtistRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Once()
-		expectedURL, _ := url.Parse("http://example.com/large.jpg")
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "mf-1")
 
-		// Assert
-		Expect(err).ToNot(HaveOccurred())
-		Expect(imgURL).To(Equal(expectedURL))
+		Expect(err).To(MatchError(model.ErrNotFound))
+		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "mf-1")
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
+		Eventually(func() bool { return artistImageAgentCalled(mockImageAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
-	It("derives artist ID from Album ID", func() {
+	It("derives artist ID from Album ID and still enqueues asynchronously", func() {
 		mockArtistRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Once()
-		expectedURL, _ := url.Parse("http://example.com/large.jpg")
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "album-1")
 
-		// Assert
-		Expect(err).ToNot(HaveOccurred())
-		Expect(imgURL).To(Equal(expectedURL))
+		Expect(err).To(MatchError(model.ErrNotFound))
+		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockMediaFileRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockAlbumRepo.AssertCalled(GinkgoT(), "Get", "album-1")
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
+		Eventually(func() bool { return artistImageAgentCalled(mockImageAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns ErrNotFound if derived artist is not found", func() {
-		// Arrange
 		mockArtistRepo.On("Get", "mf-bad-artist").Return(nil, model.ErrNotFound).Once()
 		mockMediaFileRepo.On("Get", "mf-bad-artist").Return(&model.MediaFile{ID: "mf-bad-artist", ArtistID: "not-found"}, nil).Once()
 		mockMediaFileRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 		mockAlbumRepo.On("Get", "not-found").Return(nil, model.ErrNotFound).Maybe()
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "mf-bad-artist")
 
-		// Assert
 		Expect(err).To(MatchError(model.ErrNotFound))
 		Expect(imgURL).To(BeNil())
 		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "mf-bad-artist")
@@ -223,48 +178,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 		mockImageAgent.AssertNotCalled(GinkgoT(), "GetArtistImages", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	It("handles different image orders from agent", func() {
-		// Arrange
-		mockImageAgent.Mock = mock.Mock{} // Reset default expectation
-		mockImageAgent.On("GetArtistImages", ctx, "artist-1", "Artist One", "").
-			Return([]agents.ExternalImage{
-				{URL: "http://example.com/small.jpg", Size: 200},
-				{URL: "http://example.com/large.jpg", Size: 1000},
-				{URL: "http://example.com/medium.jpg", Size: 500},
-			}, nil).Once()
-		expectedURL, _ := url.Parse("http://example.com/large.jpg")
-
-		// Act
-		imgURL, err := provider.ArtistImage(ctx, "artist-1")
-
-		// Assert
-		Expect(err).ToNot(HaveOccurred())
-		Expect(imgURL).To(Equal(expectedURL)) // Still picks the largest
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
-	})
-
-	It("handles agent returning only one image", func() {
-		// Arrange
-		mockImageAgent.Mock = mock.Mock{} // Reset default expectation
-		mockImageAgent.On("GetArtistImages", ctx, "artist-1", "Artist One", "").
-			Return([]agents.ExternalImage{
-				{URL: "http://example.com/medium.jpg", Size: 500},
-			}, nil).Once()
-		expectedURL, _ := url.Parse("http://example.com/medium.jpg")
-
-		// Act
-		imgURL, err := provider.ArtistImage(ctx, "artist-1")
-
-		// Assert
-		Expect(err).ToNot(HaveOccurred())
-		Expect(imgURL).To(Equal(expectedURL))
-		mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-1")
-		mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-1", "Artist One", "")
-	})
-
 	It("returns cached URL and does not call agent when info is not expired", func() {
-		// Arrange: artist has a cached image URL with recent ExternalInfoUpdatedAt
 		cachedArtist := &model.Artist{
 			ID:                    "artist-cached",
 			Name:                  "Cached Artist",
@@ -274,27 +188,20 @@ var _ = Describe("Provider - ArtistImage", func() {
 		mockArtistRepo.On("Get", "artist-cached").Return(cachedArtist, nil).Maybe()
 		expectedURL, _ := url.Parse("http://example.com/cached-large.jpg")
 
-		// Capture log output
 		var logBuf bytes.Buffer
 		log.SetOutput(&logBuf)
 		defer log.SetOutput(GinkgoWriter)
 		log.SetLevel(log.LevelDebug)
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "artist-cached")
 
-		// Assert
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
 		mockImageAgent.AssertNotCalled(GinkgoT(), "GetArtistImages", mock.Anything, "artist-cached", mock.Anything, mock.Anything)
-
-		// Assert: background refresh was NOT enqueued
 		Expect(logBuf.String()).ToNot(ContainSubstring("Artist image info expired, enqueuing background refresh"))
-
 	})
 
 	It("returns stale URL and enqueues refresh when info is expired", func() {
-		// Arrange
 		conf.Server.DevArtistInfoTimeToLive = 1 * time.Nanosecond
 		staleArtist := &model.Artist{
 			ID:                    "artist-expired",
@@ -303,29 +210,25 @@ var _ = Describe("Provider - ArtistImage", func() {
 			ExternalInfoUpdatedAt: new(time.Now().Add(-1 * time.Hour)),
 		}
 		mockArtistRepo.On("Get", "artist-expired").Return(staleArtist, nil).Maybe()
+		mockImageAgent.On("GetArtistImages", mock.Anything, "artist-expired", mock.Anything, mock.Anything).
+			Return([]agents.ExternalImage{{URL: "http://example.com/expired-large.jpg", Size: 1000}}, nil).Maybe()
 		expectedURL, _ := url.Parse("http://example.com/expired-large.jpg")
 
-		// Capture log output
 		var logBuf bytes.Buffer
 		log.SetOutput(&logBuf)
 		defer log.SetOutput(GinkgoWriter)
 		log.SetLevel(log.LevelDebug)
 
-		// Act
 		imgURL, err := provider.ArtistImage(ctx, "artist-expired")
 
-		// Assert: returns stale URL immediately, no agent call
 		Expect(err).ToNot(HaveOccurred())
 		Expect(imgURL).To(Equal(expectedURL))
-		mockImageAgent.AssertNotCalled(GinkgoT(), "GetArtistImages", mock.Anything, "artist-expired", mock.Anything, mock.Anything)
-
-		// Assert: background refresh was enqueued
 		Expect(logBuf.String()).To(ContainSubstring("Artist image info expired, enqueuing background refresh"))
+		Eventually(func() bool { return artistImageAgentCalled(mockImageAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	Context("Unicode handling in artist names", func() {
 		var artistWithEnDash *model.Artist
-		var expectedURL *url.URL
 
 		const (
 			originalArtistName   = "Run–D.M.C." // Artist name with en dash
@@ -333,19 +236,13 @@ var _ = Describe("Provider - ArtistImage", func() {
 		)
 
 		BeforeEach(func() {
-			// Test with en dash (–) in artist name like "Run–D.M.C."
 			artistWithEnDash = &model.Artist{ID: "artist-endash", Name: originalArtistName}
-			mockArtistRepo.Mock = mock.Mock{} // Reset default expectations
+			mockArtistRepo.Mock = mock.Mock{}
 			mockArtistRepo.On("Get", "artist-endash").Return(artistWithEnDash, nil).Once()
-
-			expectedURL, _ = url.Parse("http://example.com/rundmc.jpg")
-
-			// Mock the image agent to return an image for the artist
-			mockImageAgent.On("GetArtistImages", ctx, "artist-endash", mock.AnythingOfType("string"), "").
+			mockImageAgent.On("GetArtistImages", mock.Anything, "artist-endash", mock.AnythingOfType("string"), "").
 				Return([]agents.ExternalImage{
 					{URL: "http://example.com/rundmc.jpg", Size: 1000},
 				}, nil).Once()
-
 		})
 
 		When("DevPreserveUnicodeInExternalCalls is true", func() {
@@ -353,15 +250,13 @@ var _ = Describe("Provider - ArtistImage", func() {
 				conf.Server.DevPreserveUnicodeInExternalCalls = true
 			})
 			It("preserves Unicode characters in artist names", func() {
-				// Act
 				imgURL, err := provider.ArtistImage(ctx, "artist-endash")
-
-				// Assert
-				Expect(err).ToNot(HaveOccurred())
-				Expect(imgURL).To(Equal(expectedURL))
+				Expect(err).To(MatchError(model.ErrNotFound))
+				Expect(imgURL).To(BeNil())
 				mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-endash")
-				// This is the key assertion: ensure the original Unicode name is used
-				mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-endash", originalArtistName, "")
+				Eventually(func() bool {
+					return agentCalledWithName(mockImageAgent, originalArtistName)
+				}).WithTimeout(2 * time.Second).Should(BeTrue())
 			})
 		})
 
@@ -371,19 +266,39 @@ var _ = Describe("Provider - ArtistImage", func() {
 			})
 
 			It("normalizes Unicode characters", func() {
-				// Act
 				imgURL, err := provider.ArtistImage(ctx, "artist-endash")
-
-				// Assert
-				Expect(err).ToNot(HaveOccurred())
-				Expect(imgURL).To(Equal(expectedURL))
+				Expect(err).To(MatchError(model.ErrNotFound))
+				Expect(imgURL).To(BeNil())
 				mockArtistRepo.AssertCalled(GinkgoT(), "Get", "artist-endash")
-				// This assertion ensures the normalized name is used (en dash → hyphen)
-				mockImageAgent.AssertCalled(GinkgoT(), "GetArtistImages", ctx, "artist-endash", normalizedArtistName, "")
+				Eventually(func() bool {
+					return agentCalledWithName(mockImageAgent, normalizedArtistName)
+				}).WithTimeout(2 * time.Second).Should(BeTrue())
 			})
 		})
 	})
 })
+
+func artistImageAgentCalled(agent *mockArtistImageAgent) bool {
+	for _, call := range agent.Calls {
+		if call.Method == "GetArtistImages" {
+			return true
+		}
+	}
+	return false
+}
+
+func agentCalledWithName(agent *mockArtistImageAgent, name string) bool {
+	for _, call := range agent.Calls {
+		if call.Method != "GetArtistImages" || len(call.Arguments) < 3 {
+			continue
+		}
+		got, _ := call.Arguments[2].(string)
+		if got == name {
+			return true
+		}
+	}
+	return false
+}
 
 // mockArtistImageAgent implementation using testify/mock
 // This remains local as it's specific to testing the ArtistImage functionality

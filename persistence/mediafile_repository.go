@@ -327,6 +327,16 @@ func (r *mediaFileRepository) GetForStreaming(id string) (*model.MediaFile, erro
 	return res.MediaFile, nil
 }
 
+func (r *mediaFileRepository) GetUpdatedAt(id string) (time.Time, error) {
+	sq := r.newSelect().Columns("media_file.updated_at").
+		Where(Eq{"media_file.id": id})
+	sq = r.applyLibraryFilter(sq)
+
+	var updatedAt time.Time
+	err := r.queryOne(sq, &updatedAt)
+	return updatedAt, err
+}
+
 func (r *mediaFileRepository) GetWithParticipants(id string) (*model.MediaFile, error) {
 	m, err := r.Get(id)
 	if err != nil {

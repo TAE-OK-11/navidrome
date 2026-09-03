@@ -70,6 +70,14 @@ func (m *MockMediaFileRepo) GetForStreaming(id string) (*model.MediaFile, error)
 	return m.Get(id)
 }
 
+func (m *MockMediaFileRepo) GetUpdatedAt(id string) (time.Time, error) {
+	mf, err := m.Get(id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return mf.UpdatedAt, nil
+}
+
 func (m *MockMediaFileRepo) GetWithParticipants(id string) (*model.MediaFile, error) {
 	if m.Err {
 		return nil, errors.New("error")

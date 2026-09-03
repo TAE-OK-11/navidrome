@@ -20,10 +20,10 @@ var _ = Describe("StreamMediaCache", func() {
 			return &model.MediaFile{ID: "song", Title: "original"}, nil
 		}
 
-		first, err := cache.get(context.Background(), "user-song", load)
+		first, err := cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).NotTo(HaveOccurred())
 		first.Title = "changed"
-		second, err := cache.get(context.Background(), "user-song", load)
+		second, err := cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(second.Title).To(Equal("original"))
@@ -37,10 +37,10 @@ var _ = Describe("StreamMediaCache", func() {
 			return &model.MediaFile{ID: "song", TrackNumber: int(calls.Add(1))}, nil
 		}
 
-		first, err := cache.get(context.Background(), "user-song", load)
+		first, err := cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).NotTo(HaveOccurred())
 		time.Sleep(2 * time.Millisecond)
-		second, err := cache.get(context.Background(), "user-song", load)
+		second, err := cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(first.TrackNumber).To(Equal(1))
@@ -71,13 +71,13 @@ var _ = Describe("StreamMediaCache", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		first := make(chan error, 1)
 		go func() {
-			_, err := cache.get(ctx, "user-song", load)
+			_, err := cache.get(ctx, "user-song", load, nil)
 			first <- err
 		}()
 		<-started
 		second := make(chan error, 1)
 		go func() {
-			_, err := cache.get(context.Background(), "user-song", load)
+			_, err := cache.get(context.Background(), "user-song", load, nil)
 			second <- err
 		}()
 
@@ -93,7 +93,7 @@ var _ = Describe("StreamMediaCache", func() {
 		for _, key := range []string{"one", "two", "three"} {
 			_, err := cache.get(context.Background(), key, func(context.Context) (*model.MediaFile, error) {
 				return &model.MediaFile{ID: key}, nil
-			})
+			}, nil)
 			Expect(err).NotTo(HaveOccurred())
 		}
 
@@ -106,13 +106,41 @@ var _ = Describe("StreamMediaCache", func() {
 		cache := newStreamMediaCache(4, time.Second)
 		_, err := cache.get(context.Background(), "user-song", func(context.Context) (*model.MediaFile, error) {
 			return &model.MediaFile{ID: "song"}, nil
-		})
+		}, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		cache.clear()
 		cache.mu.RLock()
 		defer cache.mu.RUnlock()
 		Expect(cache.entries).To(BeEmpty())
+	})
+
+	It("reloads when updated_at changes after verify interval", func() {
+		cache := newStreamMediaCache(4, time.Second)
+		updatedAt := time.Now().Truncate(time.Second)
+		var calls atomic.Int32
+		load := func(context.Context) (*model.MediaFile, error) {
+			n := calls.Add(1)
+			return &model.MediaFile{ID: "song", UpdatedAt: updatedAt, TrackNumber: int(n)}, nil
+		}
+		stale := func(_ context.Context, cached model.MediaFile) bool {
+			return cached.TrackNumber == 1
+		}
+
+		first, err := cache.get(context.Background(), "user-song", load, stale)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.TrackNumber).To(Equal(1))
+
+		second, err := cache.get(context.Background(), "user-song", load, stale)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.TrackNumber).To(Equal(1))
+		Expect(calls.Load()).To(Equal(int32(1)))
+
+		time.Sleep(streamMediaCacheVerifyInterval)
+		third, err := cache.get(context.Background(), "user-song", load, stale)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(third.TrackNumber).To(Equal(2))
+		Expect(calls.Load()).To(Equal(int32(2)))
 	})
 
 	It("does not cache loader errors", func() {
@@ -125,9 +153,9 @@ var _ = Describe("StreamMediaCache", func() {
 			return &model.MediaFile{ID: "song"}, nil
 		}
 
-		_, err := cache.get(context.Background(), "user-song", load)
+		_, err := cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).To(MatchError("temporary"))
-		_, err = cache.get(context.Background(), "user-song", load)
+		_, err = cache.get(context.Background(), "user-song", load, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(calls.Load()).To(Equal(int32(2)))
 	})

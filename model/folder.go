@@ -35,6 +35,23 @@ func (f Folder) AbsolutePath() string {
 	return filepath.Join(f.LibraryPath, f.Path, f.Name)
 }
 
+// LibraryRelativePath is the folder path relative to the library root. It matches
+// scanner and Rust walk keys such as "Artist/Album" or ".".
+func (f Folder) LibraryRelativePath() string {
+	name := f.Name
+	parent := strings.Trim(filepath.ToSlash(f.Path), "/")
+	if name == "" || name == "." {
+		if parent == "" || parent == "." {
+			return "."
+		}
+		return parent
+	}
+	if parent == "" || parent == "." {
+		return name
+	}
+	return path.Join(parent, name)
+}
+
 func (f Folder) String() string {
 	return f.AbsolutePath()
 }
@@ -86,6 +103,9 @@ type FolderRepository interface {
 	GetAll(...QueryOptions) ([]Folder, error)
 	CountAll(...QueryOptions) (int64, error)
 	GetFolderUpdateInfo(lib Library, targetPaths ...string) (map[string]FolderUpdateInfo, error)
+	// GetFolderHashes returns library-relative folder path -> content hash for
+	// non-missing folders with a stored hash, optionally limited to scan targets.
+	GetFolderHashes(lib Library, targetPaths ...string) (map[string]string, error)
 	// HasAudioOutsideFolders reports whether any folder in parent's subtree
 	// (including parent itself) contains audio files and is not one of the
 	// given folder IDs.

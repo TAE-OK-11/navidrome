@@ -30,6 +30,9 @@ const (
 type Artwork interface {
 	Get(ctx context.Context, artID model.ArtworkID, size int, square bool) (io.ReadCloser, time.Time, error)
 	GetOrPlaceholder(ctx context.Context, id string, size int, square bool) (io.ReadCloser, time.Time, error)
+	// StatOrPlaceholder returns the cover's last-updated time without opening
+	// the image cache, so HTTP 304 responses can skip disk and decode work.
+	StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error)
 }
 
 func NewArtwork(ds model.DataStore, imageCache cache.FileCache, ffmpeg ffmpeg.FFmpeg, provider external.Provider) Artwork {
@@ -74,6 +77,21 @@ func (a *artwork) GetOrPlaceholder(ctx context.Context, id string, size int, squ
 		return reader, consts.ServerStart, nil
 	}
 	return reader, lastUpdate, err
+}
+
+func (a *artwork) StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error) {
+	artID, err := a.getArtworkId(ctx, id)
+	if err == nil {
+		artReader, readerErr := a.getArtworkReader(ctx, artID, size, square)
+		if readerErr == nil {
+			return artReader.LastUpdated(), nil
+		}
+		err = readerErr
+	}
+	if errors.Is(err, ErrUnavailable) {
+		return consts.ServerStart, nil
+	}
+	return time.Time{}, err
 }
 
 func (a *artwork) Get(ctx context.Context, artID model.ArtworkID, size int, square bool) (reader io.ReadCloser, lastUpdate time.Time, err error) {

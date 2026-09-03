@@ -64,6 +64,17 @@ func TestSetArtworkHeadersETagNotModified(t *testing.T) {
 	}
 }
 
+func TestHasArtworkValidators(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/cover", nil)
+	if HasArtworkValidators(req) {
+		t.Fatal("expected no validators")
+	}
+	req.Header.Set("If-None-Match", `"artwork-1"`)
+	if !HasArtworkValidators(req) {
+		t.Fatal("expected If-None-Match to count as a validator")
+	}
+}
+
 func TestSetArtworkHeadersETagTakesPrecedence(t *testing.T) {
 	lastUpdate := time.Date(2026, 7, 6, 12, 30, 0, 456, time.UTC)
 	req := httptest.NewRequest(http.MethodGet, "/cover", nil)

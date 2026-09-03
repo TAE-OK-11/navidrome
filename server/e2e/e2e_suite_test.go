@@ -331,6 +331,10 @@ func (n noopArtwork) GetOrPlaceholder(_ context.Context, _ string, _ int, _ bool
 	return io.NopCloser(io.LimitReader(nil, 0)), time.Time{}, nil
 }
 
+func (n noopArtwork) StatOrPlaceholder(context.Context, string, int, bool) (time.Time, error) {
+	return time.Time{}, model.ErrNotFound
+}
+
 // spyStreamer captures the Request passed to NewStream for test assertions,
 // then returns a minimal fake Stream so the handler completes without error.
 type spyStreamer struct {

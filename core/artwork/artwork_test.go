@@ -46,6 +46,13 @@ var _ = Describe("Artwork", func() {
 			})
 		})
 	})
+	Context("StatOrPlaceholder", func() {
+		It("returns server start for an empty id without opening image data", func() {
+			lastUpdate, err := aw.StatOrPlaceholder(context.Background(), "", 0, false)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(lastUpdate).To(Equal(consts.ServerStart))
+		})
+	})
 	Context("Get", func() {
 		Context("Empty ID", func() {
 			It("returns an ErrUnavailable error", func() {

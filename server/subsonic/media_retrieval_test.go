@@ -225,6 +225,11 @@ func (c *fakeArtwork) GetOrPlaceholder(_ context.Context, id string, size int, s
 	return io.NopCloser(bytes.NewReader([]byte(c.data))), c.lastUpdate, nil
 }
 
+func (c *fakeArtwork) StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error) {
+	_, lastUpdate, err := c.GetOrPlaceholder(ctx, id, size, square)
+	return lastUpdate, err
+}
+
 type mockedMediaFile struct {
 	tests.MockMediaFileRepo
 }

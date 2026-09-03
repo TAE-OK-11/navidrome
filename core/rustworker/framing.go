@@ -3,9 +3,10 @@ package rustworker
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
+
+	json "github.com/goccy/go-json"
 )
 
 const (

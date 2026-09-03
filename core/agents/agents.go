@@ -80,7 +80,8 @@ func (a *Agents) getEnabledAgentNames() []enabledAgent {
 	var validAgents []enabledAgent
 	for _, name := range configuredAgents {
 		// Check if it's a built-in agent
-		isBuiltIn := Map[name] != nil
+		init, ok := constructor(name)
+		isBuiltIn := ok && init != nil
 
 		// Check if it's a plugin
 		isPlugin := slices.Contains(availablePlugins, name)
@@ -107,9 +108,9 @@ func (a *Agents) getAgent(ea enabledAgent) Interface {
 		}
 	} else {
 		// Try to get built-in agent
-		constructor, ok := Map[ea.name]
+		init, ok := constructor(ea.name)
 		if ok {
-			agent := constructor(a.ds)
+			agent := init(a.ds)
 			if agent != nil {
 				return agent
 			}
@@ -392,6 +393,8 @@ func firstSuccess[T any](ctx context.Context, agents *Agents, fn func(Interface)
 	for remaining > 0 {
 		select {
 		case <-ctx.Done():
+			cancel()
+			drainOutcomes(ch, remaining)
 			return zero, false
 		case r := <-ch:
 			remaining--
@@ -400,6 +403,7 @@ func firstSuccess[T any](ctx context.Context, agents *Agents, fn func(Interface)
 			for next < len(enabled) && !pending[next] {
 				if got[next].ok {
 					cancel()
+					drainOutcomes(ch, remaining)
 					return got[next].val, true
 				}
 				next++
@@ -407,6 +411,13 @@ func firstSuccess[T any](ctx context.Context, agents *Agents, fn func(Interface)
 		}
 	}
 	return zero, false
+}
+
+func drainOutcomes[T any](ch <-chan T, remaining int) {
+	for remaining > 0 {
+		<-ch
+		remaining--
+	}
 }
 
 var _ Interface = (*Agents)(nil)

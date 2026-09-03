@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gohugoio/hashstructure"
@@ -160,11 +161,23 @@ type SimilarSongsByArtistRetriever interface {
 	GetSimilarSongsByArtist(ctx context.Context, id, name, mbid string, count int) ([]Song, error)
 }
 
-var Map map[string]Constructor
+var (
+	registryMu sync.RWMutex
+	Map        map[string]Constructor
+)
 
 func Register(name string, init Constructor) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
 	if Map == nil {
 		Map = make(map[string]Constructor)
 	}
 	Map[name] = init
+}
+
+func constructor(name string) (Constructor, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	c, ok := Map[name]
+	return c, ok
 }

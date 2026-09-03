@@ -37,10 +37,10 @@ func grpcClient() gen.ApiKeysClient {
 		}
 		grpcProc = proc
 		grpcCli = cli
-		if proc.Cmd != nil && proc.Cmd.Process != nil {
-			log.Info("API key hashing routed through Rust gRPC worker", "pid", proc.Cmd.Process.Pid)
+		if grpcProc.Cmd != nil && grpcProc.Cmd.Process != nil {
+			log.Info("API key hashing routed through Rust gRPC worker", "pid", grpcProc.Cmd.Process.Pid, "listen", grpcProc.Addr)
 		} else {
-			log.Info("API key hashing routed through Rust gRPC worker")
+			log.Info("API key hashing routed through Rust gRPC worker", "listen", grpcProc.Addr)
 		}
 	})
 	return grpcCli

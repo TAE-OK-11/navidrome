@@ -38,10 +38,10 @@ func folderHashGRPC() gen.FolderHashClient {
 		}
 		folderHashGRPCProc = proc
 		folderHashGRPCCli = cli
-		if proc.Cmd != nil && proc.Cmd.Process != nil {
-			log.Info("Folder hashing routed through Rust gRPC worker", "pid", proc.Cmd.Process.Pid)
+		if folderHashGRPCProc.Cmd != nil && folderHashGRPCProc.Cmd.Process != nil {
+			log.Info("Folder hashing routed through Rust gRPC worker", "pid", folderHashGRPCProc.Cmd.Process.Pid, "listen", folderHashGRPCProc.Addr)
 		} else {
-			log.Info("Folder hashing routed through Rust gRPC worker")
+			log.Info("Folder hashing routed through Rust gRPC worker", "listen", folderHashGRPCProc.Addr)
 		}
 	})
 	return folderHashGRPCCli

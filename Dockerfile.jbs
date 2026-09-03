@@ -1091,7 +1091,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
 WORKDIR /build/rust/metadata
 
 COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
-COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock ./
+COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
+COPY --link --from=source /src/proto /build/proto
+COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock /src/rust/metadata/build.rs ./
 COPY --link --from=source /src/rust/metadata/src ./src
 COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
 
@@ -1121,9 +1123,11 @@ FROM ${RUST_IMAGE} AS apikeys-builder
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
 
-WORKDIR /build
+WORKDIR /build/rust/apikeys
 
-COPY --link --from=source /src/rust/apikeys/Cargo.toml /src/rust/apikeys/Cargo.lock ./
+COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
+COPY --link --from=source /src/proto /build/proto
+COPY --link --from=source /src/rust/apikeys/Cargo.toml /src/rust/apikeys/Cargo.lock /src/rust/apikeys/build.rs ./
 COPY --link --from=source /src/rust/apikeys/src ./src
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
@@ -1145,10 +1149,12 @@ FROM ${RUST_IMAGE} AS scanner-builder
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
 
-WORKDIR /build
+WORKDIR /build/rust/scanner
 
+COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
+COPY --link --from=source /src/proto /build/proto
+COPY --link --from=source /src/resources/mime_types.yaml /build/resources/mime_types.yaml
 COPY --link --from=source /src/rust/scanner/Cargo.toml /src/rust/scanner/Cargo.lock /src/rust/scanner/build.rs ./
-COPY --link --from=source /src/resources/mime_types.yaml /resources/mime_types.yaml
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
@@ -1196,7 +1202,9 @@ ARG RUST_TARGET_CPU
 WORKDIR /build/rust/search
 
 COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
-COPY --link --from=source /src/rust/search/Cargo.toml /src/rust/search/Cargo.lock ./
+COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
+COPY --link --from=source /src/proto /build/proto
+COPY --link --from=source /src/rust/search/Cargo.toml /src/rust/search/Cargo.lock /src/rust/search/build.rs ./
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \

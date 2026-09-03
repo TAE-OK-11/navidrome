@@ -42,10 +42,10 @@ func grpcClient() gen.MetadataClient {
 		}
 		grpcProc = proc
 		grpcCli = cli
-		if proc.Cmd != nil && proc.Cmd.Process != nil {
-			log.Info("Metadata extract routed through Rust gRPC worker", "pid", proc.Cmd.Process.Pid)
+		if grpcProc.Cmd != nil && grpcProc.Cmd.Process != nil {
+			log.Info("Metadata extract routed through Rust gRPC worker", "pid", grpcProc.Cmd.Process.Pid, "listen", grpcProc.Addr)
 		} else {
-			log.Info("Metadata extract routed through Rust gRPC worker")
+			log.Info("Metadata extract routed through Rust gRPC worker", "listen", grpcProc.Addr)
 		}
 	})
 	return grpcCli

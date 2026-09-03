@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"errors"
 
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -473,5 +474,35 @@ var _ = Describe("FTS5 Integration Search", func() {
 			Expect(results).ToNot(BeEmpty())
 			Expect(results[0].Name).To(Equal("MØ"))
 		})
+	})
+})
+
+var _ = Describe("applyFTS5WorkerResult", func() {
+	It("returns the Rust query when the worker succeeds", func() {
+		q, degraded := applyFTS5WorkerResult(context.Background(), "beatles", "(beatles OR beatles*)", false, nil)
+		Expect(q).To(Equal("(beatles OR beatles*)"))
+		Expect(degraded).To(BeFalse())
+	})
+
+	It("uses the Go FTS5 builder in tests when the worker fails", func() {
+		q, degraded := applyFTS5WorkerResult(context.Background(), "beatles", "", false, errors.New("worker down"))
+		Expect(q).To(ContainSubstring("beatles"))
+		Expect(degraded).To(BeFalse())
+	})
+
+	It("signals LIKE fallback when production forbids the Go FTS5 builder", func() {
+		orig := allowGoFTS5Builder
+		allowGoFTS5Builder = func() bool { return false }
+		DeferCleanup(func() { allowGoFTS5Builder = orig })
+
+		q, degraded := applyFTS5WorkerResult(context.Background(), "beatles", "", false, errors.New("worker down"))
+		Expect(q).To(BeEmpty())
+		Expect(degraded).To(BeTrue())
+
+		strategy := newLikeSearch("media_file", "beatles")
+		Expect(strategy).ToNot(BeNil())
+		sql, _, err := strategy.ToSql()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(sql).ToNot(ContainSubstring("MATCH"))
 	})
 })

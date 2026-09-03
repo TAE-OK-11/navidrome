@@ -8,7 +8,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 // maxLegacyLyricsCandidates bounds the duplicate window scanned by the legacy
@@ -79,8 +79,8 @@ func songsByArtistTitleWithLyricsFirst(artist, title string) model.QueryOptions 
 			Eq{"missing": false},
 			Eq{"title": title},
 			Or{
-				persistence.Exists("json_tree(participants, '$.albumartist')", Eq{"value": artist}),
-				persistence.Exists("json_tree(participants, '$.artist')", Eq{"value": artist}),
+				query.Exists("json_tree(participants, '$.albumartist')", Eq{"value": artist}),
+				query.Exists("json_tree(participants, '$.artist')", Eq{"value": artist}),
 			},
 		},
 	}

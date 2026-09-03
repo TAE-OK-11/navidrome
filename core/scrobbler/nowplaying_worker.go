@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 )
@@ -73,16 +74,33 @@ func (p *playTracker) dispatchNowPlaying(ctx context.Context, userId string, t *
 		log.Debug(ctx, "Ignoring external NowPlaying update for track with unknown artist", "track", t.Title, "artist", t.Artist)
 		return
 	}
-	allScrobblers := p.getActiveScrobblers()
-	for name, s := range allScrobblers {
+	p.bus.PublishSync(ctx, eventbus.Event{
+		Topic: eventbus.TopicNowPlaying,
+		NowPlaying: &eventbus.NowPlaying{
+			UserID:      userId,
+			MediaFileID: t.ID,
+			Title:       t.Title,
+			Artist:      t.Artist,
+			PositionSec: position,
+			Track:       *t,
+		},
+	})
+}
+
+func (p *playTracker) onNowPlaying(ctx context.Context, evt eventbus.Event) {
+	if evt.NowPlaying == nil {
+		return
+	}
+	userId := evt.NowPlaying.UserID
+	t := evt.NowPlaying.Track
+	position := evt.NowPlaying.PositionSec
+	for name, s := range p.getActiveScrobblers() {
 		if !s.IsAuthorized(ctx, userId) {
 			continue
 		}
 		log.Debug(ctx, "Sending NowPlaying update", "scrobbler", name, "track", t.Title, "artist", t.Artist, "position", position)
-		err := s.NowPlaying(ctx, userId, t, position)
-		if err != nil {
+		if err := s.NowPlaying(ctx, userId, &t, position); err != nil {
 			log.Error(ctx, "Error sending PlaybackSession", "scrobbler", name, "track", t.Title, "artist", t.Artist, err)
-			continue
 		}
 	}
 }

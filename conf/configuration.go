@@ -122,6 +122,7 @@ type configOptions struct {
 	Deezer                          deezerOptions       `json:",omitzero"`
 	ListenBrainz                    listenBrainzOptions `json:",omitzero"`
 	LibreFM                         librefmOptions      `json:",omitzero"`
+	Integration                     integrationOptions  `json:",omitzero"`
 	EnableScrobbleHistory           bool
 	Tags                            map[string]TagConf `json:",omitempty"`
 	Agents                          string
@@ -231,6 +232,11 @@ type librefmOptions struct {
 	BaseURL                 string
 	AuthURL                 string
 	ScrobbleFirstArtistOnly bool
+}
+
+type integrationOptions struct {
+	Enabled bool
+	Listen  string
 }
 
 type httpHeaderOptions struct {
@@ -919,6 +925,8 @@ func setViperDefaults() {
 	viper.SetDefault("librefm.baseurl", consts.DefaultLibreFMBaseURL)
 	viper.SetDefault("librefm.authurl", consts.DefaultLibreFMAuthURL)
 	viper.SetDefault("librefm.scrobblefirstartistonly", false)
+	viper.SetDefault("integration.enabled", true)
+	viper.SetDefault("integration.listen", "")
 	viper.SetDefault("enablescrobblehistory", true)
 	viper.SetDefault("httpheaders.frameoptions", "DENY")
 	viper.SetDefault("backup.path", "")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -103,6 +104,7 @@ type playTracker struct {
 	builtinScrobblers map[string]Scrobbler
 	pluginScrobblers  map[string]Scrobbler
 	pluginLoader      PluginLoader
+	bus               *eventbus.Bus
 	mu                sync.RWMutex
 	npQueue           map[string]nowPlayingEntry
 	npMu              sync.Mutex
@@ -137,6 +139,7 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 		builtinScrobblers: make(map[string]Scrobbler),
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
+		bus:               eventbus.New(),
 		npQueue:           make(map[string]nowPlayingEntry),
 		npSignal:          make(chan struct{}, 1),
 		shutdown:          make(chan struct{}),
@@ -172,6 +175,9 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 		p.builtinScrobblers[name] = s
 	}
 	log.Debug("List of builtin scrobblers enabled", "names", enabled)
+	p.bus.Subscribe(eventbus.TopicScrobble, p.onScrobble)
+	p.bus.Subscribe(eventbus.TopicNowPlaying, p.onNowPlaying)
+	p.bus.Subscribe(eventbus.TopicPlaybackReport, p.onPlaybackReport)
 	go p.nowPlayingWorker()
 	go p.playbackReportWorker()
 	return p
@@ -179,6 +185,9 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 
 // stopBackgroundWorkers stops the background workers. This is primarily for testing.
 func (p *playTracker) stopBackgroundWorkers() {
+	if p.bus != nil {
+		p.bus.Close()
+	}
 	close(p.shutdown)
 	<-p.workerDone   // Wait for nowPlaying worker to finish
 	<-p.prWorkerDone // Wait for playbackReport worker to finish
@@ -599,18 +608,36 @@ func (p *playTracker) dispatchScrobble(ctx context.Context, t *model.MediaFile, 
 		return
 	}
 
-	allScrobblers := p.getActiveScrobblers()
 	u, _ := request.UserFrom(ctx)
-	scrobble := Scrobble{MediaFile: *t, TimeStamp: playTime}
-	for name, s := range allScrobblers {
+	p.bus.PublishSync(ctx, eventbus.Event{
+		Topic: eventbus.TopicScrobble,
+		Scrobble: &eventbus.Scrobble{
+			UserID:      u.ID,
+			Username:    u.UserName,
+			MediaFileID: t.ID,
+			Title:       t.Title,
+			Artist:      t.Artist,
+			Album:       t.Album,
+			PlayedAt:    playTime,
+			Track:       *t,
+		},
+	})
+}
+
+func (p *playTracker) onScrobble(ctx context.Context, evt eventbus.Event) {
+	if evt.Scrobble == nil {
+		return
+	}
+	u := model.User{ID: evt.Scrobble.UserID, UserName: evt.Scrobble.Username}
+	ctx = request.WithUser(ctx, u)
+	scrobble := Scrobble{MediaFile: evt.Scrobble.Track, TimeStamp: evt.Scrobble.PlayedAt}
+	for name, s := range p.getActiveScrobblers() {
 		if !s.IsAuthorized(ctx, u.ID) {
 			continue
 		}
-		log.Debug(ctx, "Buffering Scrobble", "scrobbler", name, "track", t.Title, "artist", t.Artist)
-		err := s.Scrobble(ctx, u.ID, scrobble)
-		if err != nil {
-			log.Error(ctx, "Error sending Scrobble", "scrobbler", name, "track", t.Title, "artist", t.Artist, err)
-			continue
+		log.Debug(ctx, "Buffering Scrobble", "scrobbler", name, "track", scrobble.Title, "artist", scrobble.Artist)
+		if err := s.Scrobble(ctx, u.ID, scrobble); err != nil {
+			log.Error(ctx, "Error sending Scrobble", "scrobbler", name, "track", scrobble.Title, "artist", scrobble.Artist, err)
 		}
 	}
 }

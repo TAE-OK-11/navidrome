@@ -12,6 +12,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/db"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 type PostMapper interface {
@@ -228,27 +229,12 @@ func isASCIILetter(value byte) bool {
 	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
-func Exists(subTable string, cond squirrel.Sqlizer) existsCond {
-	return existsCond{subTable: subTable, cond: cond, not: false}
+func Exists(subTable string, cond squirrel.Sqlizer) squirrel.Sqlizer {
+	return query.Exists(subTable, cond)
 }
 
-func NotExists(subTable string, cond squirrel.Sqlizer) existsCond {
-	return existsCond{subTable: subTable, cond: cond, not: true}
-}
-
-type existsCond struct {
-	subTable string
-	cond     squirrel.Sqlizer
-	not      bool
-}
-
-func (e existsCond) ToSql() (string, []any, error) {
-	sql, args, err := e.cond.ToSql()
-	sql = fmt.Sprintf("exists (select 1 from %s where %s)", e.subTable, sql)
-	if e.not {
-		sql = "not " + sql
-	}
-	return sql, args, err
+func NotExists(subTable string, cond squirrel.Sqlizer) squirrel.Sqlizer {
+	return query.NotExists(subTable, cond)
 }
 
 var sortOrderRegex = regexp.MustCompile(`order_([a-z_]+)`)

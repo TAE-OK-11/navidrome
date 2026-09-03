@@ -5,7 +5,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -55,7 +55,7 @@ func (p *localAgent) GetSimilarSongsByTrack(ctx context.Context, id, name, artis
 	// Ask for extra so we can drop the seed itself and still fill the count.
 	candidates, err := p.ds.MediaFile(ctx).GetRandom(model.QueryOptions{
 		Filters: squirrel.And{
-			persistence.SongGenres.ByID(genreIDs),
+			query.SongGenres.ByID(genreIDs),
 			squirrel.Eq{"missing": false},
 		},
 		Max: count + 1,

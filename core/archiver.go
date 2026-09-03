@@ -14,7 +14,7 @@ import (
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/slice"
 	"github.com/navidrome/navidrome/utils/str"
@@ -45,7 +45,7 @@ func (a *archiver) ZipArtist(ctx context.Context, id string, format string, bitr
 	// Match by album-artist participation, not the deprecated album_artist_id
 	// column (first album artist only), so co-album-artists are included too.
 	filter := squirrel.And{
-		persistence.ParticipantIDFilter("media_file", id, model.RoleAlbumArtist),
+		query.ParticipantIDFilter("media_file", id, model.RoleAlbumArtist),
 		squirrel.Eq{"missing": false},
 	}
 	return a.zipAlbums(ctx, id, format, bitrate, out, filter)

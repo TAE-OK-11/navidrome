@@ -17,7 +17,7 @@ import (
 	"github.com/navidrome/navidrome/core/matcher"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils"
 	. "github.com/navidrome/navidrome/utils/gg"
 	"github.com/navidrome/navidrome/utils/random"
@@ -442,12 +442,12 @@ func (e *provider) sampleAlbumTracks(ctx context.Context, albumID string, n int)
 }
 
 func (e *provider) sampleArtistTracks(ctx context.Context, artistID string, n int) (model.MediaFiles, error) {
-	filter := persistence.ParticipantIDFilter("media_file", artistID, model.RoleArtist, model.RoleAlbumArtist)
+	filter := query.ParticipantIDFilter("media_file", artistID, model.RoleArtist, model.RoleAlbumArtist)
 	return e.sampleTracks(ctx, filter, n)
 }
 
 func (e *provider) sampleGenreTracks(ctx context.Context, genre *model.Genre, n int) (model.MediaFiles, error) {
-	return e.sampleTracks(ctx, persistence.SongGenres.ByID(genre.ID), n)
+	return e.sampleTracks(ctx, query.SongGenres.ByID(genre.ID), n)
 }
 
 func (e *provider) sampleTracks(ctx context.Context, filter squirrel.Sqlizer, n int) (model.MediaFiles, error) {

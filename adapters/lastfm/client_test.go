@@ -276,7 +276,7 @@ var _ = Describe("client", func() {
 			params.Add("format", "json")
 			params.Add("c", "333")
 			params.Add("b", "222")
-			client.sign(params)
+			client.sign(context.Background(), params)
 			Expect(params).To(HaveKey("api_sig"))
 			sig := params.Get("api_sig")
 			expected := fmt.Sprintf("%x", md5.Sum([]byte("a111b222c333d444SECRET")))

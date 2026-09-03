@@ -12,11 +12,11 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server"
-	"github.com/navidrome/navidrome/utils/httpclient"
 )
 
 type sessionKeysRepo interface {
@@ -40,7 +40,7 @@ func NewRouter(ds model.DataStore) *Router {
 		sessionKeys: &agents.SessionKeys{DataStore: ds, KeyName: sessionKeyProperty},
 	}
 	r.Handler = r.routes()
-	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
+	hc := integration.HTTPClient(consts.DefaultHttpClientTimeOut)
 	r.client = newClient(conf.Server.ListenBrainz.BaseURL, conf.Server.ListenBrainz.LabsBaseURL, hc)
 	return r
 }

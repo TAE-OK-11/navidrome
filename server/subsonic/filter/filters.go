@@ -6,7 +6,7 @@ import (
 	. "github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 type Options = model.QueryOptions
@@ -53,7 +53,7 @@ func AlbumsByArtistID(artistId string) Options {
 	}
 	return addDefaultFilters(Options{
 		Sort:    "max_year",
-		Filters: persistence.ParticipantIDFilter("album", artistId, roles...),
+		Filters: query.ParticipantIDFilter("album", artistId, roles...),
 	})
 }
 
@@ -64,8 +64,8 @@ func AlbumsByContributingArtistID(artistId string) Options {
 	return addDefaultFilters(Options{
 		Sort: "max_year",
 		Filters: And{
-			persistence.ParticipantIDFilter("album", artistId, model.RoleArtist),
-			persistence.NotParticipantIDFilter("album", artistId, model.RoleAlbumArtist),
+			query.ParticipantIDFilter("album", artistId, model.RoleArtist),
+			query.NotParticipantIDFilter("album", artistId, model.RoleAlbumArtist),
 		},
 	})
 }
@@ -105,7 +105,7 @@ func SongsByAlbum(albumId string) Options {
 func SongsByArtistID(artistId string) Options {
 	return addDefaultFilters(Options{
 		Sort:               "album",
-		Filters:            persistence.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
+		Filters:            query.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
 		ExcludeHeavyFields: true,
 	})
 }
@@ -114,7 +114,7 @@ func SongsByGenreAndYearRange(genre string, fromYear, toYear int) Options {
 	options := Options{}
 	ff := And{}
 	if genre != "" {
-		ff = append(ff, persistence.SongGenres.ByName(genre))
+		ff = append(ff, query.SongGenres.ByName(genre))
 	}
 	if fromYear != 0 {
 		ff = append(ff, GtOrEq{"year": fromYear})
@@ -160,13 +160,13 @@ func ApplyArtistLibraryFilter(opts Options, musicFolderIds []int) Options {
 }
 
 func AlbumsByGenre(genre string) Options {
-	return addDefaultFilters(Options{Sort: "name", Filters: persistence.AlbumGenres.ByName(genre)})
+	return addDefaultFilters(Options{Sort: "name", Filters: query.AlbumGenres.ByName(genre)})
 }
 
 func SongsByGenre(genre string) Options {
 	return addDefaultFilters(Options{
 		Sort:               "name",
-		Filters:            persistence.SongGenres.ByName(genre),
+		Filters:            query.SongGenres.ByName(genre),
 		ExcludeHeavyFields: true,
 	})
 }

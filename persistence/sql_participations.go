@@ -8,6 +8,7 @@ import (
 	. "github.com/Masterminds/squirrel"
 	json "github.com/goccy/go-json"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -51,28 +52,14 @@ var (
 	participantCache     [participantCacheShardCount]participantCacheShard
 )
 
-// ParticipantIDFilter matches rows of table where the artist participates in any of the given roles
-// (any role when empty). Semi-joins <table>_artists; json_tree over the JSON is far slower at scale.
+// ParticipantIDFilter is kept for persistence internals. Domain callers must
+// use model/query so they do not import this SQL package.
 func ParticipantIDFilter(table string, artistID any, roles ...model.Role) Sqlizer {
-	return participantIDFilter(table, artistID, false, roles)
+	return query.ParticipantIDFilter(table, artistID, roles...)
 }
 
-// NotParticipantIDFilter is the negation of ParticipantIDFilter.
 func NotParticipantIDFilter(table string, artistID any, roles ...model.Role) Sqlizer {
-	return participantIDFilter(table, artistID, true, roles)
-}
-
-func participantIDFilter(table string, artistID any, negate bool, roles []model.Role) Sqlizer {
-	sel := Select(table + "_id").From(table + "_artists").Where(Eq{"artist_id": artistID})
-	if len(roles) > 0 {
-		sel = sel.Where(Eq{"role": slice.Map(roles, func(r model.Role) string { return r.String() })})
-	}
-	sql, args, _ := sel.ToSql()
-	op := " IN ("
-	if negate {
-		op = " NOT IN ("
-	}
-	return Expr(table+".id"+op+sql+")", args...)
+	return query.NotParticipantIDFilter(table, artistID, roles...)
 }
 
 func marshalParticipants(participants model.Participants) string {

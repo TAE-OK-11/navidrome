@@ -1,0 +1,85 @@
+package integration
+
+import (
+	"crypto/md5"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestDestinationFromHost(t *testing.T) {
+	cases := map[string]Destination{
+		"ws.audioscrobbler.com": DestLastFM,
+		"www.last.fm":           DestLastFM,
+		"libre.fm":              DestLibreFM,
+		"api.listenbrainz.org":  DestListenBrainz,
+		"api.deezer.com":        DestDeezer,
+		"www.navidrome.org":     DestInsights,
+		"example.com":           DestUnknown,
+	}
+	for host, want := range cases {
+		if got := DestinationFromHost(host); got != want {
+			t.Fatalf("host %s: got %s want %s", host, got, want)
+		}
+	}
+}
+
+func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
+	b := &circuitBreaker{}
+	for i := 0; i < breakerFailThreshold; i++ {
+		if !b.allow() {
+			t.Fatalf("allowed before open at %d", i)
+		}
+		b.failure()
+	}
+	if b.allow() {
+		t.Fatal("should be open")
+	}
+	b.openedAt = time.Now().Add(-breakerOpenFor - time.Second)
+	if !b.allow() {
+		t.Fatal("should half-open after timeout")
+	}
+	b.success()
+	if !b.allow() {
+		t.Fatal("should be closed after success")
+	}
+}
+
+func TestSignAudioscrobbler(t *testing.T) {
+	sig := signAudioscrobbler(map[string]string{
+		"d":        "444",
+		"callback": "https://myserver.com",
+		"a":        "111",
+		"format":   "json",
+		"c":        "333",
+		"b":        "222",
+	}, "SECRET")
+	want := fmt.Sprintf("%x", md5.Sum([]byte("a111b222c333d444SECRET")))
+	if sig != want {
+		t.Fatalf("sig = %s want %s", sig, want)
+	}
+}
+
+func TestGatewayFallbackRoundTrip(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("hello"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	g := &Gateway{fallback: http.DefaultTransport}
+	req, err := http.NewRequest(http.MethodGet, upstream.URL+"/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := g.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}

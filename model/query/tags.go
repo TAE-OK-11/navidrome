@@ -20,13 +20,13 @@ var (
 )
 
 // ByID matches items tagged with any of the given tag ids (scalar or slice).
-func (g ItemTags) ByID(tagIDs any) squirrel.Sqlizer {
+func (g ItemTags) ByID(tagIDs any) Sqlizer {
 	sub, args, _ := squirrel.Select(g.JoinCol).From(g.Table).Where(squirrel.Eq{"tag_id": tagIDs}).ToSql()
 	return squirrel.Expr(g.IDCol+" IN ("+sub+")", args...)
 }
 
 // ByTagName matches items by tag name and value through the tag dictionary.
-func (g ItemTags) ByTagName(tagName model.TagName, value string) squirrel.Sqlizer {
+func (g ItemTags) ByTagName(tagName model.TagName, value string) Sqlizer {
 	sub, args, _ := squirrel.Select("jt." + g.JoinCol).From(g.Table + " jt").
 		Join("tag on tag.id = jt.tag_id").
 		Where(squirrel.And{squirrel.Eq{"tag.tag_name": tagName}, squirrel.Like{"tag.tag_value": value}}).ToSql()
@@ -34,7 +34,7 @@ func (g ItemTags) ByTagName(tagName model.TagName, value string) squirrel.Sqlize
 }
 
 // ByTagValues matches items tagged with any of the given values for a tag name.
-func (g ItemTags) ByTagValues(tagName model.TagName, values []string) squirrel.Sqlizer {
+func (g ItemTags) ByTagValues(tagName model.TagName, values []string) Sqlizer {
 	sub, args, _ := squirrel.Select("jt." + g.JoinCol).From(g.Table + " jt").
 		Join("tag on tag.id = jt.tag_id").
 		Where(squirrel.And{squirrel.Eq{"tag.tag_name": tagName}, squirrel.Eq{"tag.tag_value": values}}).ToSql()
@@ -42,6 +42,6 @@ func (g ItemTags) ByTagValues(tagName model.TagName, values []string) squirrel.S
 }
 
 // ByName matches by genre name (Subsonic passes a name, not an id).
-func (g ItemTags) ByName(genre string) squirrel.Sqlizer {
+func (g ItemTags) ByName(genre string) Sqlizer {
 	return g.ByTagName(model.TagGenre, genre)
 }

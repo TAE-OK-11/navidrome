@@ -3,7 +3,6 @@ package query_test
 import (
 	"testing"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/query"
 )
@@ -43,7 +42,7 @@ func TestSongGenresByName(t *testing.T) {
 }
 
 func TestExists(t *testing.T) {
-	sql, args, err := query.Exists("album", squirrel.Eq{"id": 1}).ToSql()
+	sql, args, err := query.Exists("album", query.Eq("id", 1)).ToSql()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +60,20 @@ func TestNotMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sql != "missing = ?" || len(args) != 1 || args[0] != false {
+		t.Fatalf("sql=%q args=%#v", sql, args)
+	}
+}
+
+func TestQueryOptionsAcceptsDomainFilters(t *testing.T) {
+	opts := model.QueryOptions{Filters: query.And(query.Eq("id", 1), query.NotMissing())}
+	if opts.Filters == nil {
+		t.Fatal("expected filters")
+	}
+	sql, args, err := opts.Filters.ToSql()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql == "" || len(args) != 2 {
 		t.Fatalf("sql=%q args=%#v", sql, args)
 	}
 }

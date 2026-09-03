@@ -2,11 +2,12 @@ package query
 
 import (
 	"github.com/Masterminds/squirrel"
+	"github.com/navidrome/navidrome/model"
 )
 
-// Sqlizer is the persistence-facing predicate type. Domain code should
-// construct values with the helpers below instead of importing squirrel.
-type Sqlizer = squirrel.Sqlizer
+// Sqlizer is the domain predicate type. Helpers below wrap squirrel so callers
+// never import it.
+type Sqlizer = model.Sqlizer
 
 func NotMissing() Sqlizer {
 	return squirrel.Eq{"missing": false}
@@ -45,11 +46,11 @@ func ColumnAfter(column string, value any) Sqlizer {
 }
 
 func Or(parts ...Sqlizer) Sqlizer {
-	return squirrel.Or(compact(parts))
+	return squirrel.Or(toSquirrel(compact(parts)))
 }
 
 func And(parts ...Sqlizer) Sqlizer {
-	return squirrel.And(compact(parts))
+	return squirrel.And(toSquirrel(compact(parts)))
 }
 
 func compact(parts []Sqlizer) []Sqlizer {
@@ -58,6 +59,14 @@ func compact(parts []Sqlizer) []Sqlizer {
 		if part != nil {
 			out = append(out, part)
 		}
+	}
+	return out
+}
+
+func toSquirrel(parts []Sqlizer) []squirrel.Sqlizer {
+	out := make([]squirrel.Sqlizer, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, part)
 	}
 	return out
 }

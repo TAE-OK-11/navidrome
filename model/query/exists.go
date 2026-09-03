@@ -2,24 +2,22 @@ package query
 
 import (
 	"fmt"
-
-	"github.com/Masterminds/squirrel"
 )
 
 // Exists is a domain query predicate. Callers in core/server must use this
 // package instead of reaching into persistence SQL helpers (the old DBLink
 // leak).
-func Exists(subTable string, cond squirrel.Sqlizer) squirrel.Sqlizer {
+func Exists(subTable string, cond Sqlizer) Sqlizer {
 	return existsCond{subTable: subTable, cond: cond, not: false}
 }
 
-func NotExists(subTable string, cond squirrel.Sqlizer) squirrel.Sqlizer {
+func NotExists(subTable string, cond Sqlizer) Sqlizer {
 	return existsCond{subTable: subTable, cond: cond, not: true}
 }
 
 type existsCond struct {
 	subTable string
-	cond     squirrel.Sqlizer
+	cond     Sqlizer
 	not      bool
 }
 

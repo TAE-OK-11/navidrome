@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package navidrome.public.v1;
+
+option go_package = "github.com/navidrome/navidrome/server/publicgrpc/gen";
+
+// Public is the client-facing gRPC edge, served on the same TCP port as
+// HTTP/1.1 and HTTP/2 (and forwarded over the HTTP/3 companion when the
+// request is application/grpc). Subsonic and Native REST stay on those
+// HTTP transports; this contract is the protobuf alternative for the same
+// library operations and the async event stream.
+
+service Public {
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Invoke(InvokeRequest) returns (InvokeResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+}
+
+message PingRequest {}
+
+message PingResponse {
+  bool ok = 1;
+  string version = 2;
+  string protocol = 3;
+}
+
+message InvokeRequest {
+  string endpoint = 1;
+  map<string, string> params = 2;
+  bool json = 3;
+}
+
+message InvokeResponse {
+  string content_type = 1;
+  bytes body = 2;
+}
+
+message SubscribeRequest {
+  repeated string topics = 1;
+}
+
+message Event {
+  string id = 1;
+  string topic = 2;
+  int64 occurred_at_unix = 3;
+  map<string, string> attributes = 4;
+  oneof payload {
+    ScanStatus scan_status = 10;
+    RefreshResource refresh = 11;
+    NowPlayingCount now_playing_count = 12;
+    ScanCompleted scan_completed = 13;
+  }
+}
+
+message ScanStatus {
+  bool scanning = 1;
+  int64 count = 2;
+  int64 folder_count = 3;
+  string error = 4;
+  string scan_type = 5;
+  int64 elapsed_ms = 6;
+}
+
+message RefreshResource {
+  map<string, StringList> resources = 1;
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message NowPlayingCount {
+  int32 count = 1;
+}
+
+message ScanCompleted {
+  bool full_scan = 1;
+  bool changes_detected = 2;
+  string error = 3;
+  int64 file_count = 4;
+  int64 folder_count = 5;
+}

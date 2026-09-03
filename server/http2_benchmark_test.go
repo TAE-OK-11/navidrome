@@ -12,7 +12,7 @@ import (
 
 func newHTTP2TestServer(handler http.Handler) *httptest.Server {
 	srv := httptest.NewUnstartedServer(handler)
-	srv.Config = newHTTPServer(handler)
+	srv.Config = newHTTPServer(handler, true, false)
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
 	return srv

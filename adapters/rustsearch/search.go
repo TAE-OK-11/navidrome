@@ -142,7 +142,19 @@ func (e *Engine) Shutdown() {
 	if e == nil {
 		return
 	}
+	e.allowInTests.Store(false)
+	e.WaitIdle()
 	e.stopWorker()
+}
+
+// WaitIdle blocks until any in-flight index build or refresh completes.
+func (e *Engine) WaitIdle() {
+	if e == nil {
+		return
+	}
+	for e.building.Load() {
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func (e *Engine) skipBackgroundWork() bool {
@@ -151,11 +163,12 @@ func (e *Engine) skipBackgroundWork() bool {
 
 // ListenForScans subscribes to library scan completion so the Tantivy index
 // refreshes from the event stream instead of polling other systems' clocks.
-func (e *Engine) ListenForScans(ds model.DataStore) {
+// The returned function unsubscribes; callers must invoke it before shutdown.
+func (e *Engine) ListenForScans(ds model.DataStore) func() {
 	if e == nil || ds == nil {
-		return
+		return func() {}
 	}
-	eventbus.Get().Subscribe(eventbus.TopicScanCompleted, func(ctx context.Context, _ eventbus.Event) {
+	return eventbus.Get().Subscribe(eventbus.TopicScanCompleted, func(ctx context.Context, _ eventbus.Event) {
 		e.nextCheck.Store(0)
 		e.RefreshIfStale(ctx, ds)
 	})

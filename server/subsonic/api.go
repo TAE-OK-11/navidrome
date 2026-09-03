@@ -97,6 +97,7 @@ type Router struct {
 	entityCache       entityResponseCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
+	rustSearchUnsub   func()
 	internalHandlers  map[string]handlerRaw
 }
 
@@ -127,7 +128,7 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 	}
 	if rustsearch.Available() {
 		r.rustSearch = rustsearch.New()
-		r.rustSearch.ListenForScans(ds)
+		r.rustSearchUnsub = r.rustSearch.ListenForScans(ds)
 		if !testing.Testing() {
 			go func() {
 				defer func() {
@@ -159,10 +160,16 @@ func (api *Router) RebuildRustSearch(ctx context.Context) error {
 
 // ShutdownRustSearch stops the Tantivy worker so another router can rebuild the index.
 func (api *Router) ShutdownRustSearch() {
-	if api == nil || api.rustSearch == nil {
+	if api == nil {
 		return
 	}
-	api.rustSearch.Shutdown()
+	if api.rustSearchUnsub != nil {
+		api.rustSearchUnsub()
+		api.rustSearchUnsub = nil
+	}
+	if api.rustSearch != nil {
+		api.rustSearch.Shutdown()
+	}
 }
 
 func (api *Router) registerResponseCacheHooks() {

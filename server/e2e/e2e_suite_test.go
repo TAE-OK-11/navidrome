@@ -517,6 +517,9 @@ func setupTestDB() {
 		// Wait for any background scan (e.g. from startScan endpoint) to finish
 		// before config cleanup runs, to avoid a data race on conf.Server.
 		Eventually(scanner.IsScanning).Should(BeFalse())
+		if router != nil {
+			router.ShutdownRustSearch()
+		}
 	})
 	conf.Server.MusicFolder = "fake:///music"
 	conf.Server.DevExternalScanner = false

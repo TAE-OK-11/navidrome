@@ -12,6 +12,7 @@ import (
 	_ "github.com/navidrome/navidrome/adapters/lofty" // Register Lofty extractor
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/core"
+	"github.com/navidrome/navidrome/core/eventbus"
 	_ "github.com/navidrome/navidrome/core/storage/local" // Register local storage
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -55,6 +56,7 @@ var _ = Describe("Library Service", func() {
 		pluginManager = &mockPluginUnloader{}
 		service = core.NewLibrary(ds, scanner, watcherManager, broker, pluginManager)
 		ctx = context.Background()
+		DeferCleanup(events.ForwardFromBus(eventbus.Get(), broker))
 
 		// Create a temporary directory for testing valid paths
 		var err error

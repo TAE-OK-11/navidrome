@@ -19,9 +19,15 @@ const (
 	TopicScrobble       Topic = "scrobble.submitted"
 	TopicNowPlaying     Topic = "playback.now_playing"
 	TopicPlaybackReport Topic = "playback.report"
-	TopicScanProgress   Topic = "library.scan_progress"
-	TopicScanCompleted  Topic = "library.scan_completed"
-	defaultQueueSize          = 1024
+	TopicScanProgress    Topic = "library.scan_progress"
+	TopicScanCompleted   Topic = "library.scan_completed"
+	TopicRefreshResource Topic = "ui.refresh_resource"
+	TopicScanStatus      Topic = "ui.scan_status"
+	TopicNowPlayingCount Topic = "ui.now_playing_count"
+	AttrBroadcast               = "broadcast"
+	AttrUsername                = "username"
+	AttrClientUniqueID          = "client_unique_id"
+	defaultQueueSize            = 1024
 	defaultWorkers            = 4
 	defaultPublishWait        = 50 * time.Millisecond
 )
@@ -36,8 +42,11 @@ type Event struct {
 	Scrobble     *Scrobble
 	NowPlaying   *NowPlaying
 	Report       *PlaybackReport
-	ScanProgress *ScanProgress
-	Scan         *ScanCompleted
+	ScanProgress    *ScanProgress
+	Scan            *ScanCompleted
+	Refresh         *RefreshResource
+	UIScan          *UIScanStatus
+	NowPlayingCount *UINowPlayingCount
 }
 
 type Scrobble struct {
@@ -86,6 +95,37 @@ type ScanCompleted struct {
 	Error           string
 	FileCount       int64
 	FolderCount     int64
+}
+
+// RefreshResource is a UI invalidation (song/album/library/plugin ids).
+type RefreshResource struct {
+	Resources map[string][]string
+}
+
+func (r *RefreshResource) Add(resource string, ids ...string) *RefreshResource {
+	if r.Resources == nil {
+		r.Resources = make(map[string][]string)
+	}
+	if len(ids) == 0 {
+		r.Resources[resource] = append(r.Resources[resource], "*")
+	} else {
+		r.Resources[resource] = append(r.Resources[resource], ids...)
+	}
+	return r
+}
+
+// UIScanStatus is the aggregated scan panel payload for SSE clients.
+type UIScanStatus struct {
+	Scanning    bool
+	Count       int64
+	FolderCount int64
+	Error       string
+	ScanType    string
+	ElapsedTime time.Duration
+}
+
+type UINowPlayingCount struct {
+	Count int
 }
 
 type Handler func(ctx context.Context, evt Event)

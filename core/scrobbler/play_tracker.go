@@ -96,7 +96,6 @@ type PluginLoader interface {
 
 type playTracker struct {
 	ds                model.DataStore
-	broker            events.Broker
 	playMap           cache.SimpleCache[string, PlaybackSession]
 	scrobbleDedup     cache.SimpleCache[string, scrobbleDedupMarker]
 	scrobbleDedupMu   sync.Mutex
@@ -118,25 +117,24 @@ type playTracker struct {
 	prWorkerDone      chan struct{}
 }
 
-func GetPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
+func GetPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoader) PlayTracker {
 	return singleton.GetInstance(func() *playTracker {
-		return newPlayTracker(ds, broker, pluginManager, eventbus.Get(), true)
+		return newPlayTracker(ds, pluginManager, eventbus.Get(), true)
 	})
 }
 
 // NewPlayTracker creates a new PlayTracker instance. For normal usage, the PlayTracker has to be a singleton,
 // returned by the GetPlayTracker function above. This constructor is exported for testing.
-func NewPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
-	return newPlayTracker(ds, broker, pluginManager, eventbus.New(), false)
+func NewPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoader) PlayTracker {
+	return newPlayTracker(ds, pluginManager, eventbus.New(), false)
 }
 
-func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader, bus *eventbus.Bus, async bool) *playTracker {
+func newPlayTracker(ds model.DataStore, pluginManager PluginLoader, bus *eventbus.Bus, async bool) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
 		ds:                ds,
 		playMap:           m,
 		scrobbleDedup:     cache.NewSimpleCache[string, scrobbleDedupMarker](),
-		broker:            broker,
 		builtinScrobblers: make(map[string]Scrobbler),
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
@@ -154,7 +152,11 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 		log.Debug("PlaybackSession expired", "clientId", info.PlayerId, "mediaId", info.MediaFile.ID, "state",
 			info.State, "username", info.Username, "userId", info.UserId)
 		if enableNowPlaying {
-			broker.SendBroadcastMessage(context.Background(), &events.NowPlayingCount{Count: m.Len()})
+			p.publish(context.Background(), eventbus.Event{
+				Topic:           eventbus.TopicNowPlayingCount,
+				Attrs:           eventbus.UIAttrs(context.Background(), true),
+				NowPlayingCount: &eventbus.UINowPlayingCount{Count: m.Len()},
+			})
 		}
 		ctx := request.WithUser(context.Background(), model.User{ID: info.UserId, UserName: info.Username})
 		if info.State != StateStopped {
@@ -507,7 +509,11 @@ func (p *playTracker) ReportPlayback(ctx context.Context, params ReportPlaybackP
 	}
 
 	if conf.Server.EnableNowPlaying {
-		p.broker.SendBroadcastMessage(ctx, &events.NowPlayingCount{Count: p.playMap.Len()})
+		p.publish(ctx, eventbus.Event{
+			Topic:           eventbus.TopicNowPlayingCount,
+			Attrs:           eventbus.UIAttrs(ctx, true),
+			NowPlayingCount: &eventbus.UINowPlayingCount{Count: p.playMap.Len()},
+		})
 	}
 
 	// NowPlaying gating, by design distinct from scrobble submission:
@@ -549,7 +555,7 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 	if !player.ScrobbleEnabled {
 		log.Debug(ctx, "External scrobbling disabled for this player", "player", player.Name, "ip", player.IP, "user", username)
 	}
-	event := &events.RefreshResource{}
+	event := &eventbus.RefreshResource{}
 	success := 0
 
 	for _, s := range submissions {
@@ -562,7 +568,7 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 			clientId := clientIdFromContext(ctx, player.ID)
 			if p.tryRecordScrobble(ctx, clientId, mf, s.Timestamp) {
 				success++
-				event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
+				event.Add("song", mf.ID).Add("album", mf.AlbumID).Add("artist", mf.AlbumArtistID)
 			}
 			continue
 		}
@@ -572,11 +578,15 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 			continue
 		}
 		success++
-		event.With("song", mf.ID).With("album", mf.AlbumID).With("artist", mf.AlbumArtistID)
+		event.Add("song", mf.ID).Add("album", mf.AlbumID).Add("artist", mf.AlbumArtistID)
 	}
 
 	if success > 0 {
-		p.broker.SendMessage(ctx, event)
+		p.publish(ctx, eventbus.Event{
+			Topic:   eventbus.TopicRefreshResource,
+			Attrs:   eventbus.UIAttrs(ctx, false),
+			Refresh: event,
+		})
 	}
 	return nil
 }

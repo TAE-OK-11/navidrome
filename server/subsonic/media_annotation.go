@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
-	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/server/responsecache"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
@@ -70,8 +70,8 @@ func (api *Router) setRating(ctx context.Context, id string, rating int) error {
 	if err != nil {
 		return err
 	}
-	event := &events.RefreshResource{}
-	api.broker.SendMessage(ctx, event.With(resource, id))
+	event := &eventbus.RefreshResource{}
+	api.publishRefresh(ctx, event.Add(resource, id), false)
 	responsecache.InvalidateEntity(id)
 	return nil
 }
@@ -121,7 +121,7 @@ func (api *Router) setStar(ctx context.Context, star bool, ids ...string) error 
 	}
 	log.Debug(ctx, "Changing starred", "ids", ids, "starred", star)
 	err := api.ds.WithTxImmediate(func(tx model.DataStore) error {
-		event := &events.RefreshResource{}
+		event := &eventbus.RefreshResource{}
 		changed := false
 		for _, id := range ids {
 			var repo model.AnnotatedRepository
@@ -151,13 +151,13 @@ func (api *Router) setStar(ctx context.Context, star bool, ids ...string) error 
 			if err := repo.SetStar(star, id); err != nil {
 				return err
 			}
-			event = event.With(resource, id)
+			event = event.Add(resource, id)
 			changed = true
 		}
 		// Skip the broadcast when nothing changed: an empty RefreshResource
 		// serializes as a "{*:*}" wildcard, forcing every client to refresh.
 		if changed {
-			api.broker.SendMessage(ctx, event)
+			api.publishRefresh(ctx, event, false)
 			responsecache.InvalidateEntities(ids...)
 		}
 		return nil
@@ -305,4 +305,11 @@ func (api *Router) ReportPlayback(r *http.Request) (*responses.Subsonic, error) 
 	}
 
 	return newResponse(), nil
+}
+
+func (api *Router) publishRefresh(ctx context.Context, refresh *eventbus.RefreshResource, broadcast bool) {
+	eventbus.Get().PublishUISync(ctx, eventbus.Event{
+		Topic:   eventbus.TopicRefreshResource,
+		Refresh: refresh,
+	}, broadcast)
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -29,6 +30,7 @@ var _ = Describe("MediaAnnotationController", func() {
 		playTracker = &fakePlayTracker{}
 		eventBroker = &fakeEventBroker{}
 		router = New(ds, nil, nil, nil, nil, nil, nil, eventBroker, nil, playTracker, nil, nil, nil, nil, nil, nil)
+		DeferCleanup(events.ForwardFromBus(eventbus.Get(), eventBroker))
 	})
 
 	Describe("Scrobble", func() {

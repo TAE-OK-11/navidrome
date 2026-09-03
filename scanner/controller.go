@@ -28,13 +28,12 @@ var (
 	ErrAlreadyScanning = errors.New("already scanning")
 )
 
-func New(rootCtx context.Context, ds model.DataStore, cw artwork.CacheWarmer, broker events.Broker,
+func New(rootCtx context.Context, ds model.DataStore, cw artwork.CacheWarmer, _ events.Broker,
 	pls playlists.Playlists, m metrics.Metrics) model.Scanner {
 	c := &controller{
 		rootCtx:            rootCtx,
 		ds:                 ds,
 		cw:                 cw,
-		broker:             broker,
 		pls:                pls,
 		metrics:            m,
 		devExternalScanner: conf.Server.DevExternalScanner,
@@ -99,7 +98,6 @@ type controller struct {
 	rootCtx            context.Context
 	ds                 model.DataStore
 	cw                 artwork.CacheWarmer
-	broker             events.Broker
 	metrics            metrics.Metrics
 	pls                playlists.Playlists
 	limiter            *rate.Sometimes
@@ -255,7 +253,10 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	// If changes were detected, send a refresh event to all clients
 	if s.changesDetected {
 		log.Debug(ctx, "Library changes imported. Sending refresh event")
-		s.broker.SendBroadcastMessage(ctx, &events.RefreshResource{})
+		eventbus.Get().PublishUISync(ctx, eventbus.Event{
+			Topic:   eventbus.TopicRefreshResource,
+			Refresh: &eventbus.RefreshResource{},
+		}, true)
 	}
 	// Send the final scan status event, with totals
 	if count, folderCount, err := s.getCounters(ctx); err != nil {
@@ -392,7 +393,17 @@ func (s *controller) trackProgress(ctx context.Context, progress <-chan *Progres
 }
 
 func (s *controller) sendMessage(ctx context.Context, status *events.ScanStatus) {
-	s.broker.SendBroadcastMessage(ctx, status)
+	eventbus.Get().PublishUISync(ctx, eventbus.Event{
+		Topic: eventbus.TopicScanStatus,
+		UIScan: &eventbus.UIScanStatus{
+			Scanning:    status.Scanning,
+			Count:       status.Count,
+			FolderCount: status.FolderCount,
+			Error:       status.Error,
+			ScanType:    status.ScanType,
+			ElapsedTime: status.ElapsedTime,
+		},
+	}, true)
 }
 
 func errorString(err error) string {

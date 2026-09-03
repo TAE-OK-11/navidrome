@@ -66,7 +66,6 @@ type provider struct {
 	similarMu         sync.Mutex
 	similarCache      map[string]similarCacheEntry
 	similarRefreshing map[string]struct{}
-	wg                sync.WaitGroup
 }
 
 type auxAlbum struct {

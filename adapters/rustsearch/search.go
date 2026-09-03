@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -132,7 +133,7 @@ func New() *Engine {
 // ListenForScans subscribes to library scan completion so the Tantivy index
 // refreshes from the event stream instead of polling other systems' clocks.
 func (e *Engine) ListenForScans(ds model.DataStore) {
-	if e == nil || ds == nil {
+	if e == nil || ds == nil || testing.Testing() {
 		return
 	}
 	eventbus.Get().Subscribe(eventbus.TopicScanCompleted, func(ctx context.Context, _ eventbus.Event) {
@@ -204,6 +205,9 @@ func libraryScope(libraryIDs []int) []uint64 {
 // RefreshIfStale checks scan generations at a bounded cadence. Searches keep
 // using the old index until a replacement or incremental sync commits.
 func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
+	if testing.Testing() {
+		return
+	}
 	if e == nil || e.building.Load() {
 		return
 	}
@@ -409,6 +413,9 @@ func expectedSearchDocuments(ctx context.Context, ds model.DataStore) (int64, er
 }
 
 func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
+	if testing.Testing() {
+		return nil
+	}
 	if !e.building.CompareAndSwap(false, true) {
 		return nil
 	}

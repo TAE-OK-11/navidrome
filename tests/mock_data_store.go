@@ -40,6 +40,8 @@ type MockDataStore struct {
 }
 
 func (db *MockDataStore) Library(ctx context.Context) model.LibraryRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
 	if db.MockedLibrary != nil {
 		return db.MockedLibrary
 	}
@@ -173,6 +175,8 @@ func (db *MockDataStore) Share(ctx context.Context) model.ShareRepository {
 }
 
 func (db *MockDataStore) User(ctx context.Context) model.UserRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
 	if db.MockedUser != nil {
 		return db.MockedUser
 	}

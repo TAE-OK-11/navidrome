@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
 	"github.com/navidrome/navidrome/log"
 )
@@ -16,8 +17,15 @@ func (f *folderEntry) hash() string {
 		if hash, err := rustFolderHash(f); err == nil && hash != "" {
 			f.rustHash = hash
 			return f.rustHash
+		} else if err != nil {
+			log.Warn("Scanner: Rust folder hash failed", "path", f.path, err)
+		} else {
+			log.Warn("Scanner: folder hash missing from Rust scanner on local library path", "path", f.path)
 		}
-		log.Warn("Scanner: folder hash missing from Rust scanner on local library path", "path", f.path)
+		if !rustworker.AllowLegacyNDJSON() {
+			log.Error("Scanner: not using Go MD5 for local library folder hash", "path", f.path)
+			return ""
+		}
 	}
 	return f.hashGo()
 }

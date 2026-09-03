@@ -4,11 +4,19 @@ package navidrome.scanner.v1;
 
 option go_package = "github.com/navidrome/navidrome/core/scannerworker/gen";
 
-// Rust owns folder-content hashing. Go owns SQLite and scan orchestration.
+// Rust owns folder-content hashing and local-FS traversal. Go owns SQLite
+// and scan orchestration.
 
 service FolderHash {
   rpc Hash(HashRequest) returns (HashResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// Scanner streams a library walk. Production Go uses this instead of NDJSON
+// stdin/stdout. Folder hashing stays on FolderHash for folders that still
+// need a hash after the walk.
+service Scanner {
+  rpc Walk(WalkRequest) returns (stream WalkEvent);
 }
 
 message FileMeta {
@@ -37,6 +45,43 @@ message HealthRequest {}
 
 message HealthResponse {
   bool ok = 1;
+}
+
+message WalkRequest {
+  string root = 1;
+  repeated string targets = 2;
+  bool follow_symlinks = 3;
+  bool ignore_dot_folders = 4;
+  map<string, string> known_hashes = 5;
+  int32 walk_threads = 6;
+}
+
+message WalkFolder {
+  string path = 1;
+  int64 mod_time_ns = 2;
+  int64 images_updated_at_ns = 3;
+  int32 num_playlists = 4;
+  int32 num_subfolders = 5;
+  map<string, FileMeta> audio_files = 6;
+  map<string, FileMeta> image_files = 7;
+  string hash = 8;
+}
+
+enum WalkEventKind {
+  WALK_EVENT_KIND_UNSPECIFIED = 0;
+  WALK_EVENT_KIND_FOLDER = 1;
+  WALK_EVENT_KIND_FOLDER_SUMMARY = 2;
+  WALK_EVENT_KIND_WARNING = 3;
+  WALK_EVENT_KIND_ERROR = 4;
+  WALK_EVENT_KIND_DONE = 5;
+}
+
+message WalkEvent {
+  WalkEventKind kind = 1;
+  WalkFolder folder = 2;
+  string message = 3;
+  uint64 folders = 4;
+  uint64 files = 5;
 }
 
 // ScanEvents carries library-scan progress between the orchestrating Go

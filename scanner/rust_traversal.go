@@ -16,6 +16,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
+	"github.com/navidrome/navidrome/core/scannerworker/gen"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -101,13 +102,6 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 		defer close(folders)
 		defer close(errs)
 
-		binary, err := scannerworker.Resolve()
-		if err != nil {
-			log.Error(ctx, "Rust scanner worker binary not found",
-				"lib", job.lib.Name, "root", job.localRoot, err)
-			errs <- err
-			return
-		}
 		request := rustScanRequest{
 			Root:             job.localRoot,
 			Targets:          append([]string{}, targets...),
@@ -115,6 +109,22 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 			IgnoreDotFolders: conf.Server.Scanner.IgnoreDotFolders,
 			KnownHashes:      job.knownHashesSnapshot(),
 			WalkThreads:      rustWalkThreads(),
+		}
+
+		if warn, err := streamRustFoldersGRPC(ctx, request, folders); rustworker.PreferGRPC(err, scannerworker.ErrWalkNoGRPC) {
+			for _, warning := range warn {
+				log.Warn(ctx, "Rust scanner traversal warning", "warning", warning)
+			}
+			errs <- err
+			return
+		}
+
+		binary, err := scannerworker.Resolve()
+		if err != nil {
+			log.Error(ctx, "Rust scanner worker binary not found",
+				"lib", job.lib.Name, "root", job.localRoot, err)
+			errs <- err
+			return
 		}
 
 		persistentScannerWorkers.ensure()
@@ -150,6 +160,148 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 	}()
 
 	return folders, errs
+}
+
+func streamRustFoldersGRPC(ctx context.Context, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
+	cli := scannerworker.ScannerGRPC()
+	if cli == nil {
+		return nil, scannerworker.ErrWalkNoGRPC
+	}
+	stream, err := cli.Walk(ctx, toProtoWalkRequest(request))
+	if err != nil {
+		return nil, err
+	}
+
+	var warnings []string
+	var seen int
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return warnings, nil
+		}
+		if err != nil {
+			return warnings, fmt.Errorf("receiving Rust scanner walk event: %w", err)
+		}
+		switch event.GetKind() {
+		case gen.WalkEventKind_WALK_EVENT_KIND_FOLDER:
+			folder := folderFromProto(event.GetFolder())
+			if folder == nil || folder.Path == "" {
+				return warnings, errors.New("Rust scanner returned an invalid folder event")
+			}
+			seen++
+			if seen > maxRustScanEntries {
+				return warnings, errors.New("Rust scanner exceeded folder safety limit")
+			}
+			if err := sendRustFolder(ctx, folders, folder); err != nil {
+				return warnings, err
+			}
+		case gen.WalkEventKind_WALK_EVENT_KIND_FOLDER_SUMMARY:
+			folder := event.GetFolder()
+			if folder == nil || folder.GetPath() == "" || folder.GetHash() == "" {
+				return warnings, errors.New("Rust scanner returned an invalid folder summary event")
+			}
+			seen++
+			if seen > maxRustScanEntries {
+				return warnings, errors.New("Rust scanner exceeded folder safety limit")
+			}
+			if err := sendRustFolder(ctx, folders, &rustScanFolder{
+				Path: folder.GetPath(),
+				Hash: folder.GetHash(),
+			}); err != nil {
+				return warnings, err
+			}
+		case gen.WalkEventKind_WALK_EVENT_KIND_WARNING:
+			if event.GetMessage() != "" {
+				warnings = append(warnings, event.GetMessage())
+			}
+		case gen.WalkEventKind_WALK_EVENT_KIND_ERROR:
+			msg := event.GetMessage()
+			if msg == "" {
+				msg = "Rust scanner request failed"
+			}
+			return warnings, errors.New(msg)
+		case gen.WalkEventKind_WALK_EVENT_KIND_DONE:
+			return warnings, nil
+		default:
+			return warnings, fmt.Errorf("Rust scanner returned unknown event %q", event.GetKind())
+		}
+	}
+}
+
+func toProtoWalkRequest(request rustScanRequest) *gen.WalkRequest {
+	return &gen.WalkRequest{
+		Root:             request.Root,
+		Targets:          append([]string{}, request.Targets...),
+		FollowSymlinks:   request.FollowSymlinks,
+		IgnoreDotFolders: request.IgnoreDotFolders,
+		KnownHashes:      request.KnownHashes,
+		WalkThreads:      int32(request.WalkThreads),
+	}
+}
+
+func folderFromProto(folder *gen.WalkFolder) *rustScanFolder {
+	if folder == nil {
+		return nil
+	}
+	return &rustScanFolder{
+		Path:              folder.GetPath(),
+		ModTimeNS:         folder.GetModTimeNs(),
+		ImagesUpdatedAtNS: folder.GetImagesUpdatedAtNs(),
+		NumPlaylists:      int(folder.GetNumPlaylists()),
+		NumSubfolders:     int(folder.GetNumSubfolders()),
+		AudioFiles:        filesFromProto(folder.GetAudioFiles()),
+		ImageFiles:        filesFromProto(folder.GetImageFiles()),
+		Hash:              folder.GetHash(),
+	}
+}
+
+func toProtoWalkFolder(folder *rustScanFolder) *gen.WalkFolder {
+	if folder == nil {
+		return nil
+	}
+	return &gen.WalkFolder{
+		Path:              folder.Path,
+		ModTimeNs:         folder.ModTimeNS,
+		ImagesUpdatedAtNs: folder.ImagesUpdatedAtNS,
+		NumPlaylists:      int32(folder.NumPlaylists),
+		NumSubfolders:     int32(folder.NumSubfolders),
+		AudioFiles:        toProtoScanFiles(folder.AudioFiles),
+		ImageFiles:        toProtoScanFiles(folder.ImageFiles),
+		Hash:              folder.Hash,
+	}
+}
+
+func toProtoScanFiles(files map[string]rustScanFile) map[string]*gen.FileMeta {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make(map[string]*gen.FileMeta, len(files))
+	for name, file := range files {
+		fileName := file.Name
+		if fileName == "" {
+			fileName = name
+		}
+		out[name] = &gen.FileMeta{Name: fileName, Size: file.Size, ModTimeNs: file.ModTimeNS}
+	}
+	return out
+}
+
+func filesFromProto(files map[string]*gen.FileMeta) map[string]rustScanFile {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make(map[string]rustScanFile, len(files))
+	for name, file := range files {
+		if file == nil {
+			continue
+		}
+		fileName := file.GetName()
+		if fileName == "" {
+			fileName = name
+		}
+		out[name] = rustScanFile{Name: fileName, Size: file.GetSize(), ModTimeNS: file.GetModTimeNs()}
+	}
+	return out
 }
 
 func rustWalkThreads() int {
@@ -190,7 +342,7 @@ func (s *scannerWorkerSlot) stream(
 		worker.kill()
 		close(cancelDone)
 	})
-		pendingWarnings, err := worker.stream(ctx, request, folders)
+	pendingWarnings, err := worker.stream(ctx, request, folders)
 	if !stopCancel() {
 		<-cancelDone
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core/agents"
 	. "github.com/navidrome/navidrome/core/external"
 	"github.com/navidrome/navidrome/core/matcher"
@@ -51,6 +50,7 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		}
 
 		provider = NewProvider(ds, agentsCombined, matcher.New(ds))
+		DeferCleanup(provider.Close)
 	})
 
 	Describe("dispatch by entity type", func() {
@@ -76,40 +76,14 @@ var _ = Describe("Provider - SimilarSongs", func() {
 				// Matcher artist resolution: resolve Depeche Mode in the artist table.
 				artistRepo.On("GetAll", mock.Anything).Return(model.Artists{dmArtist}, nil).Maybe()
 
-				// ID phase: no IDs → squirrel.And with media_file.id; won't be called but guard it.
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					_, ok := opt.Filters.(squirrel.Eq)
-					return ok
-				})).Return(model.MediaFiles{}, nil).Maybe()
+				// ID phase: And(media_file.id, not missing); won't be called but guard it.
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("media_file.id"))).Return(model.MediaFiles{}, nil).Maybe()
 
 				// MBID phase: won't fire (empty MBID).
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					and, ok := opt.Filters.(squirrel.And)
-					if !ok || len(and) < 1 {
-						return false
-					}
-					eq, hasEq := and[0].(squirrel.Eq)
-					if !hasEq {
-						return false
-					}
-					_, hasMBID := eq["mbz_recording_id"]
-					return hasMBID
-				})).Return(model.MediaFiles{}, nil).Maybe()
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("mbz_recording_id"))).Return(model.MediaFiles{}, nil).Maybe()
 
 				// Matcher track-fetch: subquery returns the matched song with participants.
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					and, ok := opt.Filters.(squirrel.And)
-					if !ok {
-						return false
-					}
-					for _, f := range and {
-						sql, _, err := f.ToSql()
-						if err == nil && strings.Contains(sql, "media_file_artists") {
-							return true
-						}
-					}
-					return false
-				})).Return(model.MediaFiles{matchedSong}, nil).Maybe()
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("media_file_artists"))).Return(model.MediaFiles{matchedSong}, nil).Maybe()
 
 				songs, err := provider.SimilarSongs(ctx, "track-1", 5)
 
@@ -166,21 +140,11 @@ var _ = Describe("Provider - SimilarSongs", func() {
 						{Name: "New Life", MBID: "song-mbid", Artists: []agents.Artist{{Name: "Depeche Mode"}}},
 					}, nil).Once()
 
-				// Mock loadTracksByID - no ID matches
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					_, ok := opt.Filters.(squirrel.Eq)
-					return ok
-				})).Return(model.MediaFiles{}, nil).Once()
+				// ID phase: no IDs on agent songs
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("media_file.id"))).Return(model.MediaFiles{}, nil).Once()
 
-				// Mock loadTracksByMBID - MBID match
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					and, ok := opt.Filters.(squirrel.And)
-					if !ok || len(and) < 1 {
-						return false
-					}
-					_, hasEq := and[0].(squirrel.Eq)
-					return hasEq
-				})).Return(model.MediaFiles{matchedSong}, nil).Once()
+				// MBID phase
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("mbz_recording_id"))).Return(model.MediaFiles{matchedSong}, nil).Once()
 
 				songs, err := provider.SimilarSongs(ctx, "album-1", 5)
 
@@ -238,21 +202,11 @@ var _ = Describe("Provider - SimilarSongs", func() {
 						{Name: "Enjoy the Silence", MBID: "song-mbid", Artists: []agents.Artist{{Name: "Depeche Mode"}}},
 					}, nil).Once()
 
-				// Mock loadTracksByID - no ID matches
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					_, ok := opt.Filters.(squirrel.Eq)
-					return ok
-				})).Return(model.MediaFiles{}, nil).Once()
+				// ID phase: no IDs on agent songs
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("media_file.id"))).Return(model.MediaFiles{}, nil).Once()
 
-				// Mock loadTracksByMBID - MBID match
-				mediaFileRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-					and, ok := opt.Filters.(squirrel.And)
-					if !ok || len(and) < 1 {
-						return false
-					}
-					_, hasEq := and[0].(squirrel.Eq)
-					return hasEq
-				})).Return(model.MediaFiles{matchedSong}, nil).Once()
+				// MBID phase
+				mediaFileRepo.On("GetAll", mock.MatchedBy(filterContains("mbz_recording_id"))).Return(model.MediaFiles{matchedSong}, nil).Once()
 
 				songs, err := provider.SimilarSongs(ctx, "artist-1", 5)
 
@@ -291,16 +245,13 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		mockAgent.On("GetSimilarArtists", mock.Anything, "artist-1", "Artist One", "", 15).
 			Return(similarAgentsResp, nil).Once()
 
-		// Mock the three-phase artist lookup: ID (skipped - no IDs), MBID, then Name
 		// MBID lookup returns empty (no match)
 		artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-			_, ok := opt.Filters.(squirrel.Eq)
-			return opt.Max == 0 && ok
+			return opt.Max == 0 && strings.Contains(filterSQL(opt), "mbz_artist_id")
 		})).Return(model.Artists{}, nil).Once()
 		// Name lookup returns the similar artist
 		artistRepo.On("GetAll", mock.MatchedBy(func(opt model.QueryOptions) bool {
-			_, ok := opt.Filters.(squirrel.Or)
-			return opt.Max == 0 && ok
+			return opt.Max == 0 && strings.Contains(filterSQL(opt), "artist.name")
 		})).Return(model.Artists{similarArtist}, nil).Once()
 
 		mockAgent.On("GetArtistTopSongs", mock.Anything, "artist-1", "Artist One", "", mock.Anything).
@@ -445,3 +396,27 @@ var _ = Describe("Provider - SimilarSongs", func() {
 		Expect(songs[0].ID).To(BeElementOf("song-1", "song-2"))
 	})
 })
+
+func filterSQL(opt model.QueryOptions) string {
+	if opt.Filters == nil {
+		return ""
+	}
+	sql, _, err := opt.Filters.ToSql()
+	if err != nil {
+		return ""
+	}
+	return sql
+}
+
+func filterContains(substr string) func(opt model.QueryOptions) bool {
+	return func(opt model.QueryOptions) bool {
+		sql := filterSQL(opt)
+		if !strings.Contains(sql, substr) {
+			return false
+		}
+		if substr == "media_file.id" && strings.Contains(sql, "media_file_artists") {
+			return false
+		}
+		return true
+	}
+}

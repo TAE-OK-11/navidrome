@@ -56,6 +56,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 		agentsCombined.On("GetSimilarArtists", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]agents.Artist{}, nil).Maybe()
 
 		provider = NewProvider(ds, agentsCombined, matcher.New(ds))
+		DeferCleanup(provider.Close)
 
 		// Default mocks for successful Get calls
 		mockArtistRepo.On("Get", "artist-1").Return(&model.Artist{ID: "artist-1", Name: "Artist One"}, nil).Maybe()

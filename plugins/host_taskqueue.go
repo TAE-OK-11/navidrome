@@ -31,12 +31,6 @@ const (
 	taskCleanupInterval       = 5 * time.Minute
 	pollInterval              = 5 * time.Second
 	shutdownTimeout           = 10 * time.Second
-
-	taskStatusPending   = "pending"
-	taskStatusRunning   = "running"
-	taskStatusCompleted = "completed"
-	taskStatusFailed    = "failed"
-	taskStatusCancelled = "cancelled"
 )
 
 // CapabilityTaskWorker indicates the plugin can receive task execution callbacks.

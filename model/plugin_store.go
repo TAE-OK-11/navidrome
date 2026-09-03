@@ -30,6 +30,14 @@ type PluginQueueConfig struct {
 	RetentionMs int64
 }
 
+const (
+	PluginTaskPending   = "pending"
+	PluginTaskRunning   = "running"
+	PluginTaskCompleted = "completed"
+	PluginTaskFailed    = "failed"
+	PluginTaskCancelled = "cancelled"
+)
+
 // PluginTaskRecord is one row in the shared plugin task table.
 type PluginTaskRecord struct {
 	ID         string

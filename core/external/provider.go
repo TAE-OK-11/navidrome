@@ -43,6 +43,7 @@ type Provider interface {
 	TopSongs(ctx context.Context, artist, artistId string, count int) (model.MediaFiles, error)
 	ArtistImage(ctx context.Context, id string) (*url.URL, error)
 	AlbumImage(ctx context.Context, id string) (*url.URL, error)
+	Close()
 }
 
 type provider struct {
@@ -51,6 +52,7 @@ type provider struct {
 	matcher     *matcher.Matcher
 	artistQueue refreshQueue[auxArtist]
 	albumQueue  refreshQueue[auxAlbum]
+	cancel      context.CancelFunc
 }
 
 type auxAlbum struct {
@@ -95,9 +97,17 @@ type Agents interface {
 
 func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider {
 	e := &provider{ds: ds, ag: agents, matcher: m}
-	e.artistQueue = newRefreshQueue(context.TODO(), e.populateArtistInfo)
-	e.albumQueue = newRefreshQueue(context.TODO(), e.populateAlbumInfo)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.cancel = cancel
+	e.artistQueue = newRefreshQueue(ctx, e.populateArtistInfo)
+	e.albumQueue = newRefreshQueue(ctx, e.populateAlbumInfo)
 	return e
+}
+
+func (e *provider) Close() {
+	if e.cancel != nil {
+		e.cancel()
+	}
 }
 
 func (e *provider) getAlbum(ctx context.Context, id string) (auxAlbum, error) {

@@ -35,6 +35,7 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 		ds = new(tests.MockDataStore)
 		ag = new(mockAgents)
 		p = external.NewProvider(ds, ag, matcher.New(ds))
+		DeferCleanup(p.Close)
 		mockAlbumRepo = ds.Album(ctx).(*tests.MockAlbumRepo)
 		conf.Server.DevAlbumInfoTimeToLive = 1 * time.Hour
 	})

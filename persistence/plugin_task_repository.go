@@ -50,24 +50,24 @@ func (r *pluginTaskRepository) UpsertQueue(ctx context.Context, pluginID string,
 
 func (r *pluginTaskRepository) ResetRunningToPending(ctx context.Context, pluginID, queueName string, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "pending").
+		Set("status", model.PluginTaskPending).
 		Set("updated_at", now).
-		Where(And{Eq{"plugin_id": pluginID}, Eq{"queue_name": queueName}, Eq{"status": "running"}}))
+		Where(And{Eq{"plugin_id": pluginID}, Eq{"queue_name": queueName}, Eq{"status": model.PluginTaskRunning}}))
 	return err
 }
 
 func (r *pluginTaskRepository) ResetAllRunningToPending(ctx context.Context, pluginID string, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "pending").
+		Set("status", model.PluginTaskPending).
 		Set("updated_at", now).
-		Where(And{Eq{"plugin_id": pluginID}, Eq{"status": "running"}}))
+		Where(And{Eq{"plugin_id": pluginID}, Eq{"status": model.PluginTaskRunning}}))
 	return err
 }
 
 func (r *pluginTaskRepository) Enqueue(ctx context.Context, pluginID, queueName, taskID string, payload []byte, maxRetries int32, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Insert("plugin_task").Columns(
 		"id", "plugin_id", "queue_name", "payload", "status", "attempt", "max_retries", "next_run_at", "created_at", "updated_at",
-	).Values(taskID, pluginID, queueName, payload, "pending", 0, maxRetries, now, now, now))
+	).Values(taskID, pluginID, queueName, payload, model.PluginTaskPending, 0, maxRetries, now, now, now))
 	if err != nil {
 		return fmt.Errorf("enqueuing plugin task: %w", err)
 	}
@@ -87,14 +87,14 @@ func (r *pluginTaskRepository) Get(ctx context.Context, pluginID, taskID string)
 
 func (r *pluginTaskRepository) CancelPending(ctx context.Context, pluginID, taskID string, now int64) (bool, string, error) {
 	count, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "cancelled").
+		Set("status", model.PluginTaskCancelled).
 		Set("updated_at", now).
-		Where(And{Eq{"plugin_id": pluginID}, Eq{"id": taskID}, Eq{"status": "pending"}}))
+		Where(And{Eq{"plugin_id": pluginID}, Eq{"id": taskID}, Eq{"status": model.PluginTaskPending}}))
 	if err != nil {
 		return false, "", err
 	}
 	if count > 0 {
-		return true, "cancelled", nil
+		return true, model.PluginTaskCancelled, nil
 	}
 	rec, err := r.Get(ctx, pluginID, taskID)
 	if err != nil {
@@ -105,9 +105,9 @@ func (r *pluginTaskRepository) CancelPending(ctx context.Context, pluginID, task
 
 func (r *pluginTaskRepository) ClearPending(ctx context.Context, pluginID, queueName string, now int64) (int64, error) {
 	return r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "cancelled").
+		Set("status", model.PluginTaskCancelled).
 		Set("updated_at", now).
-		Where(And{Eq{"plugin_id": pluginID}, Eq{"queue_name": queueName}, Eq{"status": "pending"}}))
+		Where(And{Eq{"plugin_id": pluginID}, Eq{"queue_name": queueName}, Eq{"status": model.PluginTaskPending}}))
 }
 
 func (r *pluginTaskRepository) Dequeue(ctx context.Context, pluginID, queueName string, now int64) (*model.PluginTaskRecord, error) {
@@ -121,11 +121,11 @@ func (r *pluginTaskRepository) Dequeue(ctx context.Context, pluginID, queueName 
 		)
 		RETURNING id, queue_name, payload, status, message, attempt, max_retries, next_run_at
 	`).Bind(dbx.Params{
-		"running": "running",
+		"running": model.PluginTaskRunning,
 		"now":     now,
 		"plugin":  pluginID,
 		"queue":   queueName,
-		"pending": "pending",
+		"pending": model.PluginTaskPending,
 	}).WithContext(ctx).One(&rec)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -138,7 +138,7 @@ func (r *pluginTaskRepository) Dequeue(ctx context.Context, pluginID, queueName 
 
 func (r *pluginTaskRepository) Complete(ctx context.Context, pluginID, taskID, message string, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "completed").
+		Set("status", model.PluginTaskCompleted).
 		Set("message", message).
 		Set("updated_at", now).
 		Where(And{Eq{"plugin_id": pluginID}, Eq{"id": taskID}}))
@@ -147,7 +147,7 @@ func (r *pluginTaskRepository) Complete(ctx context.Context, pluginID, taskID, m
 
 func (r *pluginTaskRepository) Fail(ctx context.Context, pluginID, taskID, message string, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "failed").
+		Set("status", model.PluginTaskFailed).
 		Set("message", message).
 		Set("updated_at", now).
 		Where(And{Eq{"plugin_id": pluginID}, Eq{"id": taskID}}))
@@ -156,7 +156,7 @@ func (r *pluginTaskRepository) Fail(ctx context.Context, pluginID, taskID, messa
 
 func (r *pluginTaskRepository) Reschedule(ctx context.Context, pluginID, taskID string, nextRunAt, now int64) error {
 	_, err := r.withCtx(ctx).executeSQL(Update("plugin_task").
-		Set("status", "pending").
+		Set("status", model.PluginTaskPending).
 		Set("next_run_at", nextRunAt).
 		Set("updated_at", now).
 		Where(And{Eq{"plugin_id": pluginID}, Eq{"id": taskID}}))
@@ -168,11 +168,11 @@ func (r *pluginTaskRepository) RevertToPending(ctx context.Context, pluginID, ta
 		UPDATE plugin_task SET status = {:pending}, attempt = MAX(attempt - 1, 0), updated_at = {:now}
 		WHERE plugin_id = {:plugin} AND id = {:id} AND status = {:running}
 	`).Bind(dbx.Params{
-		"pending": "pending",
+		"pending": model.PluginTaskPending,
 		"now":     now,
 		"plugin":  pluginID,
 		"id":      taskID,
-		"running": "running",
+		"running": model.PluginTaskRunning,
 	}).WithContext(ctx).Execute()
 	return err
 }
@@ -186,9 +186,9 @@ func (r *pluginTaskRepository) CleanupTerminal(ctx context.Context, pluginID, qu
 	`).Bind(dbx.Params{
 		"plugin":    pluginID,
 		"queue":     queueName,
-		"completed": "completed",
-		"failed":    "failed",
-		"cancelled": "cancelled",
+		"completed": model.PluginTaskCompleted,
+		"failed":    model.PluginTaskFailed,
+		"cancelled": model.PluginTaskCancelled,
 		"retention": retentionMs,
 		"now":       now,
 	}).WithContext(ctx).Execute()

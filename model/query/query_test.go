@@ -1,6 +1,8 @@
 package query_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/navidrome/navidrome/model"
@@ -85,6 +87,24 @@ func TestOrAnd(t *testing.T) {
 	}
 	if sql == "" {
 		t.Fatal("expected sql")
+	}
+}
+
+func TestPredicatesDoNotLeakSquirrelTypes(t *testing.T) {
+	cases := []query.Sqlizer{
+		query.Eq("id", 1),
+		query.And(query.Eq("a", 1), query.NotMissing()),
+		query.Or(query.Eq("a", 1), query.Eq("b", 2)),
+		query.ParticipantIDFilter("media_file", "ar-1", model.RoleArtist),
+		query.SongTags.ByID("tag-1"),
+		query.Exists("album", query.Eq("id", 1)),
+		query.Exists("album", query.Eq("id", 1)),
+	}
+	for _, f := range cases {
+		typ := fmt.Sprintf("%T", f)
+		if strings.Contains(typ, "squirrel") {
+			t.Fatalf("leaked squirrel type %s", typ)
+		}
 	}
 }
 

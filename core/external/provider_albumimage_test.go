@@ -55,6 +55,7 @@ var _ = Describe("Provider - AlbumImage", func() {
 
 		agentsCombined := &mockAgents{albumInfoAgent: mockAlbumAgent}
 		provider = NewProvider(ds, agentsCombined, matcher.New(ds))
+		DeferCleanup(provider.Close)
 
 		mockAlbumRepo.On("Get", "mf-1").Return(nil, model.ErrNotFound).Maybe()
 		mockMediaFileRepo.On("Get", "album-1").Return(nil, model.ErrNotFound).Maybe()

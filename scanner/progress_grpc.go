@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,7 +25,7 @@ type progressGRPCServer struct {
 func (s *progressGRPCServer) ReportProgress(stream gen.ScanEvents_ReportProgressServer) error {
 	for {
 		evt, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return stream.SendAndClose(&gen.ProgressAck{Ok: true})
 		}
 		if err != nil {

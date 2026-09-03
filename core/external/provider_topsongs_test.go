@@ -46,6 +46,7 @@ var _ = Describe("Provider - TopSongs", func() {
 		ag = new(mockAgents)
 
 		p = NewProvider(ds, ag, matcher.New(ds))
+		DeferCleanup(p.Close)
 	})
 
 	It("returns top songs for a known artist", func() {

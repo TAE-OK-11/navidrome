@@ -432,6 +432,8 @@ func (n noopProvider) AlbumImage(context.Context, string) (*url.URL, error) {
 	return nil, model.ErrNotFound
 }
 
+func (n noopProvider) Close() {}
+
 // Compile-time interface checks
 var (
 	_ artwork.Artwork      = noopArtwork{}

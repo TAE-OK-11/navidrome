@@ -38,6 +38,7 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		ds = new(tests.MockDataStore)
 		ag = new(mockAgents)
 		p = external.NewProvider(ds, ag, matcher.New(ds))
+		DeferCleanup(p.Close)
 		mockArtistRepo = ds.Artist(ctx).(*tests.MockArtistRepo)
 	})
 

@@ -27,5 +27,5 @@ func participantIDFilter(table string, artistID any, negate bool, roles []model.
 	if negate {
 		op = " NOT IN ("
 	}
-	return squirrel.Expr(table+".id"+op+sql+")", args...)
+	return expr(table+".id"+op+sql+")", args...)
 }

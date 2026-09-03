@@ -305,13 +305,6 @@ func (api *Router) registerMediaRoutes(r chi.Router) {
 	})
 }
 
-// Add a Subsonic handler
-func h(r chi.Router, path string, f handler) {
-	hr(r, path, func(_ http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
-		return f(r)
-	})
-}
-
 // Add a Subsonic handler that requires an http.ResponseWriter (ex: stream, getCoverArt...)
 func hr(r chi.Router, path string, f handlerRaw) {
 	handle := func(w http.ResponseWriter, r *http.Request) {

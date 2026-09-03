@@ -217,6 +217,10 @@ func (m *mockDataStore) Library(context.Context) model.LibraryRepository {
 	return &mockLibraryRepository{}
 }
 
+func (m *mockDataStore) Optimize(context.Context) error { return nil }
+
+func (m *mockDataStore) MarkOptimizePending(context.Context) error { return nil }
+
 type mockLibraryRepository struct {
 	mock.Mock
 	model.LibraryRepository

@@ -19,12 +19,12 @@ type workerRequest struct {
 }
 
 type workerResponse struct {
-	OK            bool   `json:"ok"`
-	Token         string `json:"token,omitempty"`
-	LookupPrefix  string `json:"lookup_prefix,omitempty"`
-	Hash          string `json:"hash,omitempty"`
-	Valid         *bool  `json:"valid,omitempty"`
-	Error         string `json:"error,omitempty"`
+	OK           bool   `json:"ok"`
+	Token        string `json:"token,omitempty"`
+	LookupPrefix string `json:"lookup_prefix,omitempty"`
+	Hash         string `json:"hash,omitempty"`
+	Valid        *bool  `json:"valid,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 type generateResult struct {
@@ -144,6 +144,9 @@ func (w *worker) close() {
 }
 
 func Generate(ctx context.Context, pepper string) (generateResult, error) {
+	if result, err := generateGRPC(ctx, pepper); !errors.Is(err, errNoGRPC) {
+		return result, err
+	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "generate", Pepper: pepper})
 	if err != nil {
 		return generateResult{}, err
@@ -156,6 +159,9 @@ func Generate(ctx context.Context, pepper string) (generateResult, error) {
 }
 
 func Hash(ctx context.Context, token, pepper string) (string, string, error) {
+	if prefix, hash, err := hashGRPC(ctx, token, pepper); !errors.Is(err, errNoGRPC) {
+		return prefix, hash, err
+	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "hash", Token: token, Pepper: pepper})
 	if err != nil {
 		return "", "", err
@@ -164,6 +170,9 @@ func Hash(ctx context.Context, token, pepper string) (string, string, error) {
 }
 
 func Verify(ctx context.Context, token, hash, pepper string) (bool, error) {
+	if valid, err := verifyGRPC(ctx, token, hash, pepper); !errors.Is(err, errNoGRPC) {
+		return valid, err
+	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "verify", Token: token, Hash: hash, Pepper: pepper})
 	if err != nil {
 		return false, err

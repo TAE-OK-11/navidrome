@@ -187,30 +187,13 @@ func (a *Agents) GetSimilarArtists(ctx context.Context, id, name, mbid string, l
 
 	overLimit := int(float64(limit) * conf.Server.DevExternalArtistFetchMultiplier)
 
-	start := time.Now()
-	for _, enabledAgent := range a.getEnabledAgentNames() {
-		ag := a.getAgent(enabledAgent)
-		if ag == nil {
-			continue
-		}
-		if utils.IsCtxDone(ctx) {
-			break
-		}
+	return callAgentSliceMethod(ctx, a, "GetSimilarArtists", func(ag Interface) ([]Artist, error) {
 		retriever, ok := ag.(ArtistSimilarRetriever)
 		if !ok {
-			continue
+			return nil, ErrNotFound
 		}
-		similar, err := retriever.GetSimilarArtists(ctx, id, name, mbid, overLimit)
-		if len(similar) > 0 && err == nil {
-			if log.IsGreaterOrEqualTo(log.LevelTrace) {
-				log.Debug(ctx, "Got Similar Artists", "agent", ag.AgentName(), "artist", name, "similar", similar, "elapsed", time.Since(start))
-			} else {
-				log.Debug(ctx, "Got Similar Artists", "agent", ag.AgentName(), "artist", name, "similarReceived", len(similar), "elapsed", time.Since(start))
-			}
-			return similar, err
-		}
-	}
-	return nil, ErrNotFound
+		return retriever.GetSimilarArtists(ctx, id, name, mbid, overLimit)
+	})
 }
 
 func (a *Agents) GetArtistImages(ctx context.Context, id, name, mbid string) ([]ExternalImage, error) {
@@ -321,51 +304,109 @@ func (a *Agents) GetSimilarSongsByArtist(ctx context.Context, id, name, mbid str
 
 func callAgentMethod[T comparable](ctx context.Context, agents *Agents, methodName string, fn func(Interface) (T, error)) (T, error) {
 	var zero T
+	if utils.IsCtxDone(ctx) {
+		return zero, ErrNotFound
+	}
 	start := time.Now()
-	for _, enabledAgent := range agents.getEnabledAgentNames() {
-		ag := agents.getAgent(enabledAgent)
-		if ag == nil {
-			continue
-		}
-		if utils.IsCtxDone(ctx) {
-			break
-		}
-		result, err := fn(ag)
+	result, ok := firstSuccess(ctx, agents, func(ag Interface) (T, bool) {
+		val, err := fn(ag)
 		if err != nil {
 			log.Trace(ctx, "Agent method call error", "method", methodName, "agent", ag.AgentName(), "error", err)
-			continue
+			return zero, false
 		}
-
-		if result != zero {
-			log.Debug(ctx, "Got result", "method", methodName, "agent", ag.AgentName(), "elapsed", time.Since(start))
-			return result, nil
+		if val == zero {
+			return zero, false
 		}
+		log.Debug(ctx, "Got result", "method", methodName, "agent", ag.AgentName(), "elapsed", time.Since(start))
+		return val, true
+	})
+	if !ok {
+		return zero, ErrNotFound
 	}
-	return zero, ErrNotFound
+	return result, nil
 }
 
 func callAgentSliceMethod[T any](ctx context.Context, agents *Agents, methodName string, fn func(Interface) ([]T, error)) ([]T, error) {
+	if utils.IsCtxDone(ctx) {
+		return nil, ErrNotFound
+	}
 	start := time.Now()
-	for _, enabledAgent := range agents.getEnabledAgentNames() {
-		ag := agents.getAgent(enabledAgent)
-		if ag == nil {
-			continue
-		}
-		if utils.IsCtxDone(ctx) {
-			break
-		}
+	result, ok := firstSuccess(ctx, agents, func(ag Interface) ([]T, bool) {
 		results, err := fn(ag)
 		if err != nil {
 			log.Trace(ctx, "Agent method call error", "method", methodName, "agent", ag.AgentName(), "error", err)
-			continue
+			return nil, false
 		}
+		if len(results) == 0 {
+			return nil, false
+		}
+		log.Debug(ctx, "Got results", "method", methodName, "agent", ag.AgentName(), "count", len(results), "elapsed", time.Since(start))
+		return results, true
+	})
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return result, nil
+}
 
-		if len(results) > 0 {
-			log.Debug(ctx, "Got results", "method", methodName, "agent", ag.AgentName(), "count", len(results), "elapsed", time.Since(start))
-			return results, nil
+// firstSuccess runs agents concurrently but still honors configured preference
+// order: a later agent cannot win while an earlier one is in flight or succeeds.
+func firstSuccess[T any](ctx context.Context, agents *Agents, fn func(Interface) (T, bool)) (T, bool) {
+	var zero T
+	enabled := agents.getEnabledAgentNames()
+	if len(enabled) == 0 {
+		return zero, false
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type outcome struct {
+		idx int
+		val T
+		ok  bool
+	}
+	ch := make(chan outcome, len(enabled))
+	for i, ea := range enabled {
+		go func(i int, ea enabledAgent) {
+			if utils.IsCtxDone(ctx) {
+				ch <- outcome{idx: i}
+				return
+			}
+			ag := agents.getAgent(ea)
+			if ag == nil {
+				ch <- outcome{idx: i}
+				return
+			}
+			val, ok := fn(ag)
+			ch <- outcome{idx: i, val: val, ok: ok}
+		}(i, ea)
+	}
+
+	pending := make([]bool, len(enabled))
+	for i := range pending {
+		pending[i] = true
+	}
+	got := make([]outcome, len(enabled))
+	next := 0
+	remaining := len(enabled)
+	for remaining > 0 {
+		select {
+		case <-ctx.Done():
+			return zero, false
+		case r := <-ch:
+			remaining--
+			got[r.idx] = r
+			pending[r.idx] = false
+			for next < len(enabled) && !pending[next] {
+				if got[next].ok {
+					cancel()
+					return got[next].val, true
+				}
+				next++
+			}
 		}
 	}
-	return nil, ErrNotFound
+	return zero, false
 }
 
 var _ Interface = (*Agents)(nil)

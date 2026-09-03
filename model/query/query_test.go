@@ -54,3 +54,23 @@ func TestExists(t *testing.T) {
 		t.Fatalf("args = %#v", args)
 	}
 }
+
+func TestNotMissing(t *testing.T) {
+	sql, args, err := query.NotMissing().ToSql()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql != "missing = ?" || len(args) != 1 || args[0] != false {
+		t.Fatalf("sql=%q args=%#v", sql, args)
+	}
+}
+
+func TestOrAnd(t *testing.T) {
+	sql, _, err := query.Or(query.Eq("a", 1), query.Eq("b", 2)).ToSql()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sql == "" {
+		t.Fatal("expected sql")
+	}
+}

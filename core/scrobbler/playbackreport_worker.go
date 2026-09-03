@@ -50,7 +50,7 @@ func (p *playTracker) playbackReportWorker() {
 }
 
 func (p *playTracker) dispatchPlaybackReport(ctx context.Context, info PlaybackSession) {
-	p.bus.PublishSync(ctx, eventbus.Event{
+	p.publish(ctx, eventbus.Event{
 		Topic: eventbus.TopicPlaybackReport,
 		Report: &eventbus.PlaybackReport{
 			UserID:      info.UserId,

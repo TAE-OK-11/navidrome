@@ -105,6 +105,7 @@ type playTracker struct {
 	pluginScrobblers  map[string]Scrobbler
 	pluginLoader      PluginLoader
 	bus               *eventbus.Bus
+	asyncEvents       bool
 	mu                sync.RWMutex
 	npQueue           map[string]nowPlayingEntry
 	npMu              sync.Mutex
@@ -119,17 +120,17 @@ type playTracker struct {
 
 func GetPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
 	return singleton.GetInstance(func() *playTracker {
-		return newPlayTracker(ds, broker, pluginManager)
+		return newPlayTracker(ds, broker, pluginManager, eventbus.Get(), true)
 	})
 }
 
 // NewPlayTracker creates a new PlayTracker instance. For normal usage, the PlayTracker has to be a singleton,
 // returned by the GetPlayTracker function above. This constructor is exported for testing.
 func NewPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) PlayTracker {
-	return newPlayTracker(ds, broker, pluginManager)
+	return newPlayTracker(ds, broker, pluginManager, eventbus.New(), false)
 }
 
-func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader) *playTracker {
+func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager PluginLoader, bus *eventbus.Bus, async bool) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
 		ds:                ds,
@@ -139,7 +140,8 @@ func newPlayTracker(ds model.DataStore, broker events.Broker, pluginManager Plug
 		builtinScrobblers: make(map[string]Scrobbler),
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
-		bus:               eventbus.New(),
+		bus:               bus,
+		asyncEvents:       async,
 		npQueue:           make(map[string]nowPlayingEntry),
 		npSignal:          make(chan struct{}, 1),
 		shutdown:          make(chan struct{}),
@@ -579,6 +581,14 @@ func (p *playTracker) Submit(ctx context.Context, submissions []Submission) erro
 	return nil
 }
 
+func (p *playTracker) publish(ctx context.Context, evt eventbus.Event) {
+	if p.asyncEvents {
+		p.bus.Publish(ctx, evt)
+		return
+	}
+	p.bus.PublishSync(ctx, evt)
+}
+
 func (p *playTracker) incPlay(ctx context.Context, track *model.MediaFile, timestamp time.Time) error {
 	return p.ds.WithTx(func(tx model.DataStore) error {
 		err := tx.MediaFile(ctx).IncPlayCount(track.ID, timestamp)
@@ -609,7 +619,7 @@ func (p *playTracker) dispatchScrobble(ctx context.Context, t *model.MediaFile, 
 	}
 
 	u, _ := request.UserFrom(ctx)
-	p.bus.PublishSync(ctx, eventbus.Event{
+	p.publish(ctx, eventbus.Event{
 		Topic: eventbus.TopicScrobble,
 		Scrobble: &eventbus.Scrobble{
 			UserID:      u.ID,

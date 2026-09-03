@@ -1,3 +1,9 @@
+pub mod proto {
+    tonic::include_proto!("navidrome.apikeys.v1");
+}
+
+pub mod grpc;
+
 use anyhow::{Context, Result, bail};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;

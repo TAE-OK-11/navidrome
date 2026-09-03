@@ -49,4 +49,6 @@ type DataStore interface {
 	WithTx(block func(tx DataStore) error, scope ...string) error
 	WithTxImmediate(block func(tx DataStore) error, scope ...string) error
 	GC(ctx context.Context, libraryIDs ...int) error
+	Optimize(ctx context.Context) error
+	MarkOptimizePending(ctx context.Context) error
 }

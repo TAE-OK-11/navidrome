@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package navidrome.search.v1;
+
+option go_package = "github.com/navidrome/navidrome/core/searchworker/gen";
+
+// Rust owns the Tantivy index. Go remains the control tower: it reads
+// SQLite, builds documents, and decides when to rebuild vs increment.
+
+service Search {
+  rpc Apply(IndexRequest) returns (IndexResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message IndexRequest {
+  oneof op {
+    BeginReplace begin_replace = 1;
+    Append append = 2;
+    CommitReplace commit_replace = 3;
+    AbortReplace abort_replace = 4;
+    Upsert upsert = 5;
+    Delete delete = 6;
+    Commit commit = 7;
+    SearchAll search_all = 8;
+    NormalizeFts normalize_fts = 9;
+  }
+}
+
+message BeginReplace {}
+message CommitReplace {}
+message AbortReplace {}
+message Commit {}
+
+message Document {
+  string key = 1;
+  string id = 2;
+  string kind = 3;
+  repeated uint64 library_ids = 4;
+  string primary = 5;
+  string secondary = 6;
+}
+
+message Append {
+  repeated Document documents = 1;
+}
+
+message Upsert {
+  repeated Document documents = 1;
+}
+
+message Delete {
+  repeated string keys = 1;
+}
+
+message SearchSpec {
+  string kind = 1;
+  int32 offset = 2;
+  int32 limit = 3;
+}
+
+message SearchAll {
+  string query = 1;
+  repeated uint64 library_ids = 2;
+  repeated SearchSpec searches = 3;
+}
+
+message NormalizeFts {
+  repeated string values = 1;
+}
+
+message Hit {
+  string id = 1;
+  float score = 2;
+}
+
+message SearchGroup {
+  string kind = 1;
+  repeated Hit hits = 2;
+}
+
+message IndexResponse {
+  uint32 protocol = 1;
+  bool ok = 2;
+  repeated SearchGroup groups = 3;
+  uint64 indexed = 4;
+  string error = 5;
+  string normalized = 6;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+}

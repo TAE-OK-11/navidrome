@@ -76,6 +76,16 @@ pub struct FileEntry {
     mod_time_ns: i64,
 }
 
+impl FileEntry {
+    pub fn new(name: impl Into<String>, size: u64, mod_time_ns: i64) -> Self {
+        Self {
+            name: name.into(),
+            size,
+            mod_time_ns,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct FolderSummary {
     path: String,

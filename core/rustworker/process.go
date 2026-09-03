@@ -17,6 +17,7 @@ type Pipes struct {
 // Start starts a worker subprocess with stderr attached to os.Stderr.
 func Start(binary string, args ...string) (*Pipes, error) {
 	cmd := exec.Command(binary, args...) //nolint:gosec // resolved administrator-controlled binary
+	prepareCmd(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("opening worker stdin: %w", err)

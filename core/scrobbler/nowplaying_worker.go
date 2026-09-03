@@ -74,7 +74,7 @@ func (p *playTracker) dispatchNowPlaying(ctx context.Context, userId string, t *
 		log.Debug(ctx, "Ignoring external NowPlaying update for track with unknown artist", "track", t.Title, "artist", t.Artist)
 		return
 	}
-	p.bus.PublishSync(ctx, eventbus.Event{
+	p.publish(ctx, eventbus.Event{
 		Topic: eventbus.TopicNowPlaying,
 		NowPlaying: &eventbus.NowPlaying{
 			UserID:      userId,

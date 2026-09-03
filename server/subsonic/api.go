@@ -126,7 +126,13 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 	}
 	if rustsearch.Available() {
 		r.rustSearch = rustsearch.New()
+		r.rustSearch.ListenForScans(ds)
 		go func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Warn("Rust search startup panicked; SQLite search remains active", rec)
+				}
+			}()
 			if err := r.rustSearch.Rebuild(context.Background(), ds); err != nil {
 				log.Warn("Rust search startup failed; SQLite search remains active", err)
 			}

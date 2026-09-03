@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package navidrome.apikeys.v1;
+
+option go_package = "github.com/navidrome/navidrome/core/apikeyworker/gen";
+
+// Rust owns token generation, hashing, and constant-time verify.
+// Go owns SQLite persistence and the HTTP/auth edge.
+
+service ApiKeys {
+  rpc Generate(GenerateRequest) returns (GenerateResponse);
+  rpc Hash(HashRequest) returns (HashResponse);
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message GenerateRequest {
+  string pepper = 1;
+}
+
+message GenerateResponse {
+  bool ok = 1;
+  string token = 2;
+  string lookup_prefix = 3;
+  string hash = 4;
+  string error = 5;
+}
+
+message HashRequest {
+  string token = 1;
+  string pepper = 2;
+}
+
+message HashResponse {
+  bool ok = 1;
+  string lookup_prefix = 2;
+  string hash = 3;
+  string error = 4;
+}
+
+message VerifyRequest {
+  string token = 1;
+  string hash = 2;
+  string pepper = 3;
+}
+
+message VerifyResponse {
+  bool ok = 1;
+  bool valid = 2;
+  string error = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+}

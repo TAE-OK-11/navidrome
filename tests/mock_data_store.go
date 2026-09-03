@@ -305,3 +305,17 @@ func (db *MockDataStore) GC(context.Context, ...int) error {
 	}
 	return nil
 }
+
+func (db *MockDataStore) Optimize(ctx context.Context) error {
+	if db.RealDS != nil {
+		return db.RealDS.Optimize(ctx)
+	}
+	return nil
+}
+
+func (db *MockDataStore) MarkOptimizePending(ctx context.Context) error {
+	if db.RealDS != nil {
+		return db.RealDS.MarkOptimizePending(ctx)
+	}
+	return nil
+}

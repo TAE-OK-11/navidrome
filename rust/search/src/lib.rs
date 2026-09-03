@@ -1,3 +1,9 @@
+pub mod proto {
+    tonic::include_proto!("navidrome.search.v1");
+}
+
+pub mod grpc;
+
 use std::collections::HashSet;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;

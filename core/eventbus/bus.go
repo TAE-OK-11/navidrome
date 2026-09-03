@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/utils/singleton"
 )
 
 const (
@@ -34,6 +35,7 @@ type Event struct {
 	Scrobble   *Scrobble
 	NowPlaying *NowPlaying
 	Report     *PlaybackReport
+	Scan       *ScanCompleted
 }
 
 type Scrobble struct {
@@ -65,6 +67,14 @@ type PlaybackReport struct {
 	Data        any
 }
 
+type ScanCompleted struct {
+	FullScan        bool
+	ChangesDetected bool
+	Error           string
+	FileCount       int64
+	FolderCount     int64
+}
+
 type Handler func(ctx context.Context, evt Event)
 
 type subscription struct {
@@ -86,6 +96,14 @@ type Bus struct {
 
 func New() *Bus {
 	return NewWithSize(defaultQueueSize, defaultWorkers)
+}
+
+// Get returns the process-wide bus. Producers and consumers share this
+// instance so playback, scan, and search are not wired point-to-point.
+func Get() *Bus {
+	return singleton.GetInstance(func() *Bus {
+		return New()
+	})
 }
 
 func NewWithSize(queueSize, workers int) *Bus {

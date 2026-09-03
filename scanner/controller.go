@@ -13,9 +13,9 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/auth"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -208,7 +208,7 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	scanStartedAt := time.Now()
 	scanType := scanTypeName(effectiveFullScan, len(targets) > 0)
 	if effectiveFullScan || s.includesUnscannedLibrary(ctx, targets) {
-		if err := db.MarkOptimizePending(ctx); err != nil {
+		if err := s.ds.MarkOptimizePending(ctx); err != nil {
 			log.Error(ctx, "Scanner: Error marking DB analysis pending", err)
 		}
 	}
@@ -236,10 +236,20 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	// server's pooled connections; their shared schema cache keeps the old statistics until the
 	// process restarts.
 	if effectiveFullScan && scanError == nil {
-		if err := db.Optimize(ctx); err != nil {
+		if err := s.ds.Optimize(ctx); err != nil {
 			log.Error(ctx, "Scanner: Error analyzing DB", err)
 		}
 	}
+	eventbus.Get().Publish(ctx, eventbus.Event{
+		Topic: eventbus.TopicScanCompleted,
+		Scan: &eventbus.ScanCompleted{
+			FullScan:        effectiveFullScan,
+			ChangesDetected: s.changesDetected,
+			Error:           errorString(scanError),
+			FileCount:       int64(s.count.Load()),
+			FolderCount:     int64(s.folderCount.Load()),
+		},
+	})
 	// If changes were detected, send a refresh event to all clients
 	if s.changesDetected {
 		log.Debug(ctx, "Library changes imported. Sending refresh event")
@@ -381,4 +391,11 @@ func (s *controller) trackProgress(ctx context.Context, progress <-chan *Progres
 
 func (s *controller) sendMessage(ctx context.Context, status *events.ScanStatus) {
 	s.broker.SendBroadcastMessage(ctx, status)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

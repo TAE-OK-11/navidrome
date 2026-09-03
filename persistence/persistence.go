@@ -208,6 +208,14 @@ func (s *SQLStore) GC(ctx context.Context, libraryIDs ...int) error {
 	return err
 }
 
+func (s *SQLStore) Optimize(ctx context.Context) error {
+	return db.Optimize(ctx)
+}
+
+func (s *SQLStore) MarkOptimizePending(ctx context.Context) error {
+	return db.MarkOptimizePending(ctx)
+}
+
 func (s *SQLStore) getDBXBuilder() dbx.Builder {
 	if s.db == nil {
 		return dbx.NewFromDB(db.Db(), db.Driver)

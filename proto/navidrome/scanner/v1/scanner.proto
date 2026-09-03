@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package navidrome.scanner.v1;
+
+option go_package = "github.com/navidrome/navidrome/core/scannerworker/gen";
+
+// Rust owns folder-content hashing. Go owns SQLite and scan orchestration.
+
+service FolderHash {
+  rpc Hash(HashRequest) returns (HashResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message FileMeta {
+  string name = 1;
+  uint64 size = 2;
+  int64 mod_time_ns = 3;
+}
+
+message HashRequest {
+  string path = 1;
+  int64 mod_time_ns = 2;
+  int64 images_updated_at_ns = 3;
+  int32 num_playlists = 4;
+  int32 num_subfolders = 5;
+  map<string, FileMeta> audio_files = 6;
+  map<string, FileMeta> image_files = 7;
+}
+
+message HashResponse {
+  bool ok = 1;
+  string hash = 2;
+  string error = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+}

@@ -106,7 +106,7 @@ func runScanner(ctx context.Context) {
 	if !subprocess {
 		effectiveFullScan = scanner.EffectiveFullScan(ctx, ds, fullScan, scanTargets)
 		if effectiveFullScan {
-			if err := db.MarkOptimizePending(ctx); err != nil {
+			if err := ds.MarkOptimizePending(ctx); err != nil {
 				log.Error(ctx, "Error marking DB analysis pending", err)
 			}
 		}
@@ -122,18 +122,18 @@ func runScanner(ctx context.Context) {
 		trackScanAsSubprocess(ctx, progress)
 	} else {
 		changesDetected, scanErr := trackScanInteractively(ctx, progress)
-		runPostScanAnalysis(ctx, changesDetected, effectiveFullScan, scanErr)
+		runPostScanAnalysis(ctx, ds, changesDetected, effectiveFullScan, scanErr)
 	}
 }
 
-func runPostScanAnalysis(ctx context.Context, changesDetected, effectiveFullScan bool, scanErr error) {
+func runPostScanAnalysis(ctx context.Context, ds model.DataStore, changesDetected, effectiveFullScan bool, scanErr error) {
 	if changesDetected {
-		if err := db.MarkOptimizePending(ctx); err != nil {
+		if err := ds.MarkOptimizePending(ctx); err != nil {
 			log.Error(ctx, "Error marking DB analysis pending", err)
 		}
 	}
 	if effectiveFullScan && scanErr == nil {
-		if err := db.Optimize(ctx); err != nil {
+		if err := ds.Optimize(ctx); err != nil {
 			log.Error(ctx, "Error analyzing DB", err)
 		}
 	}

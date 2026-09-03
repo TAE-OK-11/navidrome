@@ -22,8 +22,8 @@ type FolderHashRequest struct {
 	Path              string                    `json:"path"`
 	ModTimeNS         int64                     `json:"mod_time_ns"`
 	ImagesUpdatedAtNS int64                     `json:"images_updated_at_ns"`
-	NumPlaylists      int                         `json:"num_playlists"`
-	NumSubfolders     int                         `json:"num_subfolders"`
+	NumPlaylists      int                       `json:"num_playlists"`
+	NumSubfolders     int                       `json:"num_subfolders"`
 	AudioFiles        map[string]FolderHashFile `json:"audio_files"`
 	ImageFiles        map[string]FolderHashFile `json:"image_files"`
 }
@@ -66,6 +66,10 @@ func PersistentFolderHashWorkers() *folderHashWorkerPool {
 }
 
 func (p *folderHashWorkerPool) Hash(ctx context.Context, request FolderHashRequest) (string, error) {
+	if hash, err := hashGRPC(ctx, request); !errors.Is(err, errFolderHashNoGRPC) {
+		return hash, err
+	}
+
 	binary, err := Resolve()
 	if err != nil {
 		return "", err

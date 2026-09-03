@@ -3,6 +3,7 @@ package subsonic
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -10,8 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
-
-	jsonfast "github.com/goccy/go-json"
 
 	"github.com/deluan/rest"
 	"github.com/go-chi/chi/v5"
@@ -60,7 +59,7 @@ func recycleResponseBuffer(buf *bytes.Buffer) {
 }
 
 func encodeJSON(buf *bytes.Buffer, value any) error {
-	if err := jsonfast.NewEncoder(buf).Encode(value); err != nil {
+	if err := json.NewEncoder(buf).Encode(value); err != nil {
 		return err
 	}
 	// Encoder always appends a newline; keep the historical Marshal payload.

@@ -74,34 +74,36 @@ func (m *MockAlbumRepo) Put(al *model.Album) error {
 	if al.ID == "" {
 		al.ID = id.NewRandom()
 	}
-	copied := *al
-	m.Data[al.ID] = &copied
+	// Keep the caller's pointer so IncPlayCount is visible on the original value.
+	m.Data[al.ID] = al
 	found := false
 	for i := range m.All {
 		if m.All[i].ID == al.ID {
-			m.All[i] = copied
-			m.Data[al.ID] = &m.All[i]
+			m.All[i] = *al
 			found = true
 			break
 		}
 	}
 	if !found {
-		m.All = append(m.All, copied)
-		m.Data[al.ID] = &m.All[len(m.All)-1]
+		m.All = append(m.All, *al)
 	}
 	return nil
 }
 
 func (m *MockAlbumRepo) GetAll(qo ...model.QueryOptions) (model.Albums, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(qo) > 0 {
 		m.Options = qo[0]
 	}
 	if m.Err {
 		return nil, errors.New("unexpected error")
 	}
-	return append(model.Albums(nil), m.All...), nil
+	out := make(model.Albums, 0, len(m.Data))
+	for _, album := range m.Data {
+		out = append(out, *album)
+	}
+	return out, nil
 }
 
 func (m *MockAlbumRepo) IncPlayCount(id string, timestamp time.Time) error {
@@ -120,7 +122,7 @@ func (m *MockAlbumRepo) IncPlayCount(id string, timestamp time.Time) error {
 func (m *MockAlbumRepo) CountAll(...model.QueryOptions) (int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return int64(len(m.All)), nil
+	return int64(len(m.Data)), nil
 }
 
 func (m *MockAlbumRepo) GetTouchedAlbums(libID int) (model.AlbumCursor, error) {
@@ -161,44 +163,36 @@ func (m *MockAlbumRepo) UpdateExternalInfo(album *model.Album) error {
 	if album == nil {
 		return nil
 	}
-	copied := *album
 	if m.Data == nil {
 		m.Data = make(map[string]*model.Album)
 	}
-	found := false
-	for i := range m.All {
-		if m.All[i].ID == album.ID {
-			m.All[i] = copied
-			m.Data[album.ID] = &m.All[i]
-			found = true
-			break
+	if d, ok := m.Data[album.ID]; ok {
+		*d = *album
+		for i := range m.All {
+			if m.All[i].ID == album.ID {
+				m.All[i] = *album
+				break
+			}
 		}
+		return nil
 	}
-	if !found {
-		m.All = append(m.All, copied)
-		m.Data[album.ID] = &m.All[len(m.All)-1]
-	}
+	copied := *album
+	m.All = append(m.All, copied)
+	m.Data[album.ID] = &m.All[len(m.All)-1]
 	return nil
 }
 
 func (m *MockAlbumRepo) Search(q string, options ...model.QueryOptions) (model.Albums, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if len(options) > 0 {
-		m.Options = options[0]
-	}
-	if m.Err {
-		return nil, errors.New("unexpected error")
-	}
-	return append(model.Albums(nil), m.All...), nil
+	return m.GetAll(options...)
 }
 
 // ReassignAnnotation reassigns annotations from one album to another
 func (m *MockAlbumRepo) ReassignAnnotation(prevID string, newID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("unexpected error")
 	}
-	// Mock implementation - track the reassignment calls
 	if m.ReassignAnnotationCalls == nil {
 		m.ReassignAnnotationCalls = make(map[string]string)
 	}

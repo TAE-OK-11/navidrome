@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/core/eventbus"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/matcher"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -65,6 +66,7 @@ type provider struct {
 	similarMu         sync.Mutex
 	similarCache      map[string]similarCacheEntry
 	similarRefreshing map[string]struct{}
+	wg                sync.WaitGroup
 }
 
 type auxAlbum struct {
@@ -120,6 +122,7 @@ func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider
 	e.cancel = cancel
 	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfo)
 	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfo)
+	lifecycle.Register(e)
 	return e
 }
 
@@ -1065,7 +1068,6 @@ func newRefreshQueue[T any](ctx context.Context, wg *sync.WaitGroup, processFn f
 				runCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
 				_, _ = processFn(runCtx, *item)
 				cancel()
-				// Rate-limit Last.fm/agent calls between items, but do not delay the first fetch.
 				select {
 				case <-ctx.Done():
 					return

@@ -76,7 +76,7 @@ func (p *lyricsWorkerPool) parse(ctx context.Context, suffix, lang string, conte
 		return "", fmt.Errorf("lyrics payload exceeds maximum size of %d bytes", maxLyricsInputBytes)
 	}
 
-	if lyricsJSON, err := parseLyricsGRPC(ctx, suffix, lang, contents); !errors.Is(err, errNoGRPC) {
+	if lyricsJSON, err := parseLyricsGRPC(ctx, suffix, lang, contents); rustworker.PreferGRPC(err, errNoGRPC) {
 		return lyricsJSON, err
 	}
 

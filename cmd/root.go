@@ -11,6 +11,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playback"
 	"github.com/navidrome/navidrome/db"
@@ -73,6 +74,7 @@ func preRun() {
 }
 
 func postRun() {
+	lifecycle.CloseAll()
 	log.Info("Navidrome stopped, bye.")
 }
 

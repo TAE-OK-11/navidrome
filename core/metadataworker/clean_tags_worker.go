@@ -60,7 +60,7 @@ func (p *cleanTagsWorkerPool) Clean(ctx context.Context, filePath string, raw ma
 	if len(raw) == 0 {
 		return map[string][]string{}, nil
 	}
-	if cleaned, err := cleanTagsGRPC(ctx, filePath, raw, mappings, confArtistSplitExceptions()); !errors.Is(err, errNoGRPC) {
+	if cleaned, err := cleanTagsGRPC(ctx, filePath, raw, mappings, confArtistSplitExceptions()); rustworker.PreferGRPC(err, errNoGRPC) {
 		return cleaned, err
 	}
 	binary, err := Resolve()

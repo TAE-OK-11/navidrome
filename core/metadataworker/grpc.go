@@ -29,7 +29,7 @@ func grpcClient() gen.MetadataClient {
 		}
 		proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-metadata"), nil)
 		if err != nil {
-			log.Warn("Rust metadata gRPC worker unavailable; using NDJSON fallback", err)
+			rustworker.LogGRPCUnavailable("metadata", err)
 			return
 		}
 		cli := gen.NewMetadataClient(proc.Conn)
@@ -37,7 +37,7 @@ func grpcClient() gen.MetadataClient {
 		defer cancel()
 		if _, err := cli.Health(healthCtx, &gen.HealthRequest{}); err != nil {
 			proc.Close()
-			log.Warn("Rust metadata gRPC health failed; using NDJSON fallback", err)
+			rustworker.LogGRPCUnavailable("metadata", err)
 			return
 		}
 		grpcProc = proc

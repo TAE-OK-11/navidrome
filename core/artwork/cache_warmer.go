@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -48,6 +49,7 @@ func NewCacheWarmer(artwork Artwork, cache cache.FileCache) CacheWarmer {
 
 	ctx, cancel := context.WithCancel(request.WithUser(context.Background(), model.User{IsAdmin: true}))
 	a.cancel = cancel
+	lifecycle.Register(a)
 	go a.run(ctx)
 	return a
 }

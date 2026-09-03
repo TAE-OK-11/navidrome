@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -86,7 +87,9 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 	}
 
 	go func() { _ = cmd.Wait() }()
-	return &GRPCProcess{Cmd: cmd, Conn: conn, Addr: addr}, nil
+	proc := &GRPCProcess{Cmd: cmd, Conn: conn, Addr: addr}
+	lifecycle.Register(proc)
+	return proc, nil
 }
 
 func skipGRPCWorkerInTests() bool {

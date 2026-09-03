@@ -144,7 +144,7 @@ func (w *worker) close() {
 }
 
 func Generate(ctx context.Context, pepper string) (generateResult, error) {
-	if result, err := generateGRPC(ctx, pepper); !errors.Is(err, errNoGRPC) {
+	if result, err := generateGRPC(ctx, pepper); rustworker.PreferGRPC(err, errNoGRPC) {
 		return result, err
 	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "generate", Pepper: pepper})
@@ -159,7 +159,7 @@ func Generate(ctx context.Context, pepper string) (generateResult, error) {
 }
 
 func Hash(ctx context.Context, token, pepper string) (string, string, error) {
-	if prefix, hash, err := hashGRPC(ctx, token, pepper); !errors.Is(err, errNoGRPC) {
+	if prefix, hash, err := hashGRPC(ctx, token, pepper); rustworker.PreferGRPC(err, errNoGRPC) {
 		return prefix, hash, err
 	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "hash", Token: token, Pepper: pepper})
@@ -170,7 +170,7 @@ func Hash(ctx context.Context, token, pepper string) (string, string, error) {
 }
 
 func Verify(ctx context.Context, token, hash, pepper string) (bool, error) {
-	if valid, err := verifyGRPC(ctx, token, hash, pepper); !errors.Is(err, errNoGRPC) {
+	if valid, err := verifyGRPC(ctx, token, hash, pepper); rustworker.PreferGRPC(err, errNoGRPC) {
 		return valid, err
 	}
 	response, err := persistentWorkers.roundTrip(ctx, workerRequest{Op: "verify", Token: token, Hash: hash, Pepper: pepper})

@@ -56,7 +56,7 @@ func (p *normalizeWorkerPool) Normalize(ctx context.Context, values ...string) (
 	if len(values) == 0 {
 		return "", nil
 	}
-	if normalized, err := normalizeFTSGRPC(ctx, values); !errors.Is(err, errNoGRPC) {
+	if normalized, err := normalizeFTSGRPC(ctx, values); rustworker.PreferGRPC(err, errNoGRPC) {
 		return normalized, err
 	}
 	binary, err := Resolve()

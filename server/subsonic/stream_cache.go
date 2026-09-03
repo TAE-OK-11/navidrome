@@ -126,6 +126,12 @@ func (c *streamMediaCache) store(key string, mediaFile model.MediaFile, now time
 	c.entries[key] = streamMediaCacheEntry{mediaFile: mediaFile, expires: now.Add(c.ttl)}
 }
 
+func (c *streamMediaCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]streamMediaCacheEntry)
+}
+
 func (api *Router) mediaFileForStreaming(ctx context.Context, id string) (*model.MediaFile, error) {
 	user, ok := request.UserFrom(ctx)
 	if !ok || api.streamFiles == nil {

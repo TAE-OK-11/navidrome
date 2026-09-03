@@ -20,7 +20,7 @@ func (api *Router) GetPlaylists(r *http.Request) (*responses.Subsonic, error) {
 	user, ok := request.UserFrom(ctx)
 	cacheKey := ""
 	if ok {
-		cacheKey = genreResponseCacheKey(user) + "|playlists"
+		cacheKey = genreResponseCacheKey(user) + "|" + playerResponseCacheKey(ctx) + "|playlists"
 		now := time.Now()
 		if cached, hit := api.entityCache.get(cacheKey, now); hit {
 			return cached, nil

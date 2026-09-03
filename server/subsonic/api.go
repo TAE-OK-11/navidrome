@@ -142,6 +142,13 @@ func (api *Router) registerResponseCacheHooks() {
 		api.entityCache.deleteBySuffix("|playlists")
 	})
 	responsecache.RegisterEntityInvalidator(api.entityCache.deleteByEntityID)
+	responsecache.RegisterCatalogInvalidator(func() {
+		api.entityCache.clear()
+		api.albumListCache.clear()
+		if api.streamFiles != nil {
+			api.streamFiles.clear()
+		}
+	})
 }
 
 func (api *Router) routes() http.Handler {

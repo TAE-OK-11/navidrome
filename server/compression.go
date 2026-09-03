@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/andybalholm/brotli"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	gzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 )
@@ -402,7 +403,7 @@ func copyResponseBody(destination http.ResponseWriter, source io.Reader) (int64,
 	if readerFrom, ok := destination.(io.ReaderFrom); ok {
 		return readerFrom.ReadFrom(source)
 	}
-	return io.Copy(struct{ io.Writer }{destination}, source)
+	return ioutils.Copy(struct{ io.Writer }{destination}, source)
 }
 
 func (w *compressResponseWriter) Close() error {

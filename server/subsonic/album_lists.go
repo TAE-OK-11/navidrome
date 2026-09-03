@@ -77,6 +77,12 @@ func (c *albumListCache) put(key string, now time.Time, albums model.Albums, cou
 	c.entries[key] = albumListCacheEntry{albums: albums, count: count, expires: now.Add(albumListCacheTTL)}
 }
 
+func (c *albumListCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]albumListCacheEntry)
+}
+
 func albumListCacheKey(r *http.Request, typ string, musicFolderIds []int, offset, size int, genre string, fromYear, toYear int) string {
 	user, ok := request.UserFrom(r.Context())
 	userKey := ""

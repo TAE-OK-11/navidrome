@@ -102,6 +102,19 @@ var _ = Describe("StreamMediaCache", func() {
 		Expect(cache.entries).To(HaveLen(2))
 	})
 
+	It("clears all entries", func() {
+		cache := newStreamMediaCache(4, time.Second)
+		_, err := cache.get(context.Background(), "user-song", func(context.Context) (*model.MediaFile, error) {
+			return &model.MediaFile{ID: "song"}, nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		cache.clear()
+		cache.mu.RLock()
+		defer cache.mu.RUnlock()
+		Expect(cache.entries).To(BeEmpty())
+	})
+
 	It("does not cache loader errors", func() {
 		cache := newStreamMediaCache(2, time.Second)
 		var calls atomic.Int32

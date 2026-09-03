@@ -8,6 +8,7 @@ type Invalidator struct {
 
 	invalidatePlaylists func()
 	invalidateEntity    func(string)
+	invalidateCatalog   func()
 }
 
 var defaultInvalidator Invalidator
@@ -54,5 +55,24 @@ func InvalidateEntity(entityID string) {
 func InvalidateEntities(entityIDs ...string) {
 	for _, entityID := range entityIDs {
 		InvalidateEntity(entityID)
+	}
+}
+
+// RegisterCatalogInvalidator registers the callback used to clear catalog
+// response caches after library scans or other bulk metadata changes.
+func RegisterCatalogInvalidator(fn func()) {
+	defaultInvalidator.mu.Lock()
+	defaultInvalidator.invalidateCatalog = fn
+	defaultInvalidator.mu.Unlock()
+}
+
+// InvalidateCatalog clears cached catalog responses (entity lists, album lists,
+// stream metadata) across all users.
+func InvalidateCatalog() {
+	defaultInvalidator.mu.RLock()
+	fn := defaultInvalidator.invalidateCatalog
+	defaultInvalidator.mu.RUnlock()
+	if fn != nil {
+		fn()
 	}
 }

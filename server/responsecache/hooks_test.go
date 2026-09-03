@@ -35,3 +35,18 @@ func TestInvalidateEntityCallsRegisteredHook(t *testing.T) {
 		t.Fatalf("expected album-1, got %q", got)
 	}
 }
+
+func TestInvalidateCatalogNoOpWithoutRegistration(t *testing.T) {
+	InvalidateCatalog()
+}
+
+func TestInvalidateCatalogCallsRegisteredHook(t *testing.T) {
+	var calls atomic.Int32
+	RegisterCatalogInvalidator(func() {
+		calls.Add(1)
+	})
+	InvalidateCatalog()
+	if calls.Load() != 1 {
+		t.Fatalf("expected 1 invalidation call, got %d", calls.Load())
+	}
+}

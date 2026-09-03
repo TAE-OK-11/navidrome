@@ -127,8 +127,8 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 	}
 	if rustsearch.Available() {
 		r.rustSearch = rustsearch.New()
+		r.rustSearch.ListenForScans(ds)
 		if !testing.Testing() {
-			r.rustSearch.ListenForScans(ds)
 			go func() {
 				defer func() {
 					if rec := recover(); rec != nil {
@@ -144,6 +144,17 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 	r.Handler = r.routes()
 	r.registerResponseCacheHooks()
 	return r
+}
+
+// RebuildRustSearch rebuilds the Tantivy index from the current library.
+// Production starts this from New; tests (including e2e) call it when they
+// need rust-backed search instead of SQLite FTS.
+func (api *Router) RebuildRustSearch(ctx context.Context) error {
+	if api == nil || api.rustSearch == nil {
+		return nil
+	}
+	api.rustSearch.EnableForTests()
+	return api.rustSearch.Rebuild(ctx, api.ds)
 }
 
 func (api *Router) registerResponseCacheHooks() {

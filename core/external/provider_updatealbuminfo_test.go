@@ -127,14 +127,7 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updatedAlbum).NotTo(BeNil())
 		Expect(*updatedAlbum).To(Equal(*originalAlbum))
-		Eventually(func() bool {
-			for _, call := range ag.Calls {
-				if call.Method == "GetAlbumInfo" {
-					return true
-				}
-			}
-			return false
-		}).WithTimeout(2 * time.Second).Should(BeTrue())
+		Eventually(func() bool { return ag.albumInfoHit.Load() }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns error when agent fails to get album info", func() {

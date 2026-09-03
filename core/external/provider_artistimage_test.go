@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -77,6 +78,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 	})
 
 	AfterEach(func() {
+		provider.Close()
 		mockArtistRepo.AssertExpectations(GinkgoT())
 		mockAlbumRepo.AssertExpectations(GinkgoT())
 		mockMediaFileRepo.AssertExpectations(GinkgoT())
@@ -102,14 +104,7 @@ var _ = Describe("Provider - ArtistImage", func() {
 		_, err := provider.ArtistImage(ctx, "artist-1")
 		Expect(err).To(MatchError(model.ErrNotFound))
 
-		Eventually(func() bool {
-			for _, call := range mockImageAgent.Calls {
-				if call.Method == "GetArtistImages" {
-					return true
-				}
-			}
-			return false
-		}).WithTimeout(2 * time.Second).Should(BeTrue())
+		Eventually(func() bool { return artistImageAgentCalled(mockImageAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns ErrNotFound if the artist is not found in the DB", func() {
@@ -280,25 +275,12 @@ var _ = Describe("Provider - ArtistImage", func() {
 })
 
 func artistImageAgentCalled(agent *mockArtistImageAgent) bool {
-	for _, call := range agent.Calls {
-		if call.Method == "GetArtistImages" {
-			return true
-		}
-	}
-	return false
+	return agent.called.Load()
 }
 
 func agentCalledWithName(agent *mockArtistImageAgent, name string) bool {
-	for _, call := range agent.Calls {
-		if call.Method != "GetArtistImages" || len(call.Arguments) < 3 {
-			continue
-		}
-		got, _ := call.Arguments[2].(string)
-		if got == name {
-			return true
-		}
-	}
-	return false
+	got, _ := agent.lastName.Load().(string)
+	return got == name
 }
 
 // mockArtistImageAgent implementation using testify/mock
@@ -306,6 +288,8 @@ func agentCalledWithName(agent *mockArtistImageAgent, name string) bool {
 type mockArtistImageAgent struct {
 	mock.Mock
 	agents.ArtistImageRetriever // Embed interface
+	called                      atomic.Bool
+	lastName                    atomic.Value
 }
 
 // Constructor for the mock agent
@@ -322,6 +306,8 @@ func (m *mockArtistImageAgent) AgentName() string {
 }
 
 func (m *mockArtistImageAgent) GetArtistImages(ctx context.Context, id, artistName, mbid string) ([]agents.ExternalImage, error) {
+	m.lastName.Store(artistName)
+	m.called.Store(true)
 	args := m.Called(ctx, id, artistName, mbid)
 	// Need careful type assertion for potentially nil slice
 	var res []agents.ExternalImage

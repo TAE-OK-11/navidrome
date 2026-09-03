@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -87,14 +88,7 @@ var _ = Describe("Provider - AlbumImage", func() {
 		_, err := provider.AlbumImage(ctx, "album-1")
 		Expect(err).To(MatchError(model.ErrNotFound))
 
-		Eventually(func() bool {
-			for _, call := range mockAlbumAgent.Calls {
-				if call.Method == "GetAlbumImages" {
-					return true
-				}
-			}
-			return false
-		}).WithTimeout(2 * time.Second).Should(BeTrue())
+		Eventually(func() bool { return albumImageAgentCalled(mockAlbumAgent) }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns ErrNotFound if the album is not found in the DB", func() {
@@ -251,25 +245,12 @@ var _ = Describe("Provider - AlbumImage", func() {
 })
 
 func albumImageAgentCalled(agent *mockAlbumInfoAgent) bool {
-	for _, call := range agent.Calls {
-		if call.Method == "GetAlbumImages" {
-			return true
-		}
-	}
-	return false
+	return agent.imagesCalled.Load()
 }
 
 func albumAgentCalledWithName(agent *mockAlbumInfoAgent, name string) bool {
-	for _, call := range agent.Calls {
-		if call.Method != "GetAlbumImages" || len(call.Arguments) < 2 {
-			continue
-		}
-		got, _ := call.Arguments[1].(string)
-		if got == name {
-			return true
-		}
-	}
-	return false
+	got, _ := agent.lastName.Load().(string)
+	return got == name
 }
 
 // mockAlbumInfoAgent implementation
@@ -277,6 +258,8 @@ type mockAlbumInfoAgent struct {
 	mock.Mock
 	agents.AlbumInfoRetriever
 	agents.AlbumImageRetriever
+	imagesCalled atomic.Bool
+	lastName     atomic.Value
 }
 
 func newMockAlbumInfoAgent() *mockAlbumInfoAgent {
@@ -299,6 +282,8 @@ func (m *mockAlbumInfoAgent) GetAlbumInfo(ctx context.Context, name, artist, mbi
 }
 
 func (m *mockAlbumInfoAgent) GetAlbumImages(ctx context.Context, name, artist, mbid string) ([]agents.ExternalImage, error) {
+	m.lastName.Store(name)
+	m.imagesCalled.Store(true)
 	args := m.Called(ctx, name, artist, mbid)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

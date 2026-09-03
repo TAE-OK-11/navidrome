@@ -75,6 +75,8 @@ func (db *MockDataStore) Tag(ctx context.Context) model.TagRepository {
 }
 
 func (db *MockDataStore) Album(ctx context.Context) model.AlbumRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
 	if db.MockedAlbum != nil {
 		return db.MockedAlbum
 	}
@@ -86,6 +88,8 @@ func (db *MockDataStore) Album(ctx context.Context) model.AlbumRepository {
 }
 
 func (db *MockDataStore) Artist(ctx context.Context) model.ArtistRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
 	if db.MockedArtist != nil {
 		return db.MockedArtist
 	}
@@ -97,14 +101,15 @@ func (db *MockDataStore) Artist(ctx context.Context) model.ArtistRepository {
 }
 
 func (db *MockDataStore) MediaFile(ctx context.Context) model.MediaFileRepository {
-	if db.RealDS != nil && db.MockedMediaFile == nil {
-		return db.RealDS.MediaFile(ctx)
-	}
 	db.repoMu.Lock()
 	defer db.repoMu.Unlock()
-	if db.MockedMediaFile == nil {
-		db.MockedMediaFile = CreateMockMediaFileRepo()
+	if db.MockedMediaFile != nil {
+		return db.MockedMediaFile
 	}
+	if db.RealDS != nil {
+		return db.RealDS.MediaFile(ctx)
+	}
+	db.MockedMediaFile = CreateMockMediaFileRepo()
 	return db.MockedMediaFile
 }
 
@@ -153,6 +158,8 @@ func (db *MockDataStore) UserProps(ctx context.Context) model.UserPropsRepositor
 }
 
 func (db *MockDataStore) Property(ctx context.Context) model.PropertyRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
 	if db.MockedProperty != nil {
 		return db.MockedProperty
 	}

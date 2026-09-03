@@ -550,6 +550,7 @@ func setupTestDB() {
 		decider,
 		nil,
 	)
+	Expect(router.RebuildRustSearch(ctx)).To(Succeed())
 }
 
 // restoreDB restores all table data from the snapshot using ATTACH DATABASE.

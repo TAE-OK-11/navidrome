@@ -3,6 +3,7 @@ package external_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/model"
@@ -217,6 +218,9 @@ type mockAgents struct {
 	mbidAgent agents.ArtistMBIDRetriever
 	urlAgent  agents.ArtistURLRetriever
 	agents.Interface
+
+	artistImagesHit atomic.Bool
+	albumInfoHit    atomic.Bool
 }
 
 func (m *mockAgents) AgentName() string {
@@ -246,6 +250,7 @@ func (m *mockAgents) GetArtistTopSongs(ctx context.Context, id, artistName, mbid
 }
 
 func (m *mockAgents) GetAlbumInfo(ctx context.Context, name, artist, mbid string) (*agents.AlbumInfo, error) {
+	m.albumInfoHit.Store(true)
 	if m.albumInfoAgent != nil {
 		return m.albumInfoAgent.GetAlbumInfo(ctx, name, artist, mbid)
 	}
@@ -281,6 +286,7 @@ func (m *mockAgents) GetArtistBiography(ctx context.Context, id, name, mbid stri
 }
 
 func (m *mockAgents) GetArtistImages(ctx context.Context, id, name, mbid string) ([]agents.ExternalImage, error) {
+	m.artistImagesHit.Store(true)
 	if m.imageAgent != nil {
 		return m.imageAgent.GetArtistImages(ctx, id, name, mbid)
 	}

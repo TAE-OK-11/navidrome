@@ -198,14 +198,7 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		Expect(updatedArtist.SimilarArtists).To(HaveLen(1))
 		Expect(updatedArtist.SimilarArtists[0].ID).To(Equal(similarInDS.ID))
 		Expect(updatedArtist.SimilarArtists[0].Name).To(Equal(similarInDS.Name))
-		Eventually(func() bool {
-			for _, call := range ag.Calls {
-				if call.Method == "GetArtistImages" {
-					return true
-				}
-			}
-			return false
-		}).WithTimeout(2 * time.Second).Should(BeTrue())
+		Eventually(func() bool { return ag.artistImagesHit.Load() }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("includes non-present similar artists when includeNotPresent is true", func() {

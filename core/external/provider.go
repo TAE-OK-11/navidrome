@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -53,6 +54,7 @@ type provider struct {
 	artistQueue refreshQueue[auxArtist]
 	albumQueue  refreshQueue[auxAlbum]
 	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 }
 
 type auxAlbum struct {
@@ -99,8 +101,8 @@ func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider
 	e := &provider{ds: ds, ag: agents, matcher: m}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
-	e.artistQueue = newRefreshQueue(ctx, e.populateArtistInfo)
-	e.albumQueue = newRefreshQueue(ctx, e.populateAlbumInfo)
+	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfo)
+	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfo)
 	return e
 }
 
@@ -108,6 +110,7 @@ func (e *provider) Close() {
 	if e.cancel != nil {
 		e.cancel()
 	}
+	e.wg.Wait()
 }
 
 func (e *provider) getAlbum(ctx context.Context, id string) (auxAlbum, error) {
@@ -948,9 +951,11 @@ func (e *provider) loadSimilar(ctx context.Context, artist *auxArtist, count int
 
 type refreshQueue[T any] chan<- *T
 
-func newRefreshQueue[T any](ctx context.Context, processFn func(context.Context, T) (T, error)) refreshQueue[T] {
+func newRefreshQueue[T any](ctx context.Context, wg *sync.WaitGroup, processFn func(context.Context, T) (T, error)) refreshQueue[T] {
 	queue := make(chan *T, refreshQueueLength)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ctx.Done():

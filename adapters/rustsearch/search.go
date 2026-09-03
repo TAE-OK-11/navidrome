@@ -108,17 +108,18 @@ type worker struct {
 }
 
 type Engine struct {
-	gate       sync.RWMutex
-	worker     *worker
-	grpcProc   *rustworker.GRPCProcess
-	grpc       gen.SearchClient
-	grpcFailed bool
-	ready      atomic.Bool
-	building   atomic.Bool
-	generation atomic.Int64
-	nextCheck  atomic.Int64
-	indexed    atomic.Uint64
-	ftsCache   sync.Map
+	gate         sync.RWMutex
+	worker       *worker
+	grpcProc     *rustworker.GRPCProcess
+	grpc         gen.SearchClient
+	grpcFailed   bool
+	ready        atomic.Bool
+	building     atomic.Bool
+	generation   atomic.Int64
+	nextCheck    atomic.Int64
+	indexed      atomic.Uint64
+	ftsCache     sync.Map
+	allowInTests atomic.Bool
 }
 
 func Available() bool {
@@ -130,10 +131,20 @@ func New() *Engine {
 	return &Engine{}
 }
 
+func (e *Engine) EnableForTests() {
+	if e != nil {
+		e.allowInTests.Store(true)
+	}
+}
+
+func (e *Engine) skipBackgroundWork() bool {
+	return e == nil || (testing.Testing() && !e.allowInTests.Load())
+}
+
 // ListenForScans subscribes to library scan completion so the Tantivy index
 // refreshes from the event stream instead of polling other systems' clocks.
 func (e *Engine) ListenForScans(ds model.DataStore) {
-	if e == nil || ds == nil || testing.Testing() {
+	if e == nil || ds == nil {
 		return
 	}
 	eventbus.Get().Subscribe(eventbus.TopicScanCompleted, func(ctx context.Context, _ eventbus.Event) {
@@ -205,7 +216,7 @@ func libraryScope(libraryIDs []int) []uint64 {
 // RefreshIfStale checks scan generations at a bounded cadence. Searches keep
 // using the old index until a replacement or incremental sync commits.
 func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
-	if testing.Testing() {
+	if e.skipBackgroundWork() {
 		return
 	}
 	if e == nil || e.building.Load() {
@@ -413,7 +424,7 @@ func expectedSearchDocuments(ctx context.Context, ds model.DataStore) (int64, er
 }
 
 func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
-	if testing.Testing() {
+	if e.skipBackgroundWork() {
 		return nil
 	}
 	if !e.building.CompareAndSwap(false, true) {

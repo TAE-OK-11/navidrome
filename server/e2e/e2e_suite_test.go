@@ -449,6 +449,7 @@ var _ = BeforeSuite(func() {
 	dbFilePath = filepath.Join(tmpDir, "test-e2e.db")
 	snapshotPath = filepath.Join(tmpDir, "test-e2e.db.snapshot")
 	conf.Server.DbPath = dbFilePath + "?_journal_mode=WAL"
+	conf.Server.DataFolder = conf.NewDir(filepath.Join(tmpDir, "data"))
 	db.Db().SetMaxOpenConns(1)
 
 	// Initial setup: schema, user, library, and full scan (runs once for the entire suite)
@@ -550,7 +551,6 @@ func setupTestDB() {
 		decider,
 		nil,
 	)
-	Expect(router.RebuildRustSearch(ctx)).To(Succeed())
 }
 
 // restoreDB restores all table data from the snapshot using ATTACH DATABASE.

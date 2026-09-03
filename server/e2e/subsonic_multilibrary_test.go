@@ -58,6 +58,9 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 		_, err = s.ScanAll(ctx, false)
 		Expect(err).ToNot(HaveOccurred())
 
+		router.ShutdownRustSearch()
+		Expect(router.RebuildRustSearch(ctx)).To(Succeed())
+
 		// Create a non-admin user with access only to lib1
 		userLib1Only = model.User{
 			ID:          "multilib-user-1",

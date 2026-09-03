@@ -33,7 +33,7 @@ func buildSonicRouter(provider sonic.Provider) *subsonic.Router {
 	m := matcher.New(ds)
 	sonicSvc := sonic.New(ds, loader, m)
 	decider := stream.NewTranscodeDecider(ds, noopFFmpeg{})
-	r := subsonic.New(
+	return subsonic.New(
 		ds,
 		noopArtwork{},
 		&spyStreamer{},
@@ -51,8 +51,6 @@ func buildSonicRouter(provider sonic.Provider) *subsonic.Router {
 		decider,
 		sonicSvc,
 	)
-	Expect(r.RebuildRustSearch(ctx)).To(Succeed())
-	return r
 }
 
 // doSonicReq makes a request through a sonic-enabled router and returns the parsed response.

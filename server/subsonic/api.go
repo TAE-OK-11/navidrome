@@ -157,6 +157,14 @@ func (api *Router) RebuildRustSearch(ctx context.Context) error {
 	return api.rustSearch.Rebuild(ctx, api.ds)
 }
 
+// ShutdownRustSearch stops the Tantivy worker so another router can rebuild the index.
+func (api *Router) ShutdownRustSearch() {
+	if api == nil || api.rustSearch == nil {
+		return
+	}
+	api.rustSearch.Shutdown()
+}
+
 func (api *Router) registerResponseCacheHooks() {
 	responsecache.RegisterPlaylistsInvalidator(func() {
 		api.entityCache.deleteBySuffix("|playlists")

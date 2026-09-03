@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/deluan/sanitize"
+	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/adapters/rustsearch"
 	"github.com/navidrome/navidrome/core/publicurl"
 	"github.com/navidrome/navidrome/log"
@@ -156,6 +157,10 @@ func searchPageInWindow(offset, count int) bool {
 }
 
 func rustSearchableQuery(query string) bool {
+	trimmed := strings.Trim(strings.TrimSpace(query), `"`)
+	if _, err := uuid.Parse(trimmed); err == nil {
+		return false
+	}
 	searchable := 0
 	for _, char := range query {
 		if unicode.Is(unicode.Han, char) ||

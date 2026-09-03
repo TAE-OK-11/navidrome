@@ -137,6 +137,14 @@ func (e *Engine) EnableForTests() {
 	}
 }
 
+// Shutdown stops the Rust search worker and releases the on-disk index lock.
+func (e *Engine) Shutdown() {
+	if e == nil {
+		return
+	}
+	e.stopWorker()
+}
+
 func (e *Engine) skipBackgroundWork() bool {
 	return e == nil || (testing.Testing() && !e.allowInTests.Load())
 }
@@ -238,7 +246,7 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 	if !searchIndexStale(ready, generation, libraries) {
 		return
 	}
-	go func() {
+	refresh := func() {
 		var err error
 		if ready && generation > 0 {
 			err = e.RefreshIncremental(adminCtx, ds, generation)
@@ -252,7 +260,12 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 		if err != nil {
 			log.Warn("Rust search index rebuild failed; SQLite search remains active", err)
 		}
-	}()
+	}
+	if e.allowInTests.Load() {
+		refresh()
+		return
+	}
+	go refresh()
 }
 
 // RefreshIncremental applies scan deltas with upsert/delete instead of rebuilding
@@ -727,14 +740,8 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	if err := ctx.Err(); err != nil {
 		return response{}, err
 	}
-	readOnly := req.Op == "search_all" || req.Op == "normalize_fts"
-	if readOnly {
-		e.gate.RLock()
-		defer e.gate.RUnlock()
-	} else {
-		e.gate.Lock()
-		defer e.gate.Unlock()
-	}
+	e.gate.Lock()
+	defer e.gate.Unlock()
 
 	if err := e.ensureWorker(); err != nil {
 		return response{}, err
@@ -764,7 +771,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.encoder.Encode(req); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -772,7 +779,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.writer.Flush(); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -781,7 +788,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	var resp response
 	if err := w.decoder.Decode(&resp); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -789,7 +796,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	finishCancellation()
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		return response{}, ctxErr
 	}
 	if resp.Protocol != protocolVersion {

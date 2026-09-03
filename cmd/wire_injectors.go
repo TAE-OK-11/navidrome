@@ -57,6 +57,13 @@ var allProviders = wire.NewSet(
 	wire.Bind(new(core.Watcher), new(scanner.Watcher)),
 )
 
+func CreateApp(ctx context.Context) *App {
+	panic(wire.Build(
+		allProviders,
+		newApp,
+	))
+}
+
 func CreateDataStore() model.DataStore {
 	panic(wire.Build(
 		allProviders,
@@ -133,16 +140,4 @@ func GetPlaybackServer() playback.PlaybackServer {
 	panic(wire.Build(
 		allProviders,
 	))
-}
-
-func getPluginManager() *plugins.Manager {
-	panic(wire.Build(
-		allProviders,
-	))
-}
-
-func GetPluginManager(ctx context.Context) *plugins.Manager {
-	manager := getPluginManager()
-	manager.SetSubsonicRouter(CreateSubsonicAPIRouter(ctx))
-	return manager
 }

@@ -259,6 +259,8 @@ func (s *Server) initRoutes() {
 
 	r := chi.NewRouter()
 
+	// Inbound HTTP pipeline shared by every mounted API:
+	// security/CORS → request id/IP → recover → compression → JWT → request log.
 	defaultMiddlewares := chi.Middlewares{
 		secureMiddleware(),
 		corsHandler(),

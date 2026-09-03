@@ -47,6 +47,48 @@ import (
 
 // Injectors from wire_injectors.go:
 
+func CreateApp(ctx context.Context) *App {
+	sqlDB := db.Db()
+	dataStore := persistence.New(sqlDB)
+	broker := events.GetBroker()
+	insights := metrics.GetInstance(dataStore)
+	serverServer := server.New(dataStore, broker, insights)
+	share := core.NewShare(dataStore)
+	imageUploadService := core.NewImageUploadService()
+	playlistsPlaylists := playlists.NewPlaylists(dataStore, imageUploadService)
+	fileCache := artwork.GetImageCache()
+	fFmpeg := ffmpeg.New()
+	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
+	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
+	agentsAgents := agents.GetAgents(dataStore, manager)
+	matcherMatcher := matcher.New(dataStore)
+	provider := external.NewProvider(dataStore, agentsAgents, matcherMatcher)
+	artworkArtwork := artwork.NewArtwork(dataStore, fileCache, fFmpeg, provider)
+	cacheWarmer := artwork.NewCacheWarmer(artworkArtwork, fileCache)
+	modelScanner := scanner.New(ctx, dataStore, cacheWarmer, broker, playlistsPlaylists, metricsMetrics)
+	watcher := scanner.GetWatcher(dataStore, modelScanner)
+	library := core.NewLibrary(dataStore, modelScanner, watcher, broker, manager)
+	user := core.NewUser(dataStore, manager)
+	maintenance := core.NewMaintenance(dataStore)
+	router := nativeapi.New(dataStore, share, playlistsPlaylists, insights, library, user, maintenance, manager, imageUploadService, cacheWarmer)
+	transcodingCache := stream.GetTranscodingCache()
+	mediaStreamer := stream.NewMediaStreamer(dataStore, fFmpeg, transcodingCache)
+	archiver := core.NewArchiver(mediaStreamer, dataStore, share)
+	players := core.NewPlayers(dataStore)
+	playTracker := scrobbler.GetPlayTracker(dataStore, broker, manager)
+	playbackServer := playback.GetInstance(dataStore)
+	lyricsLyrics := lyrics.NewLyrics(dataStore, manager)
+	transcodeDecider := stream.NewTranscodeDecider(dataStore, fFmpeg)
+	sonicSonic := sonic.New(dataStore, manager, matcherMatcher)
+	subsonicRouter := subsonic.New(dataStore, artworkArtwork, mediaStreamer, archiver, players, provider, modelScanner, broker, playlistsPlaylists, playTracker, share, playbackServer, metricsMetrics, lyricsLyrics, transcodeDecider, sonicSonic)
+	publicRouter := public.New(dataStore, artworkArtwork, mediaStreamer, share, archiver)
+	lastfmRouter := lastfm.NewRouter(dataStore)
+	listenbrainzRouter := listenbrainz.NewRouter(dataStore)
+	librefmRouter := librefm.NewRouter(dataStore)
+	app := newApp(serverServer, router, subsonicRouter, publicRouter, lastfmRouter, listenbrainzRouter, librefmRouter, insights, metricsMetrics, modelScanner, watcher, playbackServer, manager, dataStore)
+	return app
+}
+
 func CreateDataStore() model.DataStore {
 	sqlDB := db.Db()
 	dataStore := persistence.New(sqlDB)
@@ -219,21 +261,6 @@ func GetPlaybackServer() playback.PlaybackServer {
 	return playbackServer
 }
 
-func getPluginManager() *plugins.Manager {
-	sqlDB := db.Db()
-	dataStore := persistence.New(sqlDB)
-	broker := events.GetBroker()
-	metricsMetrics := metrics.GetPrometheusInstance(dataStore)
-	manager := plugins.GetManager(dataStore, broker, metricsMetrics)
-	return manager
-}
-
 // wire_injectors.go:
 
 var allProviders = wire.NewSet(core.Set, artwork.Set, server.New, subsonic.New, nativeapi.New, public.New, persistence.New, lastfm.NewRouter, librefm.NewRouter, listenbrainz.NewRouter, events.GetBroker, scanner.New, scanner.GetWatcher, metrics.GetPrometheusInstance, db.Db, plugins.GetManager, sonic.New, wire.Bind(new(agents.PluginLoader), new(*plugins.Manager)), wire.Bind(new(scrobbler.PluginLoader), new(*plugins.Manager)), wire.Bind(new(lyrics.PluginLoader), new(*plugins.Manager)), wire.Bind(new(sonic.PluginLoader), new(*plugins.Manager)), wire.Bind(new(nativeapi.PluginManager), new(*plugins.Manager)), wire.Bind(new(core.PluginUnloader), new(*plugins.Manager)), wire.Bind(new(plugins.PluginMetricsRecorder), new(metrics.Metrics)), wire.Bind(new(core.Watcher), new(scanner.Watcher)))
-
-func GetPluginManager(ctx context.Context) *plugins.Manager {
-	manager := getPluginManager()
-	manager.SetSubsonicRouter(CreateSubsonicAPIRouter(ctx))
-	return manager
-}

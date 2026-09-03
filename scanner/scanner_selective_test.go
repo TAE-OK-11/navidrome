@@ -6,7 +6,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/consts"
@@ -18,6 +17,7 @@ import (
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/persistence"
 	"github.com/navidrome/navidrome/scanner"
@@ -188,7 +188,7 @@ var _ = Describe("ScanFolders", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				// Verify initial state - all folders exist
-				folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"library_id": lib.ID}})
+				folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: query.Eq("library_id", lib.ID)})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(folders).To(HaveLen(4)) // root, Artist, Album1, Album2
 
@@ -284,7 +284,7 @@ var _ = Describe("ScanFolders", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				// Verify nested folders were created
-				allFolders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"library_id": lib.ID}})
+				allFolders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: query.Eq("library_id", lib.ID)})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(len(allFolders)).To(BeNumerically(">", 4), "Should have more folders with nested structure")
 
@@ -303,10 +303,7 @@ var _ = Describe("ScanFolders", Ordered, func() {
 
 				// Verify all Help! folders (including nested ones) are marked as missing
 				missingFolders, err := ds.Folder(ctx).GetAll(model.QueryOptions{
-					Filters: squirrel.And{
-						squirrel.Eq{"library_id": lib.ID},
-						squirrel.Eq{"missing": true},
-					},
+					Filters: query.And(query.Eq("library_id", lib.ID), query.Missing()),
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(len(missingFolders)).To(BeNumerically(">", 0), "At least one folder should be marked as missing")

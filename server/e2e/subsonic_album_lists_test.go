@@ -1,8 +1,8 @@
 package e2e
 
 import (
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -143,7 +143,7 @@ var _ = Describe("Album List Endpoints", func() {
 
 			// Star an album so the starred filter returns results
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -167,7 +167,7 @@ var _ = Describe("Album List Endpoints", func() {
 
 			// Rate an album so the highest filter returns results
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Kind of Blue"},
+				Filters: query.Eq("album.name", "Kind of Blue"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())

@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	extism "github.com/extism/go-sdk"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
@@ -21,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/core/sonic"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/utils/singleton"
 	"github.com/rjeczalik/notify"
@@ -560,7 +560,7 @@ func (m *Manager) UnloadDisabledPlugins(ctx context.Context) {
 
 	// Get all disabled plugins from the database
 	plugins, err := repo.GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"enabled": false},
+		Filters: query.Eq("enabled", false),
 	})
 	if err != nil {
 		log.Error(ctx, "Failed to get disabled plugins", err)

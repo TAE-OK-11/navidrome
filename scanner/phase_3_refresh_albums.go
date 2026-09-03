@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	ppl "github.com/google/go-pipeline/pkg/pipeline"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 const albumRefreshBatchSize = 100
@@ -58,7 +58,7 @@ func (p *phaseRefreshAlbums) produce(put func(album *model.Album)) error {
 			ids[i] = album.ID
 		}
 		mfs, err := p.ds.MediaFile(p.ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"album_id": ids},
+			Filters: query.Eq("album_id", ids),
 		})
 		if err != nil {
 			return fmt.Errorf("loading media files for album batch: %w", err)

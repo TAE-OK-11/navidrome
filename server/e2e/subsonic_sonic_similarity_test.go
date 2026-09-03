@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/core/lyrics"
@@ -18,6 +17,7 @@ import (
 	"github.com/navidrome/navidrome/core/sonic"
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/server/subsonic"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
@@ -99,14 +99,14 @@ var _ = Describe("Sonic Similarity Endpoints", func() {
 
 		BeforeEach(func() {
 			songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Come Together"},
+				Filters: query.Eq("title", "Come Together"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())
 			comeTogether = songs[0]
 
 			songs, err = ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Something"},
+				Filters: query.Eq("title", "Something"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())

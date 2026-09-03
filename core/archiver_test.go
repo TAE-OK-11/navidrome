@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/model"
@@ -41,7 +40,7 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.Eq{"album_id": "1"},
+				Filters: query.Eq("album_id", "1"),
 				Sort:    "album",
 			}}).Return(mfs, nil)
 
@@ -70,10 +69,10 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.And{
+				Filters: query.And(
 					query.ParticipantIDFilter("media_file", "1", model.RoleAlbumArtist),
-					squirrel.Eq{"missing": false},
-				},
+					query.NotMissing(),
+				),
 				Sort: "album",
 			}}).Return(mfs, nil)
 
@@ -102,7 +101,7 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.Eq{"album_id": "1"},
+				Filters: query.Eq("album_id", "1"),
 				Sort:    "album",
 			}}).Return(mfs, nil)
 			ds.On("MediaFile", mock.Anything).Return(mfRepo)

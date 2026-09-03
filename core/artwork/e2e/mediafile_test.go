@@ -3,9 +3,9 @@ package artworke2e_test
 import (
 	"testing/fstest"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -99,7 +99,7 @@ var _ = Describe("MediaFile artwork fallback", func() {
 func mediafileOn(relPath string) model.MediaFile {
 	GinkgoHelper()
 	mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Like{"media_file.path": relPath},
+		Filters: query.Like("media_file.path", relPath),
 	})
 	Expect(err).ToNot(HaveOccurred())
 	if len(mfs) == 0 {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing/fstest"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/artwork"
@@ -12,6 +11,7 @@ import (
 	"github.com/navidrome/navidrome/core/playlists"
 	"github.com/navidrome/navidrome/core/storage/storagetest"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/scanner"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
@@ -183,7 +183,7 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 		BeforeAll(func() {
 			// Look up one song from each library
 			lib1Songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"media_file.library_id": lib.ID},
+				Filters: query.Eq("media_file.library_id", lib.ID),
 				Max:     1, Sort: "title",
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -191,7 +191,7 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 			lib1SongID = lib1Songs[0].ID
 
 			lib2Songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"media_file.library_id": lib2.ID},
+				Filters: query.Eq("media_file.library_id", lib2.ID),
 				Max:     1, Sort: "title",
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -232,7 +232,7 @@ var _ = Describe("Multi-Library Support", Ordered, func() {
 
 		BeforeAll(func() {
 			lib2Albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.library_id": lib2.ID},
+				Filters: query.Eq("album.library_id", lib2.ID),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(lib2Albums).ToNot(BeEmpty())

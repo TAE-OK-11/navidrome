@@ -1,9 +1,9 @@
 package e2e
 
 import (
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -19,14 +19,14 @@ var _ = Describe("Sharing Endpoints", Ordered, func() {
 		setupTestDB()
 
 		albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"album.name": "Abbey Road"},
+			Filters: query.Eq("album.name", "Abbey Road"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(albums).ToNot(BeEmpty())
 		albumID = albums[0].ID
 
 		songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"title": "Come Together"},
+			Filters: query.Eq("title", "Come Together"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(songs).ToNot(BeEmpty())
@@ -140,7 +140,7 @@ var _ = Describe("Sharing Cross-User Isolation", Ordered, func() {
 		userB = createUser("share-user-b", "share-user-b", "Share User B", false)
 
 		albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"album.name": "Abbey Road"},
+			Filters: query.Eq("album.name", "Abbey Road"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(albums).ToNot(BeEmpty())

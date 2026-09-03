@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -24,7 +24,7 @@ var _ = Describe("Archiver stability", func() {
 
 		mfRepo := &mockMediaFileRepository{}
 		mfRepo.On("GetAll", []model.QueryOptions{{
-			Filters: squirrel.Eq{"album_id": "1"},
+			Filters: query.Eq("album_id", "1"),
 			Sort:    "album",
 		}}).Return(mfs, nil)
 

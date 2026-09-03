@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing/fstest"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -251,7 +251,7 @@ var _ = Describe("Artist artwork resolution", func() {
 func soleArtist() model.Artist {
 	GinkgoHelper()
 	artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"artist.name": "Artist"},
+		Filters: query.Eq("artist.name", "Artist"),
 	})
 	Expect(err).ToNot(HaveOccurred())
 	if len(artists) == 0 {

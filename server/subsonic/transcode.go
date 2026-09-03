@@ -387,8 +387,9 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 		return nil, nil
 	}
 
-	// Fetch only fields needed by stream setup.
-	mf, err := api.mediaFileForStreaming(ctx, mediaID)
+	// Token freshness is keyed on media UpdatedAt; skip the stream lookup
+	// cache so a just-edited file cannot reuse a stale row.
+	mf, err := api.ds.MediaFile(ctx).GetForStreaming(mediaID)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			http.Error(w, "Not Found", http.StatusNotFound)

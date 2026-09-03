@@ -59,6 +59,8 @@ message Event {
     ScrobblePayload scrobble = 10;
     NowPlayingPayload now_playing = 11;
     PlaybackReportPayload playback_report = 12;
+    ScanProgressPayload scan_progress = 13;
+    ScanCompletedPayload scan_completed = 14;
   }
 }
 
@@ -86,4 +88,23 @@ message PlaybackReportPayload {
   string media_file_id = 3;
   string state = 4;
   int64 position_ms = 5;
+}
+
+message ScanProgressPayload {
+  int32 lib_id = 1;
+  uint32 file_count = 2;
+  string path = 3;
+  string phase = 4;
+  bool changes_detected = 5;
+  string warning = 6;
+  string error = 7;
+  bool force_update = 8;
+}
+
+message ScanCompletedPayload {
+  bool full_scan = 1;
+  bool changes_detected = 2;
+  string error = 3;
+  int64 file_count = 4;
+  int64 folder_count = 5;
 }

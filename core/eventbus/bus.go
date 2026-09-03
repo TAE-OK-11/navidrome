@@ -19,6 +19,7 @@ const (
 	TopicScrobble       Topic = "scrobble.submitted"
 	TopicNowPlaying     Topic = "playback.now_playing"
 	TopicPlaybackReport Topic = "playback.report"
+	TopicScanProgress   Topic = "library.scan_progress"
 	TopicScanCompleted  Topic = "library.scan_completed"
 	defaultQueueSize          = 1024
 	defaultWorkers            = 4
@@ -28,14 +29,15 @@ const (
 type Topic string
 
 type Event struct {
-	ID         string
-	Topic      Topic
-	OccurredAt time.Time
-	Attrs      map[string]string
-	Scrobble   *Scrobble
-	NowPlaying *NowPlaying
-	Report     *PlaybackReport
-	Scan       *ScanCompleted
+	ID           string
+	Topic        Topic
+	OccurredAt   time.Time
+	Attrs        map[string]string
+	Scrobble     *Scrobble
+	NowPlaying   *NowPlaying
+	Report       *PlaybackReport
+	ScanProgress *ScanProgress
+	Scan         *ScanCompleted
 }
 
 type Scrobble struct {
@@ -65,6 +67,17 @@ type PlaybackReport struct {
 	State       string
 	PositionMs  int64
 	Data        any
+}
+
+type ScanProgress struct {
+	LibID           int
+	FileCount       uint32
+	Path            string
+	Phase           string
+	ChangesDetected bool
+	Warning         string
+	Error           string
+	ForceUpdate     bool
 }
 
 type ScanCompleted struct {

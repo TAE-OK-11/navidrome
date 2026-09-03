@@ -21,15 +21,17 @@ import (
 )
 
 var (
-	fullScan   bool
-	subprocess bool
-	targets    []string
-	targetFile string
+	fullScan     bool
+	subprocess   bool
+	targets      []string
+	targetFile   string
+	progressGRPC string
 )
 
 func init() {
 	scanCmd.Flags().BoolVarP(&fullScan, "full", "f", false, "check all subfolders, ignoring timestamps")
 	scanCmd.Flags().BoolVarP(&subprocess, "subprocess", "", false, "run as subprocess (internal use)")
+	scanCmd.Flags().StringVar(&progressGRPC, "progress-grpc", "", "gRPC address for scan progress (internal use)")
 	scanCmd.Flags().StringArrayVarP(&targets, "target", "t", []string{}, "list of libraryID:folderPath pairs, can be repeated (e.g., \"-t 1:Music/Rock -t 1:Music/Jazz -t 2:Classical\")")
 	scanCmd.Flags().StringVar(&targetFile, "target-file", "", "path to file containing targets (one libraryID:folderPath per line)")
 	rootCmd.AddCommand(scanCmd)
@@ -119,11 +121,17 @@ func runScanner(ctx context.Context) {
 
 	// Wait for the scanner to finish
 	if subprocess {
+		if progressGRPC != "" {
+			if err := scanner.ReportProgressGRPC(ctx, progressGRPC, progress); err != nil {
+				log.Error(ctx, "Failed to stream scan progress over gRPC", err)
+			}
+			return
+		}
 		trackScanAsSubprocess(ctx, progress)
-	} else {
-		changesDetected, scanErr := trackScanInteractively(ctx, progress)
-		runPostScanAnalysis(ctx, ds, changesDetected, effectiveFullScan, scanErr)
+		return
 	}
+	changesDetected, scanErr := trackScanInteractively(ctx, progress)
+	runPostScanAnalysis(ctx, ds, changesDetected, effectiveFullScan, scanErr)
 }
 
 func runPostScanAnalysis(ctx context.Context, ds model.DataStore, changesDetected, effectiveFullScan bool, scanErr error) {

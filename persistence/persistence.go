@@ -101,6 +101,14 @@ func (s *SQLStore) APIKey(ctx context.Context) model.UserAPIKeyRepository {
 	return NewAPIKeyRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) PluginKV(ctx context.Context) model.PluginKVRepository {
+	return NewPluginKVRepository(ctx, s.getDBXBuilder())
+}
+
+func (s *SQLStore) PluginTask(ctx context.Context) model.PluginTaskRepository {
+	return NewPluginTaskRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository {
 	switch m.(type) {
 	case model.User:

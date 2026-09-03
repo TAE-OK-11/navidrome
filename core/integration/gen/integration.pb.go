@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v5.29.3
-// source: navidrome/integration/v1/integration.proto
+// source: proto/navidrome/integration/v1/integration.proto
 
 package gen
 
@@ -35,7 +35,7 @@ type HttpRequest struct {
 
 func (x *HttpRequest) Reset() {
 	*x = HttpRequest{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[0]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +47,7 @@ func (x *HttpRequest) String() string {
 func (*HttpRequest) ProtoMessage() {}
 
 func (x *HttpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[0]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +60,7 @@ func (x *HttpRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequest.ProtoReflect.Descriptor instead.
 func (*HttpRequest) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{0}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *HttpRequest) GetDestination() string {
@@ -118,7 +118,7 @@ type HttpResponse struct {
 
 func (x *HttpResponse) Reset() {
 	*x = HttpResponse{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[1]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -130,7 +130,7 @@ func (x *HttpResponse) String() string {
 func (*HttpResponse) ProtoMessage() {}
 
 func (x *HttpResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[1]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -143,7 +143,7 @@ func (x *HttpResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponse.ProtoReflect.Descriptor instead.
 func (*HttpResponse) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{1}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *HttpResponse) GetStatus() int32 {
@@ -191,7 +191,7 @@ type SignRequest struct {
 
 func (x *SignRequest) Reset() {
 	*x = SignRequest{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[2]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -203,7 +203,7 @@ func (x *SignRequest) String() string {
 func (*SignRequest) ProtoMessage() {}
 
 func (x *SignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[2]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -216,7 +216,7 @@ func (x *SignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRequest.ProtoReflect.Descriptor instead.
 func (*SignRequest) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{2}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SignRequest) GetParams() map[string]string {
@@ -243,7 +243,7 @@ type SignResponse struct {
 
 func (x *SignResponse) Reset() {
 	*x = SignResponse{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[3]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +255,7 @@ func (x *SignResponse) String() string {
 func (*SignResponse) ProtoMessage() {}
 
 func (x *SignResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[3]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +268,7 @@ func (x *SignResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignResponse.ProtoReflect.Descriptor instead.
 func (*SignResponse) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{3}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SignResponse) GetApiSig() string {
@@ -293,7 +293,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[4]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -305,7 +305,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[4]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -318,7 +318,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{4}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{4}
 }
 
 type HealthResponse struct {
@@ -331,7 +331,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[5]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +343,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[5]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +356,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{5}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *HealthResponse) GetOk() bool {
@@ -384,6 +384,8 @@ type Event struct {
 	//	*Event_Scrobble
 	//	*Event_NowPlaying
 	//	*Event_PlaybackReport
+	//	*Event_ScanProgress
+	//	*Event_ScanCompleted
 	Payload       isEvent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -391,7 +393,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[6]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +405,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[6]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +418,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{6}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Event) GetId() string {
@@ -481,6 +483,24 @@ func (x *Event) GetPlaybackReport() *PlaybackReportPayload {
 	return nil
 }
 
+func (x *Event) GetScanProgress() *ScanProgressPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_ScanProgress); ok {
+			return x.ScanProgress
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetScanCompleted() *ScanCompletedPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_ScanCompleted); ok {
+			return x.ScanCompleted
+		}
+	}
+	return nil
+}
+
 type isEvent_Payload interface {
 	isEvent_Payload()
 }
@@ -497,11 +517,23 @@ type Event_PlaybackReport struct {
 	PlaybackReport *PlaybackReportPayload `protobuf:"bytes,12,opt,name=playback_report,json=playbackReport,proto3,oneof"`
 }
 
+type Event_ScanProgress struct {
+	ScanProgress *ScanProgressPayload `protobuf:"bytes,13,opt,name=scan_progress,json=scanProgress,proto3,oneof"`
+}
+
+type Event_ScanCompleted struct {
+	ScanCompleted *ScanCompletedPayload `protobuf:"bytes,14,opt,name=scan_completed,json=scanCompleted,proto3,oneof"`
+}
+
 func (*Event_Scrobble) isEvent_Payload() {}
 
 func (*Event_NowPlaying) isEvent_Payload() {}
 
 func (*Event_PlaybackReport) isEvent_Payload() {}
+
+func (*Event_ScanProgress) isEvent_Payload() {}
+
+func (*Event_ScanCompleted) isEvent_Payload() {}
 
 type ScrobblePayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -518,7 +550,7 @@ type ScrobblePayload struct {
 
 func (x *ScrobblePayload) Reset() {
 	*x = ScrobblePayload{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[7]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -530,7 +562,7 @@ func (x *ScrobblePayload) String() string {
 func (*ScrobblePayload) ProtoMessage() {}
 
 func (x *ScrobblePayload) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[7]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -543,7 +575,7 @@ func (x *ScrobblePayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScrobblePayload.ProtoReflect.Descriptor instead.
 func (*ScrobblePayload) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{7}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ScrobblePayload) GetUserId() string {
@@ -608,7 +640,7 @@ type NowPlayingPayload struct {
 
 func (x *NowPlayingPayload) Reset() {
 	*x = NowPlayingPayload{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[8]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +652,7 @@ func (x *NowPlayingPayload) String() string {
 func (*NowPlayingPayload) ProtoMessage() {}
 
 func (x *NowPlayingPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[8]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +665,7 @@ func (x *NowPlayingPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NowPlayingPayload.ProtoReflect.Descriptor instead.
 func (*NowPlayingPayload) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{8}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *NowPlayingPayload) GetUserId() string {
@@ -684,7 +716,7 @@ type PlaybackReportPayload struct {
 
 func (x *PlaybackReportPayload) Reset() {
 	*x = PlaybackReportPayload{}
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[9]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +728,7 @@ func (x *PlaybackReportPayload) String() string {
 func (*PlaybackReportPayload) ProtoMessage() {}
 
 func (x *PlaybackReportPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_integration_v1_integration_proto_msgTypes[9]
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +741,7 @@ func (x *PlaybackReportPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaybackReportPayload.ProtoReflect.Descriptor instead.
 func (*PlaybackReportPayload) Descriptor() ([]byte, []int) {
-	return file_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{9}
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PlaybackReportPayload) GetUserId() string {
@@ -747,11 +779,187 @@ func (x *PlaybackReportPayload) GetPositionMs() int64 {
 	return 0
 }
 
-var File_navidrome_integration_v1_integration_proto protoreflect.FileDescriptor
+type ScanProgressPayload struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	LibId           int32                  `protobuf:"varint,1,opt,name=lib_id,json=libId,proto3" json:"lib_id,omitempty"`
+	FileCount       uint32                 `protobuf:"varint,2,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	Path            string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Phase           string                 `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`
+	ChangesDetected bool                   `protobuf:"varint,5,opt,name=changes_detected,json=changesDetected,proto3" json:"changes_detected,omitempty"`
+	Warning         string                 `protobuf:"bytes,6,opt,name=warning,proto3" json:"warning,omitempty"`
+	Error           string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	ForceUpdate     bool                   `protobuf:"varint,8,opt,name=force_update,json=forceUpdate,proto3" json:"force_update,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
 
-const file_navidrome_integration_v1_integration_proto_rawDesc = "" +
+func (x *ScanProgressPayload) Reset() {
+	*x = ScanProgressPayload{}
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanProgressPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanProgressPayload) ProtoMessage() {}
+
+func (x *ScanProgressPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanProgressPayload.ProtoReflect.Descriptor instead.
+func (*ScanProgressPayload) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ScanProgressPayload) GetLibId() int32 {
+	if x != nil {
+		return x.LibId
+	}
+	return 0
+}
+
+func (x *ScanProgressPayload) GetFileCount() uint32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *ScanProgressPayload) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ScanProgressPayload) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *ScanProgressPayload) GetChangesDetected() bool {
+	if x != nil {
+		return x.ChangesDetected
+	}
+	return false
+}
+
+func (x *ScanProgressPayload) GetWarning() string {
+	if x != nil {
+		return x.Warning
+	}
+	return ""
+}
+
+func (x *ScanProgressPayload) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ScanProgressPayload) GetForceUpdate() bool {
+	if x != nil {
+		return x.ForceUpdate
+	}
+	return false
+}
+
+type ScanCompletedPayload struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	FullScan        bool                   `protobuf:"varint,1,opt,name=full_scan,json=fullScan,proto3" json:"full_scan,omitempty"`
+	ChangesDetected bool                   `protobuf:"varint,2,opt,name=changes_detected,json=changesDetected,proto3" json:"changes_detected,omitempty"`
+	Error           string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	FileCount       int64                  `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	FolderCount     int64                  `protobuf:"varint,5,opt,name=folder_count,json=folderCount,proto3" json:"folder_count,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ScanCompletedPayload) Reset() {
+	*x = ScanCompletedPayload{}
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanCompletedPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanCompletedPayload) ProtoMessage() {}
+
+func (x *ScanCompletedPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_integration_v1_integration_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanCompletedPayload.ProtoReflect.Descriptor instead.
+func (*ScanCompletedPayload) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ScanCompletedPayload) GetFullScan() bool {
+	if x != nil {
+		return x.FullScan
+	}
+	return false
+}
+
+func (x *ScanCompletedPayload) GetChangesDetected() bool {
+	if x != nil {
+		return x.ChangesDetected
+	}
+	return false
+}
+
+func (x *ScanCompletedPayload) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ScanCompletedPayload) GetFileCount() int64 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *ScanCompletedPayload) GetFolderCount() int64 {
+	if x != nil {
+		return x.FolderCount
+	}
+	return 0
+}
+
+var File_proto_navidrome_integration_v1_integration_proto protoreflect.FileDescriptor
+
+const file_proto_navidrome_integration_v1_integration_proto_rawDesc = "" +
 	"\n" +
-	"*navidrome/integration/v1/integration.proto\x12\x18navidrome.integration.v1\"\x96\x02\n" +
+	"0proto/navidrome/integration/v1/integration.proto\x12\x18navidrome.integration.v1\"\x96\x02\n" +
 	"\vHttpRequest\x12 \n" +
 	"\vdestination\x18\x01 \x01(\tR\vdestination\x12\x16\n" +
 	"\x06method\x18\x02 \x01(\tR\x06method\x12\x10\n" +
@@ -784,7 +992,7 @@ const file_navidrome_integration_v1_integration_proto_rawDesc = "" +
 	"\rHealthRequest\":\n" +
 	"\x0eHealthResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\"\xe7\x03\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"\x96\x05\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12(\n" +
@@ -796,7 +1004,9 @@ const file_navidrome_integration_v1_integration_proto_rawDesc = "" +
 	" \x01(\v2).navidrome.integration.v1.ScrobblePayloadH\x00R\bscrobble\x12N\n" +
 	"\vnow_playing\x18\v \x01(\v2+.navidrome.integration.v1.NowPlayingPayloadH\x00R\n" +
 	"nowPlaying\x12Z\n" +
-	"\x0fplayback_report\x18\f \x01(\v2/.navidrome.integration.v1.PlaybackReportPayloadH\x00R\x0eplaybackReport\x1a=\n" +
+	"\x0fplayback_report\x18\f \x01(\v2/.navidrome.integration.v1.PlaybackReportPayloadH\x00R\x0eplaybackReport\x12T\n" +
+	"\rscan_progress\x18\r \x01(\v2-.navidrome.integration.v1.ScanProgressPayloadH\x00R\fscanProgress\x12W\n" +
+	"\x0escan_completed\x18\x0e \x01(\v2..navidrome.integration.v1.ScanCompletedPayloadH\x00R\rscanCompleted\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
@@ -821,26 +1031,43 @@ const file_navidrome_integration_v1_integration_proto_rawDesc = "" +
 	"\rmedia_file_id\x18\x03 \x01(\tR\vmediaFileId\x12\x14\n" +
 	"\x05state\x18\x04 \x01(\tR\x05state\x12\x1f\n" +
 	"\vposition_ms\x18\x05 \x01(\x03R\n" +
-	"positionMs2\x95\x02\n" +
+	"positionMs\"\xf3\x01\n" +
+	"\x13ScanProgressPayload\x12\x15\n" +
+	"\x06lib_id\x18\x01 \x01(\x05R\x05libId\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x02 \x01(\rR\tfileCount\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x14\n" +
+	"\x05phase\x18\x04 \x01(\tR\x05phase\x12)\n" +
+	"\x10changes_detected\x18\x05 \x01(\bR\x0fchangesDetected\x12\x18\n" +
+	"\awarning\x18\x06 \x01(\tR\awarning\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12!\n" +
+	"\fforce_update\x18\b \x01(\bR\vforceUpdate\"\xb6\x01\n" +
+	"\x14ScanCompletedPayload\x12\x1b\n" +
+	"\tfull_scan\x18\x01 \x01(\bR\bfullScan\x12)\n" +
+	"\x10changes_detected\x18\x02 \x01(\bR\x0fchangesDetected\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x04 \x01(\x03R\tfileCount\x12!\n" +
+	"\ffolder_count\x18\x05 \x01(\x03R\vfolderCount2\x95\x02\n" +
 	"\bOutbound\x12U\n" +
 	"\x04Call\x12%.navidrome.integration.v1.HttpRequest\x1a&.navidrome.integration.v1.HttpResponse\x12U\n" +
 	"\x04Sign\x12%.navidrome.integration.v1.SignRequest\x1a&.navidrome.integration.v1.SignResponse\x12[\n" +
 	"\x06Health\x12'.navidrome.integration.v1.HealthRequest\x1a(.navidrome.integration.v1.HealthResponseB5Z3github.com/navidrome/navidrome/core/integration/genb\x06proto3"
 
 var (
-	file_navidrome_integration_v1_integration_proto_rawDescOnce sync.Once
-	file_navidrome_integration_v1_integration_proto_rawDescData []byte
+	file_proto_navidrome_integration_v1_integration_proto_rawDescOnce sync.Once
+	file_proto_navidrome_integration_v1_integration_proto_rawDescData []byte
 )
 
-func file_navidrome_integration_v1_integration_proto_rawDescGZIP() []byte {
-	file_navidrome_integration_v1_integration_proto_rawDescOnce.Do(func() {
-		file_navidrome_integration_v1_integration_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_navidrome_integration_v1_integration_proto_rawDesc), len(file_navidrome_integration_v1_integration_proto_rawDesc)))
+func file_proto_navidrome_integration_v1_integration_proto_rawDescGZIP() []byte {
+	file_proto_navidrome_integration_v1_integration_proto_rawDescOnce.Do(func() {
+		file_proto_navidrome_integration_v1_integration_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_navidrome_integration_v1_integration_proto_rawDesc), len(file_proto_navidrome_integration_v1_integration_proto_rawDesc)))
 	})
-	return file_navidrome_integration_v1_integration_proto_rawDescData
+	return file_proto_navidrome_integration_v1_integration_proto_rawDescData
 }
 
-var file_navidrome_integration_v1_integration_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
-var file_navidrome_integration_v1_integration_proto_goTypes = []any{
+var file_proto_navidrome_integration_v1_integration_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_proto_navidrome_integration_v1_integration_proto_goTypes = []any{
 	(*HttpRequest)(nil),           // 0: navidrome.integration.v1.HttpRequest
 	(*HttpResponse)(nil),          // 1: navidrome.integration.v1.HttpResponse
 	(*SignRequest)(nil),           // 2: navidrome.integration.v1.SignRequest
@@ -851,57 +1078,63 @@ var file_navidrome_integration_v1_integration_proto_goTypes = []any{
 	(*ScrobblePayload)(nil),       // 7: navidrome.integration.v1.ScrobblePayload
 	(*NowPlayingPayload)(nil),     // 8: navidrome.integration.v1.NowPlayingPayload
 	(*PlaybackReportPayload)(nil), // 9: navidrome.integration.v1.PlaybackReportPayload
-	nil,                           // 10: navidrome.integration.v1.HttpRequest.HeadersEntry
-	nil,                           // 11: navidrome.integration.v1.HttpResponse.HeadersEntry
-	nil,                           // 12: navidrome.integration.v1.SignRequest.ParamsEntry
-	nil,                           // 13: navidrome.integration.v1.Event.AttributesEntry
+	(*ScanProgressPayload)(nil),   // 10: navidrome.integration.v1.ScanProgressPayload
+	(*ScanCompletedPayload)(nil),  // 11: navidrome.integration.v1.ScanCompletedPayload
+	nil,                           // 12: navidrome.integration.v1.HttpRequest.HeadersEntry
+	nil,                           // 13: navidrome.integration.v1.HttpResponse.HeadersEntry
+	nil,                           // 14: navidrome.integration.v1.SignRequest.ParamsEntry
+	nil,                           // 15: navidrome.integration.v1.Event.AttributesEntry
 }
-var file_navidrome_integration_v1_integration_proto_depIdxs = []int32{
-	10, // 0: navidrome.integration.v1.HttpRequest.headers:type_name -> navidrome.integration.v1.HttpRequest.HeadersEntry
-	11, // 1: navidrome.integration.v1.HttpResponse.headers:type_name -> navidrome.integration.v1.HttpResponse.HeadersEntry
-	12, // 2: navidrome.integration.v1.SignRequest.params:type_name -> navidrome.integration.v1.SignRequest.ParamsEntry
-	13, // 3: navidrome.integration.v1.Event.attributes:type_name -> navidrome.integration.v1.Event.AttributesEntry
+var file_proto_navidrome_integration_v1_integration_proto_depIdxs = []int32{
+	12, // 0: navidrome.integration.v1.HttpRequest.headers:type_name -> navidrome.integration.v1.HttpRequest.HeadersEntry
+	13, // 1: navidrome.integration.v1.HttpResponse.headers:type_name -> navidrome.integration.v1.HttpResponse.HeadersEntry
+	14, // 2: navidrome.integration.v1.SignRequest.params:type_name -> navidrome.integration.v1.SignRequest.ParamsEntry
+	15, // 3: navidrome.integration.v1.Event.attributes:type_name -> navidrome.integration.v1.Event.AttributesEntry
 	7,  // 4: navidrome.integration.v1.Event.scrobble:type_name -> navidrome.integration.v1.ScrobblePayload
 	8,  // 5: navidrome.integration.v1.Event.now_playing:type_name -> navidrome.integration.v1.NowPlayingPayload
 	9,  // 6: navidrome.integration.v1.Event.playback_report:type_name -> navidrome.integration.v1.PlaybackReportPayload
-	0,  // 7: navidrome.integration.v1.Outbound.Call:input_type -> navidrome.integration.v1.HttpRequest
-	2,  // 8: navidrome.integration.v1.Outbound.Sign:input_type -> navidrome.integration.v1.SignRequest
-	4,  // 9: navidrome.integration.v1.Outbound.Health:input_type -> navidrome.integration.v1.HealthRequest
-	1,  // 10: navidrome.integration.v1.Outbound.Call:output_type -> navidrome.integration.v1.HttpResponse
-	3,  // 11: navidrome.integration.v1.Outbound.Sign:output_type -> navidrome.integration.v1.SignResponse
-	5,  // 12: navidrome.integration.v1.Outbound.Health:output_type -> navidrome.integration.v1.HealthResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	10, // 7: navidrome.integration.v1.Event.scan_progress:type_name -> navidrome.integration.v1.ScanProgressPayload
+	11, // 8: navidrome.integration.v1.Event.scan_completed:type_name -> navidrome.integration.v1.ScanCompletedPayload
+	0,  // 9: navidrome.integration.v1.Outbound.Call:input_type -> navidrome.integration.v1.HttpRequest
+	2,  // 10: navidrome.integration.v1.Outbound.Sign:input_type -> navidrome.integration.v1.SignRequest
+	4,  // 11: navidrome.integration.v1.Outbound.Health:input_type -> navidrome.integration.v1.HealthRequest
+	1,  // 12: navidrome.integration.v1.Outbound.Call:output_type -> navidrome.integration.v1.HttpResponse
+	3,  // 13: navidrome.integration.v1.Outbound.Sign:output_type -> navidrome.integration.v1.SignResponse
+	5,  // 14: navidrome.integration.v1.Outbound.Health:output_type -> navidrome.integration.v1.HealthResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_navidrome_integration_v1_integration_proto_init() }
-func file_navidrome_integration_v1_integration_proto_init() {
-	if File_navidrome_integration_v1_integration_proto != nil {
+func init() { file_proto_navidrome_integration_v1_integration_proto_init() }
+func file_proto_navidrome_integration_v1_integration_proto_init() {
+	if File_proto_navidrome_integration_v1_integration_proto != nil {
 		return
 	}
-	file_navidrome_integration_v1_integration_proto_msgTypes[6].OneofWrappers = []any{
+	file_proto_navidrome_integration_v1_integration_proto_msgTypes[6].OneofWrappers = []any{
 		(*Event_Scrobble)(nil),
 		(*Event_NowPlaying)(nil),
 		(*Event_PlaybackReport)(nil),
+		(*Event_ScanProgress)(nil),
+		(*Event_ScanCompleted)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_navidrome_integration_v1_integration_proto_rawDesc), len(file_navidrome_integration_v1_integration_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_navidrome_integration_v1_integration_proto_rawDesc), len(file_proto_navidrome_integration_v1_integration_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_navidrome_integration_v1_integration_proto_goTypes,
-		DependencyIndexes: file_navidrome_integration_v1_integration_proto_depIdxs,
-		MessageInfos:      file_navidrome_integration_v1_integration_proto_msgTypes,
+		GoTypes:           file_proto_navidrome_integration_v1_integration_proto_goTypes,
+		DependencyIndexes: file_proto_navidrome_integration_v1_integration_proto_depIdxs,
+		MessageInfos:      file_proto_navidrome_integration_v1_integration_proto_msgTypes,
 	}.Build()
-	File_navidrome_integration_v1_integration_proto = out.File
-	file_navidrome_integration_v1_integration_proto_goTypes = nil
-	file_navidrome_integration_v1_integration_proto_depIdxs = nil
+	File_proto_navidrome_integration_v1_integration_proto = out.File
+	file_proto_navidrome_integration_v1_integration_proto_goTypes = nil
+	file_proto_navidrome_integration_v1_integration_proto_depIdxs = nil
 }

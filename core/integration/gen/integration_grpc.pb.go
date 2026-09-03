@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.3
-// source: navidrome/integration/v1/integration.proto
+// source: proto/navidrome/integration/v1/integration.proto
 
 package gen
 
@@ -193,5 +193,5 @@ var Outbound_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "navidrome/integration/v1/integration.proto",
+	Metadata: "proto/navidrome/integration/v1/integration.proto",
 }

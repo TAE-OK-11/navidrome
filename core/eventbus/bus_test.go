@@ -69,3 +69,34 @@ func TestHandlerPanicIsolated(t *testing.T) {
 		t.Fatal("second handler should still run after panic")
 	}
 }
+
+func TestScanProgressTopic(t *testing.T) {
+	bus := eventbus.NewWithSize(8, 1)
+	t.Cleanup(bus.Close)
+
+	var got atomic.Int32
+	done := make(chan struct{})
+	bus.Subscribe(eventbus.TopicScanProgress, func(_ context.Context, evt eventbus.Event) {
+		if evt.ScanProgress == nil || evt.ScanProgress.Path != "/lib/a" {
+			t.Errorf("unexpected payload %#v", evt.ScanProgress)
+		}
+		got.Add(1)
+		close(done)
+	})
+	bus.PublishSync(context.Background(), eventbus.Event{
+		Topic: eventbus.TopicScanProgress,
+		ScanProgress: &eventbus.ScanProgress{
+			Path:      "/lib/a",
+			FileCount: 3,
+			Phase:     "folder",
+		},
+	})
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("scan progress handler was not called")
+	}
+	if got.Load() != 1 {
+		t.Fatalf("got %d deliveries", got.Load())
+	}
+}

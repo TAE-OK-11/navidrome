@@ -43,6 +43,8 @@ type DataStore interface {
 	Scrobble(ctx context.Context) ScrobbleRepository
 	Plugin(ctx context.Context) PluginRepository
 	APIKey(ctx context.Context) UserAPIKeyRepository
+	PluginKV(ctx context.Context) PluginKVRepository
+	PluginTask(ctx context.Context) PluginTaskRepository
 
 	Resource(ctx context.Context, model any) ResourceRepository
 

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.3
-// source: navidrome/scanner/v1/scanner.proto
+// source: proto/navidrome/scanner/v1/scanner.proto
 
 package gen
 
@@ -155,5 +155,106 @@ var FolderHash_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "navidrome/scanner/v1/scanner.proto",
+	Metadata: "proto/navidrome/scanner/v1/scanner.proto",
+}
+
+const (
+	ScanEvents_ReportProgress_FullMethodName = "/navidrome.scanner.v1.ScanEvents/ReportProgress"
+)
+
+// ScanEventsClient is the client API for ScanEvents service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ScanEvents carries library-scan progress between the orchestrating Go
+// process and an external scanner subprocess. This replaces gob-over-stdout.
+type ScanEventsClient interface {
+	ReportProgress(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ProgressEvent, ProgressAck], error)
+}
+
+type scanEventsClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewScanEventsClient(cc grpc.ClientConnInterface) ScanEventsClient {
+	return &scanEventsClient{cc}
+}
+
+func (c *scanEventsClient) ReportProgress(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ProgressEvent, ProgressAck], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ScanEvents_ServiceDesc.Streams[0], ScanEvents_ReportProgress_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ProgressEvent, ProgressAck]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ScanEvents_ReportProgressClient = grpc.ClientStreamingClient[ProgressEvent, ProgressAck]
+
+// ScanEventsServer is the server API for ScanEvents service.
+// All implementations must embed UnimplementedScanEventsServer
+// for forward compatibility.
+//
+// ScanEvents carries library-scan progress between the orchestrating Go
+// process and an external scanner subprocess. This replaces gob-over-stdout.
+type ScanEventsServer interface {
+	ReportProgress(grpc.ClientStreamingServer[ProgressEvent, ProgressAck]) error
+	mustEmbedUnimplementedScanEventsServer()
+}
+
+// UnimplementedScanEventsServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedScanEventsServer struct{}
+
+func (UnimplementedScanEventsServer) ReportProgress(grpc.ClientStreamingServer[ProgressEvent, ProgressAck]) error {
+	return status.Errorf(codes.Unimplemented, "method ReportProgress not implemented")
+}
+func (UnimplementedScanEventsServer) mustEmbedUnimplementedScanEventsServer() {}
+func (UnimplementedScanEventsServer) testEmbeddedByValue()                    {}
+
+// UnsafeScanEventsServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ScanEventsServer will
+// result in compilation errors.
+type UnsafeScanEventsServer interface {
+	mustEmbedUnimplementedScanEventsServer()
+}
+
+func RegisterScanEventsServer(s grpc.ServiceRegistrar, srv ScanEventsServer) {
+	// If the following call pancis, it indicates UnimplementedScanEventsServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ScanEvents_ServiceDesc, srv)
+}
+
+func _ScanEvents_ReportProgress_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ScanEventsServer).ReportProgress(&grpc.GenericServerStream[ProgressEvent, ProgressAck]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ScanEvents_ReportProgressServer = grpc.ClientStreamingServer[ProgressEvent, ProgressAck]
+
+// ScanEvents_ServiceDesc is the grpc.ServiceDesc for ScanEvents service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ScanEvents_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "navidrome.scanner.v1.ScanEvents",
+	HandlerType: (*ScanEventsServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ReportProgress",
+			Handler:       _ScanEvents_ReportProgress_Handler,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "proto/navidrome/scanner/v1/scanner.proto",
 }

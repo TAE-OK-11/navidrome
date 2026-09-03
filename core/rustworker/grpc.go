@@ -48,7 +48,7 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 	if listen == "" {
 		listen = DefaultListenAddr("navidrome-worker")
 	}
-	unlinkUnixListen(listen)
+	UnlinkUnixListen(listen)
 
 	cmd := exec.CommandContext(ctx, binary, "--grpc-worker", "--listen", listen) //nolint:gosec // administrator-controlled worker
 	prepareCmd(cmd)
@@ -96,7 +96,8 @@ func skipGRPCWorkerInTests() bool {
 	return strings.TrimSpace(os.Getenv("ND_GRPCWORKERINTESTS")) == ""
 }
 
-func unlinkUnixListen(listen string) {
+// UnlinkUnixListen removes a stale unix socket we previously created under TempDir.
+func UnlinkUnixListen(listen string) {
 	path, ok := strings.CutPrefix(listen, "unix:")
 	if !ok || path == "" {
 		return

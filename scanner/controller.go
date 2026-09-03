@@ -62,12 +62,13 @@ func CallScan(ctx context.Context, ds model.DataStore, pls playlists.Playlists, 
 	}
 
 	ctx = auth.WithAdminUser(ctx, ds)
-	progress := make(chan *ProgressInfo, 100)
+	progress, unsub := SubscribeProgress(nil)
 	go func() {
+		defer unsub()
 		defer close(progress)
 		defer release()
 		scanner := &scannerImpl{ds: ds, cw: artwork.NoopCacheWarmer(), pls: pls}
-		scanner.scanFolders(ctx, fullScan, targets, progress)
+		scanner.scanFolders(ctx, fullScan, targets, nil)
 	}()
 	return progress, nil
 }
@@ -215,11 +216,12 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 
 	// Send the initial scan status event
 	s.sendMessage(ctx, &events.ScanStatus{Scanning: true, Count: 0, FolderCount: 0})
-	progress := make(chan *ProgressInfo, 100)
+	progress, unsub := SubscribeProgress(nil)
 	go func() {
+		defer unsub()
 		defer close(progress)
 		scanner := s.getScanner()
-		scanner.scanFolders(ctx, fullScan, targets, progress)
+		scanner.scanFolders(ctx, fullScan, targets, nil)
 	}()
 
 	// Wait for the scan to finish, sending progress events to all connected clients

@@ -3,6 +3,7 @@
 package plugins
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -59,8 +60,7 @@ var _ = Describe("loadPluginWithConfig", func() {
 			Expect(manager.Start(GinkgoT().Context())).To(Succeed())
 			DeferCleanup(func() { _ = manager.Stop() })
 
-			// Block the taskqueue data dir by creating a file where the directory should be
-			Expect(os.WriteFile(filepath.Join(dataDir, "plugins"), nil, 0600)).To(Succeed())
+			manager.ds = brokenPluginTaskStore{DataStore: manager.ds}
 
 			err := manager.EnablePlugin(GinkgoT().Context(), "test-taskqueue")
 			Expect(err).To(MatchError(ContainSubstring("creating Task service")))
@@ -76,3 +76,9 @@ var _ = Describe("loadPluginWithConfig", func() {
 		})
 	})
 })
+
+type brokenPluginTaskStore struct {
+	model.DataStore
+}
+
+func (brokenPluginTaskStore) PluginTask(context.Context) model.PluginTaskRepository { return nil }

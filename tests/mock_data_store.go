@@ -29,6 +29,8 @@ type MockDataStore struct {
 	MockedRadio          model.RadioRepository
 	MockedPlugin         model.PluginRepository
 	MockedAPIKey         model.UserAPIKeyRepository
+	MockedPluginKV       model.PluginKVRepository
+	MockedPluginTask     model.PluginTaskRepository
 	scrobbleBufferMu     sync.Mutex
 	repoMu               sync.Mutex
 
@@ -257,6 +259,36 @@ func (db *MockDataStore) APIKey(ctx context.Context) model.UserAPIKeyRepository 
 	}
 	db.MockedAPIKey = &MockAPIKeyRepo{keys: map[string]model.UserAPIKey{}}
 	return db.MockedAPIKey
+}
+
+func (db *MockDataStore) PluginKV(ctx context.Context) model.PluginKVRepository {
+	if db.MockedPluginKV != nil {
+		return db.MockedPluginKV
+	}
+	if db.RealDS != nil {
+		return db.RealDS.PluginKV(ctx)
+	}
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedPluginKV == nil {
+		db.MockedPluginKV = NewMockPluginKVRepo()
+	}
+	return db.MockedPluginKV
+}
+
+func (db *MockDataStore) PluginTask(ctx context.Context) model.PluginTaskRepository {
+	if db.MockedPluginTask != nil {
+		return db.MockedPluginTask
+	}
+	if db.RealDS != nil {
+		return db.RealDS.PluginTask(ctx)
+	}
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedPluginTask == nil {
+		db.MockedPluginTask = NewMockPluginTaskRepo()
+	}
+	return db.MockedPluginTask
 }
 
 func (db *MockDataStore) WithTx(block func(tx model.DataStore) error, label ...string) error {

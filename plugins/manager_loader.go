@@ -113,7 +113,7 @@ var hostServices = []hostServiceEntry{
 		hasPermission: func(p *Permissions) bool { return p != nil && p.Kvstore != nil },
 		create: func(ctx *serviceContext) ([]extism.HostFunction, io.Closer, error) {
 			perm := ctx.permissions.Kvstore
-			service, err := newKVStoreService(ctx.baseCtx(), ctx.pluginName, perm)
+			service, err := newKVStoreService(ctx.baseCtx(), ctx.manager.ds, ctx.pluginName, perm)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -146,7 +146,7 @@ var hostServices = []hostServiceEntry{
 			if perm.MaxConcurrency > 0 {
 				maxConcurrency = int32(perm.MaxConcurrency)
 			}
-			service, err := newTaskQueueService(ctx.baseCtx(), ctx.pluginName, ctx.manager, maxConcurrency)
+			service, err := newTaskQueueService(ctx.baseCtx(), ctx.manager.ds, ctx.pluginName, ctx.manager, maxConcurrency)
 			if err != nil {
 				return nil, nil, err
 			}

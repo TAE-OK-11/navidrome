@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v5.29.3
-// source: navidrome/scanner/v1/scanner.proto
+// source: proto/navidrome/scanner/v1/scanner.proto
 
 package gen
 
@@ -32,7 +32,7 @@ type FileMeta struct {
 
 func (x *FileMeta) Reset() {
 	*x = FileMeta{}
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[0]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +44,7 @@ func (x *FileMeta) String() string {
 func (*FileMeta) ProtoMessage() {}
 
 func (x *FileMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[0]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +57,7 @@ func (x *FileMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileMeta.ProtoReflect.Descriptor instead.
 func (*FileMeta) Descriptor() ([]byte, []int) {
-	return file_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{0}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FileMeta) GetName() string {
@@ -96,7 +96,7 @@ type HashRequest struct {
 
 func (x *HashRequest) Reset() {
 	*x = HashRequest{}
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[1]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -108,7 +108,7 @@ func (x *HashRequest) String() string {
 func (*HashRequest) ProtoMessage() {}
 
 func (x *HashRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[1]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -121,7 +121,7 @@ func (x *HashRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HashRequest.ProtoReflect.Descriptor instead.
 func (*HashRequest) Descriptor() ([]byte, []int) {
-	return file_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{1}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *HashRequest) GetPath() string {
@@ -184,7 +184,7 @@ type HashResponse struct {
 
 func (x *HashResponse) Reset() {
 	*x = HashResponse{}
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[2]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -196,7 +196,7 @@ func (x *HashResponse) String() string {
 func (*HashResponse) ProtoMessage() {}
 
 func (x *HashResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[2]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -209,7 +209,7 @@ func (x *HashResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HashResponse.ProtoReflect.Descriptor instead.
 func (*HashResponse) Descriptor() ([]byte, []int) {
-	return file_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{2}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *HashResponse) GetOk() bool {
@@ -241,7 +241,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[3]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -253,7 +253,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[3]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -266,7 +266,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{3}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{3}
 }
 
 type HealthResponse struct {
@@ -278,7 +278,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[4]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -290,7 +290,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_navidrome_scanner_v1_scanner_proto_msgTypes[4]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -303,7 +303,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{4}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HealthResponse) GetOk() bool {
@@ -313,11 +313,155 @@ func (x *HealthResponse) GetOk() bool {
 	return false
 }
 
-var File_navidrome_scanner_v1_scanner_proto protoreflect.FileDescriptor
+type ProgressEvent struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	LibId           int32                  `protobuf:"varint,1,opt,name=lib_id,json=libId,proto3" json:"lib_id,omitempty"`
+	FileCount       uint32                 `protobuf:"varint,2,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	Path            string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Phase           string                 `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`
+	ChangesDetected bool                   `protobuf:"varint,5,opt,name=changes_detected,json=changesDetected,proto3" json:"changes_detected,omitempty"`
+	Warning         string                 `protobuf:"bytes,6,opt,name=warning,proto3" json:"warning,omitempty"`
+	Error           string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	ForceUpdate     bool                   `protobuf:"varint,8,opt,name=force_update,json=forceUpdate,proto3" json:"force_update,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
 
-const file_navidrome_scanner_v1_scanner_proto_rawDesc = "" +
+func (x *ProgressEvent) Reset() {
+	*x = ProgressEvent{}
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgressEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgressEvent) ProtoMessage() {}
+
+func (x *ProgressEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgressEvent.ProtoReflect.Descriptor instead.
+func (*ProgressEvent) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ProgressEvent) GetLibId() int32 {
+	if x != nil {
+		return x.LibId
+	}
+	return 0
+}
+
+func (x *ProgressEvent) GetFileCount() uint32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *ProgressEvent) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ProgressEvent) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *ProgressEvent) GetChangesDetected() bool {
+	if x != nil {
+		return x.ChangesDetected
+	}
+	return false
+}
+
+func (x *ProgressEvent) GetWarning() string {
+	if x != nil {
+		return x.Warning
+	}
+	return ""
+}
+
+func (x *ProgressEvent) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ProgressEvent) GetForceUpdate() bool {
+	if x != nil {
+		return x.ForceUpdate
+	}
+	return false
+}
+
+type ProgressAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProgressAck) Reset() {
+	*x = ProgressAck{}
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgressAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgressAck) ProtoMessage() {}
+
+func (x *ProgressAck) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgressAck.ProtoReflect.Descriptor instead.
+func (*ProgressAck) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ProgressAck) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+var File_proto_navidrome_scanner_v1_scanner_proto protoreflect.FileDescriptor
+
+const file_proto_navidrome_scanner_v1_scanner_proto_rawDesc = "" +
 	"\n" +
-	"\"navidrome/scanner/v1/scanner.proto\x12\x14navidrome.scanner.v1\"R\n" +
+	"(proto/navidrome/scanner/v1/scanner.proto\x12\x14navidrome.scanner.v1\"R\n" +
 	"\bFileMeta\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x04R\x04size\x12\x1e\n" +
@@ -344,70 +488,89 @@ const file_navidrome_scanner_v1_scanner_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"\x0f\n" +
 	"\rHealthRequest\" \n" +
 	"\x0eHealthResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"\xed\x01\n" +
+	"\rProgressEvent\x12\x15\n" +
+	"\x06lib_id\x18\x01 \x01(\x05R\x05libId\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x02 \x01(\rR\tfileCount\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x14\n" +
+	"\x05phase\x18\x04 \x01(\tR\x05phase\x12)\n" +
+	"\x10changes_detected\x18\x05 \x01(\bR\x0fchangesDetected\x12\x18\n" +
+	"\awarning\x18\x06 \x01(\tR\awarning\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12!\n" +
+	"\fforce_update\x18\b \x01(\bR\vforceUpdate\"\x1d\n" +
+	"\vProgressAck\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok2\xb0\x01\n" +
 	"\n" +
 	"FolderHash\x12M\n" +
 	"\x04Hash\x12!.navidrome.scanner.v1.HashRequest\x1a\".navidrome.scanner.v1.HashResponse\x12S\n" +
-	"\x06Health\x12#.navidrome.scanner.v1.HealthRequest\x1a$.navidrome.scanner.v1.HealthResponseB7Z5github.com/navidrome/navidrome/core/scannerworker/genb\x06proto3"
+	"\x06Health\x12#.navidrome.scanner.v1.HealthRequest\x1a$.navidrome.scanner.v1.HealthResponse2h\n" +
+	"\n" +
+	"ScanEvents\x12Z\n" +
+	"\x0eReportProgress\x12#.navidrome.scanner.v1.ProgressEvent\x1a!.navidrome.scanner.v1.ProgressAck(\x01B7Z5github.com/navidrome/navidrome/core/scannerworker/genb\x06proto3"
 
 var (
-	file_navidrome_scanner_v1_scanner_proto_rawDescOnce sync.Once
-	file_navidrome_scanner_v1_scanner_proto_rawDescData []byte
+	file_proto_navidrome_scanner_v1_scanner_proto_rawDescOnce sync.Once
+	file_proto_navidrome_scanner_v1_scanner_proto_rawDescData []byte
 )
 
-func file_navidrome_scanner_v1_scanner_proto_rawDescGZIP() []byte {
-	file_navidrome_scanner_v1_scanner_proto_rawDescOnce.Do(func() {
-		file_navidrome_scanner_v1_scanner_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_navidrome_scanner_v1_scanner_proto_rawDesc), len(file_navidrome_scanner_v1_scanner_proto_rawDesc)))
+func file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP() []byte {
+	file_proto_navidrome_scanner_v1_scanner_proto_rawDescOnce.Do(func() {
+		file_proto_navidrome_scanner_v1_scanner_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc), len(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc)))
 	})
-	return file_navidrome_scanner_v1_scanner_proto_rawDescData
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescData
 }
 
-var file_navidrome_scanner_v1_scanner_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_navidrome_scanner_v1_scanner_proto_goTypes = []any{
+var file_proto_navidrome_scanner_v1_scanner_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_navidrome_scanner_v1_scanner_proto_goTypes = []any{
 	(*FileMeta)(nil),       // 0: navidrome.scanner.v1.FileMeta
 	(*HashRequest)(nil),    // 1: navidrome.scanner.v1.HashRequest
 	(*HashResponse)(nil),   // 2: navidrome.scanner.v1.HashResponse
 	(*HealthRequest)(nil),  // 3: navidrome.scanner.v1.HealthRequest
 	(*HealthResponse)(nil), // 4: navidrome.scanner.v1.HealthResponse
-	nil,                    // 5: navidrome.scanner.v1.HashRequest.AudioFilesEntry
-	nil,                    // 6: navidrome.scanner.v1.HashRequest.ImageFilesEntry
+	(*ProgressEvent)(nil),  // 5: navidrome.scanner.v1.ProgressEvent
+	(*ProgressAck)(nil),    // 6: navidrome.scanner.v1.ProgressAck
+	nil,                    // 7: navidrome.scanner.v1.HashRequest.AudioFilesEntry
+	nil,                    // 8: navidrome.scanner.v1.HashRequest.ImageFilesEntry
 }
-var file_navidrome_scanner_v1_scanner_proto_depIdxs = []int32{
-	5, // 0: navidrome.scanner.v1.HashRequest.audio_files:type_name -> navidrome.scanner.v1.HashRequest.AudioFilesEntry
-	6, // 1: navidrome.scanner.v1.HashRequest.image_files:type_name -> navidrome.scanner.v1.HashRequest.ImageFilesEntry
+var file_proto_navidrome_scanner_v1_scanner_proto_depIdxs = []int32{
+	7, // 0: navidrome.scanner.v1.HashRequest.audio_files:type_name -> navidrome.scanner.v1.HashRequest.AudioFilesEntry
+	8, // 1: navidrome.scanner.v1.HashRequest.image_files:type_name -> navidrome.scanner.v1.HashRequest.ImageFilesEntry
 	0, // 2: navidrome.scanner.v1.HashRequest.AudioFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
 	0, // 3: navidrome.scanner.v1.HashRequest.ImageFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
 	1, // 4: navidrome.scanner.v1.FolderHash.Hash:input_type -> navidrome.scanner.v1.HashRequest
 	3, // 5: navidrome.scanner.v1.FolderHash.Health:input_type -> navidrome.scanner.v1.HealthRequest
-	2, // 6: navidrome.scanner.v1.FolderHash.Hash:output_type -> navidrome.scanner.v1.HashResponse
-	4, // 7: navidrome.scanner.v1.FolderHash.Health:output_type -> navidrome.scanner.v1.HealthResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
+	5, // 6: navidrome.scanner.v1.ScanEvents.ReportProgress:input_type -> navidrome.scanner.v1.ProgressEvent
+	2, // 7: navidrome.scanner.v1.FolderHash.Hash:output_type -> navidrome.scanner.v1.HashResponse
+	4, // 8: navidrome.scanner.v1.FolderHash.Health:output_type -> navidrome.scanner.v1.HealthResponse
+	6, // 9: navidrome.scanner.v1.ScanEvents.ReportProgress:output_type -> navidrome.scanner.v1.ProgressAck
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
 }
 
-func init() { file_navidrome_scanner_v1_scanner_proto_init() }
-func file_navidrome_scanner_v1_scanner_proto_init() {
-	if File_navidrome_scanner_v1_scanner_proto != nil {
+func init() { file_proto_navidrome_scanner_v1_scanner_proto_init() }
+func file_proto_navidrome_scanner_v1_scanner_proto_init() {
+	if File_proto_navidrome_scanner_v1_scanner_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_navidrome_scanner_v1_scanner_proto_rawDesc), len(file_navidrome_scanner_v1_scanner_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc), len(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
-		GoTypes:           file_navidrome_scanner_v1_scanner_proto_goTypes,
-		DependencyIndexes: file_navidrome_scanner_v1_scanner_proto_depIdxs,
-		MessageInfos:      file_navidrome_scanner_v1_scanner_proto_msgTypes,
+		GoTypes:           file_proto_navidrome_scanner_v1_scanner_proto_goTypes,
+		DependencyIndexes: file_proto_navidrome_scanner_v1_scanner_proto_depIdxs,
+		MessageInfos:      file_proto_navidrome_scanner_v1_scanner_proto_msgTypes,
 	}.Build()
-	File_navidrome_scanner_v1_scanner_proto = out.File
-	file_navidrome_scanner_v1_scanner_proto_goTypes = nil
-	file_navidrome_scanner_v1_scanner_proto_depIdxs = nil
+	File_proto_navidrome_scanner_v1_scanner_proto = out.File
+	file_proto_navidrome_scanner_v1_scanner_proto_goTypes = nil
+	file_proto_navidrome_scanner_v1_scanner_proto_depIdxs = nil
 }

@@ -38,3 +38,24 @@ message HealthRequest {}
 message HealthResponse {
   bool ok = 1;
 }
+
+// ScanEvents carries library-scan progress between the orchestrating Go
+// process and an external scanner subprocess. This replaces gob-over-stdout.
+service ScanEvents {
+  rpc ReportProgress(stream ProgressEvent) returns (ProgressAck);
+}
+
+message ProgressEvent {
+  int32 lib_id = 1;
+  uint32 file_count = 2;
+  string path = 3;
+  string phase = 4;
+  bool changes_detected = 5;
+  string warning = 6;
+  string error = 7;
+  bool force_update = 8;
+}
+
+message ProgressAck {
+  bool ok = 1;
+}

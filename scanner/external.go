@@ -25,22 +25,36 @@ const (
 // external process will be spawned with the same executable as the current process, and will run
 // the "scan" command with the "--subprocess" flag.
 //
-// The external process will send progress updates to the main process through its STDOUT, and the main
-// process will forward them to the caller.
+// Progress is streamed back over gRPC (ScanEvents). gob-over-stdout remains a fallback when the
+// progress listener cannot be started.
 type scannerExternal struct{}
 
 func (s *scannerExternal) scanFolders(ctx context.Context, fullScan bool, targets []model.ScanTarget, progress chan<- *ProgressInfo) {
 	s.scan(ctx, fullScan, targets, progress)
 }
 
+func emitExternalProgress(ctx context.Context, progress chan<- *ProgressInfo, info *ProgressInfo) {
+	PublishProgress(ctx, info)
+	if progress != nil {
+		progress <- info
+	}
+}
+
 func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []model.ScanTarget, progress chan<- *ProgressInfo) {
 	exe, err := os.Executable()
 	if err != nil {
-		progress <- &ProgressInfo{Error: fmt.Sprintf("failed to get executable path: %s", err)}
+		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to get executable path: %s", err)})
 		return
 	}
 
-	// Build command arguments
+	listener, listenErr := startProgressListener("")
+	useGRPC := listenErr == nil
+	if listenErr != nil {
+		log.Warn(ctx, "Scan progress gRPC listener unavailable; falling back to gob", listenErr)
+	} else {
+		defer listener.Stop()
+	}
+
 	args := []string{
 		"scan",
 		"--nobanner", "--subprocess",
@@ -48,36 +62,44 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 		"--datafolder", conf.Server.DataFolder.String(),
 		"--cachefolder", conf.Server.CacheFolder.String(),
 	}
+	if useGRPC {
+		args = append(args, "--progress-grpc", listener.addr)
+	}
 
-	// Add targets if provided
 	if len(targets) > 0 {
 		targetArgs, cleanup, err := targetArguments(ctx, targets, argLengthThreshold)
 		if err != nil {
-			progress <- &ProgressInfo{Error: err.Error()}
+			emitExternalProgress(ctx, progress, &ProgressInfo{Error: err.Error()})
 			return
 		}
 		defer cleanup()
-		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets))
+		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets), "grpc", useGRPC)
 		args = append(args, targetArgs...)
 	} else {
-		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe)
+		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe, "grpc", useGRPC)
 	}
 
-	// Add full scan flag if needed
 	if fullScan {
 		args = append(args, "--full")
 	}
 
 	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.Stderr = os.Stderr
+	if useGRPC {
+		cmd.Stdout = os.Stderr
+		if err := cmd.Run(); err != nil {
+			emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("external scanner failed: %s", err)})
+		}
+		return
+	}
 
 	in, out := io.Pipe()
 	defer in.Close()
 	defer out.Close()
 	cmd.Stdout = out
-	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		progress <- &ProgressInfo{Error: fmt.Sprintf("failed to start scanner process: %s", err)}
+		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to start scanner process: %s", err)})
 		return
 	}
 	go s.wait(cmd, out)
@@ -87,11 +109,11 @@ func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []mod
 		var p ProgressInfo
 		if err := decoder.Decode(&p); err != nil {
 			if !errors.Is(err, io.EOF) {
-				progress <- &ProgressInfo{Error: fmt.Sprintf("failed to read status from scanner: %s", err)}
+				emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to read status from scanner: %s", err)})
 			}
 			break
 		}
-		progress <- &p
+		emitExternalProgress(ctx, progress, &p)
 	}
 }
 

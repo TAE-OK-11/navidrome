@@ -25,7 +25,7 @@ func TestUnlinkUnixListenOnlyRemovesTempDirSockets(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	unlinkUnixListen("unix:" + outside)
+	UnlinkUnixListen("unix:" + outside)
 	got, err := os.Stat(outside)
 	if err != nil || got.Size() != info.Size() {
 		t.Fatalf("must not remove sockets outside TempDir: %v", err)
@@ -36,7 +36,7 @@ func TestUnlinkUnixListenOnlyRemovesTempDirSockets(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(inside) })
-	unlinkUnixListen("unix:" + inside)
+	UnlinkUnixListen("unix:" + inside)
 	if _, err := os.Stat(inside); !os.IsNotExist(err) {
 		t.Fatalf("stale socket under TempDir should be removed, stat=%v", err)
 	}

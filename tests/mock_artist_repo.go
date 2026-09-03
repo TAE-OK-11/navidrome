@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/model"
@@ -16,23 +17,31 @@ func CreateMockArtistRepo() *MockArtistRepo {
 
 type MockArtistRepo struct {
 	model.ArtistRepository
+	mu      sync.RWMutex
 	Data    map[string]*model.Artist
 	Err     bool
 	Options model.QueryOptions
 }
 
 func (m *MockArtistRepo) SetError(err bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.Err = err
 }
 
 func (m *MockArtistRepo) SetData(artists model.Artists) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.Data = make(map[string]*model.Artist)
-	for i, a := range artists {
-		m.Data[a.ID] = &artists[i]
+	for i := range artists {
+		a := artists[i]
+		m.Data[a.ID] = &a
 	}
 }
 
 func (m *MockArtistRepo) Exists(id string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return false, errors.New("Error!")
 	}
@@ -41,27 +50,35 @@ func (m *MockArtistRepo) Exists(id string) (bool, error) {
 }
 
 func (m *MockArtistRepo) Get(id string) (*model.Artist, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return nil, errors.New("Error!")
 	}
 	if d, ok := m.Data[id]; ok {
-		return d, nil
+		copied := *d
+		return &copied, nil
 	}
 	return nil, model.ErrNotFound
 }
 
 func (m *MockArtistRepo) Put(ar *model.Artist, columsToUpdate ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("error")
 	}
 	if ar.ID == "" {
 		ar.ID = id.NewRandom()
 	}
-	m.Data[ar.ID] = ar
+	copied := *ar
+	m.Data[ar.ID] = &copied
 	return nil
 }
 
 func (m *MockArtistRepo) IncPlayCount(id string, timestamp time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("error")
 	}
@@ -74,6 +91,8 @@ func (m *MockArtistRepo) IncPlayCount(id string, timestamp time.Time) error {
 }
 
 func (m *MockArtistRepo) GetAll(options ...model.QueryOptions) (model.Artists, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if len(options) > 0 {
 		m.Options = options[0]
 	}
@@ -92,13 +111,25 @@ func (m *MockArtistRepo) GetAll(options ...model.QueryOptions) (model.Artists, e
 }
 
 func (m *MockArtistRepo) UpdateExternalInfo(artist *model.Artist) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("mock repo error")
 	}
+	if artist == nil {
+		return nil
+	}
+	if m.Data == nil {
+		m.Data = make(map[string]*model.Artist)
+	}
+	copied := *artist
+	m.Data[artist.ID] = &copied
 	return nil
 }
 
 func (m *MockArtistRepo) RefreshStats(allArtists bool) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return 0, errors.New("mock repo error")
 	}
@@ -106,6 +137,8 @@ func (m *MockArtistRepo) RefreshStats(allArtists bool) (int64, error) {
 }
 
 func (m *MockArtistRepo) RefreshPlayCounts() (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return 0, errors.New("mock repo error")
 	}

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/model"
@@ -16,6 +17,7 @@ func CreateMockAlbumRepo() *MockAlbumRepo {
 
 type MockAlbumRepo struct {
 	model.AlbumRepository
+	mu                      sync.RWMutex
 	Data                    map[string]*model.Album
 	All                     model.Albums
 	Err                     bool
@@ -25,18 +27,24 @@ type MockAlbumRepo struct {
 }
 
 func (m *MockAlbumRepo) SetError(err bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.Err = err
 }
 
 func (m *MockAlbumRepo) SetData(albums model.Albums) {
-	m.Data = make(map[string]*model.Album, len(albums))
-	m.All = albums
-	for i, a := range m.All {
-		m.Data[a.ID] = &m.All[i]
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.All = append(model.Albums(nil), albums...)
+	m.Data = make(map[string]*model.Album, len(m.All))
+	for i := range m.All {
+		m.Data[m.All[i].ID] = &m.All[i]
 	}
 }
 
 func (m *MockAlbumRepo) Exists(id string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return false, errors.New("unexpected error")
 	}
@@ -45,37 +53,60 @@ func (m *MockAlbumRepo) Exists(id string) (bool, error) {
 }
 
 func (m *MockAlbumRepo) Get(id string) (*model.Album, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.Err {
 		return nil, errors.New("unexpected error")
 	}
 	if d, ok := m.Data[id]; ok {
-		return d, nil
+		copied := *d
+		return &copied, nil
 	}
 	return nil, model.ErrNotFound
 }
 
 func (m *MockAlbumRepo) Put(al *model.Album) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("unexpected error")
 	}
 	if al.ID == "" {
 		al.ID = id.NewRandom()
 	}
-	m.Data[al.ID] = al
+	copied := *al
+	m.Data[al.ID] = &copied
+	found := false
+	for i := range m.All {
+		if m.All[i].ID == al.ID {
+			m.All[i] = copied
+			m.Data[al.ID] = &m.All[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.All = append(m.All, copied)
+		m.Data[al.ID] = &m.All[len(m.All)-1]
+	}
 	return nil
 }
 
 func (m *MockAlbumRepo) GetAll(qo ...model.QueryOptions) (model.Albums, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if len(qo) > 0 {
 		m.Options = qo[0]
 	}
 	if m.Err {
 		return nil, errors.New("unexpected error")
 	}
-	return m.All, nil
+	return append(model.Albums(nil), m.All...), nil
 }
 
 func (m *MockAlbumRepo) IncPlayCount(id string, timestamp time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("unexpected error")
 	}
@@ -87,17 +118,26 @@ func (m *MockAlbumRepo) IncPlayCount(id string, timestamp time.Time) error {
 	return model.ErrNotFound
 }
 func (m *MockAlbumRepo) CountAll(...model.QueryOptions) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return int64(len(m.All)), nil
 }
 
 func (m *MockAlbumRepo) GetTouchedAlbums(libID int) (model.AlbumCursor, error) {
+	m.mu.RLock()
 	if m.Err {
+		m.mu.RUnlock()
 		return nil, errors.New("unexpected error")
 	}
+	albums := make(model.Albums, 0, len(m.Data))
+	for _, a := range m.Data {
+		albums = append(albums, *a)
+	}
+	m.mu.RUnlock()
 	return func(yield func(model.Album, error) bool) {
-		for _, a := range m.Data {
+		for _, a := range albums {
 			if a.ID == "error" {
-				if !yield(*a, errors.New("error")) {
+				if !yield(a, errors.New("error")) {
 					break
 				}
 				continue
@@ -105,7 +145,7 @@ func (m *MockAlbumRepo) GetTouchedAlbums(libID int) (model.AlbumCursor, error) {
 			if a.LibraryID != libID {
 				continue
 			}
-			if !yield(*a, nil) {
+			if !yield(a, nil) {
 				break
 			}
 		}
@@ -113,21 +153,44 @@ func (m *MockAlbumRepo) GetTouchedAlbums(libID int) (model.AlbumCursor, error) {
 }
 
 func (m *MockAlbumRepo) UpdateExternalInfo(album *model.Album) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("unexpected error")
+	}
+	if album == nil {
+		return nil
+	}
+	copied := *album
+	if m.Data == nil {
+		m.Data = make(map[string]*model.Album)
+	}
+	found := false
+	for i := range m.All {
+		if m.All[i].ID == album.ID {
+			m.All[i] = copied
+			m.Data[album.ID] = &m.All[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.All = append(m.All, copied)
+		m.Data[album.ID] = &m.All[len(m.All)-1]
 	}
 	return nil
 }
 
 func (m *MockAlbumRepo) Search(q string, options ...model.QueryOptions) (model.Albums, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if len(options) > 0 {
 		m.Options = options[0]
 	}
 	if m.Err {
 		return nil, errors.New("unexpected error")
 	}
-	// Simple mock implementation - just return all albums for testing
-	return m.All, nil
+	return append(model.Albums(nil), m.All...), nil
 }
 
 // ReassignAnnotation reassigns annotations from one album to another
@@ -145,6 +208,8 @@ func (m *MockAlbumRepo) ReassignAnnotation(prevID string, newID string) error {
 
 // CopyAttributes copies attributes from one album to another
 func (m *MockAlbumRepo) CopyAttributes(fromID, toID string, columns ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Err {
 		return errors.New("unexpected error")
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"runtime"
 
+	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/core/rustworker"
 )
 
@@ -49,6 +50,12 @@ func newPictureWorkerPool() *pictureWorkerPool {
 }
 
 func (p *pictureWorkerPool) extract(ctx context.Context, binary, path string, maxBytes int64) ([]byte, error) {
+	if data, err := metadataworker.ExtractPicture(ctx, path, maxBytes); !errors.Is(err, metadataworker.ErrNoGRPC) {
+		if err != nil {
+			return nil, &pictureExtractionError{message: err.Error()}
+		}
+		return data, nil
+	}
 	select {
 	case p.limit <- struct{}{}:
 	case <-ctx.Done():

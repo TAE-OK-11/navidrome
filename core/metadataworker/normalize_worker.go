@@ -56,6 +56,9 @@ func (p *normalizeWorkerPool) Normalize(ctx context.Context, values ...string) (
 	if len(values) == 0 {
 		return "", nil
 	}
+	if normalized, err := normalizeFTSGRPC(ctx, values); !errors.Is(err, errNoGRPC) {
+		return normalized, err
+	}
 	binary, err := Resolve()
 	if err != nil {
 		return "", err

@@ -2,6 +2,7 @@ package metadataworker
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 
@@ -28,6 +29,9 @@ func MapMediaFileJSON(path string, tags map[string][]string, lyricsJSON string) 
 	}
 	if lyricsJSON == "" {
 		lyricsJSON = "[]"
+	}
+	if mediaJSON, err := mapMediaGRPC(context.Background(), path, tags, lyricsJSON); !errors.Is(err, errNoGRPC) {
+		return mediaJSON, err
 	}
 	pipes, err := rustworker.Start(binary, "--map-media-worker")
 	if err != nil {

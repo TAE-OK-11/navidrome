@@ -16,37 +16,37 @@ const MAX_DIMENSION: u32 = 16_384;
 const MAX_PIXELS: u64 = 40_000_000;
 
 #[derive(Debug, Deserialize)]
-struct ImageRequest {
+pub struct ImageRequest {
     /// Single-image resize/fill payload length. Ignored when `mosaic` is set.
     #[serde(default)]
-    input_size: usize,
+    pub input_size: usize,
     /// Concatenated mosaic tile payloads (1..=4), each filled to size/2.
     #[serde(default)]
-    input_sizes: Vec<usize>,
+    pub input_sizes: Vec<usize>,
     #[serde(default)]
-    mosaic: bool,
+    pub mosaic: bool,
     #[serde(default)]
-    sniff: bool,
+    pub sniff: bool,
     #[serde(default)]
-    size: u32,
+    pub size: u32,
     #[serde(default)]
-    square: bool,
+    pub square: bool,
     #[serde(default)]
-    fill: bool,
+    pub fill: bool,
     #[serde(default)]
-    animated_gif: bool,
-	#[serde(default)]
-	animated_webp: bool,
-	#[serde(default)]
-	animated_png: bool,
-	#[serde(default = "default_quality")]
-    quality: u8,
+    pub animated_gif: bool,
     #[serde(default)]
-    format: OutputFormat,
+    pub animated_webp: bool,
+    #[serde(default)]
+    pub animated_png: bool,
+    #[serde(default = "default_quality")]
+    pub quality: u8,
+    #[serde(default)]
+    pub format: OutputFormat,
     /// When set, the worker reads image bytes from this local file path instead
     /// of the framed stdin payload (`input_size` must be 0).
     #[serde(default)]
-    path: Option<String>,
+    pub path: Option<String>,
 }
 
 fn default_quality() -> u8 {
@@ -54,10 +54,10 @@ fn default_quality() -> u8 {
 }
 
 #[derive(Debug)]
-struct SniffAnimationFlags {
-    animated_gif: bool,
-    animated_webp: bool,
-    animated_png: bool,
+pub struct SniffAnimationFlags {
+    pub animated_gif: bool,
+    pub animated_webp: bool,
+    pub animated_png: bool,
 }
 
 enum SniffResult {
@@ -65,13 +65,54 @@ enum SniffResult {
     Bytes(Vec<u8>),
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 #[serde(rename_all = "snake_case")]
-enum OutputFormat {
+pub enum OutputFormat {
     #[default]
     Jpeg,
     Png,
     Webp,
+}
+
+impl OutputFormat {
+    pub fn parse(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "png" => Self::Png,
+            "webp" => Self::Webp,
+            _ => Self::Jpeg,
+        }
+    }
+}
+
+pub enum ImageOutcome {
+    Bytes(Vec<u8>),
+    Sniff(SniffAnimationFlags),
+}
+
+pub fn process(mut request: ImageRequest, payloads: Vec<Vec<u8>>) -> Result<ImageOutcome> {
+    if request.mosaic {
+        request.input_sizes = payloads.iter().map(Vec::len).collect();
+    } else if !uses_path(&request) && request.input_size == 0 {
+        request.input_size = payloads.first().map(Vec::len).unwrap_or(0);
+    }
+    validate_request(&request)?;
+    if request.sniff {
+        let encoded = if uses_path(&request) {
+            read_image_file(request.path.as_deref().unwrap_or_default())?
+        } else {
+            payloads.into_iter().next().unwrap_or_default()
+        };
+        return Ok(ImageOutcome::Sniff(sniff_animation(&encoded)));
+    }
+    if request.mosaic {
+        return Ok(ImageOutcome::Bytes(compose_mosaic(&payloads, &request)?));
+    }
+    let encoded = if uses_path(&request) {
+        read_image_file(request.path.as_deref().unwrap_or_default())?
+    } else {
+        payloads.into_iter().next().unwrap_or_default()
+    };
+    Ok(ImageOutcome::Bytes(resize(&encoded, &request)?))
 }
 
 #[derive(Debug, Serialize)]

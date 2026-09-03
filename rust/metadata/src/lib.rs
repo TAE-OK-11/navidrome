@@ -3,6 +3,10 @@ pub mod id_hash;
 pub mod map_media;
 pub mod tag_clean;
 
+pub mod proto {
+    tonic::include_proto!("navidrome.metadata.v1");
+}
+
 pub mod bench_support {
     use std::collections::HashMap;
     use std::path::Path;

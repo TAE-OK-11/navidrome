@@ -123,6 +123,12 @@ func (e *extractor) ParseContext(ctx context.Context, files ...string) (map[stri
 		return nil, err
 	}
 
+	if resp, grpcErr := extractViaGRPC(ctx, req); grpcErr == nil {
+		return convertResponse(resp)
+	} else if !grpcUnavailable(grpcErr) {
+		return nil, grpcErr
+	}
+
 	pool := e.workerPool()
 	taskCount := metadataTaskCount(len(req.Files), cap(pool))
 	if taskCount == 1 {

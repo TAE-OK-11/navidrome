@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	. "github.com/navidrome/navidrome/utils/gg"
 	"github.com/navidrome/navidrome/utils/nanoid"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -179,7 +179,7 @@ func (r *shareRepositoryWrapper) contentsLabelFromArtist(shareID string, ids str
 
 func (r *shareRepositoryWrapper) contentsLabelFromAlbums(shareID string, ids string) string {
 	idList := strings.Split(ids, ",")
-	all, err := r.ds.Album(r.ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"album.id": idList}})
+	all, err := r.ds.Album(r.ctx).GetAll(model.QueryOptions{Filters: query.Eq("album.id", idList)})
 	if err != nil {
 		log.Error(r.ctx, "Error retrieving album names for share", "share", shareID, err)
 		return ""
@@ -198,10 +198,10 @@ func (r *shareRepositoryWrapper) contentsLabelFromPlaylist(shareID string, id st
 
 func (r *shareRepositoryWrapper) contentsLabelFromMediaFiles(shareID string, ids string) string {
 	idList := strings.Split(ids, ",")
-	mfs, err := r.ds.MediaFile(r.ctx).GetAll(model.QueryOptions{Filters: squirrel.And{
-		squirrel.Eq{"media_file.id": idList},
-		squirrel.Eq{"missing": false},
-	}})
+	mfs, err := r.ds.MediaFile(r.ctx).GetAll(model.QueryOptions{Filters: query.And(
+		query.Eq("media_file.id", idList),
+		query.NotMissing(),
+	)})
 	if err != nil {
 		log.Error(r.ctx, "Error retrieving media files for share", "share", shareID, err)
 		return ""

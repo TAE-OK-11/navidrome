@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/core/matcher"
@@ -417,7 +416,7 @@ func (e *provider) samplePlaylistTracks(ctx context.Context, playlistID string, 
 	tracks, err := repo.GetAll(model.QueryOptions{
 		Sort:    "random",
 		Max:     n * 4,
-		Filters: squirrel.Eq{"missing": false},
+		Filters: query.NotMissing(),
 	})
 	if err != nil {
 		return nil, err
@@ -438,7 +437,7 @@ func dedupByID(mfs model.MediaFiles) model.MediaFiles {
 }
 
 func (e *provider) sampleAlbumTracks(ctx context.Context, albumID string, n int) (model.MediaFiles, error) {
-	return e.sampleTracks(ctx, squirrel.Eq{"album_id": albumID}, n)
+	return e.sampleTracks(ctx, query.Eq("album_id", albumID), n)
 }
 
 func (e *provider) sampleArtistTracks(ctx context.Context, artistID string, n int) (model.MediaFiles, error) {
@@ -450,9 +449,9 @@ func (e *provider) sampleGenreTracks(ctx context.Context, genre *model.Genre, n 
 	return e.sampleTracks(ctx, query.SongGenres.ByID(genre.ID), n)
 }
 
-func (e *provider) sampleTracks(ctx context.Context, filter squirrel.Sqlizer, n int) (model.MediaFiles, error) {
+func (e *provider) sampleTracks(ctx context.Context, filter query.Sqlizer, n int) (model.MediaFiles, error) {
 	return e.ds.MediaFile(ctx).GetRandom(model.QueryOptions{
-		Filters: squirrel.And{filter, squirrel.Eq{"missing": false}},
+		Filters: query.And(filter, query.NotMissing()),
 		Max:     n,
 	})
 }
@@ -789,7 +788,7 @@ func (e *provider) loadArtistsByID(ctx context.Context, similar []agents.Artist)
 		return matches, nil
 	}
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"artist.id": ids},
+		Filters: query.Eq("artist.id", ids),
 	})
 	if err != nil {
 		return matches, err
@@ -818,7 +817,7 @@ func (e *provider) loadArtistsByMBID(ctx context.Context, similar []agents.Artis
 		return matches, nil
 	}
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"mbz_artist_id": mbids},
+		Filters: query.Eq("mbz_artist_id", mbids),
 	})
 	if err != nil {
 		return matches, err
@@ -849,11 +848,11 @@ func (e *provider) loadArtistsByName(ctx context.Context, similar []agents.Artis
 	if len(names) == 0 {
 		return matches, nil
 	}
-	clauses := slice.Map(names, func(name string) squirrel.Sqlizer {
-		return squirrel.Like{"artist.name": name}
+	clauses := slice.Map(names, func(name string) query.Sqlizer {
+		return query.Like("artist.name", name)
 	})
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Or(clauses),
+		Filters: query.Or(clauses...),
 	})
 	if err != nil {
 		return matches, err
@@ -885,7 +884,7 @@ func (e *provider) findArtist(ctx context.Context, artistName, id string) (*auxA
 	}
 
 	artists, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Like{"artist.name": artistName},
+		Filters: query.Like("artist.name", artistName),
 		Max:     1,
 	})
 	if err != nil {
@@ -907,7 +906,7 @@ func (e *provider) loadSimilar(ctx context.Context, artist *auxArtist, count int
 	}
 
 	similar, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"artist.id": ids},
+		Filters: query.Eq("artist.id", ids),
 	})
 	if err != nil {
 		log.Error("Error loading similar artists", "id", artist.ID, "name", artist.Name(), err)

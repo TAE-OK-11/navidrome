@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	. "github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -75,14 +74,14 @@ func songsByArtistTitleWithLyricsFirst(artist, title string) model.QueryOptions 
 	return model.QueryOptions{
 		Sort:  "lyrics, updated_at",
 		Order: "desc",
-		Filters: And{
-			Eq{"missing": false},
-			Eq{"title": title},
-			Or{
-				query.Exists("json_tree(participants, '$.albumartist')", Eq{"value": artist}),
-				query.Exists("json_tree(participants, '$.artist')", Eq{"value": artist}),
-			},
-		},
+		Filters: query.And(
+			query.NotMissing(),
+			query.Eq("title", title),
+			query.Or(
+				query.Exists("json_tree(participants, '$.albumartist')", query.Eq("value", artist)),
+				query.Exists("json_tree(participants, '$.artist')", query.Eq("value", artist)),
+			),
+		),
 	}
 }
 

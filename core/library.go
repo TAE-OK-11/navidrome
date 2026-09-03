@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -394,7 +394,7 @@ func (s *libraryService) validateLibraryIDs(ctx context.Context, libraryIDs []in
 
 	// Use CountAll to efficiently validate library IDs exist
 	count, err := s.ds.Library(ctx).CountAll(model.QueryOptions{
-		Filters: squirrel.Eq{"id": libraryIDs},
+		Filters: query.Eq("id", libraryIDs),
 	})
 	if err != nil {
 		return fmt.Errorf("error validating library IDs: %w", err)

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/str"
 	"github.com/xrash/smetrics"
 )
@@ -93,10 +93,10 @@ func (m *Matcher) matchByID(ctx context.Context, songs []agents.Song, result map
 		return nil
 	}
 	res, err := m.ds.MediaFile(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.And{
-			squirrel.Eq{"media_file.id": ids},
-			squirrel.Eq{"missing": false},
-		},
+		Filters: query.And(
+			query.Eq("media_file.id", ids),
+			query.NotMissing(),
+		),
 	})
 	if err != nil {
 		return err
@@ -132,10 +132,10 @@ func (m *Matcher) matchByMBID(ctx context.Context, songs []agents.Song, result m
 		return nil
 	}
 	res, err := m.ds.MediaFile(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.And{
-			squirrel.Eq{"mbz_recording_id": mbids},
-			squirrel.Eq{"missing": false},
-		},
+		Filters: query.And(
+			query.Eq("mbz_recording_id", mbids),
+			query.NotMissing(),
+		),
 	})
 	if err != nil {
 		return err
@@ -178,7 +178,7 @@ func (m *Matcher) matchByISRC(ctx context.Context, songs []agents.Song, result m
 		return nil
 	}
 	res, err := m.ds.MediaFile(ctx).GetAllByTags(model.TagISRC, isrcs, model.QueryOptions{
-		Filters: squirrel.Eq{"missing": false},
+		Filters: query.NotMissing(),
 		Sort:    "starred desc, rating desc, year asc, compilation asc",
 	})
 	if err != nil {
@@ -428,18 +428,18 @@ func (m *Matcher) resolveArtists(ctx context.Context, queries []indexedQuery) (r
 
 	// Query the artist table for name/MBID artists AND for the fast-path IDs (so their MBIDs are
 	// available for specificity scoring).
-	var filter squirrel.Or
+	var parts []query.Sqlizer
 	if len(nameToQueries) > 0 {
-		filter = append(filter, squirrel.Eq{"order_artist_name": mapKeys(nameToQueries)})
+		parts = append(parts, query.Eq("order_artist_name", mapKeys(nameToQueries)))
 	}
 	if len(mbidToQueries) > 0 {
-		filter = append(filter, squirrel.Eq{"mbz_artist_id": mapKeys(mbidToQueries)})
+		parts = append(parts, query.Eq("mbz_artist_id", mapKeys(mbidToQueries)))
 	}
 	if len(allIDs) > 0 {
-		filter = append(filter, squirrel.Eq{"id": mapKeys(allIDs)})
+		parts = append(parts, query.Eq("id", mapKeys(allIDs)))
 	}
-	if len(filter) > 0 {
-		artists, err := m.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: filter})
+	if len(parts) > 0 {
+		artists, err := m.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: query.Or(parts...)})
 		if err != nil {
 			return resolvedArtists{}, err
 		}
@@ -540,24 +540,16 @@ func (r resolvedArtists) bucketTracks(tracks []model.MediaFile) map[int][]scored
 // the main artist (role='artist', not albumartist — that avoids tribute/compilation false
 // positives). The non-correlated id IN (subquery) materializes the matching ids once from the
 // media_file_artists(artist_id) covering index, far cheaper than a correlated EXISTS that re-runs
-// per row. That form isn't expressible via the repository's role filters, so the raw squirrel.Expr
-// keeps the media_file_artists schema knowledge here; a dedicated repository method would be the
-// cleaner home if this is reused.
+// per row.
 func (m *Matcher) fetchTracksCreditedTo(ctx context.Context, artistIDs []string) (model.MediaFiles, error) {
 	if len(artistIDs) == 0 {
 		return nil, nil
 	}
-	args := make([]any, len(artistIDs))
-	for i, id := range artistIDs {
-		args[i] = id
-	}
 	return m.ds.MediaFile(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.And{
-			squirrel.Expr(
-				"media_file.id IN (SELECT media_file_id FROM media_file_artists "+
-					"WHERE role = 'artist' AND artist_id IN ("+squirrel.Placeholders(len(artistIDs))+"))", args...),
-			squirrel.Eq{"missing": false},
-		},
+		Filters: query.And(
+			query.ParticipantIDFilter("media_file", artistIDs, model.RoleArtist),
+			query.NotMissing(),
+		),
 		Sort: "starred desc, rating desc, year asc, compilation asc",
 	})
 }

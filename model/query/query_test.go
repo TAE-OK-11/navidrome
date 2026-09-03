@@ -74,3 +74,33 @@ func TestOrAnd(t *testing.T) {
 		t.Fatal("expected sql")
 	}
 }
+
+func TestComparisonHelpers(t *testing.T) {
+	cases := []struct {
+		name string
+		got  query.Sqlizer
+		sql  string
+		arg  any
+	}{
+		{"Missing", query.Missing(), "missing = ?", true},
+		{"NotEq", query.NotEq("rules", ""), "rules <> ?", ""},
+		{"Like", query.Like("artist.name", "Abba"), "artist.name LIKE ?", "Abba"},
+		{"Gt", query.Gt("rating", 0), "rating > ?", 0},
+		{"GtOrEq", query.GtOrEq("year", 1990), "year >= ?", 1990},
+		{"LtOrEq", query.LtOrEq("year", 2000), "year <= ?", 2000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sql, args, err := tc.got.ToSql()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sql != tc.sql {
+				t.Fatalf("sql = %q, want %q", sql, tc.sql)
+			}
+			if len(args) != 1 || args[0] != tc.arg {
+				t.Fatalf("args = %#v, want %#v", args, []any{tc.arg})
+			}
+		})
+	}
+}

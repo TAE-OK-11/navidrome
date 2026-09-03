@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/id"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 func initialSetup(ds model.DataStore) error {
@@ -40,7 +40,7 @@ func initialSetup(ds model.DataStore) error {
 // If the Dev Admin user is not present, create it
 func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 	users := ds.User(context.TODO())
-	c, err := users.CountAll(model.QueryOptions{Filters: squirrel.Eq{"user_name": consts.DevInitialUserName}})
+	c, err := users.CountAll(model.QueryOptions{Filters: query.Eq("user_name", consts.DevInitialUserName)})
 	if err != nil {
 		return err
 	}

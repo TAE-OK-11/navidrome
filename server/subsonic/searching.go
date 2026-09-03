@@ -12,12 +12,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/sanitize"
 	"github.com/navidrome/navidrome/adapters/rustsearch"
 	"github.com/navidrome/navidrome/core/publicurl"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 	"golang.org/x/sync/errgroup"
@@ -122,9 +122,9 @@ func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderI
 	artistOpts := model.QueryOptions{Max: sp.artistCount, Offset: sp.artistOffset}
 
 	if len(musicFolderIds) > 0 {
-		songOpts.Filters = Eq{"library_id": musicFolderIds}
-		albumOpts.Filters = Eq{"library_id": musicFolderIds}
-		artistOpts.Filters = Eq{"library_id": musicFolderIds}
+		songOpts.Filters = query.Eq("library_id", musicFolderIds)
+		albumOpts.Filters = query.Eq("library_id", musicFolderIds)
+		artistOpts.Filters = query.Eq("library_id", musicFolderIds)
 	}
 
 	// Run searches in parallel
@@ -221,9 +221,9 @@ func (api *Router) hydrateRustSongs(ctx context.Context, ids []string) (model.Me
 		return model.MediaFiles{}, nil
 	}
 	values, err := api.ds.MediaFile(ctx).GetAll(model.QueryOptions{
-		Filters: And{
-			Eq{"media_file.id": ids}, Eq{"media_file.missing": false},
-		},
+		Filters: query.And(
+			query.Eq("media_file.id", ids), query.Eq("media_file.missing", false),
+		),
 		ExcludeHeavyFields: true,
 	})
 	if err != nil {
@@ -236,9 +236,9 @@ func (api *Router) hydrateRustAlbums(ctx context.Context, ids []string) (model.A
 	if len(ids) == 0 {
 		return model.Albums{}, nil
 	}
-	values, err := api.ds.Album(ctx).GetAll(model.QueryOptions{Filters: And{
-		Eq{"album.id": ids}, Eq{"album.missing": false},
-	}})
+	values, err := api.ds.Album(ctx).GetAll(model.QueryOptions{Filters: query.And(
+		query.Eq("album.id", ids), query.Eq("album.missing", false),
+	)})
 	if err != nil {
 		return nil, err
 	}
@@ -249,9 +249,9 @@ func (api *Router) hydrateRustArtists(ctx context.Context, ids []string) (model.
 	if len(ids) == 0 {
 		return model.Artists{}, nil
 	}
-	values, err := api.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: And{
-		Eq{"artist.id": ids}, Eq{"artist.missing": false},
-	}})
+	values, err := api.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: query.And(
+		query.Eq("artist.id", ids), query.Eq("artist.missing", false),
+	)})
 	if err != nil {
 		return nil, err
 	}

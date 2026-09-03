@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils"
 )
 
@@ -52,7 +52,7 @@ func newDiscArtworkReader(ctx context.Context, a *artwork, artID model.ArtworkID
 	mfs, err := a.ds.MediaFile(ctx).GetAll(model.QueryOptions{
 		Sort:    "track_number",
 		Order:   "ASC",
-		Filters: squirrel.Eq{"album_id": albumID, "disc_number": discNumber},
+		Filters: query.And(query.Eq("album_id", albumID), query.Eq("disc_number", discNumber)),
 	})
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func newDiscArtworkReader(ctx context.Context, a *artwork, artID model.ArtworkID
 			folderIDs = append(folderIDs, id)
 		}
 		folders, err := a.ds.Folder(ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"folder.id": folderIDs},
+			Filters: query.Eq("folder.id", folderIDs),
 		})
 		if err != nil {
 			return nil, err

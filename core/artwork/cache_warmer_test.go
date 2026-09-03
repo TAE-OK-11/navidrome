@@ -34,6 +34,7 @@ var _ = Describe("CacheWarmer", func() {
 		It("returns noop when cache is disabled", func() {
 			fc.SetDisabled(true)
 			cw := NewCacheWarmer(aw, fc)
+			DeferCleanup(cw.Close)
 			_, ok := cw.(*noopCacheWarmer)
 			Expect(ok).To(BeTrue())
 		})
@@ -41,6 +42,7 @@ var _ = Describe("CacheWarmer", func() {
 		It("returns noop when ImageCacheSize is 0", func() {
 			conf.Server.ImageCacheSize = "0"
 			cw := NewCacheWarmer(aw, fc)
+			DeferCleanup(cw.Close)
 			_, ok := cw.(*noopCacheWarmer)
 			Expect(ok).To(BeTrue())
 		})
@@ -48,6 +50,7 @@ var _ = Describe("CacheWarmer", func() {
 		It("keeps on-demand warming available when automatic precache is false", func() {
 			conf.Server.EnableArtworkPrecache = false
 			cw := NewCacheWarmer(aw, fc)
+			DeferCleanup(cw.Close)
 			warmer, ok := cw.(*cacheWarmer)
 			Expect(ok).To(BeTrue())
 			Expect(warmer.automatic).To(BeFalse())
@@ -58,6 +61,7 @@ var _ = Describe("CacheWarmer", func() {
 			conf.Server.EnableArtworkPrecache = true
 			fc.SetDisabled(false)
 			cw := NewCacheWarmer(aw, fc)
+			DeferCleanup(cw.Close)
 			_, ok := cw.(*cacheWarmer)
 			Expect(ok).To(BeTrue())
 		})
@@ -71,7 +75,7 @@ var _ = Describe("CacheWarmer", func() {
 		})
 
 		It("drops buffered items when cache becomes disabled", func() {
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-test"))
 			fc.SetDisabled(true)
 			Eventually(func() int {
@@ -83,7 +87,7 @@ var _ = Describe("CacheWarmer", func() {
 
 		It("adds multiple items to buffer", func() {
 			fc.SetReady(false) // Make cache unavailable so items stay in buffer
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 			cw.PreCache(model.MustParseArtworkID("al-2"))
 			cw.mutex.Lock()
@@ -93,7 +97,7 @@ var _ = Describe("CacheWarmer", func() {
 
 		It("deduplicates items in buffer", func() {
 			fc.SetReady(false) // Make cache unavailable so items stay in buffer
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 			cw.mutex.Lock()
@@ -104,7 +108,7 @@ var _ = Describe("CacheWarmer", func() {
 		It("allows selected on-demand warming when automatic precache is disabled", func() {
 			conf.Server.EnableArtworkPrecache = false
 			fc.SetReady(false)
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 
 			cw.PreCache(model.MustParseArtworkID("al-automatic"))
 			cw.PreCacheOnDemand(model.MustParseArtworkID("al-selected"))
@@ -125,7 +129,7 @@ var _ = Describe("CacheWarmer", func() {
 
 		It("continues processing after artwork retrieval error", func() {
 			aw.err = errors.New("artwork error")
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-error"))
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 
@@ -138,7 +142,7 @@ var _ = Describe("CacheWarmer", func() {
 
 		It("continues processing after cache error", func() {
 			fc.err = errors.New("cache error")
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-error"))
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 
@@ -158,7 +162,7 @@ var _ = Describe("CacheWarmer", func() {
 		})
 
 		It("processes items in batches", func() {
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			for i := range 5 {
 				cw.PreCache(model.MustParseArtworkID(fmt.Sprintf("al-%d", i)))
 			}
@@ -171,7 +175,7 @@ var _ = Describe("CacheWarmer", func() {
 		})
 
 		It("wakes up on new items", func() {
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 
 			// Add first batch
 			cw.PreCache(model.MustParseArtworkID("al-1"))
@@ -191,7 +195,7 @@ var _ = Describe("CacheWarmer", func() {
 		})
 
 		It("pre-caches UICoverArtSize", func() {
-			cw := NewCacheWarmer(aw, fc).(*cacheWarmer)
+			cw := startCacheWarmer(aw, fc)
 			cw.PreCache(model.MustParseArtworkID("al-1"))
 
 			Eventually(func() []int {
@@ -200,6 +204,12 @@ var _ = Describe("CacheWarmer", func() {
 		})
 	})
 })
+
+func startCacheWarmer(aw Artwork, fc cache.FileCache) *cacheWarmer {
+	cw := NewCacheWarmer(aw, fc)
+	DeferCleanup(cw.Close)
+	return cw.(*cacheWarmer)
+}
 
 type mockArtwork struct {
 	err         error

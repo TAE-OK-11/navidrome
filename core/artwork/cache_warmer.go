@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -18,6 +19,7 @@ import (
 type CacheWarmer interface {
 	PreCache(artID model.ArtworkID)
 	PreCacheOnDemand(artID model.ArtworkID)
+	Close()
 }
 
 // NewCacheWarmer creates a new CacheWarmer instance. The CacheWarmer will pre-cache Artwork images in the background
@@ -45,8 +47,9 @@ func NewCacheWarmer(artwork Artwork, cache cache.FileCache) CacheWarmer {
 		automatic:    conf.Server.EnableArtworkPrecache,
 	}
 
-	// Create a context with a fake admin user, to be able to pre-cache Playlist CoverArts
-	ctx := request.WithUser(context.TODO(), model.User{IsAdmin: true})
+	ctx, cancel := context.WithCancel(request.WithUser(context.Background(), model.User{IsAdmin: true}))
+	a.cancel = cancel
+	lifecycle.Register(a)
 	go a.run(ctx)
 	return a
 }
@@ -60,6 +63,13 @@ type cacheWarmer struct {
 	coverArtSize int
 	concurrency  int
 	automatic    bool
+	cancel       context.CancelFunc
+}
+
+func (a *cacheWarmer) Close() {
+	if a.cancel != nil {
+		a.cancel()
+	}
 }
 
 func (a *cacheWarmer) PreCache(artID model.ArtworkID) {
@@ -175,3 +185,5 @@ type noopCacheWarmer struct{}
 func (a *noopCacheWarmer) PreCache(model.ArtworkID) {}
 
 func (a *noopCacheWarmer) PreCacheOnDemand(model.ArtworkID) {}
+
+func (a *noopCacheWarmer) Close() {}

@@ -20,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/server/backgrounds"
 	"github.com/navidrome/navidrome/server/nativeapi"
 	"github.com/navidrome/navidrome/server/public"
+	"github.com/navidrome/navidrome/server/publicgrpc"
 	"github.com/navidrome/navidrome/server/subsonic"
 )
 
@@ -120,6 +121,9 @@ func (a *App) mountRouters(ctx context.Context) {
 
 func (a *App) runHTTP(ctx context.Context) error {
 	a.mountRouters(ctx)
+	if conf.PublicGRPCEnabled() {
+		a.Server.AttachPublicGRPC(publicgrpc.NewServer(a.DataStore, a.SubsonicAPI))
+	}
 	return a.Server.Run(ctx, conf.Server.Address, conf.Server.Port, conf.Server.TLSCert, conf.Server.TLSKey)
 }
 

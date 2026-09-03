@@ -831,7 +831,10 @@ func (e *Engine) ensureWorker() error {
 			return nil
 		} else {
 			e.grpcFailed = true
-			log.Warn("Rust search gRPC worker unavailable; using NDJSON fallback", err)
+			if !rustworker.AllowLegacyNDJSON() {
+				return fmt.Errorf("search gRPC worker unavailable: %w", err)
+			}
+			rustworker.LogGRPCUnavailable("search", err)
 		}
 	}
 	return e.startNDJSON()

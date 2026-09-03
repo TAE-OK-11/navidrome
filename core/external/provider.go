@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/core/eventbus"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/matcher"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -47,14 +48,24 @@ type Provider interface {
 	Close()
 }
 
+type similarCacheEntry struct {
+	songs model.MediaFiles
+	at    time.Time
+}
+
 type provider struct {
 	ds          model.DataStore
 	ag          Agents
 	matcher     *matcher.Matcher
 	artistQueue refreshQueue[auxArtist]
 	albumQueue  refreshQueue[auxAlbum]
+	queueCtx    context.Context
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
+
+	similarMu         sync.Mutex
+	similarCache      map[string]similarCacheEntry
+	similarRefreshing map[string]struct{}
 }
 
 type auxAlbum struct {
@@ -98,11 +109,19 @@ type Agents interface {
 }
 
 func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider {
-	e := &provider{ds: ds, ag: agents, matcher: m}
+	e := &provider{
+		ds:                ds,
+		ag:                agents,
+		matcher:           m,
+		similarCache:      make(map[string]similarCacheEntry),
+		similarRefreshing: make(map[string]struct{}),
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	e.queueCtx = ctx
 	e.cancel = cancel
 	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfo)
 	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfo)
+	lifecycle.Register(e)
 	return e
 }
 
@@ -299,59 +318,134 @@ func (e *provider) SimilarSongs(ctx context.Context, id string, count int) (mode
 		if gerr != nil {
 			return nil, err
 		}
-		return e.seedMix(ctx, count, func() (model.MediaFiles, error) {
-			return e.sampleGenreTracks(ctx, genre, maxSeeds)
+		return e.cachedMix(ctx, "genre:"+id, count, func(runCtx context.Context) (model.MediaFiles, error) {
+			return e.seedMix(runCtx, count, func() (model.MediaFiles, error) {
+				return e.sampleGenreTracks(runCtx, genre, maxSeeds)
+			})
 		})
 	}
 
 	switch v := entity.(type) {
 	case *model.MediaFile:
-		return e.mixFromAgent(ctx, count,
-			func() ([]agents.Song, error) {
-				return e.ag.GetSimilarSongsByTrack(ctx, v.ID, v.Title, v.Artist, v.MbzRecordingID, count)
-			},
-			func() (model.MediaFiles, error) {
-				if v.ArtistID != "" {
-					return e.similarSongsFallback(ctx, v.ArtistID, count)
-				}
-				return e.similarSongsFallback(ctx, id, count)
-			})
+		return e.cachedMix(ctx, "mf:"+v.ID, count, func(runCtx context.Context) (model.MediaFiles, error) {
+			return e.mixFromAgent(runCtx, count,
+				func() ([]agents.Song, error) {
+					return e.ag.GetSimilarSongsByTrack(runCtx, v.ID, v.Title, v.Artist, v.MbzRecordingID, count)
+				},
+				func() (model.MediaFiles, error) {
+					if v.ArtistID != "" {
+						return e.similarSongsFallback(runCtx, v.ArtistID, count)
+					}
+					return e.similarSongsFallback(runCtx, id, count)
+				})
+		})
 	case *model.Album:
-		return e.mixFromAgent(ctx, count,
-			func() ([]agents.Song, error) {
-				return e.ag.GetSimilarSongsByAlbum(ctx, v.ID, v.Name, v.AlbumArtist, v.MbzAlbumID, count)
-			},
-			func() (model.MediaFiles, error) {
-				if v.AlbumArtistID != "" {
-					if res, ferr := e.similarSongsFallback(ctx, v.AlbumArtistID, count); ferr == nil && len(res) > 0 {
+		return e.cachedMix(ctx, "al:"+v.ID, count, func(runCtx context.Context) (model.MediaFiles, error) {
+			return e.mixFromAgent(runCtx, count,
+				func() ([]agents.Song, error) {
+					return e.ag.GetSimilarSongsByAlbum(runCtx, v.ID, v.Name, v.AlbumArtist, v.MbzAlbumID, count)
+				},
+				func() (model.MediaFiles, error) {
+					if v.AlbumArtistID != "" {
+						if res, ferr := e.similarSongsFallback(runCtx, v.AlbumArtistID, count); ferr == nil && len(res) > 0 {
+							return res, nil
+						}
+					}
+					return e.seedMix(runCtx, count, func() (model.MediaFiles, error) {
+						return e.sampleAlbumTracks(runCtx, v.ID, maxSeeds)
+					})
+				})
+		})
+	case *model.Artist:
+		return e.cachedMix(ctx, "ar:"+v.ID, count, func(runCtx context.Context) (model.MediaFiles, error) {
+			return e.mixFromAgent(runCtx, count,
+				func() ([]agents.Song, error) {
+					return e.ag.GetSimilarSongsByArtist(runCtx, v.ID, v.Name, v.MbzArtistID, count)
+				},
+				func() (model.MediaFiles, error) {
+					if res, ferr := e.similarSongsFallback(runCtx, v.ID, count); ferr == nil && len(res) > 0 {
 						return res, nil
 					}
-				}
-				return e.seedMix(ctx, count, func() (model.MediaFiles, error) {
-					return e.sampleAlbumTracks(ctx, v.ID, maxSeeds)
+					return e.seedMix(runCtx, count, func() (model.MediaFiles, error) {
+						return e.sampleArtistTracks(runCtx, v.ID, maxSeeds)
+					})
 				})
-			})
-	case *model.Artist:
-		return e.mixFromAgent(ctx, count,
-			func() ([]agents.Song, error) {
-				return e.ag.GetSimilarSongsByArtist(ctx, v.ID, v.Name, v.MbzArtistID, count)
-			},
-			func() (model.MediaFiles, error) {
-				if res, ferr := e.similarSongsFallback(ctx, v.ID, count); ferr == nil && len(res) > 0 {
-					return res, nil
-				}
-				return e.seedMix(ctx, count, func() (model.MediaFiles, error) {
-					return e.sampleArtistTracks(ctx, v.ID, maxSeeds)
-				})
-			})
+		})
 	case *model.Playlist:
-		return e.seedMix(ctx, count, func() (model.MediaFiles, error) {
-			return e.samplePlaylistTracks(ctx, v.ID, maxSeeds)
+		return e.cachedMix(ctx, "pl:"+v.ID, count, func(runCtx context.Context) (model.MediaFiles, error) {
+			return e.seedMix(runCtx, count, func() (model.MediaFiles, error) {
+				return e.samplePlaylistTracks(runCtx, v.ID, maxSeeds)
+			})
 		})
 	default:
 		log.Warn(ctx, "Unknown entity type", "id", id, "type", fmt.Sprintf("%T", entity))
 		return nil, model.ErrNotFound
 	}
+}
+
+func (e *provider) cachedMix(ctx context.Context, key string, count int, run func(context.Context) (model.MediaFiles, error)) (model.MediaFiles, error) {
+	if songs, fresh := e.lookupSimilarCache(key, count); songs != nil {
+		if !fresh {
+			e.refreshMixAsync(key, count, run)
+		}
+		return songs, nil
+	}
+	songs, err := run(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(songs) > 0 {
+		e.storeSimilarCache(key, songs)
+	}
+	return songs, nil
+}
+
+func (e *provider) lookupSimilarCache(key string, count int) (model.MediaFiles, bool) {
+	e.similarMu.Lock()
+	defer e.similarMu.Unlock()
+	entry, ok := e.similarCache[key]
+	if !ok || len(entry.songs) == 0 {
+		return nil, false
+	}
+	if count > len(entry.songs) {
+		return nil, false
+	}
+	fresh := time.Since(entry.at) <= conf.Server.DevArtistInfoTimeToLive
+	out := make(model.MediaFiles, count)
+	copy(out, entry.songs[:count])
+	return out, fresh
+}
+
+func (e *provider) storeSimilarCache(key string, songs model.MediaFiles) {
+	stored := make(model.MediaFiles, len(songs))
+	copy(stored, songs)
+	e.similarMu.Lock()
+	e.similarCache[key] = similarCacheEntry{songs: stored, at: time.Now()}
+	e.similarMu.Unlock()
+}
+
+func (e *provider) refreshMixAsync(key string, count int, run func(context.Context) (model.MediaFiles, error)) {
+	e.similarMu.Lock()
+	if _, busy := e.similarRefreshing[key]; busy {
+		e.similarMu.Unlock()
+		return
+	}
+	e.similarRefreshing[key] = struct{}{}
+	e.similarMu.Unlock()
+	go func() {
+		defer func() {
+			e.similarMu.Lock()
+			delete(e.similarRefreshing, key)
+			e.similarMu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(e.queueCtx, refreshTimeout)
+		defer cancel()
+		songs, err := run(ctx)
+		if err != nil || len(songs) == 0 {
+			return
+		}
+		e.storeSimilarCache(key, songs)
+	}()
 }
 
 func (e *provider) mixFromAgent(ctx context.Context, count int, fetch func() ([]agents.Song, error), fallback func() (model.MediaFiles, error)) (model.MediaFiles, error) {
@@ -466,10 +560,18 @@ func (e *provider) similarSongsFallback(ctx context.Context, id string, count in
 		return nil, err
 	}
 
-	e.callGetSimilarArtists(ctx, e.ag, &artist, 15, false)
-	if utils.IsCtxDone(ctx) {
-		log.Warn(ctx, "SimilarSongs call canceled", ctx.Err())
-		return nil, ctx.Err()
+	updatedAt := V(artist.ExternalInfoUpdatedAt)
+	haveCache := len(artist.SimilarArtists) > 0 || !updatedAt.IsZero()
+	if haveCache {
+		if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
+			e.artistQueue.enqueue(&artist)
+		}
+	} else {
+		e.callGetSimilarArtists(ctx, e.ag, &artist, 15, false)
+		if utils.IsCtxDone(ctx) {
+			log.Warn(ctx, "SimilarSongs call canceled", ctx.Err())
+			return nil, ctx.Err()
+		}
 	}
 
 	weightedSongs := random.NewWeightedChooser[model.MediaFile]()
@@ -584,7 +686,9 @@ func (e *provider) TopSongs(ctx context.Context, artistName, id string, count in
 		return nil, err
 	}
 
-	songs, err := e.getMatchingTopSongs(ctx, e.ag, artist, count)
+	songs, err := e.cachedMix(ctx, "top:"+artist.ID, count, func(runCtx context.Context) (model.MediaFiles, error) {
+		return e.getMatchingTopSongs(runCtx, e.ag, artist, count)
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, agents.ErrNotFound):
@@ -595,7 +699,6 @@ func (e *provider) TopSongs(ctx context.Context, artistName, id string, count in
 		default:
 			log.Warn(ctx, "Error getting top songs from agent", "artist", artistName, err)
 		}
-
 		return nil, err
 	}
 	return songs, nil
@@ -964,7 +1067,6 @@ func newRefreshQueue[T any](ctx context.Context, wg *sync.WaitGroup, processFn f
 				runCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
 				_, _ = processFn(runCtx, *item)
 				cancel()
-				// Rate-limit Last.fm/agent calls between items, but do not delay the first fetch.
 				select {
 				case <-ctx.Done():
 					return

@@ -167,7 +167,7 @@ func (p *imageWorkerPool) mosaic(ctx context.Context, tiles [][]byte, size, qual
 }
 
 func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imageAnimationFlags, error) {
-	if flags, err := sniffViaGRPC(ctx, [][]byte{data}, imageWorkerRequest{Sniff: true, InputSize: len(data)}); !errors.Is(err, metadataworker.ErrNoGRPC) {
+	if flags, err := sniffViaGRPC(ctx, [][]byte{data}, imageWorkerRequest{Sniff: true, InputSize: len(data)}); rustworker.PreferGRPC(err, metadataworker.ErrNoGRPC) {
 		return flags, err
 	}
 	var flags imageAnimationFlags
@@ -230,7 +230,7 @@ func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imag
 }
 
 func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (imageAnimationFlags, error) {
-	if flags, err := sniffViaGRPC(ctx, nil, imageWorkerRequest{Sniff: true, Path: path}); !errors.Is(err, metadataworker.ErrNoGRPC) {
+	if flags, err := sniffViaGRPC(ctx, nil, imageWorkerRequest{Sniff: true, Path: path}); rustworker.PreferGRPC(err, metadataworker.ErrNoGRPC) {
 		return flags, err
 	}
 	var flags imageAnimationFlags
@@ -293,7 +293,7 @@ func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (
 }
 
 func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
-	if body, err := resizeViaGRPC(ctx, payloads, request); !errors.Is(err, metadataworker.ErrNoGRPC) {
+	if body, err := resizeViaGRPC(ctx, payloads, request); rustworker.PreferGRPC(err, metadataworker.ErrNoGRPC) {
 		return body, err
 	}
 	binary, err := metadataworker.Resolve()

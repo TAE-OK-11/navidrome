@@ -66,7 +66,7 @@ func PersistentFolderHashWorkers() *folderHashWorkerPool {
 }
 
 func (p *folderHashWorkerPool) Hash(ctx context.Context, request FolderHashRequest) (string, error) {
-	if hash, err := hashGRPC(ctx, request); !errors.Is(err, errFolderHashNoGRPC) {
+	if hash, err := hashGRPC(ctx, request); rustworker.PreferGRPC(err, errFolderHashNoGRPC) {
 		return hash, err
 	}
 

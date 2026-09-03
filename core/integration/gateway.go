@@ -10,6 +10,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/utils/httpclient"
@@ -48,6 +49,7 @@ func newGateway() *Gateway {
 			log.Info("Outbound HTTP routed through Rust gRPC integration worker")
 		}
 	}
+	lifecycle.Register(g)
 	return g
 }
 

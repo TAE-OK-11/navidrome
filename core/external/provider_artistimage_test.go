@@ -283,8 +283,6 @@ func agentCalledWithName(agent *mockArtistImageAgent, name string) bool {
 	return got == name
 }
 
-// mockArtistImageAgent implementation using testify/mock
-// This remains local as it's specific to testing the ArtistImage functionality
 type mockArtistImageAgent struct {
 	mock.Mock
 	agents.ArtistImageRetriever // Embed interface
@@ -309,7 +307,6 @@ func (m *mockArtistImageAgent) GetArtistImages(ctx context.Context, id, artistNa
 	m.lastName.Store(artistName)
 	m.called.Store(true)
 	args := m.Called(ctx, id, artistName, mbid)
-	// Need careful type assertion for potentially nil slice
 	var res []agents.ExternalImage
 	if args.Get(0) != nil {
 		res = args.Get(0).([]agents.ExternalImage)

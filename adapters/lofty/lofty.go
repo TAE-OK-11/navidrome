@@ -1,8 +1,7 @@
 // Package lofty provides the local metadata extractor backed by the Rust Lofty worker.
 //
-// The worker is kept alive for the lifetime of the extractor and receives scanner
-// batches over a buffered NDJSON stream. This keeps the Go/Rust boundary off the
-// per-file hot path while avoiding CGO/FFI lifetime and panic hazards.
+// Production extract uses the metadata gRPC worker. NDJSON stdin/stdout remains
+// as a Go-test fallback because gRPC workers are skipped inside `go test`.
 package lofty
 
 import (
@@ -125,7 +124,7 @@ func (e *extractor) ParseContext(ctx context.Context, files ...string) (map[stri
 
 	if resp, grpcErr := extractViaGRPC(ctx, req); grpcErr == nil {
 		return convertResponse(resp)
-	} else if !grpcUnavailable(grpcErr) {
+	} else if !grpcUnavailable(grpcErr) || !rustworker.AllowLegacyNDJSON() {
 		return nil, grpcErr
 	}
 

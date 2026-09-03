@@ -59,7 +59,7 @@ func PersistentBuildFTS5QueryWorkers() *buildFTS5QueryWorkerPool {
 }
 
 func (p *buildFTS5QueryWorkerPool) Build(ctx context.Context, query string) (buildFTS5QueryResult, error) {
-	if result, err := buildFTS5QueryGRPC(ctx, query); !errors.Is(err, errNoGRPC) {
+	if result, err := buildFTS5QueryGRPC(ctx, query); rustworker.PreferGRPC(err, errNoGRPC) {
 		return result, err
 	}
 	binary, err := Resolve()

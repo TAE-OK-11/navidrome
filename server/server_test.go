@@ -21,7 +21,7 @@ import (
 
 var _ = Describe("HTTP server protocols", func() {
 	It("configures bounded headers and persistent connection timeouts", func() {
-		server := newHTTPServer(http.NotFoundHandler())
+		server := newHTTPServer(http.NotFoundHandler(), false, false)
 
 		Expect(server.ReadHeaderTimeout).To(Equal(consts.ServerReadHeaderTimeout))
 		Expect(server.IdleTimeout).To(Equal(serverIdleTimeout))
@@ -43,7 +43,7 @@ var _ = Describe("HTTP server protocols", func() {
 		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
-		testServer.Config = newHTTPServer(testServer.Config.Handler)
+		testServer.Config = newHTTPServer(testServer.Config.Handler, false, false)
 		testServer.Start()
 		DeferCleanup(testServer.Close)
 
@@ -63,7 +63,7 @@ var _ = Describe("HTTP server protocols", func() {
 		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
-		testServer.Config = newHTTPServer(testServer.Config.Handler)
+		testServer.Config = newHTTPServer(testServer.Config.Handler, true, false)
 		testServer.EnableHTTP2 = true
 		testServer.StartTLS()
 		DeferCleanup(testServer.Close)
@@ -78,6 +78,11 @@ var _ = Describe("HTTP server protocols", func() {
 		DeferCleanup(resp.Body.Close)
 		Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 		Expect(resp.ProtoMajor).To(Equal(2))
+	})
+
+	It("enables unencrypted HTTP/2 when public gRPC is served without TLS", func() {
+		server := newHTTPServer(http.NotFoundHandler(), false, true)
+		Expect(server.Protocols.UnencryptedHTTP2()).To(BeTrue())
 	})
 })
 

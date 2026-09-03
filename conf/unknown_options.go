@@ -16,9 +16,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Extra keys that are valid but live outside configOptions (HTTP/3 is viper-backed).
+// Extra keys that are valid but live outside configOptions (HTTP/3 and
+// public gRPC are viper-backed).
 var extraKnownConfigKeys = []string{
 	"enablehttp3",
+	"enablepublicgrpc",
 	"http3allow0rtt",
 	"http3gatewaypath",
 	"http3altsvcmaxage",

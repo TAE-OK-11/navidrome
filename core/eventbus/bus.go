@@ -10,38 +10,39 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/singleton"
 )
 
 const (
-	TopicScrobble       Topic = "scrobble.submitted"
-	TopicNowPlaying     Topic = "playback.now_playing"
-	TopicPlaybackReport Topic = "playback.report"
+	TopicScrobble        Topic = "scrobble.submitted"
+	TopicNowPlaying      Topic = "playback.now_playing"
+	TopicPlaybackReport  Topic = "playback.report"
 	TopicScanProgress    Topic = "library.scan_progress"
 	TopicScanCompleted   Topic = "library.scan_completed"
 	TopicRefreshResource Topic = "ui.refresh_resource"
 	TopicScanStatus      Topic = "ui.scan_status"
 	TopicNowPlayingCount Topic = "ui.now_playing_count"
-	AttrBroadcast               = "broadcast"
-	AttrUsername                = "username"
-	AttrClientUniqueID          = "client_unique_id"
-	defaultQueueSize            = 1024
-	defaultWorkers            = 4
-	defaultPublishWait        = 50 * time.Millisecond
+	AttrBroadcast              = "broadcast"
+	AttrUsername               = "username"
+	AttrClientUniqueID         = "client_unique_id"
+	defaultQueueSize           = 1024
+	defaultWorkers             = 4
+	defaultPublishWait         = 50 * time.Millisecond
 )
 
 type Topic string
 
 type Event struct {
-	ID           string
-	Topic        Topic
-	OccurredAt   time.Time
-	Attrs        map[string]string
-	Scrobble     *Scrobble
-	NowPlaying   *NowPlaying
-	Report       *PlaybackReport
+	ID              string
+	Topic           Topic
+	OccurredAt      time.Time
+	Attrs           map[string]string
+	Scrobble        *Scrobble
+	NowPlaying      *NowPlaying
+	Report          *PlaybackReport
 	ScanProgress    *ScanProgress
 	Scan            *ScanCompleted
 	Refresh         *RefreshResource
@@ -155,7 +156,9 @@ func New() *Bus {
 // instance so playback, scan, and search are not wired point-to-point.
 func Get() *Bus {
 	return singleton.GetInstance(func() *Bus {
-		return New()
+		b := New()
+		lifecycle.Register(b)
+		return b
 	})
 }
 

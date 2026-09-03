@@ -253,7 +253,6 @@ func albumAgentCalledWithName(agent *mockAlbumInfoAgent, name string) bool {
 	return got == name
 }
 
-// mockAlbumInfoAgent implementation
 type mockAlbumInfoAgent struct {
 	mock.Mock
 	agents.AlbumInfoRetriever

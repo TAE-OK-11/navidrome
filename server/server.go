@@ -25,15 +25,18 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server/events"
+	"github.com/navidrome/navidrome/server/publicgrpc"
 	"github.com/navidrome/navidrome/ui"
+	"google.golang.org/grpc"
 )
 
 type Server struct {
-	router   chi.Router
-	ds       model.DataStore
-	appRoot  string
-	broker   events.Broker
-	insights metrics.Insights
+	router     chi.Router
+	ds         model.DataStore
+	appRoot    string
+	broker     events.Broker
+	insights   metrics.Insights
+	grpcServer *grpc.Server
 }
 
 const (
@@ -67,6 +70,12 @@ func (s *Server) MountRouter(description, urlPath string, subRouter http.Handler
 	s.router.Group(func(r chi.Router) {
 		r.Mount(urlPath, subRouter)
 	})
+}
+
+// AttachPublicGRPC multiplexes the public gRPC service onto the HTTP/2
+// listener (and the HTTP/3 companion's H2 bridge). REST stays on H1/H2/H3.
+func (s *Server) AttachPublicGRPC(gs *grpc.Server) {
+	s.grpcServer = gs
 }
 
 // Run starts the server with the given address, and if specified, with TLS enabled.
@@ -112,21 +121,9 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		listenAddr = listener.Addr().String()
 	}
 
-	server := newHTTPServer(s.router)
-
-	var h3 http3Service
-	if http3Enabled {
-		h3, err = newConfiguredHTTP3Runtime(ctx, listenAddr, s.router, tlsCert, tlsKey)
-		if err != nil {
-			// HTTP/3 is an optional alternative service. A quiche companion failure
-			// must not take the established H1/H2 application server down.
-			log.Warn(ctx, "tokio-quiche HTTP/3 unavailable; continuing with HTTP/1.1 and HTTP/2", err)
-			h3 = nil
-			server.Handler = clearHTTP3Advertisement(s.router)
-		} else {
-			server.Handler = h3.advertise(s.router)
-		}
-	}
+	handler := s.publicHandler()
+	server := newHTTPServer(handler, tlsEnabled, s.grpcServer != nil)
+	h3 := s.startHTTP3(ctx, listenAddr, handler, tlsCert, tlsKey, server)
 
 	errC := make(chan error, 2)
 	if h3 != nil {
@@ -139,7 +136,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	go func() {
 		var err error
 		if tlsEnabled {
-			log.Info("Starting server with TLS (HTTPS) enabled", "tlsCert", tlsCert, "tlsKey", tlsKey, "http3Enabled", http3Enabled)
+			log.Info("Starting server with TLS (HTTPS) enabled", "tlsCert", tlsCert, "tlsKey", tlsKey, "http3Enabled", http3Enabled, "publicGRPC", s.grpcServer != nil)
 			err = server.ServeTLS(listener, tlsCert, tlsKey)
 		} else {
 			err = server.Serve(listener)
@@ -157,11 +154,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Could not start server. Aborting", err)
 		runErr = fmt.Errorf("starting server: %w", err)
 	case <-time.After(serverStartupGracePeriod):
-		protocols := server.Protocols.String()
-		if h3 != nil {
-			protocols += " HTTP/3(quiche)"
-		}
-		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", protocols)
+		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", readyProtocols(server, h3, s.grpcServer != nil))
 	}
 
 	if runErr == nil {
@@ -172,12 +165,51 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		}
 	}
 
-	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil)
+	s.shutdownServers(ctx, server, h3)
+	return runErr
+}
+
+func (s *Server) publicHandler() http.Handler {
+	handler := http.Handler(s.router)
+	if s.grpcServer != nil {
+		log.Info("Mounting public gRPC on HTTP/2 (and HTTP/3 bridge)", "service", "navidrome.public.v1.Public")
+		handler = publicgrpc.Mux(s.grpcServer, handler)
+	}
+	return handler
+}
+
+func (s *Server) startHTTP3(ctx context.Context, listenAddr string, handler http.Handler, tlsCert, tlsKey string, server *http.Server) http3Service {
+	if !conf.HTTP3Enabled() {
+		return nil
+	}
+	h3, err := newConfiguredHTTP3Runtime(ctx, listenAddr, handler, tlsCert, tlsKey)
+	if err != nil {
+		log.Warn(ctx, "tokio-quiche HTTP/3 unavailable; continuing with HTTP/1.1 and HTTP/2", err)
+		server.Handler = clearHTTP3Advertisement(handler)
+		return nil
+	}
+	server.Handler = h3.advertise(handler)
+	return h3
+}
+
+func readyProtocols(server *http.Server, h3 http3Service, publicGRPC bool) string {
+	protocols := server.Protocols.String()
+	if h3 != nil {
+		protocols += " HTTP/3(quiche)"
+	}
+	if publicGRPC {
+		protocols += " gRPC"
+	}
+	return protocols
+}
+
+func (s *Server) shutdownServers(ctx context.Context, server *http.Server, h3 http3Service) {
+	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil, "publicGRPC", s.grpcServer != nil)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 	server.SetKeepAlivesEnabled(false)
 
-	shutdownErrC := make(chan error, 2)
+	shutdownErrC := make(chan error, 3)
 	shutdownCount := 1
 	go func() {
 		shutdownErrC <- shutdownHTTPServer(shutdownCtx, server)
@@ -188,19 +220,39 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 			shutdownErrC <- h3.shutdown(shutdownCtx)
 		}()
 	}
+	if s.grpcServer != nil {
+		shutdownCount++
+		go func() {
+			stopped := make(chan struct{})
+			go func() {
+				s.grpcServer.GracefulStop()
+				close(stopped)
+			}()
+			select {
+			case <-stopped:
+				shutdownErrC <- nil
+			case <-shutdownCtx.Done():
+				s.grpcServer.Stop()
+				shutdownErrC <- shutdownCtx.Err()
+			}
+		}()
+	}
 
 	for range shutdownCount {
 		if err := <-shutdownErrC; err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			log.Error(ctx, "Unexpected error while shutting down HTTP server", err)
 		}
 	}
-	return runErr
 }
 
-func newHTTPServer(handler http.Handler) *http.Server {
+func newHTTPServer(handler http.Handler, tlsEnabled bool, publicGRPC bool) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)
+	if publicGRPC && !tlsEnabled {
+		// Reverse proxies that terminate TLS forward h2c; gRPC needs HTTP/2.
+		protocols.SetUnencryptedHTTP2(true)
+	}
 
 	return &http.Server{
 		ReadHeaderTimeout: consts.ServerReadHeaderTimeout,

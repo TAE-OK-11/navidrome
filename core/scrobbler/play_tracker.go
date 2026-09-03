@@ -10,6 +10,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/eventbus"
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -115,11 +116,14 @@ type playTracker struct {
 	prMu              sync.Mutex
 	prSignal          chan struct{}
 	prWorkerDone      chan struct{}
+	stopOnce          sync.Once
 }
 
 func GetPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoader) PlayTracker {
 	return singleton.GetInstance(func() *playTracker {
-		return newPlayTracker(ds, pluginManager, eventbus.Get(), true)
+		p := newPlayTracker(ds, pluginManager, eventbus.Get(), true)
+		lifecycle.Register(p)
+		return p
 	})
 }
 
@@ -188,13 +192,19 @@ func newPlayTracker(ds model.DataStore, pluginManager PluginLoader, bus *eventbu
 }
 
 // stopBackgroundWorkers stops the background workers. This is primarily for testing.
+func (p *playTracker) Close() {
+	p.stopBackgroundWorkers()
+}
+
 func (p *playTracker) stopBackgroundWorkers() {
-	if p.bus != nil {
-		p.bus.Close()
-	}
-	close(p.shutdown)
-	<-p.workerDone   // Wait for nowPlaying worker to finish
-	<-p.prWorkerDone // Wait for playbackReport worker to finish
+	p.stopOnce.Do(func() {
+		if p.bus != nil {
+			p.bus.Close()
+		}
+		close(p.shutdown)
+		<-p.workerDone
+		<-p.prWorkerDone
+	})
 }
 
 // pluginNamesMatchScrobblers returns true if the set of pluginNames matches the keys in pluginScrobblers.

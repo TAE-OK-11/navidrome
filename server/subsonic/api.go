@@ -142,6 +142,13 @@ func (api *Router) registerResponseCacheHooks() {
 		api.entityCache.deleteBySuffix("|playlists")
 	})
 	responsecache.RegisterEntityInvalidator(api.entityCache.deleteByEntityID)
+	responsecache.RegisterCatalogInvalidator(func() {
+		api.entityCache.clear()
+		api.albumListCache.clear()
+		if api.streamFiles != nil {
+			api.streamFiles.clear()
+		}
+	})
 }
 
 func (api *Router) routes() http.Handler {
@@ -405,6 +412,27 @@ func sendResponse(w http.ResponseWriter, r *http.Request, payload *responses.Sub
 func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *responses.Subsonic, status int) {
 	p := req.Params(r)
 	f := p.StringOr("f", "")
+	traceBody := log.IsGreaterOrEqualTo(log.LevelTrace)
+	if !traceBody && status == 0 && f == "json" {
+		w.Header().Set("Content-Type", "application/json")
+		response, err := json.Marshal(responses.JsonWrapper{Subsonic: *payload})
+		if err != nil {
+			log.Error(r.Context(), "Error marshalling response", "format", f, err)
+			sendError(w, r, err)
+			return
+		}
+		if w.Header().Get("Content-Length") == "" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+		}
+		if _, err := w.Write(response); err != nil { //nolint:gosec
+			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, err)
+			return
+		}
+		logSubsonicResponse(r, payload, "")
+		writeSubsonicStatusPointer(r, payload)
+		return
+	}
+
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	var err error
@@ -445,34 +473,41 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 	}
 
 	response := buf.Bytes()
+	logSubsonicResponse(r, payload, string(response))
+	writeSubsonicStatusPointer(r, payload)
+
+	if w.Header().Get("Content-Length") == "" {
+		w.Header().Set("Content-Length", strconv.Itoa(len(response)))
+	}
+	if _, err := w.Write(response); err != nil { //nolint:gosec
+		if traceBody {
+			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, "payload", string(response), err)
+		} else {
+			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, err)
+		}
+	}
+}
+
+func logSubsonicResponse(r *http.Request, payload *responses.Subsonic, body string) {
 	if payload.Status == responses.StatusOK {
-		if log.IsGreaterOrEqualTo(log.LevelTrace) {
-			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK", "body", string(response))
+		if body != "" && log.IsGreaterOrEqualTo(log.LevelTrace) {
+			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK", "body", body)
 		} else if log.IsGreaterOrEqualTo(log.LevelDebug) {
 			log.Debug(r.Context(), "API: Successful response", "endpoint", r.URL.Path, "status", "OK")
 		}
 	} else {
 		log.Warn(r.Context(), "API: Failed response", "endpoint", r.URL.Path, "error", payload.Error.Code, "message", payload.Error.Message)
 	}
+}
 
+func writeSubsonicStatusPointer(r *http.Request, payload *responses.Subsonic) {
 	statusPointer, ok := r.Context().Value(subsonicErrorPointer).(*int32)
-
-	if ok && statusPointer != nil {
-		if payload.Status == responses.StatusOK {
-			*statusPointer = 0
-		} else {
-			*statusPointer = payload.Error.Code
-		}
+	if !ok || statusPointer == nil {
+		return
 	}
-
-	if w.Header().Get("Content-Length") == "" {
-		w.Header().Set("Content-Length", strconv.Itoa(len(response)))
-	}
-	if _, err := w.Write(response); err != nil { //nolint:gosec
-		if log.IsGreaterOrEqualTo(log.LevelTrace) {
-			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, "payload", string(response), err)
-		} else {
-			log.Error(r, "Error sending response to client", "endpoint", r.URL.Path, err)
-		}
+	if payload.Status == responses.StatusOK {
+		*statusPointer = 0
+	} else {
+		*statusPointer = payload.Error.Code
 	}
 }

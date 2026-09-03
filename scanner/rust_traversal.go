@@ -3,7 +3,6 @@ package scanner
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
@@ -190,7 +190,7 @@ func (s *scannerWorkerSlot) stream(
 		worker.kill()
 		close(cancelDone)
 	})
-		pendingWarnings, err := worker.stream(ctx, request, folders)
+	pendingWarnings, err := worker.stream(ctx, request, folders)
 	if !stopCancel() {
 		<-cancelDone
 	}

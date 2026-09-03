@@ -22,7 +22,7 @@ func BenchmarkStreamMediaCacheHit(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := cache.get(context.Background(), key, load); err != nil {
+		if _, err := cache.get(context.Background(), key, load, nil); err != nil {
 			b.Fatal(err)
 		}
 	}

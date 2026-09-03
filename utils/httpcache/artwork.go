@@ -30,6 +30,10 @@ func artworkETag(lastUpdate time.Time) string {
 	return `"artwork-` + strconv.FormatInt(lastUpdate.UnixNano(), 36) + `"`
 }
 
+func HasArtworkValidators(r *http.Request) bool {
+	return r.Header.Get("If-None-Match") != "" || r.Header.Get("If-Modified-Since") != ""
+}
+
 func notModified(r *http.Request, lastUpdate time.Time, etag string) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false

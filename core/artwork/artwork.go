@@ -25,11 +25,16 @@ var ErrUnavailable = errors.New("artwork unavailable")
 const (
 	artworkReaderCacheSize = 2048
 	artworkReaderCacheTTL  = 30 * time.Second
+	artworkStatCacheSize   = 4096
+	artworkStatCacheTTL    = 30 * time.Second
 )
 
 type Artwork interface {
 	Get(ctx context.Context, artID model.ArtworkID, size int, square bool) (io.ReadCloser, time.Time, error)
 	GetOrPlaceholder(ctx context.Context, id string, size int, square bool) (io.ReadCloser, time.Time, error)
+	// StatOrPlaceholder returns the cover's last-updated time without opening
+	// the image cache, so HTTP 304 responses can skip disk and decode work.
+	StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error)
 }
 
 func NewArtwork(ds model.DataStore, imageCache cache.FileCache, ffmpeg ffmpeg.FFmpeg, provider external.Provider) Artwork {
@@ -42,6 +47,10 @@ func NewArtwork(ds model.DataStore, imageCache cache.FileCache, ffmpeg ffmpeg.FF
 			SizeLimit:  artworkReaderCacheSize,
 			DefaultTTL: artworkReaderCacheTTL,
 		}),
+		statCache: cache.NewSimpleCache[string, time.Time](cache.Options{
+			SizeLimit:  artworkStatCacheSize,
+			DefaultTTL: artworkStatCacheTTL,
+		}),
 	}
 }
 
@@ -52,6 +61,8 @@ type artwork struct {
 	provider    external.Provider
 	readers     singleflight.Group
 	readerCache cache.SimpleCache[string, artworkReader]
+	statCache   cache.SimpleCache[string, time.Time]
+	statGroup   singleflight.Group
 }
 
 type artworkReader interface {
@@ -74,6 +85,45 @@ func (a *artwork) GetOrPlaceholder(ctx context.Context, id string, size int, squ
 		return reader, consts.ServerStart, nil
 	}
 	return reader, lastUpdate, err
+}
+
+func (a *artwork) StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error) {
+	artID, err := a.getArtworkId(ctx, id)
+	if err == nil {
+		statSize := size
+		statSquare := square
+		if size > 0 || square {
+			statSize = 0
+			statSquare = false
+		}
+		cacheKey := a.artworkCacheKey(ctx, artID, statSize, statSquare, 's')
+		if a.statCache != nil {
+			if lastUpdate, cacheErr := a.statCache.Get(cacheKey); cacheErr == nil {
+				return lastUpdate, nil
+			}
+		}
+		value, statErr, _ := a.statGroup.Do(cacheKey, func() (any, error) {
+			if a.statCache != nil {
+				if lastUpdate, cacheErr := a.statCache.Get(cacheKey); cacheErr == nil {
+					return lastUpdate, nil
+				}
+			}
+			lastUpdate, loadErr := a.statArtworkLastUpdated(ctx, artID, statSize, statSquare)
+			if loadErr == nil && a.statCache != nil {
+				_ = a.statCache.Add(cacheKey, lastUpdate)
+			}
+			return lastUpdate, loadErr
+		})
+		if statErr != nil {
+			err = statErr
+		} else {
+			return value.(time.Time), nil
+		}
+	}
+	if errors.Is(err, ErrUnavailable) {
+		return consts.ServerStart, nil
+	}
+	return time.Time{}, err
 }
 
 func (a *artwork) Get(ctx context.Context, artID model.ArtworkID, size int, square bool) (reader io.ReadCloser, lastUpdate time.Time, err error) {
@@ -127,27 +177,7 @@ func (a *artwork) getArtworkId(ctx context.Context, id string) (model.ArtworkID,
 }
 
 func (a *artwork) getArtworkReader(ctx context.Context, artID model.ArtworkID, size int, square bool) (artworkReader, error) {
-	artworkID := artID.String()
-	key := make([]byte, 0, len(artworkID)+32)
-	if user, ok := request.UserFrom(ctx); ok {
-		key = append(key, 'u')
-		key = append(key, user.ID...)
-		key = append(key, 0)
-		key = strconv.AppendBool(key, user.IsAdmin)
-		for _, library := range user.Libraries {
-			key = append(key, ',')
-			key = strconv.AppendInt(key, int64(library.ID), 10)
-		}
-	} else {
-		key = append(key, 'n')
-	}
-	key = append(key, 0)
-	key = append(key, artworkID...)
-	key = append(key, 0)
-	key = strconv.AppendInt(key, int64(size), 10)
-	key = append(key, 0)
-	key = strconv.AppendBool(key, square)
-	cacheKey := string(key)
+	cacheKey := a.artworkCacheKey(ctx, artID, size, square, 'r')
 	if a.readerCache != nil {
 		if reader, cacheErr := a.readerCache.Get(cacheKey); cacheErr == nil {
 			return reader, nil
@@ -196,4 +226,29 @@ func (a *artwork) buildArtworkReader(ctx context.Context, artID model.ArtworkID,
 		}
 	}
 	return artReader, err
+}
+
+func (a *artwork) artworkCacheKey(ctx context.Context, artID model.ArtworkID, size int, square bool, kind byte) string {
+	artworkID := artID.String()
+	key := make([]byte, 0, len(artworkID)+34)
+	key = append(key, kind)
+	if user, ok := request.UserFrom(ctx); ok {
+		key = append(key, 'u')
+		key = append(key, user.ID...)
+		key = append(key, 0)
+		key = strconv.AppendBool(key, user.IsAdmin)
+		for _, library := range user.Libraries {
+			key = append(key, ',')
+			key = strconv.AppendInt(key, int64(library.ID), 10)
+		}
+	} else {
+		key = append(key, 'n')
+	}
+	key = append(key, 0)
+	key = append(key, artworkID...)
+	key = append(key, 0)
+	key = strconv.AppendInt(key, int64(size), 10)
+	key = append(key, 0)
+	key = strconv.AppendBool(key, square)
+	return string(key)
 }

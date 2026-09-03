@@ -907,11 +907,15 @@ fn is_api_path(path: &str) -> bool {
 
 fn is_media_path(path: &str) -> bool {
     let path = path.strip_suffix(".view").unwrap_or(path);
-    let normalized = if path.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        path.to_ascii_lowercase()
+    if path.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        let normalized = path.to_ascii_lowercase();
+        is_normalized_media_path(&normalized)
     } else {
-        path.to_string()
-    };
+        is_normalized_media_path(path)
+    }
+}
+
+fn is_normalized_media_path(normalized: &str) -> bool {
     normalized.ends_with("/rest/stream")
         || normalized.ends_with("/rest/download")
         || normalized.ends_with("/rest/gettranscodestream")

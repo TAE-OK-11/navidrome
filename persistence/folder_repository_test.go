@@ -349,4 +349,28 @@ var _ = Describe("FolderRepository", func() {
 			Expect(ids).To(ConsistOf(withPls.ID)) // only the non-missing folder with playlists
 		})
 	})
+
+	Describe("GetFolderHashes", func() {
+		It("returns library-relative paths used by the Rust scanner", func() {
+			album := model.NewFolder(testLib, "TestHashes/Artist/Album")
+			album.Hash = "abc123"
+			empty := model.NewFolder(testLib, "TestHashes/Artist/Empty")
+			sibling := model.NewFolder(testLib, "TestHashes/Other")
+			sibling.Hash = "def456"
+			Expect(repo.Put(album)).To(Succeed())
+			Expect(repo.Put(empty)).To(Succeed())
+			Expect(repo.Put(sibling)).To(Succeed())
+
+			all, err := repo.GetFolderHashes(testLib)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(all).To(HaveKeyWithValue("TestHashes/Artist/Album", "abc123"))
+			Expect(all).To(HaveKeyWithValue("TestHashes/Other", "def456"))
+			Expect(all).ToNot(HaveKey("TestHashes/Artist/Empty"))
+
+			selective, err := repo.GetFolderHashes(testLib, "TestHashes/Artist")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(selective).To(HaveKeyWithValue("TestHashes/Artist/Album", "abc123"))
+			Expect(selective).ToNot(HaveKey("TestHashes/Other"))
+		})
+	})
 })

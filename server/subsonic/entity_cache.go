@@ -1,11 +1,14 @@
 package subsonic
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 )
@@ -80,13 +83,52 @@ func (c *entityResponseCache) deleteByEntityID(id string) {
 	c.deleteBySuffix("|" + id)
 }
 
+func (c *entityResponseCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]entityResponseCacheEntry)
+}
+
+func playerResponseCacheKey(ctx context.Context) string {
+	player, ok := request.PlayerFrom(ctx)
+	if !ok {
+		return ""
+	}
+	var key strings.Builder
+	key.Grow(len(player.Client) + 16)
+	if isClientInList(conf.Server.Subsonic.MinimalClients, player.Client) {
+		key.WriteByte('m')
+	}
+	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+		key.WriteByte('l')
+	}
+	if player.ReportRealPath {
+		key.WriteByte('p')
+	}
+	key.WriteByte(0)
+	key.WriteString(player.Client)
+	if trc, ok := request.TranscodingFrom(ctx); ok && trc.TargetFormat != "" {
+		key.WriteByte(0)
+		key.WriteString(trc.TargetFormat)
+	}
+	if player.MaxBitRate > 0 {
+		key.WriteByte(0)
+		key.WriteString(strconv.Itoa(player.MaxBitRate))
+	}
+	return key.String()
+}
+
 func entityResponseCacheKey(r *http.Request, kind, id string) string {
 	user, ok := request.UserFrom(r.Context())
 	userKey := ""
 	if ok {
 		userKey = genreResponseCacheKey(user)
 	}
-	return userKey + "|" + kind + "|" + id
+	playerKey := playerResponseCacheKey(r.Context())
+	if playerKey == "" {
+		return userKey + "|" + kind + "|" + id
+	}
+	return userKey + "|" + playerKey + "|" + kind + "|" + id
 }
 
 func (api *Router) cachedSubsonicResponse(r *http.Request, cacheKey string, loader func() (*responses.Subsonic, error)) (*responses.Subsonic, error) {

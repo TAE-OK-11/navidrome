@@ -3,7 +3,6 @@ package public
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server"
 	"github.com/navidrome/navidrome/utils/httpcache"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -42,6 +42,29 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	size := p.IntOr("size", 0)
 	square := p.BoolOr("square", false)
 
+	if httpcache.HasArtworkValidators(r) {
+		lastUpdate, err := pub.artwork.StatOrPlaceholder(ctx, artId.String(), size, square)
+		switch {
+		case errors.Is(err, context.Canceled):
+			return
+		case errors.Is(err, model.ErrNotFound):
+			log.Debug(r, "Artwork not found", "id", id, err)
+			http.Error(w, "Artwork not found", http.StatusNotFound)
+			return
+		case errors.Is(err, artwork.ErrUnavailable):
+			log.Debug(r, "Item does not have artwork", "id", id, err)
+			http.Error(w, "Artwork not found", http.StatusNotFound)
+			return
+		case err != nil:
+			log.Error(r, "Error retrieving coverArt", "id", id, err)
+			http.Error(w, "Error retrieving coverArt", http.StatusInternalServerError)
+			return
+		}
+		if httpcache.SetArtworkHeaders(w, r, lastUpdate) {
+			return
+		}
+	}
+
 	imgReader, lastUpdate, err := pub.artwork.Get(ctx, artId, size, square)
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -64,7 +87,7 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	if httpcache.SetArtworkHeaders(w, r, lastUpdate) {
 		return
 	}
-	cnt, err := io.Copy(w, imgReader)
+	cnt, err := ioutils.Copy(w, imgReader)
 	if err != nil {
 		if !server.IsExpectedTransportError(ctx, err) {
 			log.Warn(ctx, "Error sending image", "count", cnt, err)

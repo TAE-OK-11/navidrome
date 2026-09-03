@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	maxImageWorkers      = 2
+	maxImageWorkers      = 4
 	maxWorkerOutputBytes = 64 * 1024 * 1024
 )
 

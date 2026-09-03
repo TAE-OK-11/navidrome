@@ -119,4 +119,16 @@ var _ = Describe("Folder", func() {
 			Expect(folder.CreatedAt).To(BeTemporally("~", time.Now(), time.Second))
 		})
 	})
+
+	Describe("LibraryRelativePath", func() {
+		It("returns '.' for the library root", func() {
+			Expect(model.NewFolder(lib, ".").LibraryRelativePath()).To(Equal("."))
+		})
+		It("returns the folder name for a top-level folder", func() {
+			Expect(model.NewFolder(lib, "rock").LibraryRelativePath()).To(Equal("rock"))
+		})
+		It("joins parent path and name for nested folders", func() {
+			Expect(model.NewFolder(lib, "The Beatles/Help!").LibraryRelativePath()).To(Equal("The Beatles/Help!"))
+		})
+	})
 })

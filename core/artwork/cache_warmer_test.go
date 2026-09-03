@@ -229,6 +229,11 @@ func (m *mockArtwork) GetOrPlaceholder(ctx context.Context, id string, size int,
 	return m.Get(ctx, model.ArtworkID{}, size, square)
 }
 
+func (m *mockArtwork) StatOrPlaceholder(ctx context.Context, id string, size int, square bool) (time.Time, error) {
+	_, lastUpdate, err := m.GetOrPlaceholder(ctx, id, size, square)
+	return lastUpdate, err
+}
+
 type mockFileCache struct {
 	disabled atomic.Bool
 	ready    atomic.Bool

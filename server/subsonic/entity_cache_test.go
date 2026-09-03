@@ -44,3 +44,18 @@ func TestEntityResponseCacheDeleteBySuffix(t *testing.T) {
 		t.Fatal("expected song cache entry to remain")
 	}
 }
+
+func TestEntityResponseCacheClear(t *testing.T) {
+	cache := &entityResponseCache{}
+	now := time.Now()
+	cache.put("user|artist|abc", now, newResponse())
+	cache.put("user|album|xyz", now, newResponse())
+
+	cache.clear()
+	if _, hit := cache.get("user|artist|abc", now); hit {
+		t.Fatal("expected cache to be empty after clear")
+	}
+	if _, hit := cache.get("user|album|xyz", now); hit {
+		t.Fatal("expected cache to be empty after clear")
+	}
+}

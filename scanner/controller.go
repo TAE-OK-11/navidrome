@@ -20,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/events"
+	"github.com/navidrome/navidrome/server/responsecache"
 	"github.com/navidrome/navidrome/utils/pl"
 	"golang.org/x/time/rate"
 )
@@ -242,6 +243,7 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	}
 	// If changes were detected, send a refresh event to all clients
 	if s.changesDetected {
+		responsecache.InvalidateCatalog()
 		log.Debug(ctx, "Library changes imported. Sending refresh event")
 		s.broker.SendBroadcastMessage(ctx, &events.RefreshResource{})
 	}

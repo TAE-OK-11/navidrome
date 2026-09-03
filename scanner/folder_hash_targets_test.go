@@ -3,16 +3,15 @@ package scanner
 import (
 	"testing"
 
+	"github.com/navidrome/navidrome/model"
 	"github.com/stretchr/testify/require"
 )
 
-func TestFolderHashInScanTargets(t *testing.T) {
+func TestLibraryRelativePathMatchesRustWalkKeys(t *testing.T) {
 	t.Parallel()
-	targets := []string{"The Beatles/Help!", "Pink Floyd"}
+	lib := model.Library{ID: 1, Path: "/music"}
 
-	require.True(t, folderHashInScanTargets("The Beatles/Help!", nil))
-	require.True(t, folderHashInScanTargets("The Beatles/Help!/01", targets))
-	require.True(t, folderHashInScanTargets("Pink Floyd/The Wall", targets))
-	require.False(t, folderHashInScanTargets("The Beatles/Revolver", targets))
-	require.False(t, folderHashInScanTargets("Other/Artist", targets))
+	require.Equal(t, ".", model.NewFolder(lib, ".").LibraryRelativePath())
+	require.Equal(t, "The Beatles/Help!", model.NewFolder(lib, "The Beatles/Help!").LibraryRelativePath())
+	require.Equal(t, "The Beatles/Help!/01", model.NewFolder(lib, "The Beatles/Help!/01").LibraryRelativePath())
 }

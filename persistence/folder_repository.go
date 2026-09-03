@@ -126,48 +126,71 @@ func (r folderRepository) GetFolderUpdateInfo(lib model.Library, targetPaths ...
 	return result, nil
 }
 
-// getFolderUpdateInfoAll returns update info for all non-missing folders in the library
-func (r folderRepository) getFolderUpdateInfoAll(lib model.Library) (map[string]model.FolderUpdateInfo, error) {
-	where := And{
-		Eq{"library_id": lib.ID},
-		Eq{"missing": false},
-	}
-	return r.queryFolderUpdateInfo(where)
+func (r folderRepository) GetFolderHashes(lib model.Library, targetPaths ...string) (map[string]string, error) {
+	result := make(map[string]string)
+	err := r.forEachFolderScope(lib, targetPaths, func(where And) error {
+		batch, err := r.queryFolderHashes(where)
+		if err != nil {
+			return err
+		}
+		maps.Copy(result, batch)
+		return nil
+	})
+	return result, err
 }
 
-// getFolderUpdateInfoBatch returns update info for a batch of target paths and their descendants
-func (r folderRepository) getFolderUpdateInfoBatch(lib model.Library, targetPaths []string) (map[string]model.FolderUpdateInfo, error) {
-	where := And{
+func (r folderRepository) forEachFolderScope(lib model.Library, targetPaths []string, fn func(And) error) error {
+	if len(targetPaths) == 0 {
+		return fn(folderLibraryWhere(lib))
+	}
+	for _, targetPath := range targetPaths {
+		if targetPath == "" || targetPath == "." {
+			return fn(folderLibraryWhere(lib))
+		}
+	}
+	const batchSize = 100
+	for batch := range slices.Chunk(targetPaths, batchSize) {
+		if err := fn(folderTargetWhere(lib, batch)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func folderLibraryWhere(lib model.Library) And {
+	return And{
 		Eq{"library_id": lib.ID},
 		Eq{"missing": false},
 	}
+}
 
-	// Collect folder IDs for exact target folders and path conditions for descendants
+func folderTargetWhere(lib model.Library, targetPaths []string) And {
+	where := folderLibraryWhere(lib)
 	folderIDs := make([]string, 0, len(targetPaths))
 	pathConditions := make(Or, 0, len(targetPaths)*2)
-
 	for _, targetPath := range targetPaths {
-		// Clean the path to normalize it. Paths stored in the folder table do not have leading/trailing slashes.
 		cleanPath := strings.TrimPrefix(targetPath, string(os.PathSeparator))
 		cleanPath = filepath.Clean(cleanPath)
-
-		// Include the target folder itself by ID
 		folderIDs = append(folderIDs, model.FolderID(lib, cleanPath))
-
-		// Include all descendants: folders whose path field equals or starts with the target path
-		// Note: Folder.Path is the directory path, so children have path = targetPath
 		pathConditions = append(pathConditions, Eq{"path": cleanPath})
 		pathConditions = append(pathConditions, Like{"path": cleanPath + "/%"})
 	}
-
-	// Combine conditions: exact folder IDs OR descendant path patterns
 	if len(folderIDs) > 0 {
 		where = append(where, Or{Eq{"id": folderIDs}, pathConditions})
 	} else if len(pathConditions) > 0 {
 		where = append(where, pathConditions)
 	}
+	return where
+}
 
-	return r.queryFolderUpdateInfo(where)
+// getFolderUpdateInfoAll returns update info for all non-missing folders in the library
+func (r folderRepository) getFolderUpdateInfoAll(lib model.Library) (map[string]model.FolderUpdateInfo, error) {
+	return r.queryFolderUpdateInfo(folderLibraryWhere(lib))
+}
+
+// getFolderUpdateInfoBatch returns update info for a batch of target paths and their descendants
+func (r folderRepository) getFolderUpdateInfoBatch(lib model.Library, targetPaths []string) (map[string]model.FolderUpdateInfo, error) {
+	return r.queryFolderUpdateInfo(folderTargetWhere(lib, targetPaths))
 }
 
 // queryFolderUpdateInfo executes the query and returns the result map
@@ -185,6 +208,24 @@ func (r folderRepository) queryFolderUpdateInfo(where And) (map[string]model.Fol
 	m := make(map[string]model.FolderUpdateInfo, len(res))
 	for _, f := range res {
 		m[f.ID] = model.FolderUpdateInfo{UpdatedAt: f.UpdatedAt, Hash: f.Hash}
+	}
+	return m, nil
+}
+
+func (r folderRepository) queryFolderHashes(where And) (map[string]string, error) {
+	sq := r.newSelect().Columns("path", "name", "hash").Where(where).Where(NotEq{"hash": ""})
+	var res []struct {
+		Path string
+		Name string
+		Hash string
+	}
+	if err := r.queryAll(sq, &res); err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(res))
+	for _, f := range res {
+		rel := model.Folder{Path: f.Path, Name: f.Name}.LibraryRelativePath()
+		m[rel] = f.Hash
 	}
 	return m, nil
 }

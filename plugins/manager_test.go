@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/server/events"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -129,12 +130,16 @@ var _ = Describe("Manager", Ordered, func() {
 	Describe("sendPluginRefreshEvent", func() {
 		var broker *testBroker
 		var manager *Manager
+		var bus *eventbus.Bus
 
 		BeforeEach(func() {
 			broker = &testBroker{}
+			bus = eventbus.New()
 			manager = &Manager{
-				broker: broker,
+				bus: bus,
 			}
+			DeferCleanup(events.ForwardFromBus(bus, broker))
+			DeferCleanup(bus.Close)
 		})
 
 		It("sends refresh event with single plugin ID", func() {
@@ -167,8 +172,8 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(refreshEvent.Data(refreshEvent)).To(Equal(`{"plugin":["*"]}`))
 		})
 
-		It("does not panic when broker is nil", func() {
-			manager.broker = nil
+		It("does not panic when the event bus is nil", func() {
+			manager.bus = nil
 			Expect(func() {
 				manager.sendPluginRefreshEvent(ctx, "test-plugin")
 			}).ToNot(Panic())

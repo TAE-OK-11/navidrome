@@ -26,6 +26,7 @@ type scannerImpl struct {
 
 // scanState holds the state of an in-progress scan, to be passed to the various phases
 type scanState struct {
+	ctx               context.Context
 	progress          chan<- *ProgressInfo
 	fullScan          bool
 	changesDetected   atomic.Bool
@@ -35,6 +36,11 @@ type scanState struct {
 }
 
 func (s *scanState) sendProgress(info *ProgressInfo) {
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	PublishProgress(ctx, info)
 	if s.progress != nil {
 		s.progress <- info
 	}
@@ -77,6 +83,7 @@ func (s *scannerImpl) scanFolders(ctx context.Context, fullScan bool, targets []
 	startTime := time.Now()
 
 	state := scanState{
+		ctx:             ctx,
 		progress:        progress,
 		fullScan:        fullScan,
 		changesDetected: atomic.Bool{},

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"testing"
 
 	"github.com/deluan/rest"
 	"github.com/go-chi/chi/v5"
@@ -82,7 +83,6 @@ type Router struct {
 	provider          external.Provider
 	playlists         playlistsvc.Playlists
 	scanner           model.Scanner
-	broker            events.Broker
 	scrobbler         scrobbler.PlayTracker
 	share             core.Share
 	playback          playback.PlaybackServer
@@ -97,10 +97,12 @@ type Router struct {
 	entityCache       entityResponseCache
 	streamFiles       *streamMediaCache
 	rustSearch        *rustsearch.Engine
+	rustSearchUnsub   func()
+	internalHandlers  map[string]handlerRaw
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,
-	players core.Players, provider external.Provider, scanner model.Scanner, broker events.Broker,
+	players core.Players, provider external.Provider, scanner model.Scanner, _ events.Broker,
 	playlists playlistsvc.Playlists, scrobbler scrobbler.PlayTracker, share core.Share, playback playback.PlaybackServer,
 	metrics metrics.Metrics, lyrics lyricssvc.Lyrics, transcodeDecision stream.TranscodeDecider,
 	sonic *sonicsvc.Sonic,
@@ -114,7 +116,6 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		provider:          provider,
 		playlists:         playlists,
 		scanner:           scanner,
-		broker:            broker,
 		scrobbler:         scrobbler,
 		share:             share,
 		playback:          playback,
@@ -123,18 +124,52 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		transcodeDecision: transcodeDecision,
 		sonic:             sonic,
 		streamFiles:       newStreamMediaCache(streamMediaCacheLimit, streamMediaCacheTTL),
+		internalHandlers:  make(map[string]handlerRaw),
 	}
 	if rustsearch.Available() {
 		r.rustSearch = rustsearch.New()
-		go func() {
-			if err := r.rustSearch.Rebuild(context.Background(), ds); err != nil {
-				log.Warn("Rust search startup failed; SQLite search remains active", err)
-			}
-		}()
+		r.rustSearchUnsub = r.rustSearch.ListenForScans(ds)
+		if !testing.Testing() {
+			go func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						log.Warn("Rust search startup panicked; SQLite search remains active", rec)
+					}
+				}()
+				if err := r.rustSearch.Rebuild(context.Background(), ds); err != nil {
+					log.Warn("Rust search startup failed; SQLite search remains active", err)
+				}
+			}()
+		}
 	}
 	r.Handler = r.routes()
 	r.registerResponseCacheHooks()
 	return r
+}
+
+// RebuildRustSearch rebuilds the Tantivy index from the current library.
+// Production starts this from New; tests (including e2e) call it when they
+// need rust-backed search instead of SQLite FTS.
+func (api *Router) RebuildRustSearch(ctx context.Context) error {
+	if api == nil || api.rustSearch == nil {
+		return nil
+	}
+	api.rustSearch.EnableForTests()
+	return api.rustSearch.Rebuild(ctx, api.ds)
+}
+
+// ShutdownRustSearch stops the Tantivy worker so another router can rebuild the index.
+func (api *Router) ShutdownRustSearch() {
+	if api == nil {
+		return
+	}
+	if api.rustSearchUnsub != nil {
+		api.rustSearchUnsub()
+		api.rustSearchUnsub = nil
+	}
+	if api.rustSearch != nil {
+		api.rustSearch.Shutdown()
+	}
 }
 
 func (api *Router) registerResponseCacheHooks() {
@@ -154,7 +189,7 @@ func (api *Router) routes() http.Handler {
 	r.Use(postFormToQueryParams)
 
 	// Public
-	h(r, "getOpenSubsonicExtensions", api.GetOpenSubsonicExtensions)
+	api.h(r, "getOpenSubsonicExtensions", api.GetOpenSubsonicExtensions)
 
 	// Protected: params → auth → last-access, then a single player-aware
 	// branch for catalog/JSON APIs. Binary endpoints keep their own player
@@ -189,120 +224,113 @@ func (api *Router) routes() http.Handler {
 }
 
 func (api *Router) registerSystemRoutes(r chi.Router) {
-	h(r, "ping", api.Ping)
-	h(r, "getLicense", api.GetLicense)
-	h(r, "tokenInfo", api.GetTokenInfo)
-	h(r, "getMusicFolders", api.GetMusicFolders)
-	h(r, "getGenres", api.GetGenres)
-	h(r, "getScanStatus", api.GetScanStatus)
-	h(r.With(adminOnly, rejectCrossSiteProxyMutation), "startScan", api.StartScan)
+	api.h(r, "ping", api.Ping)
+	api.h(r, "getLicense", api.GetLicense)
+	api.h(r, "tokenInfo", api.GetTokenInfo)
+	api.h(r, "getMusicFolders", api.GetMusicFolders)
+	api.h(r, "getGenres", api.GetGenres)
+	api.h(r, "getScanStatus", api.GetScanStatus)
+	api.h(r.With(adminOnly, rejectCrossSiteProxyMutation), "startScan", api.StartScan)
 }
 
 func (api *Router) registerPlayerRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(getPlayer(api.players))
 
-		h(r, "getIndexes", api.GetIndexes)
-		h(r, "getArtists", api.GetArtists)
-		h(r, "getMusicDirectory", api.GetMusicDirectory)
-		h(r, "getArtist", api.GetArtist)
-		h(r, "getAlbum", api.GetAlbum)
-		h(r, "getSong", api.GetSong)
-		h(r, "getAlbumInfo", api.GetAlbumInfo)
-		h(r, "getAlbumInfo2", api.GetAlbumInfo)
-		h(r, "getArtistInfo", api.GetArtistInfo)
-		h(r, "getArtistInfo2", api.GetArtistInfo2)
-		h(r, "getTopSongs", api.GetTopSongs)
-		h(r, "getSimilarSongs", api.GetSimilarSongs)
-		h(r, "getSimilarSongs2", api.GetSimilarSongs2)
-		hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
-		hr(r, "findSonicPath", api.FindSonicPath)
+		api.h(r, "getIndexes", api.GetIndexes)
+		api.h(r, "getArtists", api.GetArtists)
+		api.h(r, "getMusicDirectory", api.GetMusicDirectory)
+		api.h(r, "getArtist", api.GetArtist)
+		api.h(r, "getAlbum", api.GetAlbum)
+		api.h(r, "getSong", api.GetSong)
+		api.h(r, "getAlbumInfo", api.GetAlbumInfo)
+		api.h(r, "getAlbumInfo2", api.GetAlbumInfo)
+		api.h(r, "getArtistInfo", api.GetArtistInfo)
+		api.h(r, "getArtistInfo2", api.GetArtistInfo2)
+		api.h(r, "getTopSongs", api.GetTopSongs)
+		api.h(r, "getSimilarSongs", api.GetSimilarSongs)
+		api.h(r, "getSimilarSongs2", api.GetSimilarSongs2)
+		api.hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
+		api.hr(r, "findSonicPath", api.FindSonicPath)
 
-		hr(r, "getAlbumList", api.GetAlbumList)
-		hr(r, "getAlbumList2", api.GetAlbumList2)
-		h(r, "getStarred", api.GetStarred)
-		h(r, "getStarred2", api.GetStarred2)
-		h(r, "getNowPlaying", api.GetNowPlaying)
-		h(r, "getRandomSongs", api.GetRandomSongs)
-		h(r, "getSongsByGenre", api.GetSongsByGenre)
+		api.hr(r, "getAlbumList", api.GetAlbumList)
+		api.hr(r, "getAlbumList2", api.GetAlbumList2)
+		api.h(r, "getStarred", api.GetStarred)
+		api.h(r, "getStarred2", api.GetStarred2)
+		api.h(r, "getNowPlaying", api.GetNowPlaying)
+		api.h(r, "getRandomSongs", api.GetRandomSongs)
+		api.h(r, "getSongsByGenre", api.GetSongsByGenre)
 
-		h(r, "getPlaylists", api.GetPlaylists)
-		h(r, "getPlaylist", api.GetPlaylist)
-		h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
-		h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
-		h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
+		api.h(r, "getPlaylists", api.GetPlaylists)
+		api.h(r, "getPlaylist", api.GetPlaylist)
+		api.h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
+		api.h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
+		api.h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
 
-		h(r, "getBookmarks", api.GetBookmarks)
-		h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
-		h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
-		h(r, "getPlayQueue", api.GetPlayQueue)
-		h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
-		h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
-		h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
+		api.h(r, "getBookmarks", api.GetBookmarks)
+		api.h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
+		api.h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
+		api.h(r, "getPlayQueue", api.GetPlayQueue)
+		api.h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
+		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
+		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
 
-		h(r, "search2", api.Search2)
-		h(r, "search3", api.Search3)
+		api.h(r, "search2", api.Search2)
+		api.h(r, "search3", api.Search3)
 
-		h(r, "getUser", api.GetUser)
-		h(r.With(adminOnly), "getUsers", api.GetUsers)
+		api.h(r, "getUser", api.GetUser)
+		api.h(r.With(adminOnly), "getUsers", api.GetUsers)
 
-		h(r, "getInternetRadioStations", api.GetInternetRadios)
+		api.h(r, "getInternetRadioStations", api.GetInternetRadios)
 		r.Group(func(r chi.Router) {
 			r.Use(adminOnly)
 			r.Use(rejectCrossSiteProxyMutation)
-			h(r, "createInternetRadioStation", api.CreateInternetRadio)
-			h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
-			h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
+			api.h(r, "createInternetRadioStation", api.CreateInternetRadio)
+			api.h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
+			api.h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(rejectCrossSiteProxyMutation)
-			h(r, "setRating", api.SetRating)
-			h(r, "star", api.Star)
-			h(r, "unstar", api.Unstar)
-			h(r, "scrobble", api.Scrobble)
-			h(r, "reportPlayback", api.ReportPlayback)
+			api.h(r, "setRating", api.SetRating)
+			api.h(r, "star", api.Star)
+			api.h(r, "unstar", api.Unstar)
+			api.h(r, "scrobble", api.Scrobble)
+			api.h(r, "reportPlayback", api.ReportPlayback)
 		})
 
 		if conf.Server.EnableSharing {
-			h(r, "getShares", api.GetShares)
-			h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
-			h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
-			h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
+			api.h(r, "getShares", api.GetShares)
+			api.h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
+			api.h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
+			api.h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
 		}
 
 		if conf.Server.Jukebox.Enabled {
-			h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
+			api.h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
 		}
 	})
 }
 
 func (api *Router) registerMediaRoutes(r chi.Router) {
-	hr(r, "getAvatar", api.GetAvatar)
-	h(r, "getLyrics", api.GetLyrics)
-	h(r, "getLyricsBySongId", api.GetLyricsBySongId)
+	api.hr(r, "getAvatar", api.GetAvatar)
+	api.h(r, "getLyrics", api.GetLyrics)
+	api.h(r, "getLyricsBySongId", api.GetLyricsBySongId)
 
 	r.Group(func(r chi.Router) {
 		r.Use(getStreamPlayer(api.players))
-		hr(r, "stream", api.Stream)
+		api.hr(r, "stream", api.Stream)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(getFreshPlayer(api.players))
-		hr(r, "download", api.Download)
-		hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
-		hr(r, "getTranscodeStream", api.GetTranscodeStream)
+		api.hr(r, "download", api.Download)
+		api.hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
+		api.hr(r, "getTranscodeStream", api.GetTranscodeStream)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(server.ThrottleBacklog(conf.Server.DevArtworkMaxRequests, conf.Server.DevArtworkThrottleBacklogLimit,
 			conf.Server.DevArtworkThrottleBacklogTimeout))
-		hr(r, "getCoverArt", api.GetCoverArt)
-	})
-}
-
-// Add a Subsonic handler
-func h(r chi.Router, path string, f handler) {
-	hr(r, path, func(_ http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
-		return f(r)
+		api.hr(r, "getCoverArt", api.GetCoverArt)
 	})
 }
 

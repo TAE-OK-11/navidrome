@@ -41,6 +41,10 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 	if name == "" {
 		return nil, "", errors.New("name is required")
 	}
+	now := time.Now()
+	if input.ExpiresAt != nil && input.ExpiresAt.Before(now) {
+		return nil, "", errors.New("expiresAt must be in the future")
+	}
 	pepper, err := s.pepper(ctx)
 	if err != nil {
 		return nil, "", err
@@ -51,10 +55,6 @@ func (s *Service) Create(ctx context.Context, userID string, input CreateInput) 
 		return nil, "", err
 	}
 
-	now := time.Now()
-	if input.ExpiresAt != nil && input.ExpiresAt.Before(now) {
-		return nil, "", errors.New("expiresAt must be in the future")
-	}
 	key := &model.UserAPIKey{
 		ID:           id.NewRandom(),
 		UserID:       userID,

@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -40,17 +41,17 @@ type libraryService struct {
 	ds            model.DataStore
 	scanner       model.Scanner
 	watcher       Watcher
-	broker        events.Broker
+	bus           *eventbus.Bus
 	pluginManager PluginUnloader
 }
 
 // NewLibrary creates a new Library service
-func NewLibrary(ds model.DataStore, scanner model.Scanner, watcher Watcher, broker events.Broker, pluginManager PluginUnloader) Library {
+func NewLibrary(ds model.DataStore, scanner model.Scanner, watcher Watcher, _ events.Broker, pluginManager PluginUnloader) Library {
 	return &libraryService{
 		ds:            ds,
 		scanner:       scanner,
 		watcher:       watcher,
-		broker:        broker,
+		bus:           eventbus.Get(),
 		pluginManager: pluginManager,
 	}
 }
@@ -97,11 +98,18 @@ func (s *libraryService) SetUserLibraries(ctx context.Context, userID string, li
 	}
 
 	// Send refresh event to all clients
-	event := &events.RefreshResource{}
 	libIDs := slice.Map(libraryIDs, func(id int) string { return strconv.Itoa(id) })
-	event = event.With("user", userID).With("library", libIDs...)
-	s.broker.SendBroadcastMessage(ctx, event)
+	refresh := (&eventbus.RefreshResource{}).Add("user", userID).Add("library", libIDs...)
+	s.publishRefresh(ctx, refresh)
 	return nil
+}
+
+func (s *libraryService) publishRefresh(ctx context.Context, refresh *eventbus.RefreshResource) {
+	bus := s.bus
+	if bus == nil {
+		bus = eventbus.Get()
+	}
+	bus.PublishUISync(ctx, eventbus.Event{Topic: eventbus.TopicRefreshResource, Refresh: refresh}, true)
 }
 
 func (s *libraryService) ValidateLibraryAccess(ctx context.Context, userID string, libraryID int) error {
@@ -142,7 +150,7 @@ func (s *libraryService) NewRepository(ctx context.Context) rest.Repository {
 		ds:                s.ds,
 		scanner:           s.scanner,
 		watcher:           s.watcher,
-		broker:            s.broker,
+		bus:               s.bus,
 		pluginManager:     s.pluginManager,
 	}
 	return wrapper
@@ -155,8 +163,16 @@ type libraryRepositoryWrapper struct {
 	ds            model.DataStore
 	scanner       model.Scanner
 	watcher       Watcher
-	broker        events.Broker
+	bus           *eventbus.Bus
 	pluginManager PluginUnloader
+}
+
+func (r *libraryRepositoryWrapper) publishRefresh(ctx context.Context, refresh *eventbus.RefreshResource) {
+	bus := r.bus
+	if bus == nil {
+		bus = eventbus.Get()
+	}
+	bus.PublishUISync(ctx, eventbus.Event{Topic: eventbus.TopicRefreshResource, Refresh: refresh}, true)
 }
 
 func (r *libraryRepositoryWrapper) Save(entity any) (string, error) {
@@ -181,12 +197,9 @@ func (r *libraryRepositoryWrapper) Save(entity any) (string, error) {
 		go r.triggerScan(lib, "new")
 	}
 
-	// Send library refresh event to all clients
-	if r.broker != nil {
-		event := &events.RefreshResource{}
-		r.broker.SendBroadcastMessage(r.ctx, event.With("library", strconv.Itoa(lib.ID)))
-		log.Debug(r.ctx, "Library created - sent refresh event", "libraryID", lib.ID, "name", lib.Name)
-	}
+	refresh := (&eventbus.RefreshResource{}).Add("library", strconv.Itoa(lib.ID))
+	r.publishRefresh(r.ctx, refresh)
+	log.Debug(r.ctx, "Library created - sent refresh event", "libraryID", lib.ID, "name", lib.Name)
 
 	return strconv.Itoa(lib.ID), nil
 }
@@ -229,12 +242,9 @@ func (r *libraryRepositoryWrapper) Update(id string, entity any, _ ...string) er
 		}
 	}
 
-	// Send library refresh event to all clients
-	if r.broker != nil {
-		event := &events.RefreshResource{}
-		r.broker.SendBroadcastMessage(r.ctx, event.With("library", id))
-		log.Debug(r.ctx, "Library updated - sent refresh event", "libraryID", libID, "name", lib.Name)
-	}
+	refresh := (&eventbus.RefreshResource{}).Add("library", id)
+	r.publishRefresh(r.ctx, refresh)
+	log.Debug(r.ctx, "Library updated - sent refresh event", "libraryID", libID, "name", lib.Name)
 
 	return nil
 }
@@ -273,12 +283,9 @@ func (r *libraryRepositoryWrapper) Delete(id string) error {
 		go r.triggerScan(lib, "deleted")
 	}
 
-	// Send library refresh event to all clients
-	if r.broker != nil {
-		event := &events.RefreshResource{}
-		r.broker.SendBroadcastMessage(r.ctx, event.With("library", id))
-		log.Debug(r.ctx, "Library deleted - sent refresh event", "libraryID", libID, "name", lib.Name)
-	}
+	refresh := (&eventbus.RefreshResource{}).Add("library", id)
+	r.publishRefresh(r.ctx, refresh)
+	log.Debug(r.ctx, "Library deleted - sent refresh event", "libraryID", libID, "name", lib.Name)
 
 	// After successful deletion, check if any plugins were auto-disabled
 	// and need to be unloaded from memory
@@ -394,7 +401,7 @@ func (s *libraryService) validateLibraryIDs(ctx context.Context, libraryIDs []in
 
 	// Use CountAll to efficiently validate library IDs exist
 	count, err := s.ds.Library(ctx).CountAll(model.QueryOptions{
-		Filters: squirrel.Eq{"id": libraryIDs},
+		Filters: query.Eq("id", libraryIDs),
 	})
 	if err != nil {
 		return fmt.Errorf("error validating library IDs: %w", err)

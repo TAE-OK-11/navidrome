@@ -3,6 +3,7 @@ package external_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 
 	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/model"
@@ -36,6 +37,10 @@ func (m *mockArtistRepo) Get(id string) (*model.Artist, error) {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Artist), args.Error(1)
+}
+
+func (m *mockArtistRepo) UpdateExternalInfo(_ *model.Artist) error {
+	return nil
 }
 
 // GetAll implements model.ArtistRepository.
@@ -156,6 +161,10 @@ func (m *mockAlbumRepo) Get(id string) (*model.Album, error) {
 	return args.Get(0).(*model.Album), args.Error(1)
 }
 
+func (m *mockAlbumRepo) UpdateExternalInfo(_ *model.Album) error {
+	return nil
+}
+
 // GetAll implements model.AlbumRepository.
 func (m *mockAlbumRepo) GetAll(options ...model.QueryOptions) (model.Albums, error) {
 	argsSlice := make([]any, len(options))
@@ -209,6 +218,9 @@ type mockAgents struct {
 	mbidAgent agents.ArtistMBIDRetriever
 	urlAgent  agents.ArtistURLRetriever
 	agents.Interface
+
+	artistImagesHit atomic.Bool
+	albumInfoHit    atomic.Bool
 }
 
 func (m *mockAgents) AgentName() string {
@@ -238,6 +250,7 @@ func (m *mockAgents) GetArtistTopSongs(ctx context.Context, id, artistName, mbid
 }
 
 func (m *mockAgents) GetAlbumInfo(ctx context.Context, name, artist, mbid string) (*agents.AlbumInfo, error) {
+	m.albumInfoHit.Store(true)
 	if m.albumInfoAgent != nil {
 		return m.albumInfoAgent.GetAlbumInfo(ctx, name, artist, mbid)
 	}
@@ -273,6 +286,7 @@ func (m *mockAgents) GetArtistBiography(ctx context.Context, id, name, mbid stri
 }
 
 func (m *mockAgents) GetArtistImages(ctx context.Context, id, name, mbid string) ([]agents.ExternalImage, error) {
+	m.artistImagesHit.Store(true)
 	if m.imageAgent != nil {
 		return m.imageAgent.GetArtistImages(ctx, id, name, mbid)
 	}

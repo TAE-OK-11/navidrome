@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/model"
 )
@@ -51,22 +51,21 @@ func (m *MockLibraryRepo) CountAll(qo ...model.QueryOptions) (int64, error) {
 		return int64(len(m.Data)), nil
 	}
 
-	// Handle squirrel.Eq filter for ID validation
-	if eq, ok := qo[0].Filters.(squirrel.Eq); ok {
-		if idFilter, exists := eq["id"]; exists {
-			if ids, isSlice := idFilter.([]int); isSlice {
-				count := 0
-				for _, id := range ids {
-					if _, exists := m.Data[id]; exists {
-						count++
-					}
-				}
-				return int64(count), nil
+	sql, args, err := qo[0].Filters.ToSql()
+	if err == nil && (strings.Contains(sql, "id IN") || strings.Contains(sql, "id =")) {
+		count := 0
+		for _, arg := range args {
+			id, ok := arg.(int)
+			if !ok {
+				continue
+			}
+			if _, exists := m.Data[id]; exists {
+				count++
 			}
 		}
+		return int64(count), nil
 	}
 
-	// Default to total count for other filters
 	return int64(len(m.Data)), nil
 }
 

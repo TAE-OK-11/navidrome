@@ -11,15 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	extism "github.com/extism/go-sdk"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/lyrics"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/core/sonic"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/events"
 	"github.com/navidrome/navidrome/utils/singleton"
 	"github.com/rjeczalik/notify"
@@ -64,17 +65,17 @@ type Manager struct {
 	// SubsonicAPI host function dependencies (set once before Start, not modified after)
 	subsonicRouter SubsonicRouter
 	ds             model.DataStore
-	broker         events.Broker
+	bus            *eventbus.Bus
 	metrics        PluginMetricsRecorder
 }
 
 // GetManager returns a singleton instance of the plugin manager.
 // The manager is not started automatically; call Start() to begin loading plugins.
-func GetManager(ds model.DataStore, broker events.Broker, m PluginMetricsRecorder) *Manager {
+func GetManager(ds model.DataStore, _ events.Broker, m PluginMetricsRecorder) *Manager {
 	return singleton.GetInstance(func() *Manager {
 		return &Manager{
 			ds:      ds,
-			broker:  broker,
+			bus:     eventbus.Get(),
 			metrics: m,
 			plugins: make(map[string]*plugin),
 		}
@@ -84,11 +85,13 @@ func GetManager(ds model.DataStore, broker events.Broker, m PluginMetricsRecorde
 // sendPluginRefreshEvent broadcasts a refresh event for the plugin resource.
 // This notifies connected UI clients that plugin data has changed.
 func (m *Manager) sendPluginRefreshEvent(ctx context.Context, pluginIDs ...string) {
-	if m.broker == nil {
-		return
+	bus := m.bus
+	if bus == nil {
+		bus = eventbus.Get()
 	}
-	event := (&events.RefreshResource{}).With("plugin", pluginIDs...)
-	m.broker.SendBroadcastMessage(ctx, event)
+	refresh := &eventbus.RefreshResource{}
+	refresh.Add("plugin", pluginIDs...)
+	bus.PublishUISync(ctx, eventbus.Event{Topic: eventbus.TopicRefreshResource, Refresh: refresh}, true)
 }
 
 // SetSubsonicRouter sets the Subsonic router for SubsonicAPI host functions.
@@ -557,7 +560,7 @@ func (m *Manager) UnloadDisabledPlugins(ctx context.Context) {
 
 	// Get all disabled plugins from the database
 	plugins, err := repo.GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"enabled": false},
+		Filters: query.Eq("enabled", false),
 	})
 	if err != nil {
 		log.Error(ctx, "Failed to get disabled plugins", err)

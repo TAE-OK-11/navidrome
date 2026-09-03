@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	ppl "github.com/google/go-pipeline/pkg/pipeline"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
@@ -26,6 +25,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/metadata"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils"
 	"github.com/navidrome/navidrome/utils/pl"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -116,7 +116,7 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 
 func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Library, targetFolders []string) (map[string]string, error) {
 	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.And{squirrel.Eq{"library_id": lib.ID}, squirrel.Eq{"missing": false}},
+		Filters: query.And(query.Eq("library_id", lib.ID), query.NotMissing()),
 	})
 	if err != nil {
 		return nil, err
@@ -263,7 +263,7 @@ func (p *phaseFolders) processFolder(entry *folderEntry) (*folderEntry, error) {
 
 	// Load children mediafiles from DB
 	cursor, err := p.ds.MediaFile(p.ctx).GetCursor(model.QueryOptions{
-		Filters: squirrel.And{squirrel.Eq{"folder_id": entry.id}},
+		Filters: query.Eq("folder_id", entry.id),
 	})
 	if err != nil {
 		log.Error(p.ctx, "Scanner: Error loading mediafiles from DB", "folder", entry.path, err)

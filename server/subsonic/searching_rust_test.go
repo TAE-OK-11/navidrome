@@ -25,7 +25,7 @@ func TestOrderRustResultsPreservesRelevanceAndDropsMissing(t *testing.T) {
 func TestRustSearchableQueryKeepsBroadQueriesOnSQLite(t *testing.T) {
 	t.Parallel()
 
-	for _, query := range []string{"", `""`, "a", "!!!"} {
+	for _, query := range []string{"", `""`, "a", "!!!", "22222222-2222-4222-a222-222222222222"} {
 		if rustSearchableQuery(query) {
 			t.Fatalf("rustSearchableQuery(%q) = true", query)
 		}

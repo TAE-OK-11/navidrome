@@ -2,20 +2,17 @@ package lastfm
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -126,7 +123,7 @@ func (c *client) trackGetSimilar(ctx context.Context, name, artist string, limit
 func (c *client) GetToken(ctx context.Context) (string, error) {
 	params := url.Values{}
 	params.Add("method", "auth.getToken")
-	c.sign(params)
+	c.sign(ctx, params)
 	response, err := c.makeRequest(ctx, http.MethodGet, params, true)
 	if err != nil {
 		return "", err
@@ -216,16 +213,23 @@ func (c *client) makeRequest(ctx context.Context, method string, params url.Valu
 	params.Add("api_key", c.apiKey)
 
 	if signed {
-		c.sign(params)
+		c.sign(ctx, params)
 	}
 
 	var req *http.Request
+	var err error
 	if method == http.MethodPost {
 		body := strings.NewReader(params.Encode())
-		req, _ = http.NewRequestWithContext(ctx, method, apiBaseUrl, body)
+		req, err = http.NewRequestWithContext(ctx, method, apiBaseUrl, body)
+		if err != nil {
+			return nil, err
+		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else {
-		req, _ = http.NewRequestWithContext(ctx, method, apiBaseUrl, nil)
+		req, err = http.NewRequestWithContext(ctx, method, apiBaseUrl, nil)
+		if err != nil {
+			return nil, err
+		}
 		req.URL.RawQuery = params.Encode()
 	}
 
@@ -257,22 +261,13 @@ func (c *client) makeRequest(ctx context.Context, method string, params url.Valu
 	return &response, nil
 }
 
-func (c *client) sign(params url.Values) {
-	// the parameters must be in order before hashing
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		if slices.Contains([]string{"format", "callback"}, k) {
+func (c *client) sign(ctx context.Context, params url.Values) {
+	flat := make(map[string]string, len(params))
+	for k, v := range params {
+		if k == "format" || k == "callback" || k == "api_sig" || len(v) == 0 {
 			continue
 		}
-		keys = append(keys, k)
+		flat[k] = v[0]
 	}
-	sort.Strings(keys)
-	msg := strings.Builder{}
-	for _, k := range keys {
-		msg.WriteString(k)
-		msg.WriteString(params[k][0])
-	}
-	msg.WriteString(c.secret)
-	hash := md5.Sum([]byte(msg.String()))
-	params.Add("api_sig", hex.EncodeToString(hash[:]))
+	params.Set("api_sig", integration.Sign(ctx, flat, c.secret))
 }

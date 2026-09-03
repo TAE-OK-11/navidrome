@@ -12,6 +12,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/eventbus"
 
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -82,7 +83,7 @@ var _ = Describe("PlayTracker", func() {
 			return nil
 		})
 		eventBroker = &fakeEventBroker{}
-		tracker = newPlayTracker(ds, eventBroker, nil)
+		tracker = newTestPlayTracker(ds, eventBroker, nil)
 		tracker.builtinScrobblers["fake"] = fake // Bypass buffering for tests
 
 		track = model.MediaFile{
@@ -168,7 +169,7 @@ var _ = Describe("PlayTracker", func() {
 
 		It("does not send event when disabled", func() {
 			conf.Server.EnableNowPlaying = false
-			tracker = newPlayTracker(ds, eventBroker, nil)
+			tracker = newTestPlayTracker(ds, eventBroker, nil)
 			info := PlaybackSession{MediaFile: track, Start: time.Now(), Username: "user"}
 			_ = tracker.playMap.AddWithTTL("player-2", info, 10*time.Millisecond)
 			Consistently(func() int { return len(eventBroker.getEvents()) }).Should(Equal(0))
@@ -448,7 +449,7 @@ var _ = Describe("PlayTracker", func() {
 		Describe("SSE broadcast on state change", func() {
 			BeforeEach(func() {
 				eventBroker = &fakeEventBroker{}
-				tracker = newPlayTracker(ds, eventBroker, nil)
+				tracker = newTestPlayTracker(ds, eventBroker, nil)
 				tracker.builtinScrobblers["fake"] = fake
 			})
 
@@ -493,7 +494,7 @@ var _ = Describe("PlayTracker", func() {
 
 			It("does NOT broadcast when EnableNowPlaying is false", func() {
 				conf.Server.EnableNowPlaying = false
-				tracker = newPlayTracker(ds, eventBroker, nil)
+				tracker = newTestPlayTracker(ds, eventBroker, nil)
 				tracker.builtinScrobblers["fake"] = fake
 
 				err := tracker.ReportPlayback(ctx, ReportPlaybackParams{
@@ -1092,7 +1093,7 @@ var _ = Describe("PlayTracker", func() {
 				names:      []string{"plugin1"},
 				scrobblers: map[string]Scrobbler{"plugin1": pluginFake},
 			}
-			tracker = newPlayTracker(ds, events.GetBroker(), pluginLoader)
+			tracker = newTestPlayTracker(ds, events.GetBroker(), pluginLoader)
 
 			// Bypass buffering for both built-in and plugin scrobblers
 			tracker.builtinScrobblers["fake"] = fake
@@ -1159,7 +1160,7 @@ var _ = Describe("PlayTracker", func() {
 			}
 
 			// Create a tracker with the mock plugin loader
-			pTracker = newPlayTracker(ds, events.GetBroker(), mockPlugin)
+			pTracker = newTestPlayTracker(ds, events.GetBroker(), mockPlugin)
 
 			// Create a mock buffered scrobbler and explicitly cast it to Scrobbler
 			mockedBS = &mockBufferedScrobbler{
@@ -1206,7 +1207,7 @@ var _ = Describe("PlayTracker", func() {
 			}
 
 			// Create tracker - this will create buffered scrobblers with loaders
-			pTracker = newPlayTracker(ds, events.GetBroker(), mockPlugin)
+			pTracker = newTestPlayTracker(ds, events.GetBroker(), mockPlugin)
 
 			// Trigger initial plugin registration
 			pTracker.refreshPluginScrobblers()
@@ -1443,6 +1444,15 @@ func _p(id, name string, sortName ...string) model.Participant {
 		p.Artist.SortArtistName = sortName[0]
 	}
 	return p
+}
+
+func newTestPlayTracker(ds model.DataStore, broker events.Broker, plugins PluginLoader) *playTracker {
+	bus := eventbus.New()
+	if broker != nil {
+		DeferCleanup(events.ForwardFromBus(bus, broker))
+	}
+	DeferCleanup(bus.Close)
+	return newPlayTracker(ds, plugins, bus, false)
 }
 
 type fakeEventBroker struct {

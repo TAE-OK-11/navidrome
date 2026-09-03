@@ -3,9 +3,8 @@ package agents
 import (
 	"context"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -28,13 +27,13 @@ func (p *localAgent) GetArtistTopSongs(ctx context.Context, id, artistName, mbid
 		Sort:  "playCount",
 		Order: "desc",
 		Max:   count,
-		Filters: squirrel.And{
-			squirrel.Eq{"artist_id": id},
-			squirrel.Or{
-				squirrel.Eq{"starred": true},
-				squirrel.Eq{"rating": 5},
-			},
-		},
+		Filters: query.And(
+			query.Eq("artist_id", id),
+			query.Or(
+				query.Eq("starred", true),
+				query.Eq("rating", 5),
+			),
+		),
 	})
 	if err != nil {
 		return nil, err
@@ -54,10 +53,10 @@ func (p *localAgent) GetSimilarSongsByTrack(ctx context.Context, id, name, artis
 	}
 	// Ask for extra so we can drop the seed itself and still fill the count.
 	candidates, err := p.ds.MediaFile(ctx).GetRandom(model.QueryOptions{
-		Filters: squirrel.And{
-			persistence.SongGenres.ByID(genreIDs),
-			squirrel.Eq{"missing": false},
-		},
+		Filters: query.And(
+			query.SongGenres.ByID(genreIDs),
+			query.NotMissing(),
+		),
 		Max: count + 1,
 	})
 	if err != nil {

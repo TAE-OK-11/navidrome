@@ -11,10 +11,10 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/cache"
-	"github.com/navidrome/navidrome/utils/httpclient"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -37,7 +37,7 @@ func deezerConstructor(dataStore model.DataStore) agents.Interface {
 		dataStore: dataStore,
 		languages: conf.Server.Deezer.Languages,
 	}
-	httpClient := httpclient.New(consts.DefaultHttpClientTimeOut)
+	httpClient := integration.HTTPClient(consts.DefaultHttpClientTimeOut)
 	cachedHttpClient := cache.NewHTTPClient(httpClient, consts.DefaultHttpClientTimeOut)
 	agent.client = newClient(cachedHttpClient)
 	return agent

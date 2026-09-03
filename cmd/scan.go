@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -21,15 +20,17 @@ import (
 )
 
 var (
-	fullScan   bool
-	subprocess bool
-	targets    []string
-	targetFile string
+	fullScan     bool
+	subprocess   bool
+	targets      []string
+	targetFile   string
+	progressGRPC string
 )
 
 func init() {
 	scanCmd.Flags().BoolVarP(&fullScan, "full", "f", false, "check all subfolders, ignoring timestamps")
 	scanCmd.Flags().BoolVarP(&subprocess, "subprocess", "", false, "run as subprocess (internal use)")
+	scanCmd.Flags().StringVar(&progressGRPC, "progress-grpc", "", "gRPC address for scan progress (internal use)")
 	scanCmd.Flags().StringArrayVarP(&targets, "target", "t", []string{}, "list of libraryID:folderPath pairs, can be repeated (e.g., \"-t 1:Music/Rock -t 1:Music/Jazz -t 2:Classical\")")
 	scanCmd.Flags().StringVar(&targetFile, "target-file", "", "path to file containing targets (one libraryID:folderPath per line)")
 	rootCmd.AddCommand(scanCmd)
@@ -68,14 +69,11 @@ func trackScanInteractively(ctx context.Context, progress <-chan *scanner.Progre
 	return changesDetected, errors.Join(scanErrors...)
 }
 
-func trackScanAsSubprocess(ctx context.Context, progress <-chan *scanner.ProgressInfo) {
-	encoder := gob.NewEncoder(os.Stdout)
-	for status := range pl.ReadOrDone(ctx, progress) {
-		err := encoder.Encode(status)
-		if err != nil {
-			log.Error(ctx, "Failed to encode status", err)
-		}
+func trackScanAsSubprocess(ctx context.Context, addr string, progress <-chan *scanner.ProgressInfo) error {
+	if addr == "" {
+		return errors.New("external scanner requires --progress-grpc")
 	}
+	return scanner.ReportProgressGRPC(ctx, addr, progress)
 }
 
 func runScanner(ctx context.Context) {
@@ -106,7 +104,7 @@ func runScanner(ctx context.Context) {
 	if !subprocess {
 		effectiveFullScan = scanner.EffectiveFullScan(ctx, ds, fullScan, scanTargets)
 		if effectiveFullScan {
-			if err := db.MarkOptimizePending(ctx); err != nil {
+			if err := ds.MarkOptimizePending(ctx); err != nil {
 				log.Error(ctx, "Error marking DB analysis pending", err)
 			}
 		}
@@ -119,21 +117,23 @@ func runScanner(ctx context.Context) {
 
 	// Wait for the scanner to finish
 	if subprocess {
-		trackScanAsSubprocess(ctx, progress)
-	} else {
-		changesDetected, scanErr := trackScanInteractively(ctx, progress)
-		runPostScanAnalysis(ctx, changesDetected, effectiveFullScan, scanErr)
+		if err := trackScanAsSubprocess(ctx, progressGRPC, progress); err != nil {
+			log.Fatal(ctx, "Failed to stream scan progress over gRPC", err)
+		}
+		return
 	}
+	changesDetected, scanErr := trackScanInteractively(ctx, progress)
+	runPostScanAnalysis(ctx, ds, changesDetected, effectiveFullScan, scanErr)
 }
 
-func runPostScanAnalysis(ctx context.Context, changesDetected, effectiveFullScan bool, scanErr error) {
+func runPostScanAnalysis(ctx context.Context, ds model.DataStore, changesDetected, effectiveFullScan bool, scanErr error) {
 	if changesDetected {
-		if err := db.MarkOptimizePending(ctx); err != nil {
+		if err := ds.MarkOptimizePending(ctx); err != nil {
 			log.Error(ctx, "Error marking DB analysis pending", err)
 		}
 	}
 	if effectiveFullScan && scanErr == nil {
-		if err := db.Optimize(ctx); err != nil {
+		if err := ds.Optimize(ctx); err != nil {
 			log.Error(ctx, "Error analyzing DB", err)
 		}
 	}

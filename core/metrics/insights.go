@@ -14,18 +14,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/auth"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/metrics/insights"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/plugins"
 	"github.com/navidrome/navidrome/server/events"
-	"github.com/navidrome/navidrome/utils/httpclient"
 	"github.com/navidrome/navidrome/utils/singleton"
 )
 
@@ -95,7 +95,7 @@ func (c *insightsCollector) sendInsights(ctx context.Context) {
 		log.Trace(ctx, "No users found, skipping Insights data collection")
 		return
 	}
-	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
+	hc := integration.HTTPClient(consts.DefaultHttpClientTimeOut)
 	data := c.collect(ctx)
 	if data == nil {
 		return
@@ -265,7 +265,7 @@ func (c *insightsCollector) collect(ctx context.Context) []byte {
 		log.Trace(ctx, "Error reading libraries count", err)
 	}
 	data.Library.ActiveUsers, err = c.ds.User(ctx).CountAll(model.QueryOptions{
-		Filters: squirrel.Gt{"last_access_at": time.Now().Add(-7 * 24 * time.Hour)},
+		Filters: query.Gt("last_access_at", time.Now().Add(-7*24*time.Hour)),
 	})
 	if err != nil {
 		log.Trace(ctx, "Error reading active users count", err)
@@ -289,7 +289,7 @@ func (c *insightsCollector) collect(ctx context.Context) []byte {
 	// Collect active players if permitted
 	if conf.Server.DevEnablePlayerInsights {
 		data.Library.ActivePlayers, err = c.ds.Player(ctx).CountByClient(model.QueryOptions{
-			Filters: squirrel.Gt{"last_seen": time.Now().Add(-7 * 24 * time.Hour)},
+			Filters: query.Gt("last_seen", time.Now().Add(-7*24*time.Hour)),
 		})
 		if err != nil {
 			log.Trace(ctx, "Error reading active players count", err)
@@ -316,7 +316,7 @@ func (c *insightsCollector) collect(ctx context.Context) []byte {
 // hasSmartPlaylists checks if there are any smart playlists (playlists with rules)
 func (c *insightsCollector) hasSmartPlaylists(ctx context.Context) (bool, error) {
 	count, err := c.ds.Playlist(ctx).CountAll(model.QueryOptions{
-		Filters: squirrel.And{squirrel.NotEq{"rules": ""}, squirrel.NotEq{"rules": nil}},
+		Filters: query.And(query.NotEq("rules", ""), query.NotEq("rules", nil)),
 	})
 	return count > 0, err
 }

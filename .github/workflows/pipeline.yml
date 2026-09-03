@@ -37,14 +37,22 @@ jobs:
       - name: Build scanner worker
         working-directory: rust/scanner
         run: cargo +1.98.0 build --release --locked
+      - name: Build search worker
+        working-directory: rust/search
+        run: cargo +1.98.0 build --release --locked
       - name: Build apikeys worker
         working-directory: rust/apikeys
+        run: cargo +1.98.0 build --release --locked
+      - name: Build integration worker
+        working-directory: rust/integration
         run: cargo +1.98.0 build --release --locked
       - name: Test
         env:
           ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/metadata/target/release/navidrome-metadata
           ND_SCANNERWORKERPATH: ${{ github.workspace }}/rust/scanner/target/release/navidrome-scanner
           ND_APIKEYSWORKERPATH: ${{ github.workspace }}/rust/apikeys/target/release/navidrome-apikeys
+          ND_SEARCHWORKERPATH: ${{ github.workspace }}/rust/search/target/release/navidrome-search
+          ND_INTEGRATIONWORKERPATH: ${{ github.workspace }}/rust/integration/target/release/navidrome-integration
         run: go test -shuffle=on -tags netgo,sqlite_fts5 -race ./...
 
   lint:
@@ -82,6 +90,10 @@ jobs:
             directory: rust/search
           - crate: scanner
             directory: rust/scanner
+          - crate: integration
+            directory: rust/integration
+          - crate: apikeys
+            directory: rust/apikeys
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust 1.98

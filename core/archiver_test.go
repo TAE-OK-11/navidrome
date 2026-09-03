@@ -7,11 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -41,7 +40,7 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.Eq{"album_id": "1"},
+				Filters: query.Eq("album_id", "1"),
 				Sort:    "album",
 			}}).Return(mfs, nil)
 
@@ -70,10 +69,10 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.And{
-					persistence.ParticipantIDFilter("media_file", "1", model.RoleAlbumArtist),
-					squirrel.Eq{"missing": false},
-				},
+				Filters: query.And(
+					query.ParticipantIDFilter("media_file", "1", model.RoleAlbumArtist),
+					query.NotMissing(),
+				),
 				Sort: "album",
 			}}).Return(mfs, nil)
 
@@ -102,7 +101,7 @@ var _ = Describe("Archiver", func() {
 
 			mfRepo := &mockMediaFileRepository{}
 			mfRepo.On("GetAll", []model.QueryOptions{{
-				Filters: squirrel.Eq{"album_id": "1"},
+				Filters: query.Eq("album_id", "1"),
 				Sort:    "album",
 			}}).Return(mfs, nil)
 			ds.On("MediaFile", mock.Anything).Return(mfRepo)
@@ -216,6 +215,10 @@ func (m *mockDataStore) Playlist(ctx context.Context) model.PlaylistRepository {
 func (m *mockDataStore) Library(context.Context) model.LibraryRepository {
 	return &mockLibraryRepository{}
 }
+
+func (m *mockDataStore) Optimize(context.Context) error { return nil }
+
+func (m *mockDataStore) MarkOptimizePending(context.Context) error { return nil }
 
 type mockLibraryRepository struct {
 	mock.Mock

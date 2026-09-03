@@ -3,6 +3,7 @@ package scrobbler
 import (
 	"context"
 
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -42,23 +43,41 @@ func (p *playTracker) playbackReportWorker() {
 		p.prQueue = nil
 		p.prMu.Unlock()
 
-		allScrobblers := p.getActiveScrobblers()
 		for _, entry := range entries {
-			p.dispatchPlaybackReport(entry.ctx, entry.info, allScrobblers)
+			p.dispatchPlaybackReport(entry.ctx, entry.info)
 		}
 	}
 }
 
-func (p *playTracker) dispatchPlaybackReport(ctx context.Context, info PlaybackSession, allScrobblers map[string]Scrobbler) {
-	for name, s := range allScrobblers {
+func (p *playTracker) dispatchPlaybackReport(ctx context.Context, info PlaybackSession) {
+	p.publish(ctx, eventbus.Event{
+		Topic: eventbus.TopicPlaybackReport,
+		Report: &eventbus.PlaybackReport{
+			UserID:      info.UserId,
+			PlayerID:    info.PlayerId,
+			MediaFileID: info.MediaFile.ID,
+			State:       info.State,
+			PositionMs:  info.PositionMs,
+			Data:        info,
+		},
+	})
+}
+
+func (p *playTracker) onPlaybackReport(ctx context.Context, evt eventbus.Event) {
+	if evt.Report == nil {
+		return
+	}
+	info, ok := evt.Report.Data.(PlaybackSession)
+	if !ok {
+		return
+	}
+	for name, s := range p.getActiveScrobblers() {
 		if !s.IsAuthorized(ctx, info.UserId) {
 			continue
 		}
 		log.Debug(ctx, "Sending PlaybackReport", "scrobbler", name, "track", info.MediaFile.Title, "state", info.State, "positionMs", info.PositionMs)
-		err := s.PlaybackReport(ctx, info)
-		if err != nil {
+		if err := s.PlaybackReport(ctx, info); err != nil {
 			log.Error(ctx, "Error sending PlaybackReport", "scrobbler", name, "track", info.MediaFile.Title, "state", info.State, err)
-			continue
 		}
 	}
 }

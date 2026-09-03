@@ -35,6 +35,7 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 		ds = new(tests.MockDataStore)
 		ag = new(mockAgents)
 		p = external.NewProvider(ds, ag, matcher.New(ds))
+		DeferCleanup(p.Close)
 		mockAlbumRepo = ds.Album(ctx).(*tests.MockAlbumRepo)
 		conf.Server.DevAlbumInfoTimeToLive = 1 * time.Hour
 	})
@@ -115,14 +116,18 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 			ExternalInfoUpdatedAt: new(expiredTime),
 		}
 		mockAlbumRepo.SetData(model.Albums{*originalAlbum})
+		ag.On("GetAlbumInfo", mock.Anything, "Expired Album", "Expired Artist", "").Return(&agents.AlbumInfo{
+			URL:         "http://refreshed.com/album",
+			Description: "Refreshed Desc",
+		}, nil).Maybe()
+		ag.On("GetAlbumImages", mock.Anything, "Expired Album", "Expired Artist", "").Return([]agents.ExternalImage{}, nil).Maybe()
 
 		updatedAlbum, err := p.UpdateAlbumInfo(ctx, "al-expired")
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updatedAlbum).NotTo(BeNil())
 		Expect(*updatedAlbum).To(Equal(*originalAlbum))
-
-		ag.AssertNotCalled(GinkgoT(), "GetAlbumInfo", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		Eventually(func() bool { return ag.albumInfoHit.Load() }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("returns error when agent fails to get album info", func() {
@@ -144,7 +149,7 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 		ag.AssertExpectations(GinkgoT())
 	})
 
-	It("returns original album when agent returns ErrNotFound", func() {
+	It("returns original album with a refresh timestamp when agent returns ErrNotFound", func() {
 		originalAlbum := &model.Album{
 			ID:          "al-agent-notfound",
 			Name:        "Agent NotFound Album",
@@ -154,13 +159,14 @@ var _ = Describe("Provider - UpdateAlbumInfo", func() {
 		mockAlbumRepo.SetData(model.Albums{*originalAlbum})
 
 		ag.On("GetAlbumInfo", ctx, "Agent NotFound Album", "Agent NotFound Artist", "mbid-agent-notfound").Return(nil, agents.ErrNotFound)
+		ag.On("GetAlbumImages", ctx, "Agent NotFound Album", "Agent NotFound Artist", "mbid-agent-notfound").Return(nil, agents.ErrNotFound)
 
 		updatedAlbum, err := p.UpdateAlbumInfo(ctx, "al-agent-notfound")
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updatedAlbum).NotTo(BeNil())
-		Expect(*updatedAlbum).To(Equal(*originalAlbum))
-		Expect(updatedAlbum.ExternalInfoUpdatedAt).To(BeNil())
+		Expect(updatedAlbum.ID).To(Equal("al-agent-notfound"))
+		Expect(updatedAlbum.ExternalInfoUpdatedAt).NotTo(BeNil())
 
 		ag.AssertExpectations(GinkgoT())
 	})

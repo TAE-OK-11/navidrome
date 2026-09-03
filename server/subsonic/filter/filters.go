@@ -3,21 +3,18 @@ package filter
 import (
 	"time"
 
-	. "github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 type Options = model.QueryOptions
 
-var defaultFilters = Eq{"missing": false}
-
 func addDefaultFilters(options Options) Options {
 	if options.Filters == nil {
-		options.Filters = defaultFilters
+		options.Filters = query.NotMissing()
 	} else {
-		options.Filters = And{defaultFilters, options.Filters}
+		options.Filters = query.And(query.NotMissing(), options.Filters)
 	}
 	return options
 }
@@ -27,11 +24,11 @@ func AlbumsByNewest() Options {
 }
 
 func AlbumsByRecent() Options {
-	return addDefaultFilters(Options{Sort: "playDate", Order: "desc", Filters: Gt{"play_date": time.Time{}}})
+	return addDefaultFilters(Options{Sort: "playDate", Order: "desc", Filters: query.Gt("play_date", time.Time{})})
 }
 
 func AlbumsByFrequent() Options {
-	return addDefaultFilters(Options{Sort: "playCount", Order: "desc", Filters: Gt{"play_count": 0}})
+	return addDefaultFilters(Options{Sort: "playCount", Order: "desc", Filters: query.Gt("play_count", 0)})
 }
 
 func AlbumsByRandom() Options {
@@ -53,7 +50,7 @@ func AlbumsByArtistID(artistId string) Options {
 	}
 	return addDefaultFilters(Options{
 		Sort:    "max_year",
-		Filters: persistence.ParticipantIDFilter("album", artistId, roles...),
+		Filters: query.ParticipantIDFilter("album", artistId, roles...),
 	})
 }
 
@@ -63,10 +60,10 @@ func AlbumsByArtistID(artistId string) Options {
 func AlbumsByContributingArtistID(artistId string) Options {
 	return addDefaultFilters(Options{
 		Sort: "max_year",
-		Filters: And{
-			persistence.ParticipantIDFilter("album", artistId, model.RoleArtist),
-			persistence.NotParticipantIDFilter("album", artistId, model.RoleAlbumArtist),
-		},
+		Filters: query.And(
+			query.ParticipantIDFilter("album", artistId, model.RoleArtist),
+			query.NotParticipantIDFilter("album", artistId, model.RoleAlbumArtist),
+		),
 	})
 }
 
@@ -79,22 +76,22 @@ func AlbumsByYear(fromYear, toYear int) Options {
 	return addDefaultFilters(Options{
 		Sort:  "max_year",
 		Order: orderOption,
-		Filters: Or{
-			And{
-				GtOrEq{"min_year": fromYear},
-				LtOrEq{"min_year": toYear},
-			},
-			And{
-				GtOrEq{"max_year": fromYear},
-				LtOrEq{"max_year": toYear},
-			},
-		},
+		Filters: query.Or(
+			query.And(
+				query.GtOrEq("min_year", fromYear),
+				query.LtOrEq("min_year", toYear),
+			),
+			query.And(
+				query.GtOrEq("max_year", fromYear),
+				query.LtOrEq("max_year", toYear),
+			),
+		),
 	})
 }
 
 func SongsByAlbum(albumId string) Options {
 	return addDefaultFilters(Options{
-		Filters:            Eq{"album_id": albumId},
+		Filters:            query.Eq("album_id", albumId),
 		Sort:               "album",
 		ExcludeHeavyFields: true,
 	})
@@ -105,24 +102,24 @@ func SongsByAlbum(albumId string) Options {
 func SongsByArtistID(artistId string) Options {
 	return addDefaultFilters(Options{
 		Sort:               "album",
-		Filters:            persistence.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
+		Filters:            query.ParticipantIDFilter("media_file", artistId, model.RoleArtist, model.RoleAlbumArtist),
 		ExcludeHeavyFields: true,
 	})
 }
 
 func SongsByGenreAndYearRange(genre string, fromYear, toYear int) Options {
 	options := Options{}
-	ff := And{}
+	var ff []query.Sqlizer
 	if genre != "" {
-		ff = append(ff, persistence.SongGenres.ByName(genre))
+		ff = append(ff, query.SongGenres.ByName(genre))
 	}
 	if fromYear != 0 {
-		ff = append(ff, GtOrEq{"year": fromYear})
+		ff = append(ff, query.GtOrEq("year", fromYear))
 	}
 	if toYear != 0 {
-		ff = append(ff, LtOrEq{"year": toYear})
+		ff = append(ff, query.LtOrEq("year", toYear))
 	}
-	options.Filters = ff
+	options.Filters = query.And(ff...)
 	options.ExcludeHeavyFields = true
 	return addDefaultFilters(options)
 }
@@ -132,11 +129,11 @@ func ApplyLibraryFilter(opts Options, musicFolderIds []int) Options {
 		return opts
 	}
 
-	libraryFilter := Eq{"library_id": musicFolderIds}
+	libraryFilter := query.Eq("library_id", musicFolderIds)
 	if opts.Filters == nil {
 		opts.Filters = libraryFilter
 	} else {
-		opts.Filters = And{opts.Filters, libraryFilter}
+		opts.Filters = query.And(opts.Filters, libraryFilter)
 	}
 
 	return opts
@@ -149,36 +146,36 @@ func ApplyArtistLibraryFilter(opts Options, musicFolderIds []int) Options {
 		return opts
 	}
 
-	artistLibraryFilter := Eq{"library_artist.library_id": musicFolderIds}
+	artistLibraryFilter := query.Eq("library_artist.library_id", musicFolderIds)
 	if opts.Filters == nil {
 		opts.Filters = artistLibraryFilter
 	} else {
-		opts.Filters = And{opts.Filters, artistLibraryFilter}
+		opts.Filters = query.And(opts.Filters, artistLibraryFilter)
 	}
 
 	return opts
 }
 
 func AlbumsByGenre(genre string) Options {
-	return addDefaultFilters(Options{Sort: "name", Filters: persistence.AlbumGenres.ByName(genre)})
+	return addDefaultFilters(Options{Sort: "name", Filters: query.AlbumGenres.ByName(genre)})
 }
 
 func SongsByGenre(genre string) Options {
 	return addDefaultFilters(Options{
 		Sort:               "name",
-		Filters:            persistence.SongGenres.ByName(genre),
+		Filters:            query.SongGenres.ByName(genre),
 		ExcludeHeavyFields: true,
 	})
 }
 
 func ByRating() Options {
-	return addDefaultFilters(Options{Sort: "rating", Order: "desc", Filters: Gt{"rating": 0}})
+	return addDefaultFilters(Options{Sort: "rating", Order: "desc", Filters: query.Gt("rating", 0)})
 }
 
 func ByStarred() Options {
-	return addDefaultFilters(Options{Sort: "starred_at", Order: "desc", Filters: Eq{"starred": true}})
+	return addDefaultFilters(Options{Sort: "starred_at", Order: "desc", Filters: query.Eq("starred", true)})
 }
 
 func ArtistsByStarred() Options {
-	return Options{Sort: "starred_at", Order: "desc", Filters: Eq{"starred": true}}
+	return Options{Sort: "starred_at", Order: "desc", Filters: query.Eq("starred", true)}
 }

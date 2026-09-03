@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/playlists"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -107,7 +107,7 @@ func fetchPlaylists(ctx context.Context, ds model.DataStore, sort string) model.
 		if err != nil {
 			log.Fatal(ctx, "Error retrieving user", "username or id", userID)
 		}
-		options.Filters = squirrel.Eq{"owner_id": user.ID}
+		options.Filters = query.Eq("owner_id", user.ID)
 	}
 	pls, err := ds.Playlist(ctx).GetAll(options)
 	if err != nil {
@@ -122,7 +122,7 @@ func findPlaylist(ctx context.Context, ds model.DataStore, nameOrID string) *mod
 		log.Fatal("Error retrieving playlist", "name", nameOrID, err)
 	}
 	if errors.Is(err, model.ErrNotFound) {
-		playlists, err := ds.Playlist(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"playlist.name": nameOrID}})
+		playlists, err := ds.Playlist(ctx).GetAll(model.QueryOptions{Filters: query.Eq("playlist.name", nameOrID)})
 		if err != nil {
 			log.Fatal("Error retrieving playlist", "name", nameOrID, err)
 		}

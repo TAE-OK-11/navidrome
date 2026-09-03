@@ -484,7 +484,7 @@ if exists {
 
 ### KVStore
 
-Persistent key-value storage backed by SQLite. Survives server restarts. Each plugin has its own isolated database at `${DataFolder}/plugins/${pluginID}/kvstore.db`.
+Persistent key-value storage backed by the shared Navidrome DataStore (namespaced by plugin ID). Survives server restarts. Plugin data is stored in the main database (`plugin_kvstore`), not a sidecar SQLite file.
 
 **Manifest permission:**
 
@@ -548,7 +548,7 @@ fmt.Printf("Using %d bytes\n", usage)
 
 ### Task
 
-Background task queue with retry support. Plugins enqueue tasks and process them by exporting the [`nd_task_execute`](#taskworker) capability function.
+Background task queue with retry support. Queue and task rows live in the shared DataStore (`plugin_queue` / `plugin_task`), namespaced by plugin ID. Plugins enqueue tasks and process them by exporting the [`nd_task_execute`](#taskworker) capability function.
 
 **Manifest permission:**
 

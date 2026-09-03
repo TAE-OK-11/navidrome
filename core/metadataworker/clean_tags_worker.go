@@ -13,16 +13,16 @@ import (
 const maxCleanTagsWorkers = 8
 
 type cleanTagsRequest struct {
-	Path                  string                       `json:"path"`
-	Tags                  map[string][]string          `json:"tags"`
-	Mappings              map[string]TagMappingExport  `json:"mappings"`
-	ArtistSplitExceptions []string                     `json:"artist_split_exceptions,omitempty"`
+	Path                  string                      `json:"path"`
+	Tags                  map[string][]string         `json:"tags"`
+	Mappings              map[string]TagMappingExport `json:"mappings"`
+	ArtistSplitExceptions []string                    `json:"artist_split_exceptions,omitempty"`
 }
 
 type cleanTagsResponse struct {
-	OK    bool                         `json:"ok"`
-	Tags  map[string][]string          `json:"tags,omitempty"`
-	Error string                       `json:"error,omitempty"`
+	OK    bool                `json:"ok"`
+	Tags  map[string][]string `json:"tags,omitempty"`
+	Error string              `json:"error,omitempty"`
 }
 
 type cleanTagsWorker struct {
@@ -59,6 +59,9 @@ func PersistentCleanTagsWorkers() *cleanTagsWorkerPool {
 func (p *cleanTagsWorkerPool) Clean(ctx context.Context, filePath string, raw map[string][]string, mappings map[string]TagMappingExport) (map[string][]string, error) {
 	if len(raw) == 0 {
 		return map[string][]string{}, nil
+	}
+	if cleaned, err := cleanTagsGRPC(ctx, filePath, raw, mappings, confArtistSplitExceptions()); !errors.Is(err, errNoGRPC) {
+		return cleaned, err
 	}
 	binary, err := Resolve()
 	if err != nil {

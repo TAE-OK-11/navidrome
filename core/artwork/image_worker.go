@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/navidrome/navidrome/core/metadataworker"
+	"github.com/navidrome/navidrome/core/metadataworker/gen"
 	"github.com/navidrome/navidrome/core/rustworker"
 )
 
@@ -166,6 +167,9 @@ func (p *imageWorkerPool) mosaic(ctx context.Context, tiles [][]byte, size, qual
 }
 
 func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imageAnimationFlags, error) {
+	if flags, err := sniffViaGRPC(ctx, [][]byte{data}, imageWorkerRequest{Sniff: true, InputSize: len(data)}); !errors.Is(err, metadataworker.ErrNoGRPC) {
+		return flags, err
+	}
 	var flags imageAnimationFlags
 	binary, err := metadataworker.Resolve()
 	if err != nil {
@@ -226,6 +230,9 @@ func (p *imageWorkerPool) sniffAnimation(ctx context.Context, data []byte) (imag
 }
 
 func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (imageAnimationFlags, error) {
+	if flags, err := sniffViaGRPC(ctx, nil, imageWorkerRequest{Sniff: true, Path: path}); !errors.Is(err, metadataworker.ErrNoGRPC) {
+		return flags, err
+	}
 	var flags imageAnimationFlags
 	binary, err := metadataworker.Resolve()
 	if err != nil {
@@ -286,6 +293,9 @@ func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (
 }
 
 func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
+	if body, err := resizeViaGRPC(ctx, payloads, request); !errors.Is(err, metadataworker.ErrNoGRPC) {
+		return body, err
+	}
 	binary, err := metadataworker.Resolve()
 	if err != nil {
 		return nil, err
@@ -396,6 +406,44 @@ func (w *imageWorker) roundTripHeader(request imageWorkerRequest, payloads [][]b
 
 func (w *imageWorker) close() {
 	rustworker.Close(w.pipes)
+}
+
+func toProtoImageRequest(request imageWorkerRequest, payloads [][]byte) *gen.ImageRequest {
+	return &gen.ImageRequest{
+		Payloads:     payloads,
+		Mosaic:       request.Mosaic,
+		Sniff:        request.Sniff,
+		Size:         uint32(max(request.Size, 0)),
+		Square:       request.Square,
+		Fill:         request.Fill,
+		AnimatedGif:  request.AnimatedGIF,
+		AnimatedWebp: request.AnimatedWebP,
+		AnimatedPng:  request.AnimatedPNG,
+		Quality:      uint32(max(request.Quality, 0)),
+		Format:       request.Format,
+		Path:         request.Path,
+	}
+}
+
+func resizeViaGRPC(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
+	resp, err := metadataworker.ProcessImage(ctx, toProtoImageRequest(request, payloads))
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetBody(), nil
+}
+
+func sniffViaGRPC(ctx context.Context, payloads [][]byte, request imageWorkerRequest) (imageAnimationFlags, error) {
+	var flags imageAnimationFlags
+	resp, err := metadataworker.ProcessImage(ctx, toProtoImageRequest(request, payloads))
+	if err != nil {
+		return flags, err
+	}
+	return imageAnimationFlags{
+		AnimatedGIF:  resp.GetAnimatedGif(),
+		AnimatedWebP: resp.GetAnimatedWebp(),
+		AnimatedPNG:  resp.GetAnimatedPng(),
+	}, nil
 }
 
 type imageResizeError struct {

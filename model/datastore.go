@@ -3,16 +3,21 @@ package model
 import (
 	"context"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 )
+
+// Sqlizer is a SQL predicate. Persistence implements it with squirrel;
+// domain code must build values through model/query, not by importing squirrel.
+type Sqlizer interface {
+	ToSql() (string, []any, error)
+}
 
 type QueryOptions struct {
 	Sort    string
 	Order   string
 	Max     int
 	Offset  int
-	Filters squirrel.Sqlizer
+	Filters Sqlizer
 	Seed    string // for random sorting
 	// ExcludeHeavyFields omits large media_file columns (lyrics, probe_data) on browse paths.
 	ExcludeHeavyFields bool
@@ -43,10 +48,14 @@ type DataStore interface {
 	Scrobble(ctx context.Context) ScrobbleRepository
 	Plugin(ctx context.Context) PluginRepository
 	APIKey(ctx context.Context) UserAPIKeyRepository
+	PluginKV(ctx context.Context) PluginKVRepository
+	PluginTask(ctx context.Context) PluginTaskRepository
 
 	Resource(ctx context.Context, model any) ResourceRepository
 
 	WithTx(block func(tx DataStore) error, scope ...string) error
 	WithTxImmediate(block func(tx DataStore) error, scope ...string) error
 	GC(ctx context.Context, libraryIDs ...int) error
+	Optimize(ctx context.Context) error
+	MarkOptimizePending(ctx context.Context) error
 }

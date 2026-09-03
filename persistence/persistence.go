@@ -101,6 +101,14 @@ func (s *SQLStore) APIKey(ctx context.Context) model.UserAPIKeyRepository {
 	return NewAPIKeyRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) PluginKV(ctx context.Context) model.PluginKVRepository {
+	return NewPluginKVRepository(ctx, s.getDBXBuilder())
+}
+
+func (s *SQLStore) PluginTask(ctx context.Context) model.PluginTaskRepository {
+	return NewPluginTaskRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository {
 	switch m.(type) {
 	case model.User:
@@ -206,6 +214,14 @@ func (s *SQLStore) GC(ctx context.Context, libraryIDs ...int) error {
 		log.Error(ctx, "Error tidying up database", err)
 	}
 	return err
+}
+
+func (s *SQLStore) Optimize(ctx context.Context) error {
+	return db.Optimize(ctx)
+}
+
+func (s *SQLStore) MarkOptimizePending(ctx context.Context) error {
+	return db.MarkOptimizePending(ctx)
 }
 
 func (s *SQLStore) getDBXBuilder() dbx.Builder {

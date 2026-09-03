@@ -11,6 +11,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var _ = Describe("trackScanAsSubprocess", func() {
+	It("requires a gRPC progress address", func() {
+		err := trackScanAsSubprocess(context.Background(), "", nil)
+		Expect(err).To(MatchError("external scanner requires --progress-grpc"))
+	})
+})
+
 var _ = Describe("trackScanInteractively", func() {
 	It("reports changes and scan errors", func() {
 		progress := make(chan *scanner.ProgressInfo, 2)

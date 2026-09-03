@@ -1,8 +1,8 @@
 package e2e
 
 import (
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,7 +15,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 	getBeatlesId := func() string {
 		artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{
-			Filters: squirrel.Eq{"name": "The Beatles"},
+			Filters: query.Eq("name", "The Beatles"),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(artists).ToNot(BeEmpty())
@@ -106,7 +106,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 		It("returns an album directory with its tracks as children", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -160,7 +160,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 		It("returns artist with a single album", func() {
 			artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"name": "Led Zeppelin"},
+				Filters: query.Eq("name", "Led Zeppelin"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(artists).ToNot(BeEmpty())
@@ -178,7 +178,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getAlbum", func() {
 		It("returns album with its tracks", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -194,7 +194,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 		It("includes correct track metadata", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -211,7 +211,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 		It("returns album with correct artist and year", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Kind of Blue"},
+				Filters: query.Eq("album.name", "Kind of Blue"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -237,7 +237,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getSong", func() {
 		It("returns a song by its ID", func() {
 			songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Come Together"},
+				Filters: query.Eq("title", "Come Together"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())
@@ -261,7 +261,7 @@ var _ = Describe("Browsing Endpoints", func() {
 
 		It("returns correct metadata for a jazz track", func() {
 			songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "So What"},
+				Filters: query.Eq("title", "So What"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())
@@ -344,7 +344,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getAlbumInfo", func() {
 		It("returns album info for a valid album", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -360,7 +360,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getAlbumInfo2", func() {
 		It("returns album info for a valid album", func() {
 			albums, err := ds.Album(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"album.name": "Abbey Road"},
+				Filters: query.Eq("album.name", "Abbey Road"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(albums).ToNot(BeEmpty())
@@ -435,7 +435,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getSimilarSongs", func() {
 		It("returns a response for a valid song ID", func() {
 			songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Come Together"},
+				Filters: query.Eq("title", "Come Together"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())
@@ -452,7 +452,7 @@ var _ = Describe("Browsing Endpoints", func() {
 	Describe("getSimilarSongs2", func() {
 		It("returns a response for a valid song ID", func() {
 			songs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Come Together"},
+				Filters: query.Eq("title", "Come Together"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(songs).ToNot(BeEmpty())

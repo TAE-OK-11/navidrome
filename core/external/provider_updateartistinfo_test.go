@@ -38,6 +38,7 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		ds = new(tests.MockDataStore)
 		ag = new(mockAgents)
 		p = external.NewProvider(ds, ag, matcher.New(ds))
+		DeferCleanup(p.Close)
 		mockArtistRepo = ds.Artist(ctx).(*tests.MockArtistRepo)
 	})
 
@@ -180,6 +181,11 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		}
 		similarInDS := model.Artist{ID: "ar-exp-similar", Name: "Expired Similar Updated"}
 		mockArtistRepo.SetData(model.Artists{*originalArtist, similarInDS})
+		ag.On("GetArtistMBID", mock.Anything, "ar-expired", "Expired Artist").Return("", nil).Maybe()
+		ag.On("GetArtistImages", mock.Anything, "ar-expired", "Expired Artist", "").Return([]agents.ExternalImage{}, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-expired", "Expired Artist", "").Return("", nil).Maybe()
+		ag.On("GetArtistURL", mock.Anything, "ar-expired", "Expired Artist", "").Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-expired", "Expired Artist", "", mock.Anything).Return([]agents.Artist{}, nil).Maybe()
 
 		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-expired", 5, false)
 
@@ -192,11 +198,7 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		Expect(updatedArtist.SimilarArtists).To(HaveLen(1))
 		Expect(updatedArtist.SimilarArtists[0].ID).To(Equal(similarInDS.ID))
 		Expect(updatedArtist.SimilarArtists[0].Name).To(Equal(similarInDS.Name))
-
-		ag.AssertNotCalled(GinkgoT(), "GetArtistMBID")
-		ag.AssertNotCalled(GinkgoT(), "GetArtistImages")
-		ag.AssertNotCalled(GinkgoT(), "GetArtistBiography")
-		ag.AssertNotCalled(GinkgoT(), "GetArtistURL")
+		Eventually(func() bool { return ag.artistImagesHit.Load() }).WithTimeout(2 * time.Second).Should(BeTrue())
 	})
 
 	It("includes non-present similar artists when includeNotPresent is true", func() {

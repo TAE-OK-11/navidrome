@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/external"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils/slice"
 	"github.com/navidrome/navidrome/utils/str"
 )
@@ -47,10 +47,10 @@ func newArtistArtworkReader(ctx context.Context, artwork *artwork, artID model.A
 	}
 	// Only consider albums where the artist is the sole album artist.
 	als, err := artwork.ds.Album(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.And{
-			squirrel.Eq{"album_artist_id": artID.ID},
-			squirrel.Eq{"json_array_length(participants, '$.albumartist')": 1},
-		},
+		Filters: query.And(
+			query.Eq("album_artist_id", artID.ID),
+			query.Eq("json_array_length(participants, '$.albumartist')", 1),
+		),
 	})
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func loadArtistFolder(ctx context.Context, ds model.DataStore, albums model.Albu
 		"libPath", libPath, "libID", libID, "albumPaths", paths)
 
 	// Get the last update time for the folder
-	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"folder.id": folderID, "missing": false}})
+	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: query.And(query.Eq("folder.id", folderID), query.NotMissing())})
 	if err != nil || len(folders) == 0 {
 		log.Warn(ctx, "Could not find folder for artist", "folderPath", folderPath, "id", folderID,
 			"libPath", libPath, "libID", libID, err)

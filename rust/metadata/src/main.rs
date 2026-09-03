@@ -22,6 +22,7 @@ use navidrome_metadata::{compute_pid, map_media, tag_clean};
 
 mod build_fts5_query_worker;
 mod clean_tags_worker;
+mod grpc;
 mod image_worker;
 mod lyrics;
 mod lyricsfile;
@@ -35,67 +36,67 @@ const PROTOCOL_VERSION: u32 = 1;
 const MAX_BATCH_FILES: usize = 4096;
 
 #[derive(Debug, Deserialize)]
-struct Request {
-    files: Vec<InputFile>,
+pub(crate) struct Request {
+    pub(crate) files: Vec<InputFile>,
     #[serde(default)]
-    tag_mappings: HashMap<String, tag_clean::TagMappingConfig>,
+    pub(crate) tag_mappings: HashMap<String, tag_clean::TagMappingConfig>,
     #[serde(default)]
-    artist_split_exceptions: Vec<String>,
+    pub(crate) artist_split_exceptions: Vec<String>,
     #[serde(default)]
-    artists_split: Vec<String>,
+    pub(crate) artists_split: Vec<String>,
     #[serde(default)]
-    roles_split: Vec<String>,
+    pub(crate) roles_split: Vec<String>,
     #[serde(default)]
-    artist_joiner: String,
+    pub(crate) artist_joiner: String,
     #[serde(default)]
-    pid_config: Option<compute_pid::PidConfig>,
+    pub(crate) pid_config: Option<compute_pid::PidConfig>,
     #[serde(default)]
-    library_id: i32,
+    pub(crate) library_id: i32,
 }
 
 #[derive(Debug, Deserialize)]
-struct InputFile {
-    key: String,
-    path: PathBuf,
+pub(crate) struct InputFile {
+    pub(crate) key: String,
+    pub(crate) path: PathBuf,
 }
 
 #[derive(Debug, Serialize)]
-struct Response {
-    protocol: u32,
-    lofty: &'static str,
-    results: HashMap<String, Metadata>,
-    errors: HashMap<String, String>,
+pub(crate) struct Response {
+    pub(crate) protocol: u32,
+    pub(crate) lofty: &'static str,
+    pub(crate) results: HashMap<String, Metadata>,
+    pub(crate) errors: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
-struct Metadata {
+pub(crate) struct Metadata {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    tags: HashMap<String, Vec<String>>,
-    file_info: FileInfo,
-    duration_ns: u64,
-    bit_rate: u32,
-    bit_depth: u8,
-    sample_rate: u32,
-    channels: u8,
-    codec: String,
-    has_picture: bool,
+    pub(crate) tags: HashMap<String, Vec<String>>,
+    pub(crate) file_info: FileInfo,
+    pub(crate) duration_ns: u64,
+    pub(crate) bit_rate: u32,
+    pub(crate) bit_depth: u8,
+    pub(crate) sample_rate: u32,
+    pub(crate) channels: u8,
+    pub(crate) codec: String,
+    pub(crate) has_picture: bool,
     /// Pre-parsed OpenSubsonic lyrics JSON for the scan path. Omitted when parsing fails.
     #[serde(skip_serializing_if = "Option::is_none")]
-    lyrics_json: Option<String>,
+    pub(crate) lyrics_json: Option<String>,
     /// Pre-mapped MediaFile scan fields (participants, titles, dates, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
-    media_file_json: Option<String>,
+    pub(crate) media_file_json: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    cleaned_tags: Option<HashMap<String, Vec<String>>>,
+    pub(crate) cleaned_tags: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Serialize)]
-struct FileInfo {
-    name: String,
-    size: u64,
-    modified_ns: i64,
+pub(crate) struct FileInfo {
+    pub(crate) name: String,
+    pub(crate) size: u64,
+    pub(crate) modified_ns: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    created_ns: Option<i64>,
+    pub(crate) created_ns: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +114,17 @@ struct PictureResponse {
 }
 
 fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--grpc-worker") {
+        let listen = navidrome_grpc_listen::arg_value(&args, "--listen")
+            .unwrap_or_else(|| navidrome_grpc_listen::default_listen("navidrome-metadata"));
+        return tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime")
+            .block_on(grpc::serve(listen));
+    }
+
     let mut args = std::env::args_os().skip(1);
     if let Some(command) = args.next() {
         if command == "--image-worker" {
@@ -262,7 +274,7 @@ fn run_worker() -> Result<()> {
     Ok(())
 }
 
-fn handle_request(request: Request) -> Response {
+pub(crate) fn handle_request(request: Request) -> Response {
     let file_count = request.files.len();
     let mut results = HashMap::with_capacity(file_count);
     let mut errors = HashMap::new();
@@ -378,7 +390,7 @@ fn parse_file(path: &Path, request: &Request) -> Result<Metadata> {
     })
 }
 
-fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>, FileMetadata)> {
+pub(crate) fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>, FileMetadata)> {
     let mut raw_vorbis = None;
     let (tagged, codec, file_metadata) = match extension(path).as_str() {
         "flac" => {
@@ -474,7 +486,7 @@ fn unix_nanos(time: SystemTime) -> i64 {
     nanos.clamp(i64::MIN as i128, i64::MAX as i128) as i64
 }
 
-fn picture_data<'a>(tagged: &'a TaggedFile, path: &Path) -> Result<&'a [u8]> {
+pub(crate) fn picture_data<'a>(tagged: &'a TaggedFile, path: &Path) -> Result<&'a [u8]> {
     let pictures = tagged
         .tags()
         .iter()

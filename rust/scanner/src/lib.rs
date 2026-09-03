@@ -1,5 +1,10 @@
+pub mod proto {
+    tonic::include_proto!("navidrome.scanner.v1");
+}
+
 pub mod folder_hash_worker;
-mod scan;
+pub mod grpc;
+pub mod scan;
 
 pub use scan::run;
 

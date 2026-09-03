@@ -9,15 +9,16 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/matcher"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils"
 	. "github.com/navidrome/navidrome/utils/gg"
 	"github.com/navidrome/navidrome/utils/random"
@@ -43,6 +44,7 @@ type Provider interface {
 	TopSongs(ctx context.Context, artist, artistId string, count int) (model.MediaFiles, error)
 	ArtistImage(ctx context.Context, id string) (*url.URL, error)
 	AlbumImage(ctx context.Context, id string) (*url.URL, error)
+	Close()
 }
 
 type provider struct {
@@ -51,6 +53,8 @@ type provider struct {
 	matcher     *matcher.Matcher
 	artistQueue refreshQueue[auxArtist]
 	albumQueue  refreshQueue[auxAlbum]
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 }
 
 type auxAlbum struct {
@@ -95,9 +99,18 @@ type Agents interface {
 
 func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider {
 	e := &provider{ds: ds, ag: agents, matcher: m}
-	e.artistQueue = newRefreshQueue(context.TODO(), e.populateArtistInfo)
-	e.albumQueue = newRefreshQueue(context.TODO(), e.populateAlbumInfo)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.cancel = cancel
+	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfo)
+	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfo)
 	return e
+}
+
+func (e *provider) Close() {
+	if e.cancel != nil {
+		e.cancel()
+	}
+	e.wg.Wait()
 }
 
 func (e *provider) getAlbum(ctx context.Context, id string) (auxAlbum, error) {
@@ -131,6 +144,7 @@ func (e *provider) UpdateAlbumInfo(ctx context.Context, id string) (*model.Album
 		if err != nil {
 			return nil, err
 		}
+		return &album.Album, nil
 	}
 
 	// If info is expired, trigger a populateAlbumInfo in the background
@@ -146,45 +160,33 @@ func (e *provider) populateAlbumInfo(ctx context.Context, album auxAlbum) (auxAl
 	start := time.Now()
 	albumName := album.Name()
 	info, err := e.ag.GetAlbumInfo(ctx, albumName, album.AlbumArtist, album.MbzAlbumID)
-	if errors.Is(err, agents.ErrNotFound) {
-		return album, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, agents.ErrNotFound) {
 		log.Error("Error refreshing AlbumInfo", "id", album.ID, "name", albumName, "artist", album.AlbumArtist,
 			"elapsed", time.Since(start), err)
 		return album, err
 	}
+	if err == nil && info != nil {
+		album.ExternalUrl = info.URL
+		if info.Description != "" {
+			album.Description = info.Description
+		}
+	}
+
+	e.callGetAlbumImages(ctx, e.ag, &album)
+
+	if utils.IsCtxDone(ctx) {
+		log.Warn(ctx, "AlbumInfo update canceled", "id", album.ID, "name", albumName, "elapsed", time.Since(start), ctx.Err())
+		return album, ctx.Err()
+	}
 
 	album.ExternalInfoUpdatedAt = new(time.Now())
-	album.ExternalUrl = info.URL
-
-	if info.Description != "" {
-		album.Description = info.Description
-	}
-
-	images, err := e.ag.GetAlbumImages(ctx, albumName, album.AlbumArtist, album.MbzAlbumID)
-	if err == nil && len(images) > 0 {
-		slices.SortFunc(images, func(a, b agents.ExternalImage) int {
-			return cmp.Compare(b.Size, a.Size)
-		})
-
-		album.LargeImageUrl = images[0].URL
-
-		if len(images) >= 2 {
-			album.MediumImageUrl = images[1].URL
-		}
-
-		if len(images) >= 3 {
-			album.SmallImageUrl = images[2].URL
-		}
-	}
-
 	err = e.ds.Album(ctx).UpdateExternalInfo(&album.Album)
 	if err != nil {
 		log.Error(ctx, "Error trying to update album external information", "id", album.ID, "name", albumName,
 			"elapsed", time.Since(start), err)
 	} else {
 		log.Trace(ctx, "AlbumInfo collected", "album", album, "elapsed", time.Since(start))
+		e.publishExternalRefresh(ctx, "album", album.ID)
 	}
 
 	return album, nil
@@ -235,10 +237,7 @@ func (e *provider) refreshArtistInfo(ctx context.Context, id string) (auxArtist,
 	artistName := artist.Name()
 	if updatedAt.IsZero() {
 		log.Debug(ctx, "ArtistInfo not cached. Retrieving it now", "updatedAt", updatedAt, "id", id, "name", artistName)
-		artist, err = e.populateArtistInfo(ctx, artist)
-		if err != nil {
-			return auxArtist{}, err
-		}
+		return e.populateArtistInfo(ctx, artist)
 	}
 
 	// If info is expired, trigger a populateArtistInfo in the background
@@ -281,6 +280,7 @@ func (e *provider) populateArtistInfo(ctx context.Context, artist auxArtist) (au
 			"elapsed", time.Since(start), err)
 	} else {
 		log.Trace(ctx, "ArtistInfo collected", "artist", artist, "elapsed", time.Since(start))
+		e.publishExternalRefresh(ctx, "artist", artist.ID)
 	}
 	return artist, nil
 }
@@ -417,7 +417,7 @@ func (e *provider) samplePlaylistTracks(ctx context.Context, playlistID string, 
 	tracks, err := repo.GetAll(model.QueryOptions{
 		Sort:    "random",
 		Max:     n * 4,
-		Filters: squirrel.Eq{"missing": false},
+		Filters: query.NotMissing(),
 	})
 	if err != nil {
 		return nil, err
@@ -438,21 +438,21 @@ func dedupByID(mfs model.MediaFiles) model.MediaFiles {
 }
 
 func (e *provider) sampleAlbumTracks(ctx context.Context, albumID string, n int) (model.MediaFiles, error) {
-	return e.sampleTracks(ctx, squirrel.Eq{"album_id": albumID}, n)
+	return e.sampleTracks(ctx, query.Eq("album_id", albumID), n)
 }
 
 func (e *provider) sampleArtistTracks(ctx context.Context, artistID string, n int) (model.MediaFiles, error) {
-	filter := persistence.ParticipantIDFilter("media_file", artistID, model.RoleArtist, model.RoleAlbumArtist)
+	filter := query.ParticipantIDFilter("media_file", artistID, model.RoleArtist, model.RoleAlbumArtist)
 	return e.sampleTracks(ctx, filter, n)
 }
 
 func (e *provider) sampleGenreTracks(ctx context.Context, genre *model.Genre, n int) (model.MediaFiles, error) {
-	return e.sampleTracks(ctx, persistence.SongGenres.ByID(genre.ID), n)
+	return e.sampleTracks(ctx, query.SongGenres.ByID(genre.ID), n)
 }
 
-func (e *provider) sampleTracks(ctx context.Context, filter squirrel.Sqlizer, n int) (model.MediaFiles, error) {
+func (e *provider) sampleTracks(ctx context.Context, filter query.Sqlizer, n int) (model.MediaFiles, error) {
 	return e.ds.MediaFile(ctx).GetRandom(model.QueryOptions{
-		Filters: squirrel.And{filter, squirrel.Eq{"missing": false}},
+		Filters: query.And(filter, query.NotMissing()),
 		Max:     n,
 	})
 }
@@ -523,26 +523,22 @@ func (e *provider) ArtistImage(ctx context.Context, id string) (*url.URL, error)
 	if err != nil {
 		return nil, err
 	}
-
-	imageUrl := artist.ArtistImageUrl()
-	if imageUrl == "" {
-		// No cached URL — must fetch from external source synchronously
-		e.callGetImage(ctx, e.ag, &artist)
-		if utils.IsCtxDone(ctx) {
-			log.Warn(ctx, "ArtistImage call canceled", ctx.Err())
-			return nil, ctx.Err()
-		}
-		imageUrl = artist.ArtistImageUrl()
-	} else {
-		// If cached info is expired, enqueue a background refresh so that config changes
-		// (e.g. disabling an agent) take effect without waiting for a full artist info refresh.
-		updatedAt := V(artist.ExternalInfoUpdatedAt)
-		if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
-			log.Debug(ctx, "Artist image info expired, enqueuing background refresh", "artist", artist.Name(), "updatedAt", updatedAt)
-			e.artistQueue.enqueue(&artist)
-		}
+	if utils.IsCtxDone(ctx) {
+		log.Warn(ctx, "ArtistImage call canceled", ctx.Err())
+		return nil, ctx.Err()
 	}
 
+	imageUrl := artist.ArtistImageUrl()
+	updatedAt := V(artist.ExternalInfoUpdatedAt)
+	if imageUrl == "" && updatedAt.IsZero() {
+		log.Debug(ctx, "Artist image not cached, enqueuing background fetch", "artist", artist.Name(), "id", artist.ID)
+		e.artistQueue.enqueue(&artist)
+		return nil, model.ErrNotFound
+	}
+	if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
+		log.Debug(ctx, "Artist image info expired, enqueuing background refresh", "artist", artist.Name(), "updatedAt", updatedAt)
+		e.artistQueue.enqueue(&artist)
+	}
 	if imageUrl == "" {
 		return nil, model.ErrNotFound
 	}
@@ -554,38 +550,26 @@ func (e *provider) AlbumImage(ctx context.Context, id string) (*url.URL, error) 
 	if err != nil {
 		return nil, err
 	}
-
-	albumName := album.Name()
-	images, err := e.ag.GetAlbumImages(ctx, albumName, album.AlbumArtist, album.MbzAlbumID)
-	if err != nil {
-		switch {
-		case errors.Is(err, agents.ErrNotFound):
-			log.Trace(ctx, "Album not found in agent", "albumID", id, "name", albumName, "artist", album.AlbumArtist)
-			return nil, model.ErrNotFound
-		case errors.Is(err, context.Canceled):
-			log.Debug(ctx, "GetAlbumImages call canceled", err)
-		default:
-			log.Warn(ctx, "Error getting album images from agent", "albumID", id, "name", albumName, "artist", album.AlbumArtist, err)
-		}
-		return nil, err
+	if utils.IsCtxDone(ctx) {
+		log.Debug(ctx, "AlbumImage call canceled", ctx.Err())
+		return nil, ctx.Err()
 	}
 
-	if len(images) == 0 {
-		log.Warn(ctx, "Agent returned no images without error", "albumID", id, "name", albumName, "artist", album.AlbumArtist)
+	imageUrl := album.AlbumImageUrl()
+	updatedAt := V(album.ExternalInfoUpdatedAt)
+	if imageUrl == "" && updatedAt.IsZero() {
+		log.Debug(ctx, "Album image not cached, enqueuing background fetch", "album", album.Name(), "id", album.ID)
+		e.albumQueue.enqueue(&album)
 		return nil, model.ErrNotFound
 	}
-
-	// Return the biggest image
-	var img agents.ExternalImage
-	for _, i := range images {
-		if img.Size <= i.Size {
-			img = i
-		}
+	if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevAlbumInfoTimeToLive {
+		log.Debug(ctx, "Album image info expired, enqueuing background refresh", "album", album.Name(), "updatedAt", updatedAt)
+		e.albumQueue.enqueue(&album)
 	}
-	if img.URL == "" {
+	if imageUrl == "" {
 		return nil, model.ErrNotFound
 	}
-	return url.Parse(img.URL)
+	return url.Parse(imageUrl)
 }
 
 func (e *provider) TopSongs(ctx context.Context, artistName, id string, count int) (model.MediaFiles, error) {
@@ -670,6 +654,32 @@ func (e *provider) callGetBiography(ctx context.Context, agent agents.ArtistBiog
 	bio = str.SanitizeText(bio)
 	bio = strings.ReplaceAll(bio, "\n", " ")
 	artist.Biography = strings.ReplaceAll(bio, "<a ", "<a target='_blank' ")
+}
+
+func (e *provider) publishExternalRefresh(ctx context.Context, resource, id string) {
+	if id == "" {
+		return
+	}
+	refresh := (&eventbus.RefreshResource{}).Add(resource, id)
+	eventbus.Get().PublishUISync(ctx, eventbus.Event{
+		Topic:   eventbus.TopicRefreshResource,
+		Refresh: refresh,
+	}, true)
+}
+
+func (e *provider) callGetAlbumImages(ctx context.Context, agent agents.AlbumImageRetriever, album *auxAlbum) {
+	images, err := agent.GetAlbumImages(ctx, album.Name(), album.AlbumArtist, album.MbzAlbumID)
+	if err != nil || len(images) == 0 {
+		return
+	}
+	slices.SortFunc(images, func(a, b agents.ExternalImage) int { return cmp.Compare(b.Size, a.Size) })
+	album.LargeImageUrl = images[0].URL
+	if len(images) >= 2 {
+		album.MediumImageUrl = images[1].URL
+	}
+	if len(images) >= 3 {
+		album.SmallImageUrl = images[2].URL
+	}
 }
 
 func (e *provider) callGetImage(ctx context.Context, agent agents.ArtistImageRetriever, artist *auxArtist) {
@@ -789,7 +799,7 @@ func (e *provider) loadArtistsByID(ctx context.Context, similar []agents.Artist)
 		return matches, nil
 	}
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"artist.id": ids},
+		Filters: query.Eq("artist.id", ids),
 	})
 	if err != nil {
 		return matches, err
@@ -818,7 +828,7 @@ func (e *provider) loadArtistsByMBID(ctx context.Context, similar []agents.Artis
 		return matches, nil
 	}
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"mbz_artist_id": mbids},
+		Filters: query.Eq("mbz_artist_id", mbids),
 	})
 	if err != nil {
 		return matches, err
@@ -849,11 +859,11 @@ func (e *provider) loadArtistsByName(ctx context.Context, similar []agents.Artis
 	if len(names) == 0 {
 		return matches, nil
 	}
-	clauses := slice.Map(names, func(name string) squirrel.Sqlizer {
-		return squirrel.Like{"artist.name": name}
+	clauses := slice.Map(names, func(name string) query.Sqlizer {
+		return query.Like("artist.name", name)
 	})
 	res, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Or(clauses),
+		Filters: query.Or(clauses...),
 	})
 	if err != nil {
 		return matches, err
@@ -885,7 +895,7 @@ func (e *provider) findArtist(ctx context.Context, artistName, id string) (*auxA
 	}
 
 	artists, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Like{"artist.name": artistName},
+		Filters: query.Like("artist.name", artistName),
 		Max:     1,
 	})
 	if err != nil {
@@ -907,7 +917,7 @@ func (e *provider) loadSimilar(ctx context.Context, artist *auxArtist, count int
 	}
 
 	similar, err := e.ds.Artist(ctx).GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"artist.id": ids},
+		Filters: query.Eq("artist.id", ids),
 	})
 	if err != nil {
 		log.Error("Error loading similar artists", "id", artist.ID, "name", artist.Name(), err)
@@ -941,21 +951,24 @@ func (e *provider) loadSimilar(ctx context.Context, artist *auxArtist, count int
 
 type refreshQueue[T any] chan<- *T
 
-func newRefreshQueue[T any](ctx context.Context, processFn func(context.Context, T) (T, error)) refreshQueue[T] {
+func newRefreshQueue[T any](ctx context.Context, wg *sync.WaitGroup, processFn func(context.Context, T) (T, error)) refreshQueue[T] {
 	queue := make(chan *T, refreshQueueLength)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(refreshDelay):
-				ctx, cancel := context.WithTimeout(ctx, refreshTimeout)
+			case item := <-queue:
+				runCtx, cancel := context.WithTimeout(ctx, refreshTimeout)
+				_, _ = processFn(runCtx, *item)
+				cancel()
+				// Rate-limit Last.fm/agent calls between items, but do not delay the first fetch.
 				select {
-				case item := <-queue:
-					_, _ = processFn(ctx, *item)
-					cancel()
 				case <-ctx.Done():
-					cancel()
+					return
+				case <-time.After(refreshDelay):
 				}
 			}
 		}

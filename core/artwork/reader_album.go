@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/external"
 	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/utils"
 	"github.com/navidrome/navidrome/utils/natural"
 	"github.com/navidrome/navidrome/utils/slice"
@@ -121,7 +121,7 @@ func loadAlbumFoldersPaths(ctx context.Context, ds model.DataStore, album model.
 }
 
 func loadFolders(ctx context.Context, ds model.DataStore, folderIDs []string) ([]model.Folder, error) {
-	return ds.Folder(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"folder.id": folderIDs, "missing": false}})
+	return ds.Folder(ctx).GetAll(model.QueryOptions{Filters: query.And(query.Eq("folder.id", folderIDs), query.NotMissing())})
 }
 
 // folderImages collects the folders' image files, sorted so files without

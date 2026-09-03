@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/core/agents"
@@ -1310,33 +1309,32 @@ func (m *mockArtistRepo) GetAll(options ...model.QueryOptions) (model.Artists, e
 	return args.Get(0).(model.Artists), args.Error(1)
 }
 
-// matchFieldInAnd returns a matcher that checks whether QueryOptions.Filters is a
-// squirrel.And whose first element is a squirrel.Eq containing the given field name.
+// filterSQL renders QueryOptions.Filters without depending on squirrel types.
+func filterSQL(opt model.QueryOptions) string {
+	if opt.Filters == nil {
+		return ""
+	}
+	sql, _, err := opt.Filters.ToSql()
+	if err != nil {
+		return ""
+	}
+	return sql
+}
+
+// matchFieldInAnd matches a compound filter that references fieldName but is not
+// the media_file_artists title-phase lookup.
 func matchFieldInAnd(fieldName string) func(opt model.QueryOptions) bool {
 	return func(opt model.QueryOptions) bool {
-		and, ok := opt.Filters.(squirrel.And)
-		if !ok || len(and) < 2 {
-			return false
-		}
-		eq, hasEq := and[0].(squirrel.Eq)
-		if !hasEq {
-			return false
-		}
-		_, hasField := eq[fieldName]
-		return hasField
+		sql := filterSQL(opt)
+		return strings.Contains(sql, fieldName) && !strings.Contains(sql, "media_file_artists")
 	}
 }
 
-// matchFieldInEq returns a matcher that checks whether QueryOptions.Filters is a
-// squirrel.Eq containing the given field name.
+// matchFieldInEq matches a single-column equality filter (ISRC phase: missing = ?).
 func matchFieldInEq(fieldName string) func(opt model.QueryOptions) bool {
 	return func(opt model.QueryOptions) bool {
-		eq, ok := opt.Filters.(squirrel.Eq)
-		if !ok {
-			return false
-		}
-		_, hasField := eq[fieldName]
-		return hasField
+		sql := filterSQL(opt)
+		return sql == fieldName+" = ?"
 	}
 }
 
@@ -1349,20 +1347,9 @@ func artistParticipants(artists ...model.Artist) model.Participants {
 	return model.Participants{model.RoleArtist: list}
 }
 
-// matchTracksByArtistQuery matches the title phase's track-fetch query, identified by its
-// squirrel.And containing a squirrel.Expr whose SQL references media_file_artists.
+// matchTracksByArtistQuery matches the title phase's track-fetch query.
 func matchTracksByArtistQuery() func(opt model.QueryOptions) bool {
 	return func(opt model.QueryOptions) bool {
-		and, ok := opt.Filters.(squirrel.And)
-		if !ok {
-			return false
-		}
-		for _, f := range and {
-			sql, _, err := f.ToSql()
-			if err == nil && strings.Contains(sql, "media_file_artists") {
-				return true
-			}
-		}
-		return false
+		return strings.Contains(filterSQL(opt), "media_file_artists")
 	}
 }

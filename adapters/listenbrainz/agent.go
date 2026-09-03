@@ -7,11 +7,11 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/cache"
-	"github.com/navidrome/navidrome/utils/httpclient"
 	"github.com/navidrome/navidrome/utils/slice"
 )
 
@@ -33,7 +33,7 @@ func listenBrainzConstructor(ds model.DataStore) *listenBrainzAgent {
 		sessionKeys: &agents.SessionKeys{DataStore: ds, KeyName: sessionKeyProperty},
 		baseURL:     conf.Server.ListenBrainz.BaseURL,
 	}
-	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
+	hc := integration.HTTPClient(consts.DefaultHttpClientTimeOut)
 	chc := cache.NewHTTPClient(hc, consts.DefaultHttpClientTimeOut)
 	l.client = newClient(conf.Server.ListenBrainz.BaseURL, conf.Server.ListenBrainz.LabsBaseURL, chc)
 	return l

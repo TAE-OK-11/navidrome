@@ -13,9 +13,9 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/auth"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playlists"
-	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -28,13 +28,12 @@ var (
 	ErrAlreadyScanning = errors.New("already scanning")
 )
 
-func New(rootCtx context.Context, ds model.DataStore, cw artwork.CacheWarmer, broker events.Broker,
+func New(rootCtx context.Context, ds model.DataStore, cw artwork.CacheWarmer, _ events.Broker,
 	pls playlists.Playlists, m metrics.Metrics) model.Scanner {
 	c := &controller{
 		rootCtx:            rootCtx,
 		ds:                 ds,
 		cw:                 cw,
-		broker:             broker,
 		pls:                pls,
 		metrics:            m,
 		devExternalScanner: conf.Server.DevExternalScanner,
@@ -62,12 +61,13 @@ func CallScan(ctx context.Context, ds model.DataStore, pls playlists.Playlists, 
 	}
 
 	ctx = auth.WithAdminUser(ctx, ds)
-	progress := make(chan *ProgressInfo, 100)
+	progress, unsub := SubscribeProgress(nil)
 	go func() {
+		defer unsub()
 		defer close(progress)
 		defer release()
 		scanner := &scannerImpl{ds: ds, cw: artwork.NoopCacheWarmer(), pls: pls}
-		scanner.scanFolders(ctx, fullScan, targets, progress)
+		scanner.scanFolders(ctx, fullScan, targets, nil)
 	}()
 	return progress, nil
 }
@@ -98,7 +98,6 @@ type controller struct {
 	rootCtx            context.Context
 	ds                 model.DataStore
 	cw                 artwork.CacheWarmer
-	broker             events.Broker
 	metrics            metrics.Metrics
 	pls                playlists.Playlists
 	limiter            *rate.Sometimes
@@ -208,18 +207,19 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	scanStartedAt := time.Now()
 	scanType := scanTypeName(effectiveFullScan, len(targets) > 0)
 	if effectiveFullScan || s.includesUnscannedLibrary(ctx, targets) {
-		if err := db.MarkOptimizePending(ctx); err != nil {
+		if err := s.ds.MarkOptimizePending(ctx); err != nil {
 			log.Error(ctx, "Scanner: Error marking DB analysis pending", err)
 		}
 	}
 
 	// Send the initial scan status event
 	s.sendMessage(ctx, &events.ScanStatus{Scanning: true, Count: 0, FolderCount: 0})
-	progress := make(chan *ProgressInfo, 100)
+	progress, unsub := SubscribeProgress(nil)
 	go func() {
+		defer unsub()
 		defer close(progress)
 		scanner := s.getScanner()
-		scanner.scanFolders(ctx, fullScan, targets, progress)
+		scanner.scanFolders(ctx, fullScan, targets, nil)
 	}()
 
 	// Wait for the scan to finish, sending progress events to all connected clients
@@ -236,14 +236,27 @@ func (s *controller) ScanFolders(requestCtx context.Context, fullScan bool, targ
 	// server's pooled connections; their shared schema cache keeps the old statistics until the
 	// process restarts.
 	if effectiveFullScan && scanError == nil {
-		if err := db.Optimize(ctx); err != nil {
+		if err := s.ds.Optimize(ctx); err != nil {
 			log.Error(ctx, "Scanner: Error analyzing DB", err)
 		}
 	}
+	eventbus.Get().Publish(ctx, eventbus.Event{
+		Topic: eventbus.TopicScanCompleted,
+		Scan: &eventbus.ScanCompleted{
+			FullScan:        effectiveFullScan,
+			ChangesDetected: s.changesDetected,
+			Error:           errorString(scanError),
+			FileCount:       int64(s.count.Load()),
+			FolderCount:     int64(s.folderCount.Load()),
+		},
+	})
 	// If changes were detected, send a refresh event to all clients
 	if s.changesDetected {
 		log.Debug(ctx, "Library changes imported. Sending refresh event")
-		s.broker.SendBroadcastMessage(ctx, &events.RefreshResource{})
+		eventbus.Get().PublishUISync(ctx, eventbus.Event{
+			Topic:   eventbus.TopicRefreshResource,
+			Refresh: &eventbus.RefreshResource{},
+		}, true)
 	}
 	// Send the final scan status event, with totals
 	if count, folderCount, err := s.getCounters(ctx); err != nil {
@@ -380,5 +393,22 @@ func (s *controller) trackProgress(ctx context.Context, progress <-chan *Progres
 }
 
 func (s *controller) sendMessage(ctx context.Context, status *events.ScanStatus) {
-	s.broker.SendBroadcastMessage(ctx, status)
+	eventbus.Get().PublishUISync(ctx, eventbus.Event{
+		Topic: eventbus.TopicScanStatus,
+		UIScan: &eventbus.UIScanStatus{
+			Scanning:    status.Scanning,
+			Count:       status.Count,
+			FolderCount: status.FolderCount,
+			Error:       status.Error,
+			ScanType:    status.ScanType,
+			ElapsedTime: status.ElapsedTime,
+		},
+	}, true)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

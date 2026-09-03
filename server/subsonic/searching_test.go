@@ -1,9 +1,9 @@
 package subsonic
 
 import (
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +30,7 @@ var _ = Describe("Search", func() {
 	})
 
 	Context("musicFolderId parameter", func() {
-		assertQueryOptions := func(filter squirrel.Sqlizer, expectedQuery string, expectedArgs ...any) {
+		assertQueryOptions := func(filter query.Sqlizer, expectedQuery string, expectedArgs ...any) {
 			GinkgoHelper()
 			query, args, err := filter.ToSql()
 			Expect(err).ToNot(HaveOccurred())

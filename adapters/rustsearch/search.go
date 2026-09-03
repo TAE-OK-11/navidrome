@@ -15,15 +15,19 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/auth"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/ftsnormalize"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/searchworker"
+	"github.com/navidrome/navidrome/core/searchworker/gen"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 const (
@@ -104,14 +108,18 @@ type worker struct {
 }
 
 type Engine struct {
-	gate       sync.RWMutex
-	worker     *worker
-	ready      atomic.Bool
-	building   atomic.Bool
-	generation atomic.Int64
-	nextCheck  atomic.Int64
-	indexed    atomic.Uint64
-	ftsCache   sync.Map
+	gate         sync.RWMutex
+	worker       *worker
+	grpcProc     *rustworker.GRPCProcess
+	grpc         gen.SearchClient
+	grpcFailed   bool
+	ready        atomic.Bool
+	building     atomic.Bool
+	generation   atomic.Int64
+	nextCheck    atomic.Int64
+	indexed      atomic.Uint64
+	ftsCache     sync.Map
+	allowInTests atomic.Bool
 }
 
 func Available() bool {
@@ -121,6 +129,49 @@ func Available() bool {
 
 func New() *Engine {
 	return &Engine{}
+}
+
+func (e *Engine) EnableForTests() {
+	if e != nil {
+		e.allowInTests.Store(true)
+	}
+}
+
+// Shutdown stops the Rust search worker and releases the on-disk index lock.
+func (e *Engine) Shutdown() {
+	if e == nil {
+		return
+	}
+	e.allowInTests.Store(false)
+	e.WaitIdle()
+	e.stopWorker()
+}
+
+// WaitIdle blocks until any in-flight index build or refresh completes.
+func (e *Engine) WaitIdle() {
+	if e == nil {
+		return
+	}
+	for e.building.Load() {
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (e *Engine) skipBackgroundWork() bool {
+	return e == nil || (testing.Testing() && !e.allowInTests.Load())
+}
+
+// ListenForScans subscribes to library scan completion so the Tantivy index
+// refreshes from the event stream instead of polling other systems' clocks.
+// The returned function unsubscribes; callers must invoke it before shutdown.
+func (e *Engine) ListenForScans(ds model.DataStore) func() {
+	if e == nil || ds == nil {
+		return func() {}
+	}
+	return eventbus.Get().Subscribe(eventbus.TopicScanCompleted, func(ctx context.Context, _ eventbus.Event) {
+		e.nextCheck.Store(0)
+		e.RefreshIfStale(ctx, ds)
+	})
 }
 
 func (e *Engine) Ready() bool {
@@ -186,6 +237,9 @@ func libraryScope(libraryIDs []int) []uint64 {
 // RefreshIfStale checks scan generations at a bounded cadence. Searches keep
 // using the old index until a replacement or incremental sync commits.
 func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
+	if e.skipBackgroundWork() {
+		return
+	}
 	if e == nil || e.building.Load() {
 		return
 	}
@@ -205,7 +259,7 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 	if !searchIndexStale(ready, generation, libraries) {
 		return
 	}
-	go func() {
+	refresh := func() {
 		var err error
 		if ready && generation > 0 {
 			err = e.RefreshIncremental(adminCtx, ds, generation)
@@ -219,7 +273,12 @@ func (e *Engine) RefreshIfStale(ctx context.Context, ds model.DataStore) {
 		if err != nil {
 			log.Warn("Rust search index rebuild failed; SQLite search remains active", err)
 		}
-	}()
+	}
+	if e.allowInTests.Load() {
+		refresh()
+		return
+	}
+	go refresh()
 }
 
 // RefreshIncremental applies scan deltas with upsert/delete instead of rebuilding
@@ -375,15 +434,15 @@ func abs64(v int64) int64 {
 }
 
 func expectedSearchDocuments(ctx context.Context, ds model.DataStore) (int64, error) {
-	songs, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	songs, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{Filters: query.NotMissing()})
 	if err != nil {
 		return 0, fmt.Errorf("counting media files for Rust search: %w", err)
 	}
-	albums, err := ds.Album(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	albums, err := ds.Album(ctx).CountAll(model.QueryOptions{Filters: query.NotMissing()})
 	if err != nil {
 		return 0, fmt.Errorf("counting albums for Rust search: %w", err)
 	}
-	artists, err := ds.Artist(ctx).CountAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+	artists, err := ds.Artist(ctx).CountAll(model.QueryOptions{Filters: query.NotMissing()})
 	if err != nil {
 		return 0, fmt.Errorf("counting artists for Rust search: %w", err)
 	}
@@ -391,6 +450,9 @@ func expectedSearchDocuments(ctx context.Context, ds model.DataStore) (int64, er
 }
 
 func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
+	if e.skipBackgroundWork() {
+		return nil
+	}
 	if !e.building.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -482,10 +544,10 @@ func (e *Engine) indexMediaFiles(ctx context.Context, ds model.DataStore, append
 }
 
 func (e *Engine) deltaMediaFiles(ctx context.Context, ds model.DataStore, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
-	cursor, err := ds.MediaFile(ctx).GetCursor(model.QueryOptions{Filters: squirrel.Or{
-		squirrel.Gt{"media_file.created_at": since},
-		squirrel.Gt{"media_file.updated_at": since},
-	}})
+	cursor, err := ds.MediaFile(ctx).GetCursor(model.QueryOptions{Filters: query.Or(
+		query.ColumnAfter("media_file.created_at", since),
+		query.ColumnAfter("media_file.updated_at", since),
+	)})
 	if err != nil {
 		return fmt.Errorf("opening media file delta cursor for Rust search: %w", err)
 	}
@@ -540,11 +602,11 @@ func (e *Engine) indexAlbums(ctx context.Context, ds model.DataStore, appendDocu
 }
 
 func (e *Engine) deltaAlbums(ctx context.Context, ds model.DataStore, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
-	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Or{
-		squirrel.Gt{"album.created_at": since},
-		squirrel.Gt{"album.updated_at": since},
-		squirrel.Gt{"album.imported_at": since},
-	}})
+	albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: query.Or(
+		query.ColumnAfter("album.created_at", since),
+		query.ColumnAfter("album.updated_at", since),
+		query.ColumnAfter("album.imported_at", since),
+	)})
 	if err != nil {
 		return fmt.Errorf("loading album deltas for Rust search: %w", err)
 	}
@@ -587,7 +649,7 @@ func (e *Engine) indexArtists(ctx context.Context, ds model.DataStore, libraries
 }
 
 func (e *Engine) deltaArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, since time.Time, upsert func(document) error, deleteKey func(string) error) error {
-	return e.collectArtists(ctx, ds, libraries, squirrel.Gt{"artist.updated_at": since}, func(doc document, missing bool) error {
+	return e.collectArtists(ctx, ds, libraries, query.ColumnAfter("artist.updated_at", since), func(doc document, missing bool) error {
 		if missing {
 			return deleteKey(doc.Key)
 		}
@@ -595,18 +657,17 @@ func (e *Engine) deltaArtists(ctx context.Context, ds model.DataStore, libraries
 	})
 }
 
-func (e *Engine) collectArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, extraFilter squirrel.Sqlizer, emit func(document, bool) error) error {
+func (e *Engine) collectArtists(ctx context.Context, ds model.DataStore, libraries model.Libraries, extraFilter query.Sqlizer, emit func(document, bool) error) error {
 	type artistDocument struct {
 		artist     model.Artist
 		libraryIDs []uint64
 	}
 	documents := make(map[string]*artistDocument)
 	for _, library := range libraries {
-		filters := []squirrel.Sqlizer{squirrel.Eq{"library_id": []int{library.ID}}}
-		if extraFilter != nil {
-			filters = append(filters, extraFilter)
-		}
-		artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: squirrel.And(filters)})
+		artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: query.And(
+			query.Eq("library_id", []int{library.ID}),
+			extraFilter,
+		)})
 		if err != nil {
 			return fmt.Errorf("loading artists for Rust search: %w", err)
 		}
@@ -692,19 +753,25 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	if err := ctx.Err(); err != nil {
 		return response{}, err
 	}
-	readOnly := req.Op == "search_all" || req.Op == "normalize_fts"
-	if readOnly {
-		e.gate.RLock()
-		defer e.gate.RUnlock()
-	} else {
-		e.gate.Lock()
-		defer e.gate.Unlock()
-	}
+	e.gate.Lock()
+	defer e.gate.Unlock()
 
-	w, err := e.ensureWorker()
-	if err != nil {
+	if err := e.ensureWorker(); err != nil {
 		return response{}, err
 	}
+	if e.grpc != nil {
+		resp, err := e.grpcRoundTrip(ctx, req)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+				return response{}, err
+			}
+			e.stopWorker()
+			return response{}, err
+		}
+		return resp, nil
+	}
+
+	w := e.worker
 	cancelDone := make(chan struct{})
 	stopCancel := context.AfterFunc(ctx, func() {
 		w.kill()
@@ -717,7 +784,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.encoder.Encode(req); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -725,7 +792,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	if err := w.writer.Flush(); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -734,7 +801,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	var resp response
 	if err := w.decoder.Decode(&resp); err != nil {
 		finishCancellation()
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return response{}, ctxErr
 		}
@@ -742,7 +809,7 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	}
 	finishCancellation()
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		e.failWorker(readOnly, ctx)
+		e.failWorker(false, ctx)
 		return response{}, ctxErr
 	}
 	if resp.Protocol != protocolVersion {
@@ -755,13 +822,28 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	return resp, nil
 }
 
-func (e *Engine) ensureWorker() (*worker, error) {
+func (e *Engine) ensureWorker() error {
+	if e.grpc != nil || e.worker != nil {
+		return nil
+	}
+	if !e.grpcFailed {
+		if err := e.startGRPC(); err == nil {
+			return nil
+		} else {
+			e.grpcFailed = true
+			log.Warn("Rust search gRPC worker unavailable; using NDJSON fallback", err)
+		}
+	}
+	return e.startNDJSON()
+}
+
+func (e *Engine) startNDJSON() error {
 	if e.worker != nil {
-		return e.worker, nil
+		return nil
 	}
 	binary, err := searchworker.Resolve()
 	if err != nil {
-		return nil, fmt.Errorf("resolving Rust search worker: %w", err)
+		return fmt.Errorf("resolving Rust search worker: %w", err)
 	}
 	cmd := exec.Command(binary) //nolint:gosec // administrator-configured or colocated binary
 	if indexPath := searchIndexPath(); indexPath != "" {
@@ -769,17 +851,17 @@ func (e *Engine) ensureWorker() (*worker, error) {
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		_ = stdin.Close()
-		return nil, err
+		return err
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
-		return nil, fmt.Errorf("starting Rust search worker %q: %w", binary, err)
+		return fmt.Errorf("starting Rust search worker %q: %w", binary, err)
 	}
 	bufferedInput := bufio.NewWriterSize(stdin, 256*1024)
 	e.worker = &worker{
@@ -787,7 +869,7 @@ func (e *Engine) ensureWorker() (*worker, error) {
 		decoder: json.NewDecoder(bufio.NewReaderSize(stdout, 256*1024)),
 	}
 	e.worker.encoder.SetEscapeHTML(false)
-	return e.worker, nil
+	return nil
 }
 
 func (e *Engine) failWorker(readOnly bool, ctx context.Context) {
@@ -799,6 +881,7 @@ func (e *Engine) failWorker(readOnly bool, ctx context.Context) {
 }
 
 func (e *Engine) releaseWorker() {
+	e.closeGRPC()
 	if e.worker == nil {
 		return
 	}
@@ -813,6 +896,7 @@ func (e *Engine) releaseWorker() {
 func (e *Engine) stopWorker() {
 	e.ready.Store(false)
 	e.indexed.Store(0)
+	e.closeGRPC()
 	if e.worker == nil {
 		return
 	}
@@ -822,6 +906,14 @@ func (e *Engine) stopWorker() {
 	}
 	_ = e.worker.cmd.Wait()
 	e.worker = nil
+}
+
+func (e *Engine) closeGRPC() {
+	if e.grpcProc != nil {
+		e.grpcProc.Close()
+		e.grpcProc = nil
+		e.grpc = nil
+	}
 }
 
 func (w *worker) kill() {

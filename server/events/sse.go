@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
@@ -74,6 +75,7 @@ func GetBroker() Broker {
 
 		// Set it running - listening and broadcasting events
 		go broker.listen()
+		ForwardFromBus(eventbus.Get(), broker)
 		return broker
 	})
 }

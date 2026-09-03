@@ -2,10 +2,7 @@ package scanner
 
 import (
 	"context"
-	"encoding/gob"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 
@@ -25,86 +22,69 @@ const (
 // external process will be spawned with the same executable as the current process, and will run
 // the "scan" command with the "--subprocess" flag.
 //
-// The external process will send progress updates to the main process through its STDOUT, and the main
-// process will forward them to the caller.
+// Progress is streamed back over gRPC (ScanEvents) onto the process-wide event bus. There is no
+// gob-over-stdout fallback: if the progress listener cannot start, the external scan fails.
 type scannerExternal struct{}
 
 func (s *scannerExternal) scanFolders(ctx context.Context, fullScan bool, targets []model.ScanTarget, progress chan<- *ProgressInfo) {
 	s.scan(ctx, fullScan, targets, progress)
 }
 
+func emitExternalProgress(ctx context.Context, progress chan<- *ProgressInfo, info *ProgressInfo) {
+	PublishProgress(ctx, info)
+	if progress != nil {
+		progress <- info
+	}
+}
+
 func (s *scannerExternal) scan(ctx context.Context, fullScan bool, targets []model.ScanTarget, progress chan<- *ProgressInfo) {
 	exe, err := os.Executable()
 	if err != nil {
-		progress <- &ProgressInfo{Error: fmt.Sprintf("failed to get executable path: %s", err)}
+		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("failed to get executable path: %s", err)})
 		return
 	}
 
-	// Build command arguments
+	listener, listenErr := startProgressListener("")
+	if listenErr != nil {
+		emitExternalProgress(ctx, progress, &ProgressInfo{
+			Error: fmt.Sprintf("scan progress gRPC listener failed: %s", listenErr),
+		})
+		return
+	}
+	defer listener.Stop()
+
 	args := []string{
 		"scan",
 		"--nobanner", "--subprocess",
 		"--configfile", conf.Server.ConfigFile,
 		"--datafolder", conf.Server.DataFolder.String(),
 		"--cachefolder", conf.Server.CacheFolder.String(),
+		"--progress-grpc", listener.addr,
 	}
 
-	// Add targets if provided
 	if len(targets) > 0 {
 		targetArgs, cleanup, err := targetArguments(ctx, targets, argLengthThreshold)
 		if err != nil {
-			progress <- &ProgressInfo{Error: err.Error()}
+			emitExternalProgress(ctx, progress, &ProgressInfo{Error: err.Error()})
 			return
 		}
 		defer cleanup()
-		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets))
+		log.Debug(ctx, "Spawning external scanner process with target file", "fullScan", fullScan, "path", exe, "numTargets", len(targets), "progress", listener.addr)
 		args = append(args, targetArgs...)
 	} else {
-		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe)
+		log.Debug(ctx, "Spawning external scanner process", "fullScan", fullScan, "path", exe, "progress", listener.addr)
 	}
 
-	// Add full scan flag if needed
 	if fullScan {
 		args = append(args, "--full")
 	}
 
 	cmd := exec.CommandContext(ctx, exe, args...)
-
-	in, out := io.Pipe()
-	defer in.Close()
-	defer out.Close()
-	cmd.Stdout = out
 	cmd.Stderr = os.Stderr
-
-	if err := cmd.Start(); err != nil {
-		progress <- &ProgressInfo{Error: fmt.Sprintf("failed to start scanner process: %s", err)}
-		return
+	cmd.Stdout = os.Stderr
+	if err := cmd.Run(); err != nil {
+		emitExternalProgress(ctx, progress, &ProgressInfo{Error: fmt.Sprintf("external scanner failed: %s", err)})
 	}
-	go s.wait(cmd, out)
-
-	decoder := gob.NewDecoder(in)
-	for {
-		var p ProgressInfo
-		if err := decoder.Decode(&p); err != nil {
-			if !errors.Is(err, io.EOF) {
-				progress <- &ProgressInfo{Error: fmt.Sprintf("failed to read status from scanner: %s", err)}
-			}
-			break
-		}
-		progress <- &p
-	}
-}
-
-func (s *scannerExternal) wait(cmd *exec.Cmd, out *io.PipeWriter) {
-	if err := cmd.Wait(); err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			_ = out.CloseWithError(fmt.Errorf("%s exited with non-zero status code: %w", cmd, exitErr))
-		} else {
-			_ = out.CloseWithError(fmt.Errorf("waiting %s cmd: %w", cmd, err))
-		}
-		return
-	}
-	_ = out.Close()
 }
 
 // targetArguments builds command-line arguments for the given scan targets.

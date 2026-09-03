@@ -8,7 +8,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
@@ -21,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/persistence"
 	"github.com/navidrome/navidrome/scanner"
@@ -118,7 +118,7 @@ var _ = Describe("Scanner", Ordered, func() {
 			It("should import all folders", func() {
 				Expect(runScanner(ctx, true)).To(Succeed())
 
-				folders, _ := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"library_id": lib.ID}})
+				folders, _ := ds.Folder(ctx).GetAll(model.QueryOptions{Filters: query.Eq("library_id", lib.ID)})
 				paths := slice.Map(folders, func(f model.Folder) string { return f.Name })
 				Expect(paths).To(SatisfyAll(
 					HaveLen(4),
@@ -157,14 +157,14 @@ var _ = Describe("Scanner", Ordered, func() {
 			It("should update the media_file", func() {
 				Expect(runScanner(ctx, true)).To(Succeed())
 
-				mf, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"title": "Help!"}})
+				mf, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: query.Eq("title", "Help!")})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mf[0].Tags).ToNot(HaveKey("barcode"))
 
 				fsys.UpdateTags("The Beatles/Help!/01 - Help!.mp3", _t{"barcode": "123"})
 				Expect(runScanner(ctx, true)).To(Succeed())
 
-				mf, err = ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"title": "Help!"}})
+				mf, err = ds.MediaFile(ctx).GetAll(model.QueryOptions{Filters: query.Eq("title", "Help!")})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mf[0].Tags).To(HaveKeyWithValue(model.TagName("barcode"), []string{"123"}))
 			})
@@ -173,7 +173,7 @@ var _ = Describe("Scanner", Ordered, func() {
 				tests.SkipOnWindows("path separator bug (#TBD-path-sep-scanner)")
 				Expect(runScanner(ctx, true)).To(Succeed())
 
-				albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"album.name": "Help!"}})
+				albums, err := ds.Album(ctx).GetAll(model.QueryOptions{Filters: query.Eq("album.name", "Help!")})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(albums).ToNot(BeEmpty())
 				Expect(albums[0].Participants.First(model.RoleProducer).Name).To(BeEmpty())
@@ -182,7 +182,7 @@ var _ = Describe("Scanner", Ordered, func() {
 				fsys.UpdateTags("The Beatles/Help!/01 - Help!.mp3", _t{"producer": "George Martin"})
 				Expect(runScanner(ctx, false)).To(Succeed())
 
-				albums, err = ds.Album(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"album.name": "Help!"}})
+				albums, err = ds.Album(ctx).GetAll(model.QueryOptions{Filters: query.Eq("album.name", "Help!")})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(albums[0].Participants.First(model.RoleProducer).Name).To(Equal("George Martin"))
 				Expect(albums[0].SongCount).To(Equal(3))
@@ -367,7 +367,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the file is marked as missing")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(3)))
 			mf, err := findByPath("The Beatles/Revolver/02 - Eleanor Rigby.mp3")
 			Expect(err).ToNot(HaveOccurred())
@@ -388,14 +388,14 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the old file is not in the library")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(4)))
 			_, err = findByPath("The Beatles/Revolver/02 - Eleanor Rigby.mp3")
 			Expect(err).To(MatchError(model.ErrNotFound))
 
 			By("Checking the new file is in the library")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": true},
+				Filters: query.Missing(),
 			})).To(BeZero())
 			mf, err := findByPath("The Beatles/Help!/02 - Eleanor Rigby.mp3")
 			Expect(err).ToNot(HaveOccurred())
@@ -417,7 +417,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the both instances of the file are in the lib")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Taxman"},
+				Filters: query.Eq("title", "Taxman"),
 			})).To(Equal(int64(2)))
 
 			By("Rescanning the library without error")
@@ -426,7 +426,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the old file is not in the library")
 			mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"title": "Taxman"},
+				Filters: query.Eq("title", "Taxman"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mfs).To(HaveLen(1))
@@ -447,14 +447,14 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the old file is not in the library")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": true},
+				Filters: query.Missing(),
 			})).To(BeZero())
 			_, err = findByPath("The Beatles/Revolver/02 - Eleanor Rigby.mp3")
 			Expect(err).To(MatchError(model.ErrNotFound))
 
 			By("Checking the new file is in the library")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(4)))
 			mf, err := findByPath("The Beatles/Revolver/02 - Eleanor Rigby.flac")
 			Expect(err).ToNot(HaveOccurred())
@@ -474,7 +474,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the file is marked as missing")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(3)))
 			mf, err := findByPath("The Beatles/Revolver/02 - Eleanor Rigby.mp3")
 			Expect(err).ToNot(HaveOccurred())
@@ -488,7 +488,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the file is not marked as missing")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(4)))
 			mf, err = findByPath("The Beatles/Revolver/02 - Eleanor Rigby.mp3")
 			Expect(err).ToNot(HaveOccurred())
@@ -513,7 +513,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Checking the file was found in the new folder")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(4)))
 			mf, err = findByPath("The Beatles/Help!/02 - Eleanor Rigby.mp3")
 			Expect(err).ToNot(HaveOccurred())
@@ -527,7 +527,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Verifying initial state has 5 tracks")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(5)))
 
 			By("Removing the entire Revolver folder from filesystem")
@@ -566,7 +566,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Verifying only 2 non-missing tracks remain (Help! tracks)")
 			Expect(ds.MediaFile(ctx).CountAll(model.QueryOptions{
-				Filters: squirrel.Eq{"missing": false},
+				Filters: query.NotMissing(),
 			})).To(Equal(int64(2)))
 		})
 
@@ -590,7 +590,7 @@ var _ = Describe("Scanner", Ordered, func() {
 			Expect(runScanner(ctx, true)).To(Succeed())
 
 			nonMissingArtists := func() []string {
-				aa, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: squirrel.Eq{"missing": false}})
+				aa, err := ds.Artist(ctx).GetAll(model.QueryOptions{Filters: query.NotMissing()})
 				Expect(err).ToNot(HaveOccurred())
 				return slice.Map(aa, func(a model.Artist) string { return a.Name })
 			}
@@ -636,7 +636,7 @@ var _ = Describe("Scanner", Ordered, func() {
 		It("does not override artist fields when importing an undertagged file", func() {
 			By("Making sure artist in the DB contains MBID and sort name")
 			aa, err := ds.Artist(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"name": "The Beatles"},
+				Filters: query.Eq("name", "The Beatles"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(aa).To(HaveLen(1))
@@ -663,7 +663,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			By("Makingsure the artist in the DB has not changed")
 			aa, err = ds.Artist(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"name": "The Beatles"},
+				Filters: query.Eq("name", "The Beatles"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(aa).To(HaveLen(1))
@@ -691,7 +691,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 					By("Checking files are marked as missing but not deleted")
 					count, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{
-						Filters: squirrel.Eq{"missing": true},
+						Filters: query.Missing(),
 					})
 					Expect(err).ToNot(HaveOccurred())
 					Expect(count).To(Equal(int64(1)))
@@ -719,7 +719,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 					By("Checking missing files are deleted")
 					count, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{
-						Filters: squirrel.Eq{"missing": true},
+						Filters: query.Missing(),
 					})
 					Expect(err).ToNot(HaveOccurred())
 					Expect(count).To(BeZero())
@@ -746,7 +746,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 					By("Checking files are marked as missing but not deleted")
 					count, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{
-						Filters: squirrel.Eq{"missing": true},
+						Filters: query.Missing(),
 					})
 					Expect(err).ToNot(HaveOccurred())
 					Expect(count).To(Equal(int64(1)))
@@ -768,7 +768,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 					By("Checking missing files are deleted")
 					count, err := ds.MediaFile(ctx).CountAll(model.QueryOptions{
-						Filters: squirrel.Eq{"missing": true},
+						Filters: query.Missing(),
 					})
 					Expect(err).ToNot(HaveOccurred())
 					Expect(count).To(BeZero())
@@ -832,7 +832,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 				// Verify the comment was updated (which means the folder was processed and file re-imported)
 				mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-					Filters: squirrel.Eq{"title": "Help!"},
+					Filters: query.Eq("title", "Help!"),
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mfs).To(HaveLen(1))
@@ -866,7 +866,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 				// Verify the comment was updated (folder was processed despite unchanged hash)
 				mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-					Filters: squirrel.Eq{"title": "Help!"},
+					Filters: query.Eq("title", "Help!"),
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mfs).To(HaveLen(1))
@@ -901,7 +901,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 				// Verify the comment was updated
 				mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-					Filters: squirrel.Eq{"title": "Help!"},
+					Filters: query.Eq("title", "Help!"),
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mfs).To(HaveLen(1))
@@ -920,7 +920,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 				// Verify the comment was NOT updated (folder was skipped)
 				mfs, err := ds.MediaFile(ctx).GetAll(model.QueryOptions{
-					Filters: squirrel.Eq{"title": "Help!"},
+					Filters: query.Eq("title", "Help!"),
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(mfs).To(HaveLen(1))
@@ -985,7 +985,7 @@ var _ = Describe("Scanner", Ordered, func() {
 
 			// Verify initial artist stats - should have 1 album, 1 song
 			artists, err := ds.Artist(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"name": "The Beatles"},
+				Filters: query.Eq("name", "The Beatles"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(artists).To(HaveLen(1))
@@ -1004,7 +1004,7 @@ var _ = Describe("Scanner", Ordered, func() {
 			By("Verifying artist stats were updated correctly")
 			// Fetch the artist again to check updated stats
 			artists, err = ds.Artist(ctx).GetAll(model.QueryOptions{
-				Filters: squirrel.Eq{"name": "The Beatles"},
+				Filters: query.Eq("name", "The Beatles"),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(artists).To(HaveLen(1))

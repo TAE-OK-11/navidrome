@@ -4,11 +4,10 @@ import (
 	"context"
 	"strings"
 
-	. "github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/persistence"
+	"github.com/navidrome/navidrome/model/query"
 )
 
 // maxLegacyLyricsCandidates bounds the duplicate window scanned by the legacy
@@ -75,14 +74,14 @@ func songsByArtistTitleWithLyricsFirst(artist, title string) model.QueryOptions 
 	return model.QueryOptions{
 		Sort:  "lyrics, updated_at",
 		Order: "desc",
-		Filters: And{
-			Eq{"missing": false},
-			Eq{"title": title},
-			Or{
-				persistence.Exists("json_tree(participants, '$.albumartist')", Eq{"value": artist}),
-				persistence.Exists("json_tree(participants, '$.artist')", Eq{"value": artist}),
-			},
-		},
+		Filters: query.And(
+			query.NotMissing(),
+			query.Eq("title", title),
+			query.Or(
+				query.Exists("json_tree(participants, '$.albumartist')", query.Eq("value", artist)),
+				query.Exists("json_tree(participants, '$.artist')", query.Eq("value", artist)),
+			),
+		),
 	}
 }
 

@@ -71,6 +71,16 @@ type Album struct {
 	UpdatedAt  time.Time `structs:"updated_at" json:"updatedAt"`                 // Newest UpdatedAt for all songs in this album
 }
 
+func (a Album) AlbumImageUrl() string {
+	if a.LargeImageUrl != "" {
+		return a.LargeImageUrl
+	}
+	if a.MediumImageUrl != "" {
+		return a.MediumImageUrl
+	}
+	return a.SmallImageUrl
+}
+
 func (a Album) CoverArtID() ArtworkID {
 	return artworkIDFromAlbum(a)
 }

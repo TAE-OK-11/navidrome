@@ -5,7 +5,7 @@ use std::path::PathBuf;
 const MIME_TYPES_PATH: &str = "../../resources/mime_types.yaml";
 const EXCLUDED_AUDIO_TYPES: &[&str] = &["audio/mpegurl", "audio/x-mpegurl", "audio/x-scpls"];
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed={MIME_TYPES_PATH}");
     let source = fs::read_to_string(MIME_TYPES_PATH)
         .unwrap_or_else(|error| panic!("reading {MIME_TYPES_PATH}: {error}"));
@@ -20,6 +20,18 @@ fn main() {
         .join("media_extensions.rs");
     fs::write(&output, generated)
         .unwrap_or_else(|error| panic!("writing {}: {error}", output.display()));
+
+    let protoc = protoc_bin_vendored::protoc_bin_path()?;
+    unsafe {
+        std::env::set_var("PROTOC", protoc);
+    }
+    let proto = "../../proto/navidrome/scanner/v1/scanner.proto";
+    println!("cargo:rerun-if-changed={proto}");
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(false)
+        .compile_protos(&[proto], &["../../proto"])?;
+    Ok(())
 }
 
 fn configured_extensions(source: &str) -> (Vec<String>, Vec<String>) {

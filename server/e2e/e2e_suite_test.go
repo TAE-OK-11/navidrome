@@ -432,6 +432,8 @@ func (n noopProvider) AlbumImage(context.Context, string) (*url.URL, error) {
 	return nil, model.ErrNotFound
 }
 
+func (n noopProvider) Close() {}
+
 // Compile-time interface checks
 var (
 	_ artwork.Artwork      = noopArtwork{}
@@ -447,6 +449,7 @@ var _ = BeforeSuite(func() {
 	dbFilePath = filepath.Join(tmpDir, "test-e2e.db")
 	snapshotPath = filepath.Join(tmpDir, "test-e2e.db.snapshot")
 	conf.Server.DbPath = dbFilePath + "?_journal_mode=WAL"
+	conf.Server.DataFolder = conf.NewDir(filepath.Join(tmpDir, "data"))
 	db.Db().SetMaxOpenConns(1)
 
 	// Initial setup: schema, user, library, and full scan (runs once for the entire suite)
@@ -514,6 +517,9 @@ func setupTestDB() {
 		// Wait for any background scan (e.g. from startScan endpoint) to finish
 		// before config cleanup runs, to avoid a data race on conf.Server.
 		Eventually(scanner.IsScanning).Should(BeFalse())
+		if router != nil {
+			router.ShutdownRustSearch()
+		}
 	})
 	conf.Server.MusicFolder = "fake:///music"
 	conf.Server.DevExternalScanner = false

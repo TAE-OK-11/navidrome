@@ -24,6 +24,12 @@ const subsonicAPIResponseBodyLimit int64 = 10 * 1024 * 1024
 
 var errSubsonicAPIResponseTooLarge = errors.New("SubsonicAPI response body exceeds limit")
 
+// SubsonicInvoker is implemented by the production Subsonic router so plugins
+// call handlers as functions instead of synthesizing an HTTP request.
+type SubsonicInvoker interface {
+	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (contentType string, body []byte, err error)
+}
+
 type cappedResponseRecorder struct {
 	*httptest.ResponseRecorder
 	limit     int64
@@ -94,15 +100,11 @@ func newSubsonicAPIService(pluginID string, router SubsonicRouter, ds model.Data
 // executeRequest handles URL parsing, validation, permission checks, HTTP request creation,
 // and router invocation. Shared between Call and CallRaw.
 // If setJSON is true, the 'f=json' query parameter is added.
-func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string, setJSON bool) (*cappedResponseRecorder, error) {
-	if s.router == nil {
-		return nil, fmt.Errorf("SubsonicAPI router not available")
-	}
-
+func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string, setJSON bool) (string, []byte, error) {
 	// Parse the input URL
 	parsedURL, err := url.Parse(uri)
 	if err != nil {
-		return nil, fmt.Errorf("invalid URL format: %w", err)
+		return "", nil, fmt.Errorf("invalid URL format: %w", err)
 	}
 
 	// Extract query parameters
@@ -111,12 +113,12 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 	// Validate that 'u' (username) parameter is present
 	username := query.Get("u")
 	if username == "" {
-		return nil, fmt.Errorf("missing required parameter 'u' (username)")
+		return "", nil, fmt.Errorf("missing required parameter 'u' (username)")
 	}
 
 	if err := s.checkPermissions(ctx, username); err != nil {
 		log.Warn(ctx, "SubsonicAPI call blocked by permissions", "plugin", s.pluginID, "user", username, err)
-		return nil, err
+		return "", nil, err
 	}
 
 	// Add required Subsonic API parameters
@@ -126,56 +128,47 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 		query.Set("f", "json") // Response format
 	}
 
-	// Extract the endpoint from the path
 	endpoint := path.Base(parsedURL.Path)
 
-	// Build the final URL with processed path and modified query parameters
+	if inv, ok := s.router.(SubsonicInvoker); ok {
+		return inv.Invoke(ctx, endpoint, query, username, setJSON)
+	}
+	if s.router == nil {
+		return "", nil, fmt.Errorf("SubsonicAPI router not available")
+	}
+
 	finalURL := &url.URL{
 		Path:     "/" + endpoint,
 		RawQuery: query.Encode(),
 	}
 
-	// Preserve cancellation, deadlines, and request-scoped values while shadowing only
-	// Chi's route context. A typed nil makes the internal router build a fresh route
-	// context instead of reusing routing state from the parent handler.
 	cleanCtx := context.WithValue(ctx, chi.RouteCtxKey, (*chi.Context)(nil))
 	httpReq, err := http.NewRequestWithContext(cleanCtx, "GET", finalURL.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return "", nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Set internal authentication context using the username from the 'u' parameter
 	authCtx := request.WithInternalAuth(httpReq.Context(), username)
 	httpReq = httpReq.WithContext(authCtx)
 
-	// Bound captured responses before CallRaw can copy them into Wasm memory or a
-	// plugin can amplify them through base64/JSON encoding.
 	recorder := newCappedResponseRecorder(subsonicAPIResponseBodyLimit)
-
-	// Call the subsonic router
 	s.router.ServeHTTP(recorder, httpReq)
 	if recorder.err != nil {
-		return nil, recorder.err
+		return "", nil, recorder.err
 	}
-
-	return recorder, nil
+	return recorder.Header().Get("Content-Type"), recorder.Body.Bytes(), nil
 }
 
 func (s *subsonicAPIServiceImpl) Call(ctx context.Context, uri string) (string, error) {
-	recorder, err := s.executeRequest(ctx, uri, true)
+	_, body, err := s.executeRequest(ctx, uri, true)
 	if err != nil {
 		return "", err
 	}
-	return recorder.Body.String(), nil
+	return string(body), nil
 }
 
 func (s *subsonicAPIServiceImpl) CallRaw(ctx context.Context, uri string) (string, []byte, error) {
-	recorder, err := s.executeRequest(ctx, uri, false)
-	if err != nil {
-		return "", nil, err
-	}
-	contentType := recorder.Header().Get("Content-Type")
-	return contentType, recorder.Body.Bytes(), nil
+	return s.executeRequest(ctx, uri, false)
 }
 
 func (s *subsonicAPIServiceImpl) checkPermissions(ctx context.Context, username string) error {

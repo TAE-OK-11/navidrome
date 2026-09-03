@@ -1,0 +1,179 @@
+syntax = "proto3";
+
+package navidrome.metadata.v1;
+
+option go_package = "github.com/navidrome/navidrome/core/metadataworker/gen";
+
+// Rust owns CPU-bound extract, tag clean, lyrics parse, image resize, and FTS
+// normalize. Go owns SQLite, the HTTP edge, and orchestration.
+// Public Subsonic/Native stay HTTP; this contract is internal only.
+
+service Metadata {
+  rpc Extract(ExtractRequest) returns (ExtractResponse);
+  rpc CleanTags(CleanTagsRequest) returns (CleanTagsResponse);
+  rpc MapMedia(MapMediaRequest) returns (MapMediaResponse);
+  rpc ParseLyrics(ParseLyricsRequest) returns (ParseLyricsResponse);
+  rpc ProcessImage(ImageRequest) returns (ImageResponse);
+  rpc ExtractPicture(ExtractPictureRequest) returns (ExtractPictureResponse);
+  rpc NormalizeFts(NormalizeFtsRequest) returns (NormalizeFtsResponse);
+  rpc BuildFts5Query(BuildFts5QueryRequest) returns (BuildFts5QueryResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message TagMapping {
+  repeated string aliases = 1;
+  string type = 2;
+  int32 max_length = 3;
+  repeated string split = 4;
+  bool album = 5;
+}
+
+message ExtractFile {
+  string key = 1;
+  string path = 2;
+}
+
+message ExtractRequest {
+  repeated ExtractFile files = 1;
+  map<string, TagMapping> tag_mappings = 2;
+  repeated string artist_split_exceptions = 3;
+  repeated string artists_split = 4;
+  repeated string roles_split = 5;
+  string artist_joiner = 6;
+  string pid_config_json = 7;
+  int32 library_id = 8;
+}
+
+message FileInfo {
+  string name = 1;
+  uint64 size = 2;
+  int64 modified_ns = 3;
+  int64 created_ns = 4;
+  bool has_created_ns = 5;
+}
+
+message ExtractedMetadata {
+  map<string, StringList> tags = 1;
+  FileInfo file_info = 2;
+  uint64 duration_ns = 3;
+  uint32 bit_rate = 4;
+  uint32 bit_depth = 5;
+  uint32 sample_rate = 6;
+  uint32 channels = 7;
+  string codec = 8;
+  bool has_picture = 9;
+  string lyrics_json = 10;
+  string media_file_json = 11;
+  map<string, StringList> cleaned_tags = 12;
+}
+
+message ExtractResponse {
+  uint32 protocol = 1;
+  string lofty = 2;
+  map<string, ExtractedMetadata> results = 3;
+  map<string, string> errors = 4;
+}
+
+message CleanTagsRequest {
+  string path = 1;
+  map<string, StringList> tags = 2;
+  map<string, TagMapping> mappings = 3;
+  repeated string artist_split_exceptions = 4;
+}
+
+message CleanTagsResponse {
+  bool ok = 1;
+  map<string, StringList> tags = 2;
+  string error = 3;
+}
+
+message MapMediaRequest {
+  map<string, StringList> tags = 1;
+  string path = 2;
+  string lyrics_json = 3;
+}
+
+message MapMediaResponse {
+  bool ok = 1;
+  string media_file_json = 2;
+  string error = 3;
+}
+
+message ParseLyricsRequest {
+  string suffix = 1;
+  string lang = 2;
+  bytes contents = 3;
+}
+
+message ParseLyricsResponse {
+  bool ok = 1;
+  string lyrics_json = 2;
+  string error = 3;
+}
+
+message ImageRequest {
+  repeated bytes payloads = 1;
+  bool mosaic = 2;
+  bool sniff = 3;
+  uint32 size = 4;
+  bool square = 5;
+  bool fill = 6;
+  bool animated_gif = 7;
+  bool animated_webp = 8;
+  bool animated_png = 9;
+  uint32 quality = 10;
+  string format = 11;
+  string path = 12;
+}
+
+message ImageResponse {
+  bool ok = 1;
+  bytes body = 2;
+  string error = 3;
+  bool animated_gif = 4;
+  bool animated_webp = 5;
+  bool animated_png = 6;
+  bool has_animation_flags = 7;
+}
+
+message ExtractPictureRequest {
+  string path = 1;
+  int64 max_bytes = 2;
+}
+
+message ExtractPictureResponse {
+  bool ok = 1;
+  bytes body = 2;
+  string error = 3;
+}
+
+message NormalizeFtsRequest {
+  repeated string values = 1;
+}
+
+message NormalizeFtsResponse {
+  bool ok = 1;
+  string normalized = 2;
+  string error = 3;
+}
+
+message BuildFts5QueryRequest {
+  string query = 1;
+}
+
+message BuildFts5QueryResponse {
+  bool ok = 1;
+  string query = 2;
+  bool degraded = 3;
+  string error = 4;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+}

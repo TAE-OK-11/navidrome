@@ -166,5 +166,6 @@ func (n *noopProvider) ArtistImage(context.Context, string) (*url.URL, error) {
 func (n *noopProvider) AlbumImage(context.Context, string) (*url.URL, error) {
 	return nil, model.ErrNotFound
 }
+func (n *noopProvider) Close() {}
 
 var _ external.Provider = (*noopProvider)(nil)

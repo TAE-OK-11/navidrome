@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/query"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/slice"
 )
@@ -102,7 +102,7 @@ func (s *maintenanceService) refreshAlbumChunk(ctx context.Context, albumIDs []s
 
 	// Batch load existing albums
 	albums, err := albumRepo.GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"album.id": albumIDs},
+		Filters: query.Eq("album.id", albumIDs),
 	})
 	if err != nil {
 		return fmt.Errorf("loading albums: %w", err)
@@ -116,7 +116,7 @@ func (s *maintenanceService) refreshAlbumChunk(ctx context.Context, albumIDs []s
 
 	// Batch load all media files for these albums
 	mediaFiles, err := mfRepo.GetAll(model.QueryOptions{
-		Filters: squirrel.Eq{"album_id": albumIDs},
+		Filters: query.Eq("album_id", albumIDs),
 		Sort:    "album_id, path",
 	})
 	if err != nil {
@@ -162,12 +162,12 @@ func (s *maintenanceService) refreshAlbumChunk(ctx context.Context, albumIDs []s
 
 // getAffectedAlbumIDs returns distinct album IDs from missing media files
 func (s *maintenanceService) getAffectedAlbumIDs(ctx context.Context, ids []string) ([]string, error) {
-	var filters squirrel.Sqlizer = squirrel.Eq{"missing": true}
+	var filters query.Sqlizer = query.Missing()
 	if len(ids) > 0 {
-		filters = squirrel.And{
-			squirrel.Eq{"missing": true},
-			squirrel.Eq{"media_file.id": ids},
-		}
+		filters = query.And(
+			query.Missing(),
+			query.Eq("media_file.id", ids),
+		)
 	}
 
 	mfs, err := s.ds.MediaFile(ctx).GetAll(model.QueryOptions{

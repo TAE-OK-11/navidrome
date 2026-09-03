@@ -7,11 +7,11 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/cache"
-	"github.com/navidrome/navidrome/utils/httpclient"
 )
 
 const (
@@ -33,7 +33,7 @@ func librefmConstructor(ds model.DataStore) *librefmAgent {
 		ds:          ds,
 		sessionKeys: &agents.SessionKeys{DataStore: ds, KeyName: sessionKeyProperty},
 	}
-	hc := httpclient.New(consts.DefaultHttpClientTimeOut)
+	hc := integration.HTTPClient(consts.DefaultHttpClientTimeOut)
 	chc := cache.NewHTTPClient(hc, consts.DefaultHttpClientTimeOut)
 	l.client = newClient(effectiveApiKey(), effectiveSecret(), conf.Server.LibreFM.BaseURL, chc)
 	return l

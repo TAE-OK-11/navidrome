@@ -32,6 +32,7 @@ var _ = Describe("TaskQueueService", func() {
 	var service *taskQueueServiceImpl
 	var ctx context.Context
 	var manager *Manager
+	var ds model.DataStore
 
 	BeforeEach(func() {
 		ctx = GinkgoT().Context()
@@ -46,7 +47,8 @@ var _ = Describe("TaskQueueService", func() {
 			plugins: make(map[string]*plugin),
 		}
 
-		service, err = newTaskQueueService(ctx, "test_plugin", manager, 5)
+		ds = newTestPluginStore(tmpDir)
+		service, err = newTaskQueueService(ctx, ds, "test_plugin", manager, 5)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -642,7 +644,7 @@ var _ = Describe("TaskQueueService", func() {
 
 			// Check next_run_at is positive and reasonable (capped at maxRetentionMs from now)
 			var nextRunAt int64
-			err = service.db.QueryRow(`SELECT next_run_at FROM tasks WHERE id = ?`, taskID).Scan(&nextRunAt)
+			nextRunAt, err = service.store.NextRunAt(ctx, service.pluginName, taskID)
 			Expect(err).ToNot(HaveOccurred())
 
 			now := time.Now().UnixMilli()
@@ -730,7 +732,7 @@ var _ = Describe("TaskQueueService", func() {
 				plugins: make(map[string]*plugin),
 			}
 
-			service, err = newTaskQueueService(ctx, "test_plugin", manager2, 5)
+			service, err = newTaskQueueService(ctx, ds, "test_plugin", manager2, 5)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Override callback to succeed
@@ -767,20 +769,19 @@ var _ = Describe("TaskQueueService", func() {
 	})
 
 	Describe("Plugin isolation", func() {
-		It("uses separate databases for different plugins", func() {
+		It("isolates queues for different plugins on the shared store", func() {
 			manager2 := &Manager{
 				plugins: make(map[string]*plugin),
 			}
 
-			service2, err := newTaskQueueService(ctx, "other_plugin", manager2, 5)
+			service2, err := newTaskQueueService(ctx, ds, "other_plugin", manager2, 5)
 			Expect(err).ToNot(HaveOccurred())
 			defer service2.Close()
 
-			// Check that separate database files exist
 			_, err = os.Stat(filepath.Join(tmpDir, "plugins", "test_plugin", "taskqueue.db"))
-			Expect(err).ToNot(HaveOccurred())
+			Expect(os.IsNotExist(err)).To(BeTrue())
 			_, err = os.Stat(filepath.Join(tmpDir, "plugins", "other_plugin", "taskqueue.db"))
-			Expect(err).ToNot(HaveOccurred())
+			Expect(os.IsNotExist(err)).To(BeTrue())
 
 			// Both services should be able to create queues with the same name independently
 			service.invokeCallbackFn = func(_ context.Context, _, _ string, _ []byte, _ int32) (string, error) { return "", nil }

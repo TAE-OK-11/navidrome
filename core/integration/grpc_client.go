@@ -1,33 +1,23 @@
 package integration
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/core/integration/gen"
 	"github.com/navidrome/navidrome/core/rustworker"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 )
 
-const grpcDialTimeout = 5 * time.Second
-
 type grpcClient struct {
-	cmd    *exec.Cmd
-	conn   *grpc.ClientConn
+	proc   *rustworker.GRPCProcess
 	client gen.OutboundClient
 	mu     sync.Mutex
 }
@@ -39,105 +29,20 @@ func startGRPCClient(ctx context.Context) (*grpcClient, error) {
 	}
 	listen := strings.TrimSpace(os.Getenv("ND_INTEGRATIONGRPCLISTEN"))
 	if listen == "" {
-		listen = "unix:" + filepath.Join(os.TempDir(), fmt.Sprintf("navidrome-integration-%d.sock", os.Getpid()))
+		listen = rustworker.DefaultListenAddr("navidrome-integration")
 	}
-	if path, ok := strings.CutPrefix(listen, "unix:"); ok {
-		_ = os.Remove(path)
-	}
-
-	cmd := exec.CommandContext(ctx, binary, "--grpc-worker", "--listen", listen) //nolint:gosec // administrator-controlled worker
-	stdout, err := cmd.StdoutPipe()
+	proc, err := rustworker.StartGRPC(ctx, binary, listen, nil)
 	if err != nil {
-		return nil, fmt.Errorf("integration worker stdout: %w", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("starting integration worker: %w", err)
-	}
-
-	readyCtx, cancel := context.WithTimeout(ctx, grpcDialTimeout)
-	defer cancel()
-	addr, err := waitReady(readyCtx, stdout)
-	if err != nil {
-		rustworker.Kill(cmd)
-		_ = cmd.Wait()
 		return nil, err
 	}
-
-	dialAddr, dialOpts, err := grpcDialTarget(addr)
-	if err != nil {
-		rustworker.Kill(cmd)
-		_ = cmd.Wait()
-		return nil, err
-	}
-	conn, err := grpc.NewClient(dialAddr, dialOpts...)
-	if err != nil {
-		rustworker.Kill(cmd)
-		_ = cmd.Wait()
-		return nil, fmt.Errorf("dialing integration worker: %w", err)
-	}
-
-	client := gen.NewOutboundClient(conn)
-	healthCtx, healthCancel := context.WithTimeout(context.Background(), grpcDialTimeout)
+	client := gen.NewOutboundClient(proc.Conn)
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), rustworker.DefaultGRPCDialTimeout)
 	defer healthCancel()
 	if _, err := client.Health(healthCtx, &gen.HealthRequest{}); err != nil {
-		_ = conn.Close()
-		rustworker.Kill(cmd)
-		_ = cmd.Wait()
+		proc.Close()
 		return nil, fmt.Errorf("integration worker health: %w", err)
 	}
-
-	go func() {
-		_ = cmd.Wait()
-	}()
-
-	return &grpcClient{cmd: cmd, conn: conn, client: client}, nil
-}
-
-func waitReady(ctx context.Context, stdout io.Reader) (string, error) {
-	reader := bufio.NewReader(stdout)
-	type result struct {
-		line string
-		err  error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		line, err := reader.ReadString('\n')
-		ch <- result{line: line, err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		return "", fmt.Errorf("waiting for integration worker: %w", ctx.Err())
-	case r := <-ch:
-		if r.err != nil {
-			return "", fmt.Errorf("reading integration worker ready line: %w", r.err)
-		}
-		line := strings.TrimSpace(r.line)
-		addr, ok := strings.CutPrefix(line, "READY ")
-		if !ok || addr == "" {
-			return "", fmt.Errorf("unexpected integration worker banner %q", line)
-		}
-		return addr, nil
-	}
-}
-
-func grpcDialTarget(addr string) (string, []grpc.DialOption, error) {
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                20 * time.Second,
-			Timeout:             5 * time.Second,
-			PermitWithoutStream: true,
-		}),
-	}
-	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
-		opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", path)
-		}))
-		return "passthrough:///unix", opts, nil
-	}
-	return addr, opts, nil
+	return &grpcClient{proc: proc, client: client}, nil
 }
 
 func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.Request) (*http.Response, error) {
@@ -227,10 +132,9 @@ func (c *grpcClient) sign(ctx context.Context, params map[string]string, secret 
 func (c *grpcClient) close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.conn != nil {
-		_ = c.conn.Close()
-		c.conn = nil
+	if c.proc != nil {
+		c.proc.Close()
+		c.proc = nil
 	}
-	rustworker.Kill(c.cmd)
 	c.client = nil
 }

@@ -1,17 +1,16 @@
 package integration
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/utils/httpclient"
 	"github.com/navidrome/navidrome/utils/singleton"
@@ -41,7 +40,9 @@ func newGateway() *Gateway {
 	}
 	if conf.Server.Integration.Enabled {
 		if client, err := startGRPCClient(context.Background()); err != nil {
-			log.Warn("Rust integration gRPC worker unavailable; using Go HTTP fallback", err)
+			if !errors.Is(err, rustworker.ErrSkippedInTests) {
+				log.Warn("Rust integration gRPC worker unavailable; using Go HTTP fallback", err)
+			}
 		} else {
 			g.grpc = client
 			log.Info("Outbound HTTP routed through Rust gRPC integration worker")
@@ -128,14 +129,4 @@ func (g *Gateway) Close() {
 	if g.grpc != nil {
 		g.grpc.close()
 	}
-}
-
-type nopReadCloser struct {
-	*bytes.Reader
-}
-
-func (nopReadCloser) Close() error { return nil }
-
-func readCloser(body []byte) io.ReadCloser {
-	return nopReadCloser{bytes.NewReader(body)}
 }

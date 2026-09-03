@@ -67,9 +67,3 @@ func (b *circuitBreaker) failure() {
 		b.halfOpenInFlight = 0
 	}
 }
-
-func (b *circuitBreaker) open() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.state == breakerOpen && time.Since(b.openedAt) < breakerOpenFor
-}

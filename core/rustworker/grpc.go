@@ -3,6 +3,7 @@ package rustworker
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"google.golang.org/grpc"
@@ -20,6 +22,11 @@ import (
 const DefaultGRPCDialTimeout = 5 * time.Second
 
 const maxGRPCMsgSize = 64 << 20
+
+// ErrSkippedInTests is returned when a gRPC worker would be spawned from a
+// `go test` process. Child workers hold stdout pipes open and make the test
+// binary hang on "WaitDelay expired before I/O complete".
+var ErrSkippedInTests = errors.New("gRPC worker not started in Go tests")
 
 // DefaultListenAddr returns a process-local unix socket (TCP on Windows).
 func DefaultListenAddr(prefix string) string {
@@ -35,12 +42,13 @@ type GRPCProcess struct {
 
 // StartGRPC launches binary with --grpc-worker --listen, waits for READY, and dials.
 func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []string) (*GRPCProcess, error) {
+	if skipGRPCWorkerInTests() {
+		return nil, ErrSkippedInTests
+	}
 	if listen == "" {
 		listen = DefaultListenAddr("navidrome-worker")
 	}
-	if path, ok := strings.CutPrefix(listen, "unix:"); ok {
-		_ = os.Remove(path)
-	}
+	unlinkUnixListen(listen)
 
 	cmd := exec.CommandContext(ctx, binary, "--grpc-worker", "--listen", listen) //nolint:gosec // administrator-controlled worker
 	prepareCmd(cmd)
@@ -51,7 +59,11 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 	if err != nil {
 		return nil, fmt.Errorf("opening worker stdout: %w", err)
 	}
-	cmd.Stderr = os.Stderr
+	if testing.Testing() {
+		cmd.Stderr = io.Discard
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting gRPC worker %q: %w", binary, err)
 	}
@@ -75,6 +87,26 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 
 	go func() { _ = cmd.Wait() }()
 	return &GRPCProcess{Cmd: cmd, Conn: conn, Addr: addr}, nil
+}
+
+func skipGRPCWorkerInTests() bool {
+	if !testing.Testing() {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv("ND_GRPCWORKERINTESTS")) == ""
+}
+
+func unlinkUnixListen(listen string) {
+	path, ok := strings.CutPrefix(listen, "unix:")
+	if !ok || path == "" {
+		return
+	}
+	cleaned := filepath.Clean(path)
+	tmp := filepath.Clean(os.TempDir())
+	if cleaned != tmp && !strings.HasPrefix(cleaned, tmp+string(os.PathSeparator)) {
+		return
+	}
+	_ = os.Remove(cleaned) //nolint:gosec // G703: stale unix socket we created under TempDir
 }
 
 func (p *GRPCProcess) Close() {

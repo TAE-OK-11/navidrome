@@ -2,6 +2,7 @@ package publicgrpc
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -148,7 +149,7 @@ func BenchmarkPublicGRPCOpenStream(b *testing.B) {
 		}
 		for {
 			chunk, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -167,9 +168,10 @@ func newHTTP2BenchServer(handler http.Handler) *httptest.Server {
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)
 	srv.Config = &http.Server{
-		Handler:   handler,
-		TLSConfig: srv.TLS,
-		Protocols: protocols,
+		Handler:           handler,
+		TLSConfig:         srv.TLS,
+		Protocols:         protocols,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 	srv.EnableHTTP2 = true
 	srv.StartTLS()

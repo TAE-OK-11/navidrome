@@ -90,7 +90,10 @@ func TestGatewayRejectsUnknownHostWhenWorkerRequired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = g.roundTripDest(req, DestUnknown)
+	resp, err := g.roundTripDest(req, DestUnknown)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil || !strings.Contains(err.Error(), "unknown outbound host") {
 		t.Fatalf("expected unknown host rejection, got %v", err)
 	}

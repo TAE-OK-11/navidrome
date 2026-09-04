@@ -173,7 +173,7 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		return nil, fmt.Errorf("%w: %s", errCircuitOpen, dest)
 	}
 
-	rt := http.RoundTripper(fallback)
+	rt := fallback
 	if dest != DestArtwork {
 		rt = &boundedRoundTripper{inner: fallback, limit: maxResponseBody(dest)}
 	}

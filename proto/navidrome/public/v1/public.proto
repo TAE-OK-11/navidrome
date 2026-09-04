@@ -55,6 +55,7 @@ message LoginResponse {
 
 message InvokeRequest {
   string endpoint = 1;
+  // Repeated values: join with ASCII RS (U+001E), e.g. "a\x1eb".
   map<string, string> params = 2;
   bool json = 3;
 }
@@ -68,6 +69,7 @@ message InvokeResponse {
 message InvokeNativeRequest {
   string method = 1;
   string path = 2;
+  // Repeated values: join with ASCII RS (U+001E).
   map<string, string> params = 3;
   bytes body = 4;
   string content_type = 5;
@@ -84,6 +86,7 @@ message OpenRequest {
   string api = 1;
   string method = 2;
   string path = 3;
+  // Repeated values: join with ASCII RS (U+001E).
   map<string, string> params = 4;
   bytes body = 5;
   string content_type = 6;

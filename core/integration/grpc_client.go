@@ -26,6 +26,7 @@ type grpcClient struct {
 	mu       sync.Mutex
 	closed   bool
 	inflight sync.WaitGroup
+	onDead   func()
 }
 
 func startGRPCClient(ctx context.Context) (*grpcClient, error) {
@@ -45,7 +46,23 @@ func startGRPCClient(ctx context.Context) (*grpcClient, error) {
 		proc.Close()
 		return nil, fmt.Errorf("integration worker health: %w", err)
 	}
-	return &grpcClient{proc: proc, client: client}, nil
+	c := &grpcClient{proc: proc, client: client}
+	go c.watchProcess()
+	return c, nil
+}
+
+func (c *grpcClient) watchProcess() {
+	if c.proc == nil || c.proc.Cmd == nil {
+		return
+	}
+	_ = c.proc.Cmd.Wait()
+	c.mu.Lock()
+	closed := c.closed
+	onDead := c.onDead
+	c.mu.Unlock()
+	if !closed && onDead != nil {
+		onDead()
+	}
 }
 
 func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.Request) (*http.Response, error) {

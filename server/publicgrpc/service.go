@@ -39,6 +39,11 @@ type NativeInvoker interface {
 	Invoke(ctx context.Context, method, path string, query url.Values, contentType string, body []byte, token string) (int, http.Header, []byte, error)
 }
 
+// NativeOpener streams Native REST responses.
+type NativeOpener interface {
+	Open(ctx context.Context, method, path string, query url.Values, contentType string, body []byte, token string, w http.ResponseWriter) error
+}
+
 // Service implements navidrome.public.v1.Public.
 type Service struct {
 	gen.UnimplementedPublicServer
@@ -120,10 +125,7 @@ func (s *Service) Invoke(ctx context.Context, req *gen.InvokeRequest) (*gen.Invo
 	if endpoint == "" {
 		return nil, status.Error(codes.InvalidArgument, "endpoint is required")
 	}
-	query := url.Values{}
-	for k, v := range req.GetParams() {
-		query.Set(k, v)
-	}
+	query := mapToURLValues(req.GetParams())
 	ct, body, err := s.invoker.Invoke(ctx, endpoint, query, user.UserName, req.GetJson())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "invoke %s: %v", endpoint, err)
@@ -144,10 +146,7 @@ func (s *Service) InvokeNative(ctx context.Context, req *gen.InvokeNativeRequest
 	if path == "" {
 		return nil, status.Error(codes.InvalidArgument, "path is required")
 	}
-	query := url.Values{}
-	for k, v := range req.GetParams() {
-		query.Set(k, v)
-	}
+	query := mapToURLValues(req.GetParams())
 	statusCode, header, body, err := s.native.Invoke(ctx, req.GetMethod(), path, query, req.GetContentType(), req.GetBody(), bearerToken(ctx))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "native %s: %v", path, err)

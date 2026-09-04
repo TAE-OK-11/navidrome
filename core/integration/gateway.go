@@ -36,8 +36,11 @@ type Gateway struct {
 	fallback        http.RoundTripper
 	artworkFallback http.RoundTripper
 	breakers        sync.Map // Destination -> *circuitBreaker
+	grpcMu          sync.Mutex
 	grpc            *grpcClient
 	workerExpected  bool
+	shutdown        bool
+	restarts        int
 }
 
 func Get() *Gateway {
@@ -63,6 +66,7 @@ func newGateway() *Gateway {
 			}
 		} else {
 			g.grpc = client
+			g.attachWorker(client)
 			log.Info("Outbound HTTP routed through Rust gRPC integration worker")
 		}
 	}
@@ -127,14 +131,26 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		dest = DestUnknown
 	}
 
+	if dest == DestUnknown && g.workerExpected && !allowHTTPFallback() {
+		host := ""
+		if req.URL != nil {
+			host = req.URL.Host
+		}
+		return nil, fmt.Errorf("%w: unknown outbound host %q", errWorkerUnavailable, host)
+	}
+
 	fallback := g.fallback
 	if dest == DestArtwork && g.artworkFallback != nil {
 		fallback = g.artworkFallback
 	}
 
-	useGRPC := g.grpc != nil && dest != DestUnknown
+	g.grpcMu.Lock()
+	client := g.grpc
+	g.grpcMu.Unlock()
+
+	useGRPC := client != nil && dest != DestUnknown
 	if useGRPC {
-		resp, err := g.grpc.roundTrip(req.Context(), dest, req)
+		resp, err := client.roundTrip(req.Context(), dest, req)
 		if err == nil {
 			return resp, nil
 		}
@@ -142,7 +158,7 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 			return nil, err
 		}
 		if isWorkerTransportFailure(err) {
-			g.invalidateWorker(err)
+			g.tryRestartWorker(err)
 		}
 		if !allowHTTPFallback() {
 			return nil, err
@@ -174,18 +190,22 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 	return resp, nil
 }
 
-func (g *Gateway) invalidateWorker(err error) {
-	if g.grpc == nil {
-		return
+func (g *Gateway) Close() {
+	g.grpcMu.Lock()
+	defer g.grpcMu.Unlock()
+	g.shutdown = true
+	if g.grpc != nil {
+		g.grpc.close()
+		g.grpc = nil
 	}
-	log.Error("Integration gRPC worker failed; disabling worker for this process", err)
-	g.grpc.close()
-	g.grpc = nil
 }
 
 func (g *Gateway) Sign(ctx context.Context, params map[string]string, secret string) string {
-	if g.grpc != nil {
-		sig, err := g.grpc.sign(ctx, params, secret)
+	g.grpcMu.Lock()
+	client := g.grpc
+	g.grpcMu.Unlock()
+	if client != nil {
+		sig, err := client.sign(ctx, params, secret)
 		if err == nil && sig != "" {
 			return sig
 		}
@@ -210,12 +230,6 @@ func Sign(ctx context.Context, params map[string]string, secret string) string {
 func (g *Gateway) breaker(dest Destination) *circuitBreaker {
 	actual, _ := g.breakers.LoadOrStore(dest, &circuitBreaker{})
 	return actual.(*circuitBreaker)
-}
-
-func (g *Gateway) Close() {
-	if g.grpc != nil {
-		g.grpc.close()
-	}
 }
 
 // boundedRoundTripper caps fallback response bodies.

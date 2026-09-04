@@ -81,10 +81,7 @@ func (s *Service) openSubsonic(ctx context.Context, req *gen.OpenRequest, stream
 	if endpoint == "" {
 		return status.Error(codes.InvalidArgument, "path is required")
 	}
-	query := url.Values{}
-	for k, v := range req.GetParams() {
-		query.Set(k, v)
-	}
+	query := mapToURLValues(req.GetParams())
 	sw := &streamWriter{stream: stream}
 	if err := opener.Open(ctx, endpoint, query, username, req.GetJson(), sw); err != nil {
 		return status.Errorf(codes.Internal, "open %s: %v", endpoint, err)
@@ -103,7 +100,22 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 	if s.native == nil {
 		return status.Error(codes.Unavailable, "Native API invoker is not configured")
 	}
-	statusCode, header, body, err := s.native.Invoke(ctx, req.GetMethod(), req.GetPath(), nativeQuery(req), req.GetContentType(), req.GetBody(), token)
+	query := mapToURLValues(req.GetParams())
+	if opener, ok := s.native.(NativeOpener); ok {
+		sw := &streamWriter{stream: stream}
+		if err := opener.Open(ctx, req.GetMethod(), req.GetPath(), query, req.GetContentType(), req.GetBody(), token, sw); err != nil {
+			return status.Errorf(codes.Internal, "native %s: %v", req.GetPath(), err)
+		}
+		if !sw.sentHead {
+			st := sw.status
+			if st == 0 {
+				st = http.StatusOK
+			}
+			return stream.Send(&gen.OpenChunk{Status: int32(st), Final: true})
+		}
+		return stream.Send(&gen.OpenChunk{Final: true})
+	}
+	statusCode, header, body, err := s.native.Invoke(ctx, req.GetMethod(), req.GetPath(), query, req.GetContentType(), req.GetBody(), token)
 	if err != nil {
 		return status.Errorf(codes.Internal, "native %s: %v", req.GetPath(), err)
 	}
@@ -132,14 +144,6 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 		}
 	}
 	return nil
-}
-
-func nativeQuery(req *gen.OpenRequest) url.Values {
-	q := url.Values{}
-	for k, v := range req.GetParams() {
-		q.Set(k, v)
-	}
-	return q
 }
 
 const openChunkSize = 64 * 1024

@@ -19,7 +19,8 @@ type QueryOptions struct {
 	Offset  int
 	Filters Sqlizer
 	Seed    string // for random sorting
-	// ExcludeHeavyFields omits large media_file columns (lyrics, probe_data) on browse paths.
+	// ExcludeHeavyFields omits large columns on browse/search hydration paths.
+	// media_file: lyrics, probe_data; album/artist: external metadata blobs.
 	ExcludeHeavyFields bool
 }
 

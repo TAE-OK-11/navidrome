@@ -223,10 +223,33 @@ func (r *albumRepository) UpdateExternalInfo(al *model.Album) error {
 }
 
 func (r *albumRepository) selectAlbum(options ...model.QueryOptions) SelectBuilder {
-	sql := r.newSelect(options...).Columns("album.*", "library.path as library_path", "library.name as library_name").
+	columns := []string{"album.*", "library.path as library_path", "library.name as library_name"}
+	if len(options) > 0 && options[0].ExcludeHeavyFields {
+		columns = browseAlbumColumnExprs("album")
+		columns = append(columns, "library.path as library_path", "library.name as library_name")
+	}
+	sql := r.newSelect(options...).Columns(columns...).
 		LeftJoin("library on album.library_id = library.id")
 	sql = r.withAnnotation(sql, "album.id")
 	return r.applyLibraryFilter(sql)
+}
+
+func browseAlbumColumnExprs(table string) []string {
+	cols := []string{
+		"id", "library_id", "name", "embed_art_path", "album_artist_id", "album_artist",
+		"max_year", "min_year", "date", "max_original_year", "min_original_year",
+		"original_date", "release_date", "compilation", "comment", "song_count", "duration", "size",
+		"sort_album_name", "sort_album_artist_name", "order_album_name", "order_album_artist_name",
+		"catalog_num", "mbz_album_id", "mbz_album_artist_id", "mbz_album_type", "mbz_album_comment",
+		"mbz_release_group_id", "folder_ids", "explicit_status", "rg_album_gain", "rg_album_peak",
+		"participants", "tags", "discs", "genre", "missing", "imported_at", "created_at", "updated_at",
+		"average_rating",
+	}
+	out := make([]string, 0, len(cols))
+	for _, col := range cols {
+		out = append(out, table+"."+col)
+	}
+	return out
 }
 
 func (r *albumRepository) Get(id string) (*model.Album, error) {

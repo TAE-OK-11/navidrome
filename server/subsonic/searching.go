@@ -103,7 +103,6 @@ func (api *Router) searchAll(ctx context.Context, sp *searchParams, musicFolderI
 	start := time.Now()
 	q := sanitize.Accents(strings.ToLower(strings.TrimSuffix(sp.query, "*")))
 	if api.rustSearch != nil && rustSearchableQuery(q) && rustSearchPageSupported(sp) {
-		api.rustSearch.RefreshIfStale(ctx, api.ds)
 		scope := musicFolderIds
 		if len(scope) == 0 {
 			scope = getUserAccessibleLibraries(ctx).IDs()
@@ -262,9 +261,12 @@ func (api *Router) hydrateRustAlbums(ctx context.Context, ids []string) (model.A
 	if len(ids) == 0 {
 		return model.Albums{}, nil
 	}
-	values, err := api.ds.Album(ctx).GetAll(model.QueryOptions{Filters: query.And(
-		query.Eq("album.id", ids), query.Eq("album.missing", false),
-	)})
+	values, err := api.ds.Album(ctx).GetAll(model.QueryOptions{
+		Filters: query.And(
+			query.Eq("album.id", ids), query.Eq("album.missing", false),
+		),
+		ExcludeHeavyFields: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -275,9 +277,12 @@ func (api *Router) hydrateRustArtists(ctx context.Context, ids []string) (model.
 	if len(ids) == 0 {
 		return model.Artists{}, nil
 	}
-	values, err := api.ds.Artist(ctx).GetAll(model.QueryOptions{Filters: query.And(
-		query.Eq("artist.id", ids), query.Eq("artist.missing", false),
-	)})
+	values, err := api.ds.Artist(ctx).GetAll(model.QueryOptions{
+		Filters: query.And(
+			query.Eq("artist.id", ids), query.Eq("artist.missing", false),
+		),
+		ExcludeHeavyFields: true,
+	})
 	if err != nil {
 		return nil, err
 	}

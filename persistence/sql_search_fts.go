@@ -199,22 +199,48 @@ type cachedFTS5Query struct {
 	degraded bool
 }
 
-var ftsQueryCache sync.Map
+const ftsQueryCacheLimit = 512
+
+type ftsQueryCacheStore struct {
+	mu      sync.Mutex
+	entries map[string]cachedFTS5Query
+	limit   int
+}
+
+var ftsQueryCache = ftsQueryCacheStore{entries: make(map[string]cachedFTS5Query), limit: ftsQueryCacheLimit}
 
 // allowGoFTS5Builder is true only in `go test`. Production search uses the Rust
 // FTS5 query builder; if that worker is down, newFTSSearch falls through to LIKE.
 var allowGoFTS5Builder = rustworker.AllowLegacyNDJSON
 
 func buildFTS5QueryCached(userInput string) (string, bool) {
-	if cached, ok := ftsQueryCache.Load(userInput); ok {
-		entry := cached.(cachedFTS5Query)
-		return entry.query, entry.degraded
+	if cached, ok := ftsQueryCache.load(userInput); ok {
+		return cached.query, cached.degraded
 	}
 	query, degraded, cacheable := buildFTS5QueryRust(context.Background(), userInput)
 	if cacheable {
-		ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
+		ftsQueryCache.store(userInput, cachedFTS5Query{query: query, degraded: degraded})
 	}
 	return query, degraded
+}
+
+func (c *ftsQueryCacheStore) load(key string) (cachedFTS5Query, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	return entry, ok
+}
+
+func (c *ftsQueryCacheStore) store(key string, entry cachedFTS5Query) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= c.limit {
+		for existingKey := range c.entries {
+			delete(c.entries, existingKey)
+			break
+		}
+	}
+	c.entries[key] = entry
 }
 
 func buildFTS5QueryRust(ctx context.Context, userInput string) (query string, degraded, cacheable bool) {

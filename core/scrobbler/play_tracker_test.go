@@ -1452,7 +1452,7 @@ func newTestPlayTracker(ds model.DataStore, broker events.Broker, plugins Plugin
 		DeferCleanup(events.ForwardFromBus(bus, broker))
 	}
 	DeferCleanup(bus.Close)
-	return newPlayTracker(ds, plugins, bus, false)
+	return newPlayTracker(ds, plugins, bus, false, true)
 }
 
 type fakeEventBroker struct {

@@ -157,14 +157,15 @@ impl Outbound for OutboundService {
         if req.url.is_empty() {
             return Err(Status::invalid_argument("url is required"));
         }
-        if req.body.len() > MAX_BODY {
-            return Err(Status::resource_exhausted("request body too large"));
-        }
         let dest = if req.destination.is_empty() {
             "unknown"
         } else {
             req.destination.as_str()
         };
+        let max_req_body = Self::max_body(dest);
+        if req.body.len() > max_req_body {
+            return Err(Status::resource_exhausted("request body too large"));
+        }
         if dest == DEST_ARTWORK {
             validate_artwork_url(&req.url)?;
         }
@@ -213,7 +214,16 @@ impl Outbound for OutboundService {
                         }));
                     }
                 }
-                let body = resp.bytes().await.unwrap_or_default();
+                let body = match resp.bytes().await {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        self.breaker_failure(dest).await;
+                        return Ok(Response::new(HttpResponse {
+                            error: err.to_string(),
+                            ..Default::default()
+                        }));
+                    }
+                };
                 if body.len() > max_body {
                     self.breaker_failure(dest).await;
                     return Ok(Response::new(HttpResponse {

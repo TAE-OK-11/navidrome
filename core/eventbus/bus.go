@@ -146,6 +146,7 @@ type Bus struct {
 	workers int
 	stop    chan struct{}
 	once    sync.Once
+	workerWG sync.WaitGroup
 }
 
 func New() *Bus {
@@ -176,7 +177,11 @@ func NewWithSize(queueSize, workers int) *Bus {
 		stop:    make(chan struct{}),
 	}
 	for range workers {
-		go b.loop()
+		b.workerWG.Add(1)
+		go func() {
+			defer b.workerWG.Done()
+			b.loop()
+		}()
 	}
 	return b
 }
@@ -240,14 +245,24 @@ func (b *Bus) PublishSync(ctx context.Context, evt Event) {
 }
 
 func (b *Bus) Close() {
-	b.once.Do(func() { close(b.stop) })
+	b.once.Do(func() {
+		close(b.stop)
+		b.workerWG.Wait()
+	})
 }
 
 func (b *Bus) loop() {
 	for {
 		select {
 		case <-b.stop:
-			return
+			for {
+				select {
+				case evt := <-b.queue:
+					b.dispatch(context.Background(), evt)
+				default:
+					return
+				}
+			}
 		case evt := <-b.queue:
 			b.dispatch(context.Background(), evt)
 		}

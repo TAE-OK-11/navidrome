@@ -18,10 +18,14 @@ import (
 	"github.com/navidrome/navidrome/core/rustworker"
 )
 
+var errBodyTooLarge = errors.New("integration request body too large")
+
 type grpcClient struct {
-	proc   *rustworker.GRPCProcess
-	client gen.OutboundClient
-	mu     sync.Mutex
+	proc     *rustworker.GRPCProcess
+	client   gen.OutboundClient
+	mu       sync.Mutex
+	closed   bool
+	inflight sync.WaitGroup
 }
 
 func startGRPCClient(ctx context.Context) (*grpcClient, error) {
@@ -46,8 +50,14 @@ func startGRPCClient(ctx context.Context) (*grpcClient, error) {
 
 func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.Request) (*http.Response, error) {
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil, errors.New("integration gRPC client closed")
+	}
 	client := c.client
+	c.inflight.Add(1)
 	c.mu.Unlock()
+	defer c.inflight.Done()
 	if client == nil {
 		return nil, errors.New("integration gRPC client closed")
 	}
@@ -55,7 +65,7 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 	var body []byte
 	if req.Body != nil {
 		var err error
-		body, err = io.ReadAll(req.Body)
+		body, err = readLimitedBody(req.Body, maxRequestBody(dest))
 		_ = req.Body.Close()
 		if err != nil {
 			return nil, err
@@ -74,7 +84,7 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 	headers := make(map[string]string, len(req.Header))
 	for k, v := range req.Header {
 		if len(v) > 0 {
-			headers[k] = v[0]
+			headers[k] = strings.Join(v, ",")
 		}
 	}
 
@@ -93,10 +103,15 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 		return nil, workerResponseError(resp.GetError())
 	}
 
+	respBody := resp.GetBody()
+	if int64(len(respBody)) > maxResponseBody(dest) {
+		return nil, fmt.Errorf("integration response exceeds %d bytes", maxResponseBody(dest))
+	}
+
 	out := &http.Response{
 		StatusCode: int(resp.GetStatus()),
 		Header:     make(http.Header, len(resp.GetHeaders())),
-		Body:       io.NopCloser(bytes.NewReader(resp.GetBody())),
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
 		Proto:      "HTTP/2.0",
 		ProtoMajor: 2,
 		Request:    req,
@@ -114,14 +129,31 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 		}
 		out.Header.Set("Retry-After", strconv.Itoa(int(secs)))
 	}
-	out.ContentLength = int64(len(resp.GetBody()))
+	out.ContentLength = int64(len(respBody))
 	return out, nil
+}
+
+func readLimitedBody(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%w (%d bytes)", errBodyTooLarge, limit)
+	}
+	return data, nil
 }
 
 func (c *grpcClient) sign(ctx context.Context, params map[string]string, secret string) (string, error) {
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return "", errors.New("integration gRPC client closed")
+	}
 	client := c.client
+	c.inflight.Add(1)
 	c.mu.Unlock()
+	defer c.inflight.Done()
 	if client == nil {
 		return "", errors.New("integration gRPC client closed")
 	}
@@ -157,6 +189,10 @@ func isWorkerCircuitOpen(err error) bool {
 }
 
 func (c *grpcClient) close() {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	c.inflight.Wait()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.proc != nil {

@@ -105,6 +105,7 @@ type playTracker struct {
 	pluginScrobblers  map[string]Scrobbler
 	pluginLoader      PluginLoader
 	bus               *eventbus.Bus
+	closeBusOnStop    bool
 	asyncEvents       bool
 	mu                sync.RWMutex
 	npQueue           map[string]nowPlayingEntry
@@ -121,7 +122,7 @@ type playTracker struct {
 
 func GetPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoader) PlayTracker {
 	return singleton.GetInstance(func() *playTracker {
-		p := newPlayTracker(ds, pluginManager, eventbus.Get(), true)
+		p := newPlayTracker(ds, pluginManager, eventbus.Get(), true, false)
 		lifecycle.Register(p)
 		return p
 	})
@@ -130,10 +131,10 @@ func GetPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoa
 // NewPlayTracker creates a new PlayTracker instance. For normal usage, the PlayTracker has to be a singleton,
 // returned by the GetPlayTracker function above. This constructor is exported for testing.
 func NewPlayTracker(ds model.DataStore, _ events.Broker, pluginManager PluginLoader) PlayTracker {
-	return newPlayTracker(ds, pluginManager, eventbus.New(), false)
+	return newPlayTracker(ds, pluginManager, eventbus.New(), false, true)
 }
 
-func newPlayTracker(ds model.DataStore, pluginManager PluginLoader, bus *eventbus.Bus, async bool) *playTracker {
+func newPlayTracker(ds model.DataStore, pluginManager PluginLoader, bus *eventbus.Bus, async bool, closeBusOnStop bool) *playTracker {
 	m := cache.NewSimpleCache[string, PlaybackSession]()
 	p := &playTracker{
 		ds:                ds,
@@ -143,6 +144,7 @@ func newPlayTracker(ds model.DataStore, pluginManager PluginLoader, bus *eventbu
 		pluginScrobblers:  make(map[string]Scrobbler),
 		pluginLoader:      pluginManager,
 		bus:               bus,
+		closeBusOnStop:    closeBusOnStop,
 		asyncEvents:       async,
 		npQueue:           make(map[string]nowPlayingEntry),
 		npSignal:          make(chan struct{}, 1),
@@ -198,7 +200,7 @@ func (p *playTracker) Close() {
 
 func (p *playTracker) stopBackgroundWorkers() {
 	p.stopOnce.Do(func() {
-		if p.bus != nil {
+		if p.closeBusOnStop && p.bus != nil {
 			p.bus.Close()
 		}
 		close(p.shutdown)

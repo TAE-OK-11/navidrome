@@ -1133,18 +1133,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
       RUST_PGO_BENCH_TIME="${RUST_PGO_BENCH_TIME}" \
       CARGO_TARGET_DIR=/tmp/rust-workers-release \
       RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-      /build/release/rust-pgo-train.sh; \
+      /build/release/rust-pgo-train.sh && \
+      RUST_OUT=/tmp/rust-workers-release/pgo-final/release-fat; \
     else \
       CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
       CARGO_TARGET_DIR=/tmp/rust-workers-release \
-      RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C lto=fat -C codegen-units=1" \
-      cargo build --locked --profile release-fat --bins; \
+      RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+      cargo build --locked --profile release-fat --bins && \
+      RUST_OUT=/tmp/rust-workers-release/release-fat; \
     fi && \
-    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-metadata /out/navidrome-metadata && \
-    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-apikeys /out/navidrome-apikeys && \
-    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-scanner /out/navidrome-scanner && \
-    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-search /out/navidrome-search && \
-    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-integration /out/navidrome-integration && \
+    install -D -m 755 ${RUST_OUT}/navidrome-metadata /out/navidrome-metadata && \
+    install -D -m 755 ${RUST_OUT}/navidrome-apikeys /out/navidrome-apikeys && \
+    install -D -m 755 ${RUST_OUT}/navidrome-scanner /out/navidrome-scanner && \
+    install -D -m 755 ${RUST_OUT}/navidrome-search /out/navidrome-search && \
+    install -D -m 755 ${RUST_OUT}/navidrome-integration /out/navidrome-integration && \
     test -x /out/navidrome-metadata && \
     test -x /out/navidrome-apikeys && \
     test -x /out/navidrome-scanner && \

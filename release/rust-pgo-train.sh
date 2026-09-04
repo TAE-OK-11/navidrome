@@ -24,7 +24,7 @@ PROFILE="${RUST_PROFILE:-release-fat}"
 MERGED="${PGO_DIR}/merged.profdata"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/rust/target}"
 INSTR_TARGET="${TARGET_DIR}/pgo-instrument"
-export CARGO_TARGET_DIR="${TARGET_DIR}"
+FINAL_TARGET="${TARGET_DIR}/pgo-final"
 
 case "${BENCH_TIME}" in
   *s) BENCH_TIME="${BENCH_TIME%s}" ;;
@@ -98,13 +98,15 @@ echo "[rust-pgo] phase 3: merge ${PROFRAW_COUNT} profile(s)"
 llvm-profdata merge -o "${MERGED}" "${PGO_DIR}"/*.profraw
 test -s "${MERGED}"
 
-USE_FLAGS="${RUSTFLAGS:-} -Cprofile-use=${MERGED} -Cllvm-args=-pgo-warn-missing-function -C lto=fat -C codegen-units=1"
+USE_FLAGS="${RUSTFLAGS:-} -Cprofile-use=${MERGED} -Cllvm-args=-pgo-warn-missing-function"
 
 echo "[rust-pgo] phase 4: fat LTO rebuild with profile-use (profile=${PROFILE})"
 (
   cd "${ROOT}/rust"
-  RUSTFLAGS="${USE_FLAGS}" \
+  CARGO_TARGET_DIR="${FINAL_TARGET}" \
+    RUSTFLAGS="${USE_FLAGS}" \
     cargo_cmd build --locked --profile "${PROFILE}" --bins
 )
 
 echo "[rust-pgo] done: ${MERGED} ($(wc -c <"${MERGED}") bytes)"
+echo "[rust-pgo] binaries: ${FINAL_TARGET}/${PROFILE}/"

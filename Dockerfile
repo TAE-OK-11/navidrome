@@ -87,7 +87,7 @@ RUN --mount=type=bind,source=. \
       PGO_FLAG="-pgo=/tmp/default.pgo"
     fi
     # -latomic is required on 32-bit arm (arm/v6, arm/v7) so SQLite's 64-bit atomics resolve.
-    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -ldflags="-w -s \
+    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -trimpath -buildvcs=false -ldflags="-w -s \
         -linkmode=external -extldflags '-latomic' \
         -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
         -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
@@ -170,7 +170,7 @@ RUN --mount=type=bind,source=. \
       PGO_FLAG="-pgo=/tmp/default.pgo"
     fi
 
-    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -ldflags="${LD_EXTRA} -w -s \
+    go build -tags="${BUILD_TAGS}" ${PGO_FLAG} -trimpath -buildvcs=false -ldflags="${LD_EXTRA} -w -s \
         -X github.com/navidrome/navidrome/consts.gitSha=${GIT_SHA} \
         -X github.com/navidrome/navidrome/consts.gitTag=${GIT_TAG}" \
         -o /out/navidrome${EXT} .

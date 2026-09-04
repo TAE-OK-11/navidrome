@@ -5,11 +5,16 @@
 #   eval "$(./release/cgo-lto-env.sh thin)"   # PGO profile collection
 #   eval "$(./release/cgo-lto-env.sh fat)"    # final optimized build
 #   eval "$(./release/cgo-lto-env.sh off)"    # disable LTO
+#
+# Environment (optional, fat/thin modes):
+#   CGO_RELEASE_CFLAGS   extra -O3 / march flags prepended to CGO_CFLAGS
+#   CGO_BASE_CFLAGS      base flags before LTO (default: empty)
 set -e
 
 mode="${1:-thin}"
 cc="${CC:-clang}"
 
+opt_flags="${CGO_RELEASE_CFLAGS:--O3 -ffunction-sections -fdata-sections -fno-semantic-interposition}"
 lto_flags=""
 lld_flags=""
 
@@ -29,10 +34,11 @@ case "$mode" in
     case "$cc" in
       *clang*)
         lto_flags="-flto=full"
-        lld_flags="-fuse-ld=lld -Wl,-O2 -Wl,--gc-sections"
+        lld_flags="-fuse-ld=lld -Wl,-O2 -Wl,--lto-O3 -Wl,--gc-sections -Wl,--icf=safe -Wl,--as-needed"
         ;;
       *)
         lto_flags="-flto -flto-partition=one"
+        lld_flags="-Wl,--gc-sections"
         ;;
     esac
     ;;
@@ -44,6 +50,15 @@ case "$mode" in
     ;;
 esac
 
-printf 'export CGO_CFLAGS="%s%s"\n' "${CGO_BASE_CFLAGS:-}" "${lto_flags:+ ${lto_flags}}"
-printf 'export CGO_CXXFLAGS="%s%s"\n' "${CGO_BASE_CXXFLAGS:-}" "${lto_flags:+ ${lto_flags}}"
-printf 'export CGO_LDFLAGS="%s%s%s"\n' "${CGO_BASE_LDFLAGS:-}" "${lto_flags:+ ${lto_flags}}" "${lld_flags:+ ${lld_flags}}"
+base_c="${CGO_BASE_CFLAGS:-}"
+base_cxx="${CGO_BASE_CXXFLAGS:-}"
+base_ld="${CGO_BASE_LDFLAGS:-}"
+
+if [ "$mode" != "off" ]; then
+  base_c="${opt_flags}${base_c:+ ${base_c}}"
+  base_cxx="${opt_flags}${base_cxx:+ ${base_cxx}}"
+fi
+
+printf 'export CGO_CFLAGS="%s%s"\n' "${base_c}" "${lto_flags:+ ${lto_flags}}"
+printf 'export CGO_CXXFLAGS="%s%s"\n' "${base_cxx}" "${lto_flags:+ ${lto_flags}}"
+printf 'export CGO_LDFLAGS="%s%s%s"\n' "${base_ld}" "${lto_flags:+ ${lto_flags}}" "${lld_flags:+ ${lld_flags}}"

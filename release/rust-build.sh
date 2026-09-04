@@ -21,12 +21,19 @@ cargo_cmd() {
   fi
 }
 
+DEFAULT_RUSTFLAGS="-C lto=fat -C codegen-units=1"
+if [ -n "${RUSTFLAGS:-}" ]; then
+  export RUSTFLAGS="${DEFAULT_RUSTFLAGS} ${RUSTFLAGS}"
+else
+  export RUSTFLAGS="${DEFAULT_RUSTFLAGS}"
+fi
+
 ARGS="build --locked --profile ${PROFILE} --bins"
 if [ -n "${JOBS}" ]; then
   ARGS="${ARGS} -j ${JOBS}"
 fi
 
-echo "[rust] building gRPC workers (profile=${PROFILE})"
+echo "[rust] building gRPC workers (profile=${PROFILE}, RUSTFLAGS=${RUSTFLAGS})"
 # shellcheck disable=SC2086
 CARGO_BUILD_JOBS="${JOBS}" cargo_cmd ${ARGS}
-echo "[rust] binaries in target/${PROFILE}/"
+echo "[rust] binaries in ${CARGO_TARGET_DIR:-target}/${PROFILE}/"

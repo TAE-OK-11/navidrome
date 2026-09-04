@@ -30,7 +30,7 @@
 #   - Drop production source maps and unused builder packages
 #   - Use LLVM full (fat) LTO for every native component and final CGO link
 #   - Train Go PGO with thin LTO, then apply the merged profile on the fat LTO build
-#     (18 workloads — see release/pgo-train.sh for the final scenario table)
+#     (19 workloads — see release/pgo-train.sh for the final scenario table)
 #   - Rust gRPC workers use release-fat (LLVM fat LTO); optional RUST_PGO_ENABLED
 #     runs release/rust-pgo-train.sh before the final worker link
 #
@@ -1087,10 +1087,10 @@ FROM ${RUST_IMAGE} AS rust-workers-builder
 
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
-ARG RUST_PGO_ENABLED=false
-ARG RUST_PGO_BENCH_TIME=1s
+ARG RUST_PGO_ENABLED=true
+ARG RUST_PGO_BENCH_TIME=2
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates clang llvm lld
 
 WORKDIR /build/rust
 
@@ -1103,6 +1103,9 @@ COPY --link --from=source /src/rust/metadata ./metadata
 COPY --link --from=source /src/rust/scanner ./scanner
 COPY --link --from=source /src/rust/search ./search
 COPY --link --from=source /src/rust/benchmarks/integration /build/rust/benchmarks/integration
+COPY --link --from=source /src/rust/benchmarks/metadata /build/rust/benchmarks/metadata
+COPY --link --from=source /src/rust/benchmarks/scanner /build/rust/benchmarks/scanner
+COPY --link --from=source /src/rust/benchmarks/search /build/rust/benchmarks/search
 COPY --link --from=source /src/release/rust-pgo-train.sh /src/release/rust-build.sh /build/release/
 COPY --link --from=source /src/proto /build/proto
 COPY --link --from=source /src/resources/mime_types.yaml /build/resources/mime_types.yaml
@@ -1293,12 +1296,15 @@ COPY --link --from=jsbuilder /src/ui/build ./ui/build/
 COPY --link --from=h3-builder /out/navidrome-h3 /tmp/navidrome-h3
 COPY --link --from=rust-workers-builder /out/navidrome-scanner-portable /tmp/navidrome-scanner
 COPY --link --from=rust-workers-builder /out/navidrome-metadata /tmp/navidrome-metadata
+COPY --link --from=rust-workers-builder /out/navidrome-integration /tmp/navidrome-integration
 
 ENV ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
-    ND_SCANNERWORKERPATH=/tmp/navidrome-scanner
+    ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
+    ND_INTEGRATIONWORKERPATH=/tmp/navidrome-integration
 
 RUN test -x /tmp/navidrome-metadata && \
     test -x /tmp/navidrome-scanner && \
+    test -x /tmp/navidrome-integration && \
     test -s ./ui/build/index.html && \
     test -n "$(find ./ui/build -type f -name '*.br' -print -quit)" && \
     test -n "$(find ./ui/build -type f -name '*.zst' -print -quit)" && \
@@ -1337,6 +1343,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     export CGO_LDFLAGS="${LLVM_THIN_LTO_FLAGS} ${LLD_FLAGS}" && \
     ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
     ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
+    ND_INTEGRATIONWORKERPATH=/tmp/navidrome-integration \
     PGO_BUILD_TAGS='netgo osusergo sqlite_fts5 sqlite_foreign_keys sqlite_stat4 embed' \
       GO_PGO_BENCHTIME="${GO_PGO_BENCHTIME}" \
       PGO_OUTPUT=/tmp/default.pgo \

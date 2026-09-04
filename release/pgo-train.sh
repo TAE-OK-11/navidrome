@@ -13,7 +13,7 @@
 #   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
 #   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
 #
-# Final scenario (18 workloads, overlaps removed):
+# Final scenario (19 workloads, overlaps removed):
 #
 #   Domain          | Name            | Benchmark
 #   ----------------+-----------------+------------------------------------------
@@ -35,6 +35,7 @@
 #   Public gRPC     | grpc_invoke     | BenchmarkPublicGRPCInvoke
 #   Public gRPC     | grpc_open       | BenchmarkPublicGRPCOpenStream
 #   Public gRPC     | grpc_h2_ping    | BenchmarkPublicGRPCHTTP2Ping
+#   Integration     | integration_sign| BenchmarkIntegrationGatewaySign
 #
 # Removed as redundant with the workloads above:
 #   - BenchmarkCompressionLargeSingleWrite  -> h2_api (Write compress) + compress_stream (ReadFrom)
@@ -116,6 +117,9 @@ train grpc_ping ./server/publicgrpc '^BenchmarkPublicGRPCPing$' "${LIGHT_BENCHTI
 train grpc_invoke ./server/publicgrpc '^BenchmarkPublicGRPCInvoke$' "${HEAVY_BENCHTIME}"
 train grpc_open ./server/publicgrpc '^BenchmarkPublicGRPCOpenStream$' "${HEAVY_BENCHTIME}"
 train grpc_h2_ping ./server/publicgrpc '^BenchmarkPublicGRPCHTTP2Ping$' "${LIGHT_BENCHTIME}"
+
+# Outbound integration gateway (gRPC worker when ND_INTEGRATIONWORKERPATH is set)
+train integration_sign ./core/integration '^BenchmarkIntegrationGatewaySign$' "${LIGHT_BENCHTIME}"
 
 echo "[pgo] merging $(echo "${PROFILE_FILES}" | wc -w | tr -d ' ') profiles"
 go tool pprof \

@@ -210,3 +210,20 @@ var _ = Describe("Search", func() {
 		})
 	})
 })
+
+var _ = Describe("rustSearchResultsEmpty", func() {
+	It("returns false when no buckets were requested", func() {
+		sp := &searchParams{}
+		Expect(rustSearchResultsEmpty(sp, nil, nil, nil)).To(BeFalse())
+	})
+
+	It("returns true when every requested bucket is empty", func() {
+		sp := &searchParams{songCount: 20, albumCount: 20, artistCount: 20}
+		Expect(rustSearchResultsEmpty(sp, model.MediaFiles{}, model.Albums{}, model.Artists{})).To(BeTrue())
+	})
+
+	It("returns false when any requested bucket has hits", func() {
+		sp := &searchParams{songCount: 20, albumCount: 20, artistCount: 20}
+		Expect(rustSearchResultsEmpty(sp, model.MediaFiles{}, model.Albums{}, model.Artists{{ID: "a1"}})).To(BeFalse())
+	})
+})

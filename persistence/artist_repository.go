@@ -210,13 +210,33 @@ func (r *artistRepository) applyLibraryFilterToArtistQuery(query SelectBuilder) 
 }
 
 func (r *artistRepository) selectArtist(options ...model.QueryOptions) SelectBuilder {
-	// Stats Format: {"1": {"albumartist": {"m": 10, "a": 5, "s": 1024}, "artist": {...}}, "2": {...}}
-	query := r.newSelect(options...).Columns("artist.*",
-		"JSON_GROUP_OBJECT(library_artist.library_id, JSONB(library_artist.stats)) as library_stats_json")
+	var columns []string
+	if len(options) > 0 && options[0].ExcludeHeavyFields {
+		columns = browseArtistColumnExprs()
+	} else {
+		columns = []string{"artist.*",
+			"JSON_GROUP_OBJECT(library_artist.library_id, JSONB(library_artist.stats)) as library_stats_json"}
+	}
+	query := r.newSelect(options...).Columns(columns...)
 
 	query = r.applyLibraryFilterToArtistQuery(query)
 	query = query.GroupBy("artist.id")
 	return r.withAnnotation(query, "artist.id")
+}
+
+func browseArtistColumnExprs() []string {
+	return []string{
+		"artist.id",
+		"artist.name",
+		"artist.sort_artist_name",
+		"artist.order_artist_name",
+		"artist.mbz_artist_id",
+		"artist.missing",
+		"artist.uploaded_image",
+		"artist.created_at",
+		"artist.updated_at",
+		"JSON_GROUP_OBJECT(library_artist.library_id, JSONB(library_artist.stats)) as library_stats_json",
+	}
 }
 
 func (r *artistRepository) selectArtistForIndex(options ...model.QueryOptions) SelectBuilder {

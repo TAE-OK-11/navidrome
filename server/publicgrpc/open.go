@@ -5,12 +5,20 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
 	"github.com/navidrome/navidrome/server/subsonic/errmap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+var openChunkBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, openChunkSize)
+		return &buf
+	},
+}
 
 type streamWriter struct {
 	stream   gen.Public_OpenServer
@@ -36,7 +44,10 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	chunk := &gen.OpenChunk{Data: append([]byte(nil), p...)}
+	bufPtr := openChunkBufPool.Get().(*[]byte)
+	buf := (*bufPtr)[:len(p)]
+	copy(buf, p)
+	chunk := &gen.OpenChunk{Data: buf}
 	if !w.sentHead {
 		w.sentHead = true
 		if w.status == 0 {
@@ -46,7 +57,9 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 		chunk.ContentType = w.header.Get("Content-Type")
 		chunk.Headers = headerMap(w.header)
 	}
-	if err := w.stream.Send(chunk); err != nil {
+	err := w.stream.Send(chunk)
+	openChunkBufPool.Put(bufPtr)
+	if err != nil {
 		return 0, err
 	}
 	return len(p), nil

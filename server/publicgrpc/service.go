@@ -47,17 +47,24 @@ type NativeOpener interface {
 // Service implements navidrome.public.v1.Public.
 type Service struct {
 	gen.UnimplementedPublicServer
-	ds      model.DataStore
-	invoker Invoker
-	native  NativeInvoker
-	bus     *eventbus.Bus
+	ds        model.DataStore
+	invoker   Invoker
+	native    NativeInvoker
+	bus       *eventbus.Bus
+	authUsers *grpcAuthUserCache
 }
 
 func NewService(ds model.DataStore, invoker Invoker, native NativeInvoker, bus *eventbus.Bus) *Service {
 	if bus == nil {
 		bus = eventbus.Get()
 	}
-	return &Service{ds: ds, invoker: invoker, native: native, bus: bus}
+	return &Service{
+		ds:        ds,
+		invoker:   invoker,
+		native:    native,
+		bus:       bus,
+		authUsers: newGRPCAuthUserCache(grpcAuthUserCacheLimit, grpcAuthUserCacheTTL),
+	}
 }
 
 // publicGRPCMaxMsgBytes caps buffered unary payloads. Invoke/InvokeNative
@@ -248,9 +255,14 @@ func (s *Service) authenticate(ctx context.Context) (*model.User, error) {
 	if err != nil || claims.Subject == "" {
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
 	}
-	user, err := s.ds.User(ctx).FindByUsername(claims.Subject)
+	user, err := s.authUsers.get(ctx, claims.Subject, func(loadCtx context.Context) (*model.User, error) {
+		user, loadErr := s.ds.User(loadCtx).FindByUsername(claims.Subject)
+		if loadErr != nil {
+			log.Warn(loadCtx, "Public gRPC token user not found", "username", claims.Subject, loadErr)
+		}
+		return user, loadErr
+	})
 	if err != nil {
-		log.Warn(ctx, "Public gRPC token user not found", "username", claims.Subject, err)
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
 	}
 	return user, nil

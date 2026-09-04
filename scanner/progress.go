@@ -19,7 +19,11 @@ func SubscribeProgress(bus *eventbus.Bus) (chan *ProgressInfo, func()) {
 		if evt.ScanProgress == nil {
 			return
 		}
-		progress <- ProgressFromEvent(evt.ScanProgress)
+		select {
+		case progress <- ProgressFromEvent(evt.ScanProgress):
+		default:
+			// Drop when the consumer is slow; scan work must not block on UI fan-in.
+		}
 	})
 	return progress, unsub
 }

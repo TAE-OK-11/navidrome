@@ -23,6 +23,7 @@ GO_ROUNDS="${RUST_PGO_GO_ROUNDS:-25}"
 PROFILE="${RUST_PROFILE:-release-fat}"
 MERGED="${PGO_DIR}/merged.profdata"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/rust/target}"
+INSTR_TARGET="${TARGET_DIR}/pgo-instrument"
 export CARGO_TARGET_DIR="${TARGET_DIR}"
 
 case "${BENCH_TIME}" in
@@ -45,12 +46,13 @@ fi
 mkdir -p "${PGO_DIR}"
 rm -f "${PGO_DIR}"/*.profraw "${MERGED}"
 
-GEN_FLAGS="${RUSTFLAGS:-} -Cprofile-generate=${PGO_DIR}"
+GEN_FLAGS="${RUSTFLAGS:-} -Cprofile-generate=${PGO_DIR} -Clto=off"
 
 echo "[rust-pgo] phase 1: instrumented build (profile-generate, all workers)"
 (
   cd "${ROOT}/rust"
-  RUSTFLAGS="${GEN_FLAGS}" \
+  CARGO_TARGET_DIR="${INSTR_TARGET}" \
+    RUSTFLAGS="${GEN_FLAGS}" \
     cargo_cmd build --locked --release --bins
 )
 
@@ -65,12 +67,13 @@ for bench in integration metadata scanner search; do
   echo "[rust-pgo]   bench ${bench}"
   (
     cd "${bench_dir}"
-    RUSTFLAGS="${GEN_FLAGS}" \
+    CARGO_TARGET_DIR="${INSTR_TARGET}" \
+      RUSTFLAGS="${GEN_FLAGS}" \
       cargo_cmd bench --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
   )
 done
 
-INTEGRATION_BIN="${TARGET_DIR}/release/navidrome-integration"
+INTEGRATION_BIN="${INSTR_TARGET}/release/navidrome-integration"
 if [ "${GO_ROUNDS}" != "0" ] && [ -x "${INTEGRATION_BIN}" ] && command -v go >/dev/null 2>&1; then
   echo "[rust-pgo] phase 2b: Go gRPC integration tests (${GO_ROUNDS} rounds)"
   (

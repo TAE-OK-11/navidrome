@@ -59,12 +59,12 @@ func toPublicEvent(evt eventbus.Event) *gen.Event {
 		}}
 	case evt.Scrobble != nil:
 		out.Payload = &gen.Event_Scrobble{Scrobble: &gen.Scrobble{
-			UserId:      evt.Scrobble.UserID,
-			Username:    evt.Scrobble.Username,
-			MediaFileId: evt.Scrobble.MediaFileID,
-			Title:       evt.Scrobble.Title,
-			Artist:      evt.Scrobble.Artist,
-			Album:       evt.Scrobble.Album,
+			UserId:       evt.Scrobble.UserID,
+			Username:     evt.Scrobble.Username,
+			MediaFileId:  evt.Scrobble.MediaFileID,
+			Title:        evt.Scrobble.Title,
+			Artist:       evt.Scrobble.Artist,
+			Album:        evt.Scrobble.Album,
 			PlayedAtUnix: evt.Scrobble.PlayedAt.Unix(),
 		}}
 	case evt.Report != nil:

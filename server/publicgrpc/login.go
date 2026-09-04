@@ -21,6 +21,9 @@ func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginR
 	if !conf.PublicGRPCEnabled() {
 		return nil, status.Error(codes.Unavailable, "public gRPC is disabled")
 	}
+	if err := checkLoginRateLimit(ctx); err != nil {
+		return nil, err
+	}
 	user, err := validateCredentials(ctx, s.ds, req.GetUsername(), req.GetPassword())
 	if err != nil {
 		return nil, err
@@ -31,6 +34,9 @@ func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginR
 func (s *Service) CreateAdmin(ctx context.Context, req *gen.CreateAdminRequest) (*gen.LoginResponse, error) {
 	if !conf.PublicGRPCEnabled() {
 		return nil, status.Error(codes.Unavailable, "public gRPC is disabled")
+	}
+	if err := checkLoginRateLimit(ctx); err != nil {
+		return nil, err
 	}
 	if s.ds == nil {
 		return nil, status.Error(codes.Unavailable, "datastore unavailable")

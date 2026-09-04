@@ -87,7 +87,7 @@ func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values
 		return "application/json", body, nil
 	}
 	if req.Context().Err() != nil {
-		return rec.header.Get("Content-Type"), rec.buf.Bytes(), nil
+		return "", nil, req.Context().Err()
 	}
 	if rec.buf.Len() > 0 {
 		ct := rec.header.Get("Content-Type")
@@ -144,10 +144,12 @@ func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url
 	}
 	req = req.WithContext(request.WithInternalAuth(req.Context(), username))
 	if api.ds != nil && username != "" {
-		if usr, err := api.ds.User(ctx).FindByUsername(username); err == nil && usr != nil {
-			req = req.WithContext(request.WithUser(req.Context(), *usr))
-			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
+		usr, err := api.ds.User(ctx).FindByUsername(username)
+		if err != nil || usr == nil {
+			return nil, nil, fmt.Errorf("authenticated user %q not found", username)
 		}
+		req = req.WithContext(request.WithUser(req.Context(), *usr))
+		req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
 	}
 	if client := query.Get("c"); client != "" {
 		req = req.WithContext(request.WithClient(req.Context(), client))

@@ -37,7 +37,7 @@ func SetPublicGRPCReflectionForTest(enabled bool) {
 }
 
 // PublicGRPCAddress returns the bind address for the optional plaintext H2C
-// listener that serves the same public handler (REST + gRPC) without TLS.
+// listener that serves gRPC only (no REST) without TLS.
 // It exists for WireGuard / private-overlay origins: WireGuard already
 // encrypts, so a second TLS layer (H2/H3) is pure double-encryption overhead.
 // Plaintext H2C (prior-knowledge, protocol grpc on the proxy side) removes

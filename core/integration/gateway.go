@@ -49,7 +49,7 @@ func Get() *Gateway {
 func newGateway() *Gateway {
 	g := &Gateway{
 		fallback:        httpclient.NewTransport(nil),
-		artworkFallback: &boundedRoundTripper{inner: httpclient.NewTransport(newSSRFTransport())},
+		artworkFallback: &boundedRoundTripper{inner: httpclient.NewTransport(newSSRFTransport()), limit: maxArtworkBodyBytes},
 		workerExpected:  conf.Server.Integration.Enabled,
 	}
 	if conf.Server.Integration.Enabled {
@@ -141,7 +141,9 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		if isWorkerCircuitOpen(err) {
 			return nil, err
 		}
-		g.invalidateWorker(err)
+		if isWorkerTransportFailure(err) {
+			g.invalidateWorker(err)
+		}
 		if !allowHTTPFallback() {
 			return nil, err
 		}
@@ -155,7 +157,11 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		return nil, fmt.Errorf("%w: %s", errCircuitOpen, dest)
 	}
 
-	resp, err := fallback.RoundTrip(req)
+	rt := http.RoundTripper(fallback)
+	if dest != DestArtwork {
+		rt = &boundedRoundTripper{inner: fallback, limit: maxResponseBody(dest)}
+	}
+	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		breaker.failure()
 		return nil, err
@@ -183,9 +189,16 @@ func (g *Gateway) Sign(ctx context.Context, params map[string]string, secret str
 		if err == nil && sig != "" {
 			return sig
 		}
+		if g.workerExpected && !allowHTTPFallback() {
+			log.Error(ctx, "Integration worker sign failed; refusing Go fallback in production", err)
+			return ""
+		}
 		if err != nil {
 			log.Warn(ctx, "Integration worker sign failed; using Go fallback", err)
 		}
+	} else if g.workerExpected && !allowHTTPFallback() {
+		log.Error(ctx, "Integration worker sign unavailable in production", nil)
+		return ""
 	}
 	return signAudioscrobbler(params, secret)
 }
@@ -205,9 +218,10 @@ func (g *Gateway) Close() {
 	}
 }
 
-// boundedRoundTripper caps fallback response bodies to the artwork limit.
+// boundedRoundTripper caps fallback response bodies.
 type boundedRoundTripper struct {
 	inner http.RoundTripper
+	limit int64
 }
 
 func (t *boundedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -215,23 +229,27 @@ func (t *boundedRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if err != nil || resp == nil || resp.Body == nil {
 		return resp, err
 	}
-	limit := maxResponseBody(DestArtwork)
+	limit := t.limit
+	if limit <= 0 {
+		limit = maxArtworkBodyBytes
+	}
 	if resp.ContentLength > limit {
 		_ = resp.Body.Close()
 		return nil, fmt.Errorf("integration response exceeds %d bytes", limit)
 	}
-	resp.Body = &boundedBody{reader: resp.Body, remaining: limit}
+	resp.Body = &boundedBody{reader: resp.Body, remaining: limit, limit: limit}
 	return resp, nil
 }
 
 type boundedBody struct {
 	reader    io.ReadCloser
 	remaining int64
+	limit     int64
 }
 
 func (b *boundedBody) Read(p []byte) (int, error) {
 	if b.remaining <= 0 {
-		return 0, fmt.Errorf("integration response exceeds %d bytes", maxResponseBody(DestArtwork))
+		return 0, fmt.Errorf("integration response exceeds %d bytes", b.limit)
 	}
 	if int64(len(p)) > b.remaining {
 		p = p[:b.remaining]

@@ -173,12 +173,13 @@ func (s *Service) Subscribe(req *gen.SubscribeRequest, stream grpc.ServerStreami
 	for _, topic := range topics {
 		t := eventbus.Topic(topic)
 		unsubs = append(unsubs, s.bus.Subscribe(t, func(_ context.Context, evt eventbus.Event) {
-			if !eventVisibleTo(evt, user.UserName) {
+			if !eventVisibleTo(evt, user) {
 				return
 			}
 			select {
 			case events <- evt:
 			default:
+				log.Trace("Public gRPC Subscribe dropped event", "topic", topic, "user", user.UserName)
 			}
 		}))
 	}
@@ -214,12 +215,29 @@ func defaultSubscribeTopics() []string {
 	}
 }
 
-func eventVisibleTo(evt eventbus.Event, username string) bool {
+func eventVisibleTo(evt eventbus.Event, user *model.User) bool {
+	if user == nil {
+		return false
+	}
 	if evt.Attrs[eventbus.AttrBroadcast] == "1" || evt.Attrs[eventbus.AttrBroadcast] == "true" {
 		return true
 	}
-	owner := evt.Attrs[eventbus.AttrUsername]
-	return owner == "" || owner == username
+	if owner := evt.Attrs[eventbus.AttrUsername]; owner != "" {
+		return owner == user.UserName
+	}
+	if evt.Scrobble != nil {
+		return evt.Scrobble.Username == user.UserName || evt.Scrobble.UserID == user.ID
+	}
+	if evt.NowPlaying != nil {
+		return evt.NowPlaying.UserID == user.ID
+	}
+	if evt.Report != nil {
+		return evt.Report.UserID == user.ID
+	}
+	if evt.UIScan != nil || evt.Refresh != nil || evt.Scan != nil || evt.ScanProgress != nil || evt.NowPlayingCount != nil {
+		return true
+	}
+	return false
 }
 
 func (s *Service) authenticate(ctx context.Context) (*model.User, error) {
@@ -251,15 +269,10 @@ func bearerToken(ctx context.Context) string {
 		return ""
 	}
 	for _, v := range md.Get("authorization") {
-		if strings.HasPrefix(strings.ToLower(v), "bearer ") {
+		v = strings.TrimSpace(v)
+		if len(v) > 7 && strings.EqualFold(v[:6], "bearer") && v[6] == ' ' {
 			return strings.TrimSpace(v[7:])
 		}
-		if v != "" {
-			return v
-		}
-	}
-	if vals := md.Get("token"); len(vals) > 0 {
-		return vals[0]
 	}
 	return ""
 }

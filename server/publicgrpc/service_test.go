@@ -10,6 +10,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/eventbus"
+	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -78,14 +79,36 @@ func TestSubscribeRequiresAuth(t *testing.T) {
 }
 
 func TestEventVisibleTo(t *testing.T) {
-	if !eventVisibleTo(eventbus.Event{Attrs: map[string]string{eventbus.AttrBroadcast: "1"}}, "bob") {
+	broadcast := eventbus.Event{Attrs: map[string]string{eventbus.AttrBroadcast: "1"}}
+	if !eventVisibleTo(broadcast, &model.User{UserName: "bob"}) {
 		t.Fatal("broadcast events must reach every subscriber")
 	}
-	if eventVisibleTo(eventbus.Event{Attrs: map[string]string{eventbus.AttrUsername: "alice"}}, "bob") {
-		t.Fatal("per-user events must not leak")
+	bob := &model.User{ID: "u2", UserName: "bob"}
+	if eventVisibleTo(eventbus.Event{Attrs: map[string]string{eventbus.AttrUsername: "alice"}}, bob) {
+		t.Fatal("per-user attr events must not leak")
 	}
-	if !eventVisibleTo(eventbus.Event{Attrs: map[string]string{eventbus.AttrUsername: "bob"}}, "bob") {
+	if !eventVisibleTo(eventbus.Event{Attrs: map[string]string{eventbus.AttrUsername: "bob"}}, bob) {
 		t.Fatal("owner must see their events")
+	}
+	if eventVisibleTo(eventbus.Event{
+		NowPlaying: &eventbus.NowPlaying{UserID: "u1"},
+	}, bob) {
+		t.Fatal("now playing must not leak across users")
+	}
+	if !eventVisibleTo(eventbus.Event{
+		Scrobble: &eventbus.Scrobble{UserID: "u2", Username: "bob"},
+	}, bob) {
+		t.Fatal("scrobble owner must see their events")
+	}
+	if eventVisibleTo(eventbus.Event{
+		Report: &eventbus.PlaybackReport{UserID: "u1"},
+	}, bob) {
+		t.Fatal("playback report must not leak across users")
+	}
+	if !eventVisibleTo(eventbus.Event{
+		UIScan: &eventbus.UIScanStatus{Scanning: true},
+	}, bob) {
+		t.Fatal("global UI scan events should be visible")
 	}
 }
 

@@ -33,7 +33,7 @@ func TestBoundedRoundTripperRejectsContentLength(t *testing.T) {
 			Body:          io.NopCloser(strings.NewReader("x")),
 		}, nil
 	})
-	rt := &boundedRoundTripper{inner: inner}
+	rt := &boundedRoundTripper{inner: inner, limit: maxArtworkBodyBytes}
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com/", nil)
 	resp, err := rt.RoundTrip(req)
 	if resp != nil && resp.Body != nil {

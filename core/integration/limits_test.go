@@ -35,7 +35,10 @@ func TestBoundedRoundTripperRejectsContentLength(t *testing.T) {
 	})
 	rt := &boundedRoundTripper{inner: inner}
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com/", nil)
-	_, err := rt.RoundTrip(req)
+	resp, err := rt.RoundTrip(req)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected content-length rejection")
 	}

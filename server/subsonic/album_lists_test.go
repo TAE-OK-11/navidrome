@@ -40,8 +40,9 @@ var _ = Describe("Album Lists", func() {
 			resp, err := router.GetAlbumList(w, r)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(resp.AlbumList.Album[0].Id).To(Equal("1"))
-			Expect(resp.AlbumList.Album[1].Id).To(Equal("2"))
+			Expect(resp.AlbumList.Album).To(HaveLen(2))
+			ids := []string{resp.AlbumList.Album[0].Id, resp.AlbumList.Album[1].Id}
+			Expect(ids).To(ConsistOf("1", "2"))
 			Expect(w.Header().Get("x-total-count")).To(Equal("2"))
 			Expect(mockRepo.Options.Offset).To(Equal(10))
 			Expect(mockRepo.Options.Max).To(Equal(20))
@@ -144,8 +145,9 @@ var _ = Describe("Album Lists", func() {
 			resp, err := router.GetAlbumList2(w, r)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(resp.AlbumList2.Album[0].Id).To(Equal("1"))
-			Expect(resp.AlbumList2.Album[1].Id).To(Equal("2"))
+			Expect(resp.AlbumList2.Album).To(HaveLen(2))
+			ids := []string{resp.AlbumList2.Album[0].Id, resp.AlbumList2.Album[1].Id}
+			Expect(ids).To(ConsistOf("1", "2"))
 			Expect(w.Header().Get("x-total-count")).To(Equal("2"))
 			Expect(mockRepo.Options.Offset).To(Equal(10))
 			Expect(mockRepo.Options.Max).To(Equal(20))

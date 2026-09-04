@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
@@ -20,7 +21,11 @@ import (
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
 
@@ -50,10 +55,43 @@ func NewService(ds model.DataStore, invoker Invoker, native NativeInvoker, bus *
 	return &Service{ds: ds, invoker: invoker, native: native, bus: bus}
 }
 
-// NewServer returns a gRPC server multiplexed onto the public HTTP/2 listener.
+// publicGRPCMaxMsgBytes caps buffered unary payloads. Invoke/InvokeNative
+// proxy Subsonic/Native REST bodies up to 32 MiB, so the gRPC frame budget
+// must cover them; streaming Open chunks stay at 64 KiB each.
+const publicGRPCMaxMsgBytes = 32 << 20
+
+// NewServer returns a gRPC server multiplexed onto the public HTTP/2 listener
+// (and onto the optional plaintext H2C listener for WireGuard origins).
+// It enables as much as possible over gRPC: reflection (debugging/proxies),
+// standard health checks (load-balancer / proxy warmup), generous message
+// budgets matching the 32 MiB REST proxy cap, and keepalive so long-lived
+// Open/Subscribe streams survive NAT / WireGuard idle timeouts.
 func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.Server {
-	gs := grpc.NewServer()
+	gs := grpc.NewServer(
+		grpc.MaxRecvMsgSize(publicGRPCMaxMsgBytes),
+		grpc.MaxSendMsgSize(publicGRPCMaxMsgBytes),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle:     5 * time.Minute,
+			MaxConnectionAge:      30 * time.Minute,
+			MaxConnectionAgeGrace: 30 * time.Second,
+			Time:                  2 * time.Minute,
+			Timeout:               20 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             30 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	)
 	gen.RegisterPublicServer(gs, NewService(ds, invoker, native, eventbus.Get()))
+	// Standard health service so proxies (Pingola warmup) and orchestrators
+	// can probe without credentials: Ping remains the authed liveness check.
+	hs := health.NewServer()
+	hs.SetServingStatus("navidrome.public.v1.Public", grpc_health_v1.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(gs, hs)
+	// Reflection lets grpcurl / proxies discover the Public surface without
+	// shipping .proto files; auth is still enforced per-RPC.
+	reflection.Register(gs)
 	lifecycle.Register(grpcCloser{gs})
 	return gs
 }

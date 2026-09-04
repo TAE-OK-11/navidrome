@@ -125,7 +125,16 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	server := newHTTPServer(handler, tlsEnabled, s.grpcServer != nil)
 	h3 := s.startHTTP3(ctx, listenAddr, handler, tlsCert, tlsKey, server)
 
-	errC := make(chan error, 2)
+	// Optional plaintext H2C listener for private overlays (WireGuard).
+	// Same handler (REST + gRPC), no TLS: WireGuard already encrypts, so a
+	// second TLS layer would be double encryption. Pingola uses
+	// `protocol: grpc` (prior-knowledge H2C) against this port.
+	plaintext := s.startPlaintextGRPC(ctx, handler, listenAddr)
+	if plaintext != nil {
+		defer plaintext.Close()
+	}
+
+	errC := make(chan error, 3)
 	if h3 != nil {
 		go func() {
 			if err := h3.serve(); err != nil {
@@ -154,7 +163,11 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		log.Error(ctx, "Could not start server. Aborting", err)
 		runErr = fmt.Errorf("starting server: %w", err)
 	case <-time.After(serverStartupGracePeriod):
-		log.Info(ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", readyProtocols(server, h3, s.grpcServer != nil))
+		readyArgs := []any{ctx, "----> Navidrome server is ready!", "address", listenAddr, "startupTime", startupTime, "tlsEnabled", tlsEnabled, "protocols", readyProtocols(server, h3, s.grpcServer != nil)}
+		if plaintext != nil {
+			readyArgs = append(readyArgs, "plaintextH2C", plaintext.Addr().String())
+		}
+		log.Info(readyArgs...)
 	}
 
 	if runErr == nil {
@@ -165,7 +178,7 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 		}
 	}
 
-	s.shutdownServers(ctx, server, h3)
+	s.shutdownServers(ctx, server, h3, plaintext)
 	return runErr
 }
 
@@ -192,6 +205,68 @@ func (s *Server) startHTTP3(ctx context.Context, listenAddr string, handler http
 	return h3
 }
 
+// plaintextGRPCServer is the optional no-TLS H2C listener for private
+// overlays (WireGuard). It serves the same public handler, so both REST and
+// gRPC work over plaintext H2C with prior knowledge.
+type plaintextGRPCServer struct {
+	server   *http.Server
+	listener net.Listener
+}
+
+func (p *plaintextGRPCServer) Addr() net.Addr {
+	if p == nil || p.listener == nil {
+		return nil
+	}
+	return p.listener.Addr()
+}
+
+func (p *plaintextGRPCServer) Close() {
+	if p == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
+	defer cancel()
+	_ = p.server.Shutdown(ctx)
+	_ = p.listener.Close()
+}
+
+// startPlaintextGRPC starts the H2C listener when
+// ND_PUBLICGRPCADDRESS/ND_PUBLICGRPCPORT is configured. Nil when disabled,
+// when the main listener is a unix socket, or on bind failure (warn + nil;
+// the main TLS listener keeps serving gRPC over H2/H3).
+func (s *Server) startPlaintextGRPC(ctx context.Context, handler http.Handler, mainAddr string) *plaintextGRPCServer {
+	if !conf.PublicGRPCPlaintextEnabled() || s.grpcServer == nil {
+		return nil
+	}
+	if strings.HasPrefix(mainAddr, "unix:") || strings.HasPrefix(mainAddr, "/") {
+		return nil
+	}
+	bindAddr := conf.PublicGRPCAddress()
+	bindPort := conf.PublicGRPCPort()
+	if bindAddr == "" {
+		return nil
+	}
+	listenAddr := fmt.Sprintf("%s:%d", bindAddr, bindPort)
+	// Avoid double-binding the main TCP listener.
+	if listenAddr == mainAddr {
+		log.Warn(ctx, "Plaintext H2C gRPC listener duplicates main listener; skipping", "address", listenAddr)
+		return nil
+	}
+	listener, err := createTCPListener(ctx, listenAddr)
+	if err != nil {
+		log.Warn(ctx, "Plaintext H2C gRPC unavailable; TLS listener remains", "address", listenAddr, err)
+		return nil
+	}
+	srv := newHTTPServer(handler, false, true)
+	go func() {
+		log.Info("Starting plaintext H2C (REST+gRPC, WireGuard) listener", "address", listener.Addr().String())
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error(ctx, "Plaintext H2C listener stopped", err)
+		}
+	}()
+	return &plaintextGRPCServer{server: srv, listener: listener}
+}
+
 func readyProtocols(server *http.Server, h3 http3Service, publicGRPC bool) string {
 	protocols := server.Protocols.String()
 	if h3 != nil {
@@ -203,17 +278,23 @@ func readyProtocols(server *http.Server, h3 http3Service, publicGRPC bool) strin
 	return protocols
 }
 
-func (s *Server) shutdownServers(ctx context.Context, server *http.Server, h3 http3Service) {
-	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil, "publicGRPC", s.grpcServer != nil)
+func (s *Server) shutdownServers(ctx context.Context, server *http.Server, h3 http3Service, plaintext *plaintextGRPCServer) {
+	log.Info(ctx, "Stopping HTTP servers", "http3Enabled", h3 != nil, "publicGRPC", s.grpcServer != nil, "plaintextH2C", plaintext != nil)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 	server.SetKeepAlivesEnabled(false)
 
-	shutdownErrC := make(chan error, 3)
+	shutdownErrC := make(chan error, 4)
 	shutdownCount := 1
 	go func() {
 		shutdownErrC <- shutdownHTTPServer(shutdownCtx, server)
 	}()
+	if plaintext != nil {
+		shutdownCount++
+		go func() {
+			shutdownErrC <- shutdownHTTPServer(shutdownCtx, plaintext.server)
+		}()
+	}
 	if h3 != nil {
 		shutdownCount++
 		go func() {

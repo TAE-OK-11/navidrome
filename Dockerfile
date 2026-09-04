@@ -206,9 +206,12 @@ ENV ND_MUSICFOLDER=/music
 ENV ND_DATAFOLDER=/data
 ENV ND_CONFIGFILE=/data/navidrome.toml
 ENV ND_PORT=4533
+# Plaintext H2C listener for private overlays (WireGuard): same handler
+# (REST+gRPC) without TLS. Overridden per deploy, e.g. ND_PUBLICGRPCADDRESS.
+ENV ND_PUBLICGRPCPORT=50051
 RUN touch /.nddockerenv
 
-EXPOSE ${ND_PORT}
+EXPOSE ${ND_PORT} ${ND_PUBLICGRPCPORT}
 WORKDIR /app
 ENV PATH="/app:${PATH}"
 

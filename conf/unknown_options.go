@@ -21,6 +21,8 @@ import (
 var extraKnownConfigKeys = []string{
 	"enablehttp3",
 	"enablepublicgrpc",
+	"publicgrpcaddress",
+	"publicgrpcport",
 	"http3allow0rtt",
 	"http3gatewaypath",
 	"http3altsvcmaxage",

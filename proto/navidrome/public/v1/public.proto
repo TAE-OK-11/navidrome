@@ -6,13 +6,21 @@ option go_package = "github.com/navidrome/navidrome/server/publicgrpc/gen";
 
 // Public is the client-facing gRPC edge, served on the same TCP port as
 // HTTP/1.1 and HTTP/2 (and forwarded over the HTTP/3 companion when the
-// request is application/grpc). Subsonic and Native REST stay on those
-// HTTP transports; this contract is the protobuf alternative for the same
-// library operations and the async event stream.
+// request is application/grpc). Proxies can route application/grpc here
+// for auth, Native REST, Subsonic, streaming media, and live events.
 
 service Public {
   rpc Ping(PingRequest) returns (PingResponse);
+  // UI / Subsonic-compatible login. Returns a JWT for Invoke/InvokeNative/Open.
+  rpc Login(LoginRequest) returns (LoginResponse);
+  // First-time setup when no users exist.
+  rpc CreateAdmin(CreateAdminRequest) returns (LoginResponse);
+  // Subsonic endpoint proxy (JSON/XML, <= 32 MiB buffered).
   rpc Invoke(InvokeRequest) returns (InvokeResponse);
+  // Native REST (/api/*) proxy (JSON, <= 32 MiB buffered).
+  rpc InvokeNative(InvokeNativeRequest) returns (InvokeNativeResponse);
+  // Chunked read for streams, downloads, artwork, and other large bodies.
+  rpc Open(OpenRequest) returns (stream OpenChunk);
   rpc Subscribe(SubscribeRequest) returns (stream Event);
 }
 
@@ -24,6 +32,27 @@ message PingResponse {
   string protocol = 3;
 }
 
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message CreateAdminRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+  string id = 2;
+  string name = 3;
+  string username = 4;
+  bool is_admin = 5;
+  string avatar = 6;
+  string subsonic_salt = 7;
+  string subsonic_token = 8;
+}
+
 message InvokeRequest {
   string endpoint = 1;
   map<string, string> params = 2;
@@ -33,6 +62,39 @@ message InvokeRequest {
 message InvokeResponse {
   string content_type = 1;
   bytes body = 2;
+  int32 status = 3;
+}
+
+message InvokeNativeRequest {
+  string method = 1;
+  string path = 2;
+  map<string, string> params = 3;
+  bytes body = 4;
+  string content_type = 5;
+}
+
+message InvokeNativeResponse {
+  int32 status = 1;
+  string content_type = 2;
+  bytes body = 3;
+}
+
+message OpenRequest {
+  // "subsonic" (default) or "native".
+  string api = 1;
+  string method = 2;
+  string path = 3;
+  map<string, string> params = 4;
+  bytes body = 5;
+  string content_type = 6;
+  bool json = 7;
+}
+
+message OpenChunk {
+  int32 status = 1;
+  string content_type = 2;
+  bytes data = 3;
+  bool final = 4;
 }
 
 message SubscribeRequest {
@@ -49,6 +111,10 @@ message Event {
     RefreshResource refresh = 11;
     NowPlayingCount now_playing_count = 12;
     ScanCompleted scan_completed = 13;
+    ScanProgress scan_progress = 14;
+    NowPlaying now_playing = 15;
+    Scrobble scrobble = 16;
+    PlaybackReport playback_report = 17;
   }
 }
 
@@ -79,4 +145,41 @@ message ScanCompleted {
   string error = 3;
   int64 file_count = 4;
   int64 folder_count = 5;
+}
+
+message ScanProgress {
+  int32 lib_id = 1;
+  uint32 file_count = 2;
+  string path = 3;
+  string phase = 4;
+  bool changes_detected = 5;
+  string warning = 6;
+  string error = 7;
+  bool force_update = 8;
+}
+
+message NowPlaying {
+  string user_id = 1;
+  string media_file_id = 2;
+  string title = 3;
+  string artist = 4;
+  int32 position_sec = 5;
+}
+
+message Scrobble {
+  string user_id = 1;
+  string username = 2;
+  string media_file_id = 3;
+  string title = 4;
+  string artist = 5;
+  string album = 6;
+  int64 played_at_unix = 7;
+}
+
+message PlaybackReport {
+  string user_id = 1;
+  string player_id = 2;
+  string media_file_id = 3;
+  string state = 4;
+  int64 position_ms = 5;
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 )
 
-const pluginInvokeBodyLimit int64 = 10 * 1024 * 1024
+const pluginInvokeBodyLimit int64 = 32 * 1024 * 1024
 
 type limitedBuffer struct {
 	buf       bytes.Buffer
@@ -68,33 +68,9 @@ func (api *Router) hr(r chi.Router, endpoint string, f handlerRaw) {
 // Invoke runs a Subsonic endpoint as a function call instead of an HTTP
 // round-trip. Plugins use this so internal library access is not REST/P2P.
 func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (string, []byte, error) {
-	endpoint = strings.TrimSuffix(path.Base(endpoint), ".view")
-	f, ok := api.internalHandlers[endpoint]
-	if !ok {
-		return "", nil, fmt.Errorf("unknown Subsonic endpoint %q", endpoint)
-	}
-	if query == nil {
-		query = url.Values{}
-	} else {
-		query = cloneValues(query)
-	}
-	if asJSON {
-		query.Set("f", "json")
-	}
-	u := &url.URL{Path: "/" + endpoint, RawQuery: query.Encode()}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, f, err := api.prepareInvoke(ctx, endpoint, query, username, asJSON)
 	if err != nil {
 		return "", nil, err
-	}
-	req = req.WithContext(request.WithInternalAuth(req.Context(), username))
-	if api.ds != nil && username != "" {
-		if usr, err := api.ds.User(ctx).FindByUsername(username); err == nil && usr != nil {
-			req = req.WithContext(request.WithUser(req.Context(), *usr))
-			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
-		}
-	}
-	if client := query.Get("c"); client != "" {
-		req = req.WithContext(request.WithClient(req.Context(), client))
 	}
 
 	rec := newLimitedBuffer(pluginInvokeBodyLimit)
@@ -137,13 +113,46 @@ func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values
 	return "application/xml", append([]byte(nil), buf.Bytes()...), nil
 }
 
-func encodeInvokeJSON(payload *responses.Subsonic) ([]byte, error) {
-	buf := borrowResponseBuffer()
-	defer recycleResponseBuffer(buf)
-	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload}); err != nil {
-		return nil, err
+// Open streams a Subsonic endpoint response to w (for gRPC Open/media proxy).
+func (api *Router) Open(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool, w http.ResponseWriter) error {
+	req, f, err := api.prepareInvoke(ctx, endpoint, query, username, asJSON)
+	if err != nil {
+		return err
 	}
-	return append([]byte(nil), buf.Bytes()...), nil
+	_, err = f(w, req)
+	return err
+}
+
+func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (*http.Request, handlerRaw, error) {
+	endpoint = strings.TrimSuffix(path.Base(endpoint), ".view")
+	f, ok := api.internalHandlers[endpoint]
+	if !ok {
+		return nil, nil, fmt.Errorf("unknown Subsonic endpoint %q", endpoint)
+	}
+	if query == nil {
+		query = url.Values{}
+	} else {
+		query = cloneValues(query)
+	}
+	if asJSON {
+		query.Set("f", "json")
+	}
+	u := &url.URL{Path: "/" + endpoint, RawQuery: query.Encode()}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req = req.WithContext(request.WithInternalAuth(req.Context(), username))
+	if api.ds != nil && username != "" {
+		if usr, err := api.ds.User(ctx).FindByUsername(username); err == nil && usr != nil {
+			req = req.WithContext(request.WithUser(req.Context(), *usr))
+			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
+		}
+	}
+	if client := query.Get("c"); client != "" {
+		req = req.WithContext(request.WithClient(req.Context(), client))
+	}
+	return req, f, nil
 }
 
 func cloneValues(in url.Values) url.Values {
@@ -152,4 +161,13 @@ func cloneValues(in url.Values) url.Values {
 		out[k] = append([]string(nil), v...)
 	}
 	return out
+}
+
+func encodeInvokeJSON(payload *responses.Subsonic) ([]byte, error) {
+	buf := borrowResponseBuffer()
+	defer recycleResponseBuffer(buf)
+	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload}); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), buf.Bytes()...), nil
 }

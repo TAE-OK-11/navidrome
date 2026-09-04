@@ -6,7 +6,10 @@ pub fn sign_audioscrobbler(
 ) -> String {
     let mut keys: Vec<&String> = params
         .keys()
-        .filter(|k| k.as_str() != "format" && k.as_str() != "callback")
+        .filter(|k| {
+            let key = k.as_str();
+            key != "format" && key != "callback" && key != "api_sig"
+        })
         .collect();
     keys.sort();
     let mut msg = String::new();
@@ -39,11 +42,26 @@ mod tests {
     #[test]
     fn matches_known_vector() {
         let mut params = HashMap::new();
-        params.insert("api_key".into(), "KEY".into());
-        params.insert("method".into(), "auth.getToken".into());
+        params.insert("a".into(), "111".into());
+        params.insert("b".into(), "222".into());
+        params.insert("c".into(), "333".into());
+        params.insert("d".into(), "444".into());
+        params.insert("callback".into(), "https://myserver.com".into());
         params.insert("format".into(), "json".into());
         let sig = sign_audioscrobbler(&params, "SECRET");
-        assert_eq!(sig.len(), 32);
-        assert_eq!(sig, sign_audioscrobbler(&params, "SECRET"));
+        assert_eq!(sig, "f407039b98853c6256feb5a12a878d21");
+    }
+
+    #[test]
+    fn ignores_api_sig() {
+        let mut params = HashMap::new();
+        params.insert("a".into(), "111".into());
+        params.insert("b".into(), "222".into());
+        params.insert("c".into(), "333".into());
+        params.insert("d".into(), "444".into());
+        params.insert("api_sig".into(), "stale".into());
+        params.insert("format".into(), "json".into());
+        let sig = sign_audioscrobbler(&params, "SECRET");
+        assert_eq!(sig, "f407039b98853c6256feb5a12a878d21");
     }
 }

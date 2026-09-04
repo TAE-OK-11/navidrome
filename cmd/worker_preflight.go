@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 
+	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
@@ -10,7 +12,7 @@ import (
 )
 
 func preflightRustWorkers(ctx context.Context) {
-	checks := make([]rustworker.WorkerCheck, 0, 3)
+	checks := make([]rustworker.WorkerCheck, 0, 4)
 	if path, err := metadataworker.Resolve(); err == nil {
 		checks = append(checks, rustworker.WorkerCheck{
 			Name:         "metadata",
@@ -34,6 +36,15 @@ func preflightRustWorkers(ctx context.Context) {
 			Path:     path,
 			MinBytes: rustworker.MinSearchBytes,
 		})
+	}
+	if conf.Server.Integration.Enabled {
+		if path, err := integration.Resolve(); err == nil {
+			checks = append(checks, rustworker.WorkerCheck{
+				Name:     "integration",
+				Path:     path,
+				MinBytes: rustworker.MinIntegrationBytes,
+			})
+		}
 	}
 	rustworker.Preflight(ctx, checks)
 }

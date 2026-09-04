@@ -13,9 +13,10 @@ import (
 
 const (
 	PreflightTimeout = 5 * time.Second
-	MinScannerBytes  = 800_000
-	MinMetadataBytes = 800_000
-	MinSearchBytes   = 800_000
+	MinScannerBytes     = 800_000
+	MinMetadataBytes    = 800_000
+	MinSearchBytes      = 800_000
+	MinIntegrationBytes = 800_000
 )
 
 // WorkerCheck describes a Rust companion binary to validate at startup.

@@ -622,6 +622,7 @@ func parseIniFileConfiguration() {
 
 func disableExternalServices() {
 	log.Info("All external integrations are DISABLED!")
+	Server.Integration.Enabled = false
 	Server.EnableInsightsCollector = false
 	Server.EnableM3UExternalAlbumArt = false
 	Server.LastFM.Enabled = false

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/integration/gen"
 	"github.com/navidrome/navidrome/core/rustworker"
 )
@@ -27,10 +28,7 @@ func startGRPCClient(ctx context.Context) (*grpcClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	listen := strings.TrimSpace(os.Getenv("ND_INTEGRATIONGRPCLISTEN"))
-	if listen == "" {
-		listen = rustworker.DefaultListenAddr("navidrome-integration")
-	}
+	listen := grpcListenAddr()
 	proc, err := rustworker.StartGRPC(ctx, binary, listen, nil)
 	if err != nil {
 		return nil, err
@@ -91,7 +89,7 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 		return nil, err
 	}
 	if resp.GetError() != "" && resp.GetStatus() == 0 {
-		return nil, fmt.Errorf("integration worker: %s", resp.GetError())
+		return nil, workerResponseError(resp.GetError())
 	}
 
 	out := &http.Response{
@@ -127,6 +125,27 @@ func (c *grpcClient) sign(ctx context.Context, params map[string]string, secret 
 		return "", fmt.Errorf("integration sign: %s", resp.GetError())
 	}
 	return resp.GetApiSig(), nil
+}
+
+func grpcListenAddr() string {
+	if listen := strings.TrimSpace(os.Getenv("ND_INTEGRATIONGRPCLISTEN")); listen != "" {
+		return listen
+	}
+	if listen := strings.TrimSpace(conf.Server.Integration.Listen); listen != "" {
+		return listen
+	}
+	return rustworker.DefaultListenAddr("navidrome-integration")
+}
+
+func workerResponseError(msg string) error {
+	if strings.Contains(msg, "circuit open") {
+		return fmt.Errorf("%w: %s", errCircuitOpen, strings.TrimPrefix(msg, "circuit open for "))
+	}
+	return fmt.Errorf("integration worker: %s", msg)
+}
+
+func isWorkerCircuitOpen(err error) bool {
+	return errors.Is(err, errCircuitOpen)
 }
 
 func (c *grpcClient) close() {

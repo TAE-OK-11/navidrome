@@ -81,6 +81,12 @@ func checkFFmpegInstallation() {
 
 func checkExternalCredentials() {
 	if conf.Server.EnableExternalServices {
+		if conf.Server.Integration.Enabled {
+			log.Debug("Outbound HTTP integration gateway is ENABLED")
+		} else {
+			log.Info("Outbound HTTP integration gateway is DISABLED")
+		}
+
 		if !conf.Server.LastFM.Enabled {
 			log.Info("Last.fm integration is DISABLED")
 		} else {

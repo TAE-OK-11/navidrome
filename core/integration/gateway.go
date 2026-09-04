@@ -128,6 +128,9 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		resp, err = fallback.RoundTrip(req)
 	}
 	if err != nil {
+		if isWorkerCircuitOpen(err) {
+			return nil, err
+		}
 		breaker.failure()
 		if g.grpc != nil && dest != DestUnknown {
 			log.Trace(req.Context(), "gRPC outbound failed, falling back to Go HTTP", "dest", dest, err)

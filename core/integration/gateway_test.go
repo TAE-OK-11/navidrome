@@ -2,6 +2,7 @@ package integration
 
 import (
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +60,29 @@ func TestSignAudioscrobbler(t *testing.T) {
 	want := fmt.Sprintf("%x", md5.Sum([]byte("a111b222c333d444SECRET")))
 	if sig != want {
 		t.Fatalf("sig = %s want %s", sig, want)
+	}
+}
+
+func TestWorkerResponseError(t *testing.T) {
+	err := workerResponseError("circuit open for lastfm")
+	if !errors.Is(err, errCircuitOpen) {
+		t.Fatalf("expected errCircuitOpen, got %v", err)
+	}
+	if !isWorkerCircuitOpen(err) {
+		t.Fatal("isWorkerCircuitOpen should be true")
+	}
+
+	other := workerResponseError("connection refused")
+	if isWorkerCircuitOpen(other) {
+		t.Fatal("isWorkerCircuitOpen should be false for transport errors")
+	}
+}
+
+func TestGrpcListenAddrPrefersEnv(t *testing.T) {
+	t.Setenv("ND_INTEGRATIONGRPCLISTEN", "unix:/tmp/custom.sock")
+	got := grpcListenAddr()
+	if got != "unix:/tmp/custom.sock" {
+		t.Fatalf("got %q want env override", got)
 	}
 }
 

@@ -5,8 +5,9 @@ import "github.com/spf13/viper"
 const publicGRPCConfigKey = "enablepublicgrpc"
 
 const (
-	publicGRPCAddressKey = "publicgrpcaddress"
-	publicGRPCPortKey    = "publicgrpcport"
+	publicGRPCAddressKey    = "publicgrpcaddress"
+	publicGRPCPortKey       = "publicgrpcport"
+	publicGRPCReflectionKey = "enablepublicgrpcreflection"
 )
 
 // PublicGRPCEnabled reports whether the public gRPC service is multiplexed
@@ -19,6 +20,20 @@ func PublicGRPCEnabled() bool {
 // SetPublicGRPCEnabledForTest is for unit tests only.
 func SetPublicGRPCEnabledForTest(enabled bool) {
 	viper.Set(publicGRPCConfigKey, enabled)
+}
+
+// PublicGRPCReflectionEnabled reports whether gRPC server reflection is
+// registered on the public API. Off by default: reflection exposes RPC
+// schemas without authentication. Enable for grpcurl/proxy discovery on
+// trusted overlays only. Config: EnablePublicGRPCReflection or
+// ND_ENABLEPUBLICGRPCREFLECTION.
+func PublicGRPCReflectionEnabled() bool {
+	return viper.GetBool(publicGRPCReflectionKey)
+}
+
+// SetPublicGRPCReflectionForTest is for unit tests only.
+func SetPublicGRPCReflectionForTest(enabled bool) {
+	viper.Set(publicGRPCReflectionKey, enabled)
 }
 
 // PublicGRPCAddress returns the bind address for the optional plaintext H2C
@@ -58,6 +73,7 @@ func setPublicGRPCDefaults() {
 	// ND_PUBLICGRPCADDRESS=10.77.0.1 (or the overlay IP).
 	viper.SetDefault(publicGRPCAddressKey, "127.0.0.1")
 	viper.SetDefault(publicGRPCPortKey, 50051)
+	viper.SetDefault(publicGRPCReflectionKey, false)
 }
 
 func init() {

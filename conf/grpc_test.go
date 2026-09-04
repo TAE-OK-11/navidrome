@@ -16,6 +16,9 @@ func TestPublicGRPCEnabledByDefault(t *testing.T) {
 	if PublicGRPCPort() != 50051 {
 		t.Fatalf("PublicGRPCPort()=%d, want 50051", PublicGRPCPort())
 	}
+	if PublicGRPCReflectionEnabled() {
+		t.Fatal("gRPC reflection should be off by default")
+	}
 	SetPublicGRPCEnabledForTest(false)
 	if PublicGRPCEnabled() {
 		t.Fatal("SetPublicGRPCEnabledForTest(false) did not disable")
@@ -25,4 +28,5 @@ func TestPublicGRPCEnabledByDefault(t *testing.T) {
 	}
 	SetPublicGRPCEnabledForTest(true)
 	SetPublicGRPCPlaintextForTest("127.0.0.1", 50051)
+	SetPublicGRPCReflectionForTest(false)
 }

@@ -62,17 +62,16 @@ const publicGRPCMaxMsgBytes = 32 << 20
 
 // NewServer returns a gRPC server multiplexed onto the public HTTP/2 listener
 // (and onto the optional plaintext H2C listener for WireGuard origins).
-// It enables as much as possible over gRPC: reflection (debugging/proxies),
-// standard health checks (load-balancer / proxy warmup), generous message
-// budgets matching the 32 MiB REST proxy cap, and keepalive so long-lived
-// Open/Subscribe streams survive NAT / WireGuard idle timeouts.
+// It enables standard health checks, generous message budgets matching the
+// 32 MiB REST proxy cap, and keepalive so long-lived Open/Subscribe streams
+// survive NAT / WireGuard idle timeouts. Reflection is opt-in via config.
 func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.Server {
 	gs := grpc.NewServer(
 		grpc.MaxRecvMsgSize(publicGRPCMaxMsgBytes),
 		grpc.MaxSendMsgSize(publicGRPCMaxMsgBytes),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     5 * time.Minute,
-			MaxConnectionAge:      30 * time.Minute,
+			MaxConnectionAge:      0,
 			MaxConnectionAgeGrace: 30 * time.Second,
 			Time:                  2 * time.Minute,
 			Timeout:               20 * time.Second,
@@ -89,9 +88,9 @@ func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.
 	hs.SetServingStatus("navidrome.public.v1.Public", grpc_health_v1.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(gs, hs)
-	// Reflection lets grpcurl / proxies discover the Public surface without
-	// shipping .proto files; auth is still enforced per-RPC.
-	reflection.Register(gs)
+	if conf.PublicGRPCReflectionEnabled() {
+		reflection.Register(gs)
+	}
 	lifecycle.Register(grpcCloser{gs})
 	return gs
 }

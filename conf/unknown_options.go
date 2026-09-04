@@ -23,6 +23,7 @@ var extraKnownConfigKeys = []string{
 	"enablepublicgrpc",
 	"publicgrpcaddress",
 	"publicgrpcport",
+	"enablepublicgrpcreflection",
 	"http3allow0rtt",
 	"http3gatewaypath",
 	"http3altsvcmaxage",

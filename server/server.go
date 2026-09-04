@@ -126,10 +126,8 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	h3 := s.startHTTP3(ctx, listenAddr, handler, tlsCert, tlsKey, server)
 
 	// Optional plaintext H2C listener for private overlays (WireGuard).
-	// Same handler (REST + gRPC), no TLS: WireGuard already encrypts, so a
-	// second TLS layer would be double encryption. Pingola uses
-	// `protocol: grpc` (prior-knowledge H2C) against this port.
-	plaintext := s.startPlaintextGRPC(ctx, handler, listenAddr)
+	// gRPC-only on this port; REST stays on the main TLS listener.
+	plaintext := s.startPlaintextGRPC(ctx, listenAddr)
 	if plaintext != nil {
 		defer plaintext.Close()
 	}
@@ -206,8 +204,7 @@ func (s *Server) startHTTP3(ctx context.Context, listenAddr string, handler http
 }
 
 // plaintextGRPCServer is the optional no-TLS H2C listener for private
-// overlays (WireGuard). It serves the same public handler, so both REST and
-// gRPC work over plaintext H2C with prior knowledge.
+// overlays (WireGuard). It serves gRPC only; REST/UI remain on the main port.
 type plaintextGRPCServer struct {
 	server   *http.Server
 	listener net.Listener
@@ -234,7 +231,7 @@ func (p *plaintextGRPCServer) Close() {
 // ND_PUBLICGRPCADDRESS/ND_PUBLICGRPCPORT is configured. Nil when disabled,
 // when the main listener is a unix socket, or on bind failure (warn + nil;
 // the main TLS listener keeps serving gRPC over H2/H3).
-func (s *Server) startPlaintextGRPC(ctx context.Context, handler http.Handler, mainAddr string) *plaintextGRPCServer {
+func (s *Server) startPlaintextGRPC(ctx context.Context, mainAddr string) *plaintextGRPCServer {
 	if !conf.PublicGRPCPlaintextEnabled() || s.grpcServer == nil {
 		return nil
 	}
@@ -245,6 +242,9 @@ func (s *Server) startPlaintextGRPC(ctx context.Context, handler http.Handler, m
 	bindPort := conf.PublicGRPCPort()
 	if bindAddr == "" {
 		return nil
+	}
+	if ip := net.ParseIP(bindAddr); ip == nil || !ip.IsLoopback() {
+		log.Warn(ctx, "Plaintext H2C gRPC binds outside loopback; restrict to a trusted overlay (WireGuard)", "address", bindAddr)
 	}
 	listenAddr := fmt.Sprintf("%s:%d", bindAddr, bindPort)
 	// Avoid double-binding the main TCP listener.
@@ -257,9 +257,9 @@ func (s *Server) startPlaintextGRPC(ctx context.Context, handler http.Handler, m
 		log.Warn(ctx, "Plaintext H2C gRPC unavailable; TLS listener remains", "address", listenAddr, err)
 		return nil
 	}
-	srv := newHTTPServer(handler, false, true)
+	srv := newHTTPServer(publicgrpc.GRPCOnly(s.grpcServer), false, true)
 	go func() {
-		log.Info("Starting plaintext H2C (REST+gRPC, WireGuard) listener", "address", listener.Addr().String())
+		log.Info(ctx, "Starting plaintext H2C gRPC listener (WireGuard)", "address", listener.Addr().String())
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error(ctx, "Plaintext H2C listener stopped", err)
 		}

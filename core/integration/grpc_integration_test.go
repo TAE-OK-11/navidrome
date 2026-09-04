@@ -25,7 +25,7 @@ func loadSignVector(t *testing.T) signVector {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(file), "../../tests/fixtures/integration/sign_vector.json")
+	path := filepath.Join(filepath.Dir(file), "../../rust/integration/testdata/sign_vector.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func loadBlockedSSRFIPs(t *testing.T) []string {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(file), "../../tests/fixtures/integration/ssrf_blocked_ips.json")
+	path := filepath.Join(filepath.Dir(file), "../../rust/integration/testdata/ssrf_blocked_ips.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

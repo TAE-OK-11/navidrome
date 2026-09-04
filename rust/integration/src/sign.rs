@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn matches_shared_vector() {
-        let raw = include_str!("../../../tests/fixtures/integration/sign_vector.json");
+        let raw = include_str!("../testdata/sign_vector.json");
         let vector: SignVector = serde_json::from_str(raw).expect("parse sign vector");
         let sig = sign_audioscrobbler(&vector.params, &vector.secret);
         assert_eq!(sig, vector.expected);
@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn ignores_api_sig() {
-        let raw = include_str!("../../../tests/fixtures/integration/sign_vector.json");
+        let raw = include_str!("../testdata/sign_vector.json");
         let mut vector: SignVector = serde_json::from_str(raw).expect("parse sign vector");
         vector.params.insert("api_sig".into(), "stale".into());
         let sig = sign_audioscrobbler(&vector.params, &vector.secret);

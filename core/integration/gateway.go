@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	errCircuitOpen        = errors.New("integration circuit open")
-	errWorkerUnavailable  = errors.New("integration gRPC worker unavailable")
+	errCircuitOpen       = errors.New("integration circuit open")
+	errWorkerUnavailable = errors.New("integration gRPC worker unavailable")
 )
 
 // Gateway is the hub for all outbound HTTP. Adapters no longer own

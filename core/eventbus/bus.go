@@ -139,13 +139,13 @@ type subscription struct {
 // Bus is a bounded, non-blocking pub/sub. Publish never waits on handlers;
 // overflow drops the event and logs so a stuck consumer cannot stall playback.
 type Bus struct {
-	mu      sync.RWMutex
-	subs    map[Topic][]subscription
-	nextID  uint64
-	queue   chan Event
-	workers int
-	stop    chan struct{}
-	once    sync.Once
+	mu       sync.RWMutex
+	subs     map[Topic][]subscription
+	nextID   uint64
+	queue    chan Event
+	workers  int
+	stop     chan struct{}
+	once     sync.Once
 	workerWG sync.WaitGroup
 }
 

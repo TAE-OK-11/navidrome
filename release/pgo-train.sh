@@ -13,7 +13,7 @@
 #   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
 #   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
 #
-# Final scenario (14 workloads, overlaps removed):
+# Final scenario (18 workloads, overlaps removed):
 #
 #   Domain          | Name            | Benchmark
 #   ----------------+-----------------+------------------------------------------
@@ -31,6 +31,10 @@
 #   HTTP/2 public   | h2_api          | BenchmarkHTTP2CompressedAPIResponse
 #   HTTP/2 public   | h2_stream       | BenchmarkHTTP2StreamingResponse
 #   HTTP/2 H3 bridge| h2_h3_bridge    | BenchmarkHTTP2InheritedBridgeRoundTrip
+#   Public gRPC     | grpc_ping       | BenchmarkPublicGRPCPing
+#   Public gRPC     | grpc_invoke     | BenchmarkPublicGRPCInvoke
+#   Public gRPC     | grpc_open       | BenchmarkPublicGRPCOpenStream
+#   Public gRPC     | grpc_h2_ping    | BenchmarkPublicGRPCHTTP2Ping
 #
 # Removed as redundant with the workloads above:
 #   - BenchmarkCompressionLargeSingleWrite  -> h2_api (Write compress) + compress_stream (ReadFrom)
@@ -106,6 +110,12 @@ train h2_stream ./server '^BenchmarkHTTP2StreamingResponse$' "${LIGHT_BENCHTIME}
 
 # H3 companion private HTTP/2 bridge (auth middleware + compress + framing)
 train h2_h3_bridge ./server '^BenchmarkHTTP2InheritedBridgeRoundTrip$' "${HEAVY_BENCHTIME}"
+
+# Public gRPC (in-process bufconn + TLS HTTP/2 mux framing)
+train grpc_ping ./server/publicgrpc '^BenchmarkPublicGRPCPing$' "${LIGHT_BENCHTIME}"
+train grpc_invoke ./server/publicgrpc '^BenchmarkPublicGRPCInvoke$' "${HEAVY_BENCHTIME}"
+train grpc_open ./server/publicgrpc '^BenchmarkPublicGRPCOpenStream$' "${HEAVY_BENCHTIME}"
+train grpc_h2_ping ./server/publicgrpc '^BenchmarkPublicGRPCHTTP2Ping$' "${LIGHT_BENCHTIME}"
 
 echo "[pgo] merging $(echo "${PROFILE_FILES}" | wc -w | tr -d ' ') profiles"
 go tool pprof \

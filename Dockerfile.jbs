@@ -30,7 +30,9 @@
 #   - Drop production source maps and unused builder packages
 #   - Use LLVM full (fat) LTO for every native component and final CGO link
 #   - Train Go PGO with thin LTO, then apply the merged profile on the fat LTO build
-#     (14 workloads — see release/pgo-train.sh for the final scenario table)
+#     (18 workloads — see release/pgo-train.sh for the final scenario table)
+#   - Rust gRPC workers use release-fat (LLVM fat LTO); optional RUST_PGO_ENABLED
+#     runs release/rust-pgo-train.sh before the final worker link
 #
 # NOTE:
 #   Base images are pinned to the current multi-platform index digests
@@ -1085,6 +1087,8 @@ FROM ${RUST_IMAGE} AS rust-workers-builder
 
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
+ARG RUST_PGO_ENABLED=false
+ARG RUST_PGO_BENCH_TIME=1s
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
@@ -1098,6 +1102,8 @@ COPY --link --from=source /src/rust/integration ./integration
 COPY --link --from=source /src/rust/metadata ./metadata
 COPY --link --from=source /src/rust/scanner ./scanner
 COPY --link --from=source /src/rust/search ./search
+COPY --link --from=source /src/rust/benchmarks/integration /build/rust/benchmarks/integration
+COPY --link --from=source /src/release/rust-pgo-train.sh /src/release/rust-build.sh /build/release/
 COPY --link --from=source /src/proto /build/proto
 COPY --link --from=source /src/resources/mime_types.yaml /build/resources/mime_types.yaml
 COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
@@ -1119,15 +1125,23 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     printf '%s\n' '{"op":"search_all","query":"","searches":[]}' \
       | /tmp/rust-workers-portable/release/navidrome-search | grep -q '"protocol":1' && \
     install -D -m 755 /tmp/rust-workers-portable/release/navidrome-scanner /out/navidrome-scanner-portable && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/rust-workers-release \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release --bins && \
-    install -D -m 755 /tmp/rust-workers-release/release/navidrome-metadata /out/navidrome-metadata && \
-    install -D -m 755 /tmp/rust-workers-release/release/navidrome-apikeys /out/navidrome-apikeys && \
-    install -D -m 755 /tmp/rust-workers-release/release/navidrome-scanner /out/navidrome-scanner && \
-    install -D -m 755 /tmp/rust-workers-release/release/navidrome-search /out/navidrome-search && \
-    install -D -m 755 /tmp/rust-workers-release/release/navidrome-integration /out/navidrome-integration && \
+    if [ "${RUST_PGO_ENABLED}" = "true" ]; then \
+      chmod +x /build/release/rust-pgo-train.sh && \
+      RUST_PGO_BENCH_TIME="${RUST_PGO_BENCH_TIME}" \
+      CARGO_TARGET_DIR=/tmp/rust-workers-release \
+      RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+      /build/release/rust-pgo-train.sh; \
+    else \
+      CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+      CARGO_TARGET_DIR=/tmp/rust-workers-release \
+      RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU} -C lto=fat -C codegen-units=1" \
+      cargo build --locked --profile release-fat --bins; \
+    fi && \
+    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-metadata /out/navidrome-metadata && \
+    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-apikeys /out/navidrome-apikeys && \
+    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-scanner /out/navidrome-scanner && \
+    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-search /out/navidrome-search && \
+    install -D -m 755 /tmp/rust-workers-release/release-fat/navidrome-integration /out/navidrome-integration && \
     test -x /out/navidrome-metadata && \
     test -x /out/navidrome-apikeys && \
     test -x /out/navidrome-scanner && \

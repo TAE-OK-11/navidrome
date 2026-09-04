@@ -27,3 +27,9 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+# Production gRPC worker builds (JBS / make build-rust-release). Fat LTO inlines
+# across tonic/prost/hyper/reqwest for lower per-RPC overhead on unix sockets.
+[profile.release-fat]
+inherits = "release"
+lto = "fat"

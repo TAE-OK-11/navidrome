@@ -19,6 +19,12 @@ func TestPublicGRPCEnabledByDefault(t *testing.T) {
 	if PublicGRPCReflectionEnabled() {
 		t.Fatal("gRPC reflection should be off by default")
 	}
+	if PublicGRPCAllowedIPs() != "" {
+		t.Fatalf("PublicGRPCAllowedIPs()=%q, want empty default", PublicGRPCAllowedIPs())
+	}
+	if PublicGRPCTrustedProxies() != "" {
+		t.Fatalf("PublicGRPCTrustedProxies()=%q, want empty default", PublicGRPCTrustedProxies())
+	}
 	SetPublicGRPCEnabledForTest(false)
 	if PublicGRPCEnabled() {
 		t.Fatal("SetPublicGRPCEnabledForTest(false) did not disable")

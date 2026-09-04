@@ -242,6 +242,9 @@ func (s *Server) startPlaintextGRPC(ctx context.Context, mainAddr string) *plain
 	}
 	if ip := net.ParseIP(bindAddr); ip == nil || !ip.IsLoopback() {
 		log.Warn(ctx, "Plaintext H2C gRPC binds outside loopback; restrict to a trusted overlay (WireGuard)", "address", bindAddr)
+		if conf.PublicGRPCAllowedIPs() == "" {
+			log.Warn(ctx, "Public gRPC IP allowlist is not configured; set ND_PUBLICGRPCALLOWEDIPS to restrict H2C access", "address", bindAddr)
+		}
 	}
 	listenAddr := fmt.Sprintf("%s:%d", bindAddr, bindPort)
 	// Avoid double-binding the main TCP listener.

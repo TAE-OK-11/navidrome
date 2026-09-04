@@ -18,13 +18,13 @@ func Mux(gs *grpc.Server, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.NotFoundHandler()
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withListenerKind("tls", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isGRPCRequest(r) {
 			gs.ServeHTTP(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // GRPCOnly serves the public gRPC API over H2C and rejects REST/UI traffic.
@@ -36,13 +36,13 @@ func GRPCOnly(gs *grpc.Server) http.Handler {
 			http.Error(w, "gRPC is not configured", http.StatusServiceUnavailable)
 		})
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withListenerKind("h2c", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isGRPCRequest(r) {
 			gs.ServeHTTP(w, r)
 			return
 		}
 		http.Error(w, "plaintext H2C listener accepts gRPC only; use the main port for REST", http.StatusForbidden)
-	})
+	}))
 }
 
 func isGRPCRequest(r *http.Request) bool {

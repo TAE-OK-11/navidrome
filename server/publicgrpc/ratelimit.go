@@ -34,7 +34,3 @@ func checkLoginRateLimit(ctx context.Context) error {
 	}
 	return nil
 }
-
-func peerIP(ctx context.Context) string {
-	return clientIP(ctx)
-}

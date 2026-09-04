@@ -18,6 +18,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
+	"github.com/navidrome/navidrome/server/subsonic/errmap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -71,6 +72,8 @@ const publicGRPCMaxMsgBytes = 32 << 20
 // survive NAT / WireGuard idle timeouts. Reflection is opt-in via config.
 func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.Server {
 	gs := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(networkUnaryInterceptor),
+		grpc.ChainStreamInterceptor(networkStreamInterceptor),
 		grpc.MaxRecvMsgSize(publicGRPCMaxMsgBytes),
 		grpc.MaxSendMsgSize(publicGRPCMaxMsgBytes),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
@@ -118,7 +121,8 @@ func (s *Service) Invoke(ctx context.Context, req *gen.InvokeRequest) (*gen.Invo
 	query := mapToURLValues(req.GetParams())
 	statusCode, ct, body, err := s.invoker.Invoke(ctx, endpoint, query, user.UserName, req.GetJson())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "invoke %s: %v", endpoint, err)
+		code := errmap.GRPCCode(err)
+		return nil, status.Errorf(code, "invoke %s: %v", endpoint, err)
 	}
 	return &gen.InvokeResponse{ContentType: ct, Body: body, Status: int32(statusCode)}, nil
 }

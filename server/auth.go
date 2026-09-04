@@ -7,10 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"net"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +21,7 @@ import (
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/gravatar"
+	"github.com/navidrome/navidrome/utils/ipallowlist"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -232,7 +230,7 @@ func UsernameFromExtAuthHeader(r *http.Request) string {
 		log.Error("ExtAuth enabled but no proxy IP found in request context. Please report this error.")
 		return ""
 	}
-	if !validateIPAgainstList(reverseProxyIp, conf.Server.ExtAuth.TrustedSources) {
+	if !ipallowlist.Contains(reverseProxyIp, conf.Server.ExtAuth.TrustedSources, strings.HasPrefix(conf.Server.Address, "unix:")) {
 		log.Warn(r.Context(), "IP is not whitelisted for external authentication", "proxy-ip", reverseProxyIp, "client-ip", r.RemoteAddr)
 		return ""
 	}
@@ -379,37 +377,5 @@ func handleLoginFromHeaders(ds model.DataStore, r *http.Request) map[string]any 
 }
 
 func validateIPAgainstList(ip string, comaSeparatedList string) bool {
-	if comaSeparatedList == "" || ip == "" {
-		return false
-	}
-
-	cidrs := strings.Split(comaSeparatedList, ",")
-
-	// Per https://github.com/golang/go/issues/49825, the remote address
-	// on a unix socket is '@'
-	if ip == "@" && strings.HasPrefix(conf.Server.Address, "unix:") {
-		return slices.Contains(cidrs, "@")
-	}
-
-	if net.ParseIP(ip) == nil {
-		ip, _, _ = net.SplitHostPort(ip)
-	}
-
-	if ip == "" {
-		return false
-	}
-
-	testedIP, _, err := net.ParseCIDR(fmt.Sprintf("%s/32", ip))
-	if err != nil {
-		return false
-	}
-
-	for _, cidr := range cidrs {
-		_, ipnet, err := net.ParseCIDR(cidr)
-		if err == nil && ipnet.Contains(testedIP) {
-			return true
-		}
-	}
-
-	return false
+	return ipallowlist.Contains(ip, comaSeparatedList, strings.HasPrefix(conf.Server.Address, "unix:"))
 }

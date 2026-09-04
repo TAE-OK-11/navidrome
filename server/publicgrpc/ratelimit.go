@@ -2,7 +2,6 @@ package publicgrpc
 
 import (
 	"context"
-	"net"
 	"sync"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -25,9 +23,9 @@ func checkLoginRateLimit(ctx context.Context) error {
 	if window <= 0 {
 		window = time.Minute
 	}
-	ip := peerIP(ctx)
+	ip := clientIP(ctx)
 	if ip == "" {
-		return nil
+		ip = unknownClientIP
 	}
 	v, _ := loginLimiters.LoadOrStore(ip, rate.NewLimiter(rate.Every(window/time.Duration(limit)), limit))
 	if !v.(*rate.Limiter).Allow() {
@@ -38,13 +36,5 @@ func checkLoginRateLimit(ctx context.Context) error {
 }
 
 func peerIP(ctx context.Context) string {
-	p, ok := peer.FromContext(ctx)
-	if !ok || p.Addr == nil {
-		return ""
-	}
-	host, _, err := net.SplitHostPort(p.Addr.String())
-	if err != nil {
-		return p.Addr.String()
-	}
-	return host
+	return clientIP(ctx)
 }

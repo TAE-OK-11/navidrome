@@ -5,9 +5,11 @@ import "github.com/spf13/viper"
 const publicGRPCConfigKey = "enablepublicgrpc"
 
 const (
-	publicGRPCAddressKey    = "publicgrpcaddress"
-	publicGRPCPortKey       = "publicgrpcport"
-	publicGRPCReflectionKey = "enablepublicgrpcreflection"
+	publicGRPCAddressKey        = "publicgrpcaddress"
+	publicGRPCPortKey           = "publicgrpcport"
+	publicGRPCReflectionKey     = "enablepublicgrpcreflection"
+	publicGRPCAllowedIPsKey     = "publicgrpcallowedips"
+	publicGRPCTrustedProxiesKey = "publicgrpctrustedproxies"
 )
 
 // PublicGRPCEnabled reports whether the public gRPC service is multiplexed
@@ -60,10 +62,30 @@ func PublicGRPCPlaintextEnabled() bool {
 	return PublicGRPCEnabled() && PublicGRPCPort() > 0 && PublicGRPCAddress() != ""
 }
 
+// PublicGRPCAllowedIPs returns a comma-separated CIDR allowlist for public
+// gRPC clients. Empty disables the check. Use on WireGuard overlays, e.g.
+// 10.77.0.0/24. Config: PublicGRPCAllowedIPs or ND_PUBLICGRPCALLOWEDIPS.
+func PublicGRPCAllowedIPs() string {
+	return viper.GetString(publicGRPCAllowedIPsKey)
+}
+
+// PublicGRPCTrustedProxies lists proxy CIDRs allowed to supply
+// x-forwarded-for metadata for client IP resolution and rate limits.
+// Config: PublicGRPCTrustedProxies or ND_PUBLICGRPCTRUSTEDPROXIES.
+func PublicGRPCTrustedProxies() string {
+	return viper.GetString(publicGRPCTrustedProxiesKey)
+}
+
 // SetPublicGRPCPlaintextForTest is for unit tests only.
 func SetPublicGRPCPlaintextForTest(address string, port int) {
 	viper.Set(publicGRPCAddressKey, address)
 	viper.Set(publicGRPCPortKey, port)
+}
+
+// SetPublicGRPCNetworkPolicyForTest is for unit tests only.
+func SetPublicGRPCNetworkPolicyForTest(allowedIPs, trustedProxies string) {
+	viper.Set(publicGRPCAllowedIPsKey, allowedIPs)
+	viper.Set(publicGRPCTrustedProxiesKey, trustedProxies)
 }
 
 func setPublicGRPCDefaults() {
@@ -74,6 +96,8 @@ func setPublicGRPCDefaults() {
 	viper.SetDefault(publicGRPCAddressKey, "127.0.0.1")
 	viper.SetDefault(publicGRPCPortKey, 50051)
 	viper.SetDefault(publicGRPCReflectionKey, false)
+	viper.SetDefault(publicGRPCAllowedIPsKey, "")
+	viper.SetDefault(publicGRPCTrustedProxiesKey, "")
 }
 
 func init() {

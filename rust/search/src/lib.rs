@@ -690,23 +690,20 @@ pub mod bench_support {
             Ok(Self(Engine::new()?))
         }
 
-        pub fn replace(&mut self, documents: Vec<SearchDocument>) -> Result<()> {
-            self.0.replace(documents)
+        pub fn load_documents(&mut self, count: usize) -> Result<()> {
+            self.0.replace(bench_documents(count))
         }
 
-        pub fn search_all(&self, query: &str, library_ids: &[u64]) -> Result<Vec<SearchGroup>> {
-            let mut groups = Vec::new();
+        pub fn search_all(&self, query: &str, library_ids: &[u64]) -> Result<usize> {
+            let mut total = 0usize;
             for kind in ["song", "album", "artist"] {
-                groups.push(SearchGroup {
-                    hits: self.0.search(query, kind, library_ids, 0, 10)?,
-                    kind: kind.to_owned(),
-                });
+                total += self.0.search(query, kind, library_ids, 0, 10)?.len();
             }
-            Ok(groups)
+            Ok(total)
         }
     }
 
-    pub fn bench_documents(count: usize) -> Vec<SearchDocument> {
+    fn bench_documents(count: usize) -> Vec<SearchDocument> {
         (0..count)
             .map(|index| SearchDocument {
                 key: format!("song:{index}"),

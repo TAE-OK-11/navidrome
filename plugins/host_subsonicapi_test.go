@@ -496,12 +496,12 @@ type fakeSubsonicRouter struct {
 
 func (r *fakeSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
-func (r *fakeSubsonicRouter) Invoke(ctx context.Context, endpoint string, query url.Values, username string, _ bool) (string, []byte, error) {
+func (r *fakeSubsonicRouter) Invoke(ctx context.Context, endpoint string, query url.Values, username string, _ bool) (int, string, []byte, error) {
 	req := httptest.NewRequest(http.MethodGet, "/"+endpoint+"?"+query.Encode(), nil).WithContext(ctx)
 	r.lastRequest = req
 	switch path.Base(endpoint) {
 	case "getCoverArt":
-		return "image/png", fakePNGHeader, nil
+		return http.StatusOK, "image/png", fakePNGHeader, nil
 	default:
 		response := map[string]any{
 			"subsonic-response": map[string]any{
@@ -511,7 +511,7 @@ func (r *fakeSubsonicRouter) Invoke(ctx context.Context, endpoint string, query 
 		}
 		var buf bytes.Buffer
 		_ = json.NewEncoder(&buf).Encode(response)
-		return "application/json", buf.Bytes(), nil
+		return http.StatusOK, "application/json", buf.Bytes(), nil
 	}
 }
 
@@ -522,17 +522,17 @@ type blockingSubsonicRouter struct {
 
 func (r *blockingSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
-func (r *blockingSubsonicRouter) Invoke(ctx context.Context, _ string, _ url.Values, _ string, _ bool) (string, []byte, error) {
+func (r *blockingSubsonicRouter) Invoke(ctx context.Context, _ string, _ url.Values, _ string, _ bool) (int, string, []byte, error) {
 	close(r.started)
 	<-ctx.Done()
 	r.observed <- ctx.Err()
-	return "application/json", nil, nil
+	return http.StatusOK, "application/json", nil, nil
 }
 
 type largeSubsonicRouter struct{}
 
 func (largeSubsonicRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
-func (largeSubsonicRouter) Invoke(context.Context, string, url.Values, string, bool) (string, []byte, error) {
-	return "application/octet-stream", bytes.Repeat([]byte{'x'}, int(subsonicAPIResponseBodyLimit+1)), nil
+func (largeSubsonicRouter) Invoke(context.Context, string, url.Values, string, bool) (int, string, []byte, error) {
+	return http.StatusOK, "application/octet-stream", bytes.Repeat([]byte{'x'}, int(subsonicAPIResponseBodyLimit+1)), nil
 }

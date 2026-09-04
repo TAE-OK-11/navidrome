@@ -322,10 +322,11 @@ func (x *LoginResponse) GetSubsonicToken() string {
 }
 
 type InvokeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Endpoint      string                 `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Params        map[string]string      `protobuf:"bytes,2,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Json          bool                   `protobuf:"varint,3,opt,name=json,proto3" json:"json,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Endpoint string                 `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// Repeated values: join with ASCII RS (U+001E), e.g. "a\x1eb".
+	Params        map[string]string `protobuf:"bytes,2,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Json          bool              `protobuf:"varint,3,opt,name=json,proto3" json:"json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -442,12 +443,13 @@ func (x *InvokeResponse) GetStatus() int32 {
 }
 
 type InvokeNativeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Method        string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	Params        map[string]string      `protobuf:"bytes,3,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Body          []byte                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	ContentType   string                 `protobuf:"bytes,5,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Method string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	Path   string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Repeated values: join with ASCII RS (U+001E).
+	Params        map[string]string `protobuf:"bytes,3,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Body          []byte            `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	ContentType   string            `protobuf:"bytes,5,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -580,9 +582,10 @@ func (x *InvokeNativeResponse) GetBody() []byte {
 type OpenRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// "subsonic" (default) or "native".
-	Api           string            `protobuf:"bytes,1,opt,name=api,proto3" json:"api,omitempty"`
-	Method        string            `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
-	Path          string            `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Api    string `protobuf:"bytes,1,opt,name=api,proto3" json:"api,omitempty"`
+	Method string `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`
+	Path   string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	// Repeated values: join with ASCII RS (U+001E).
 	Params        map[string]string `protobuf:"bytes,4,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Body          []byte            `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
 	ContentType   string            `protobuf:"bytes,6,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
@@ -671,11 +674,13 @@ func (x *OpenRequest) GetJson() bool {
 }
 
 type OpenChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
-	ContentType   string                 `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
-	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
-	Final         bool                   `protobuf:"varint,4,opt,name=final,proto3" json:"final,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Status      int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
+	ContentType string                 `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Data        []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	Final       bool                   `protobuf:"varint,4,opt,name=final,proto3" json:"final,omitempty"`
+	// Response headers from the origin handler (first chunk only).
+	Headers       map[string]string `protobuf:"bytes,5,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -736,6 +741,13 @@ func (x *OpenChunk) GetFinal() bool {
 		return x.Final
 	}
 	return false
+}
+
+func (x *OpenChunk) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
 }
 
 type SubscribeRequest struct {
@@ -1687,12 +1699,16 @@ const file_proto_navidrome_public_v1_public_proto_rawDesc = "" +
 	"\x04json\x18\a \x01(\bR\x04json\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"p\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf3\x01\n" +
 	"\tOpenChunk\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12!\n" +
 	"\fcontent_type\x18\x02 \x01(\tR\vcontentType\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12\x14\n" +
-	"\x05final\x18\x04 \x01(\bR\x05final\"*\n" +
+	"\x05final\x18\x04 \x01(\bR\x05final\x12E\n" +
+	"\aheaders\x18\x05 \x03(\v2+.navidrome.public.v1.OpenChunk.HeadersEntryR\aheaders\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
 	"\x10SubscribeRequest\x12\x16\n" +
 	"\x06topics\x18\x01 \x03(\tR\x06topics\"\xaf\x06\n" +
 	"\x05Event\x12\x0e\n" +
@@ -1796,7 +1812,7 @@ func file_proto_navidrome_public_v1_public_proto_rawDescGZIP() []byte {
 	return file_proto_navidrome_public_v1_public_proto_rawDescData
 }
 
-var file_proto_navidrome_public_v1_public_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_proto_navidrome_public_v1_public_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_proto_navidrome_public_v1_public_proto_goTypes = []any{
 	(*PingRequest)(nil),          // 0: navidrome.public.v1.PingRequest
 	(*PingResponse)(nil),         // 1: navidrome.public.v1.PingResponse
@@ -1823,43 +1839,45 @@ var file_proto_navidrome_public_v1_public_proto_goTypes = []any{
 	nil,                          // 22: navidrome.public.v1.InvokeRequest.ParamsEntry
 	nil,                          // 23: navidrome.public.v1.InvokeNativeRequest.ParamsEntry
 	nil,                          // 24: navidrome.public.v1.OpenRequest.ParamsEntry
-	nil,                          // 25: navidrome.public.v1.Event.AttributesEntry
-	nil,                          // 26: navidrome.public.v1.RefreshResource.ResourcesEntry
+	nil,                          // 25: navidrome.public.v1.OpenChunk.HeadersEntry
+	nil,                          // 26: navidrome.public.v1.Event.AttributesEntry
+	nil,                          // 27: navidrome.public.v1.RefreshResource.ResourcesEntry
 }
 var file_proto_navidrome_public_v1_public_proto_depIdxs = []int32{
 	22, // 0: navidrome.public.v1.InvokeRequest.params:type_name -> navidrome.public.v1.InvokeRequest.ParamsEntry
 	23, // 1: navidrome.public.v1.InvokeNativeRequest.params:type_name -> navidrome.public.v1.InvokeNativeRequest.ParamsEntry
 	24, // 2: navidrome.public.v1.OpenRequest.params:type_name -> navidrome.public.v1.OpenRequest.ParamsEntry
-	25, // 3: navidrome.public.v1.Event.attributes:type_name -> navidrome.public.v1.Event.AttributesEntry
-	13, // 4: navidrome.public.v1.Event.scan_status:type_name -> navidrome.public.v1.ScanStatus
-	14, // 5: navidrome.public.v1.Event.refresh:type_name -> navidrome.public.v1.RefreshResource
-	16, // 6: navidrome.public.v1.Event.now_playing_count:type_name -> navidrome.public.v1.NowPlayingCount
-	17, // 7: navidrome.public.v1.Event.scan_completed:type_name -> navidrome.public.v1.ScanCompleted
-	18, // 8: navidrome.public.v1.Event.scan_progress:type_name -> navidrome.public.v1.ScanProgress
-	19, // 9: navidrome.public.v1.Event.now_playing:type_name -> navidrome.public.v1.NowPlaying
-	20, // 10: navidrome.public.v1.Event.scrobble:type_name -> navidrome.public.v1.Scrobble
-	21, // 11: navidrome.public.v1.Event.playback_report:type_name -> navidrome.public.v1.PlaybackReport
-	26, // 12: navidrome.public.v1.RefreshResource.resources:type_name -> navidrome.public.v1.RefreshResource.ResourcesEntry
-	15, // 13: navidrome.public.v1.RefreshResource.ResourcesEntry.value:type_name -> navidrome.public.v1.StringList
-	0,  // 14: navidrome.public.v1.Public.Ping:input_type -> navidrome.public.v1.PingRequest
-	2,  // 15: navidrome.public.v1.Public.Login:input_type -> navidrome.public.v1.LoginRequest
-	3,  // 16: navidrome.public.v1.Public.CreateAdmin:input_type -> navidrome.public.v1.CreateAdminRequest
-	5,  // 17: navidrome.public.v1.Public.Invoke:input_type -> navidrome.public.v1.InvokeRequest
-	7,  // 18: navidrome.public.v1.Public.InvokeNative:input_type -> navidrome.public.v1.InvokeNativeRequest
-	9,  // 19: navidrome.public.v1.Public.Open:input_type -> navidrome.public.v1.OpenRequest
-	11, // 20: navidrome.public.v1.Public.Subscribe:input_type -> navidrome.public.v1.SubscribeRequest
-	1,  // 21: navidrome.public.v1.Public.Ping:output_type -> navidrome.public.v1.PingResponse
-	4,  // 22: navidrome.public.v1.Public.Login:output_type -> navidrome.public.v1.LoginResponse
-	4,  // 23: navidrome.public.v1.Public.CreateAdmin:output_type -> navidrome.public.v1.LoginResponse
-	6,  // 24: navidrome.public.v1.Public.Invoke:output_type -> navidrome.public.v1.InvokeResponse
-	8,  // 25: navidrome.public.v1.Public.InvokeNative:output_type -> navidrome.public.v1.InvokeNativeResponse
-	10, // 26: navidrome.public.v1.Public.Open:output_type -> navidrome.public.v1.OpenChunk
-	12, // 27: navidrome.public.v1.Public.Subscribe:output_type -> navidrome.public.v1.Event
-	21, // [21:28] is the sub-list for method output_type
-	14, // [14:21] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	25, // 3: navidrome.public.v1.OpenChunk.headers:type_name -> navidrome.public.v1.OpenChunk.HeadersEntry
+	26, // 4: navidrome.public.v1.Event.attributes:type_name -> navidrome.public.v1.Event.AttributesEntry
+	13, // 5: navidrome.public.v1.Event.scan_status:type_name -> navidrome.public.v1.ScanStatus
+	14, // 6: navidrome.public.v1.Event.refresh:type_name -> navidrome.public.v1.RefreshResource
+	16, // 7: navidrome.public.v1.Event.now_playing_count:type_name -> navidrome.public.v1.NowPlayingCount
+	17, // 8: navidrome.public.v1.Event.scan_completed:type_name -> navidrome.public.v1.ScanCompleted
+	18, // 9: navidrome.public.v1.Event.scan_progress:type_name -> navidrome.public.v1.ScanProgress
+	19, // 10: navidrome.public.v1.Event.now_playing:type_name -> navidrome.public.v1.NowPlaying
+	20, // 11: navidrome.public.v1.Event.scrobble:type_name -> navidrome.public.v1.Scrobble
+	21, // 12: navidrome.public.v1.Event.playback_report:type_name -> navidrome.public.v1.PlaybackReport
+	27, // 13: navidrome.public.v1.RefreshResource.resources:type_name -> navidrome.public.v1.RefreshResource.ResourcesEntry
+	15, // 14: navidrome.public.v1.RefreshResource.ResourcesEntry.value:type_name -> navidrome.public.v1.StringList
+	0,  // 15: navidrome.public.v1.Public.Ping:input_type -> navidrome.public.v1.PingRequest
+	2,  // 16: navidrome.public.v1.Public.Login:input_type -> navidrome.public.v1.LoginRequest
+	3,  // 17: navidrome.public.v1.Public.CreateAdmin:input_type -> navidrome.public.v1.CreateAdminRequest
+	5,  // 18: navidrome.public.v1.Public.Invoke:input_type -> navidrome.public.v1.InvokeRequest
+	7,  // 19: navidrome.public.v1.Public.InvokeNative:input_type -> navidrome.public.v1.InvokeNativeRequest
+	9,  // 20: navidrome.public.v1.Public.Open:input_type -> navidrome.public.v1.OpenRequest
+	11, // 21: navidrome.public.v1.Public.Subscribe:input_type -> navidrome.public.v1.SubscribeRequest
+	1,  // 22: navidrome.public.v1.Public.Ping:output_type -> navidrome.public.v1.PingResponse
+	4,  // 23: navidrome.public.v1.Public.Login:output_type -> navidrome.public.v1.LoginResponse
+	4,  // 24: navidrome.public.v1.Public.CreateAdmin:output_type -> navidrome.public.v1.LoginResponse
+	6,  // 25: navidrome.public.v1.Public.Invoke:output_type -> navidrome.public.v1.InvokeResponse
+	8,  // 26: navidrome.public.v1.Public.InvokeNative:output_type -> navidrome.public.v1.InvokeNativeResponse
+	10, // 27: navidrome.public.v1.Public.Open:output_type -> navidrome.public.v1.OpenChunk
+	12, // 28: navidrome.public.v1.Public.Subscribe:output_type -> navidrome.public.v1.Event
+	22, // [22:29] is the sub-list for method output_type
+	15, // [15:22] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_proto_navidrome_public_v1_public_proto_init() }
@@ -1883,7 +1901,7 @@ func file_proto_navidrome_public_v1_public_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_navidrome_public_v1_public_proto_rawDesc), len(file_proto_navidrome_public_v1_public_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

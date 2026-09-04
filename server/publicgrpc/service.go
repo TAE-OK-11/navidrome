@@ -14,7 +14,6 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/eventbus"
-	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
@@ -31,7 +30,7 @@ import (
 
 // Invoker runs a Subsonic endpoint in-process. Production uses *subsonic.Router.
 type Invoker interface {
-	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (string, []byte, error)
+	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (int, string, []byte, error)
 }
 
 // NativeInvoker runs Native REST in-process.
@@ -96,16 +95,7 @@ func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.
 	if conf.PublicGRPCReflectionEnabled() {
 		reflection.Register(gs)
 	}
-	lifecycle.Register(grpcCloser{gs})
 	return gs
-}
-
-type grpcCloser struct{ gs *grpc.Server }
-
-func (c grpcCloser) Close() {
-	if c.gs != nil {
-		c.gs.GracefulStop()
-	}
 }
 
 func (s *Service) Ping(context.Context, *gen.PingRequest) (*gen.PingResponse, error) {
@@ -126,11 +116,11 @@ func (s *Service) Invoke(ctx context.Context, req *gen.InvokeRequest) (*gen.Invo
 		return nil, status.Error(codes.InvalidArgument, "endpoint is required")
 	}
 	query := mapToURLValues(req.GetParams())
-	ct, body, err := s.invoker.Invoke(ctx, endpoint, query, user.UserName, req.GetJson())
+	statusCode, ct, body, err := s.invoker.Invoke(ctx, endpoint, query, user.UserName, req.GetJson())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "invoke %s: %v", endpoint, err)
 	}
-	return &gen.InvokeResponse{ContentType: ct, Body: body, Status: http.StatusOK}, nil
+	return &gen.InvokeResponse{ContentType: ct, Body: body, Status: int32(statusCode)}, nil
 }
 
 func (s *Service) InvokeNative(ctx context.Context, req *gen.InvokeNativeRequest) (*gen.InvokeNativeResponse, error) {

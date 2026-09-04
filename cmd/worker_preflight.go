@@ -12,7 +12,7 @@ import (
 	"github.com/navidrome/navidrome/core/searchworker"
 )
 
-func preflightRustWorkers(ctx context.Context) {
+func preflightRustWorkers(ctx context.Context) error {
 	checks := make([]rustworker.WorkerCheck, 0, 3)
 	if path, err := metadataworker.Resolve(); err == nil {
 		checks = append(checks, rustworker.WorkerCheck{
@@ -41,16 +41,21 @@ func preflightRustWorkers(ctx context.Context) {
 	rustworker.Preflight(ctx, checks)
 
 	if !conf.Server.Integration.Enabled {
-		return
+		return nil
 	}
-	if path, err := integration.Resolve(); err == nil {
-		rustworker.PreflightGRPC(ctx, []rustworker.GRPCWorkerCheck{{
-			Name:     "integration",
-			Path:     path,
-			MinBytes: rustworker.MinIntegrationBytes,
-			Health:   integrationGRPCHealth,
-		}})
+	path, err := integration.Resolve()
+	if err != nil {
+		if rustworker.AllowLegacyNDJSON() {
+			return nil
+		}
+		return fmt.Errorf("integration worker binary: %w", err)
 	}
+	return rustworker.PreflightGRPCStrict(ctx, []rustworker.GRPCWorkerCheck{{
+		Name:     "integration",
+		Path:     path,
+		MinBytes: rustworker.MinIntegrationBytes,
+		Health:   integrationGRPCHealth,
+	}})
 }
 
 func integrationGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) error {

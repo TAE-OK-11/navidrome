@@ -47,6 +47,10 @@ func newErrorWithHelp(code int32, helpUrl string, message ...any) error {
 	return subError{code: code, messages: message, helpUrl: helpUrl}
 }
 
+func (e subError) SubsonicCode() int32 {
+	return e.code
+}
+
 func (e subError) HelpUrl() string {
 	return e.helpUrl
 }

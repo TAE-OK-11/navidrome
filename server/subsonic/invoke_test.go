@@ -3,6 +3,7 @@ package subsonic
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"testing"
 
@@ -17,9 +18,12 @@ func TestInvokePing(t *testing.T) {
 	_ = userRepo.Put(&model.User{ID: "1", UserName: "foo"})
 	api := New(ds, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
-	ct, body, err := api.Invoke(context.Background(), "ping", url.Values{"u": []string{"foo"}}, "foo", true)
+	status, ct, body, err := api.Invoke(context.Background(), "ping", url.Values{"u": []string{"foo"}}, "foo", true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
 	}
 	if ct != "application/json" {
 		t.Fatalf("content-type %s", ct)

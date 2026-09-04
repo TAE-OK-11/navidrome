@@ -101,3 +101,6 @@ jobs:
             NAVIDROME_REF=${{ env.SOURCE_SHA }}
             NAVIDROME_CACHEBUST=${{ env.SOURCE_SHA }}
             GO_PGO_ENABLED=true
+            GO_PGO_BENCHTIME=2s
+            RUST_PGO_ENABLED=true
+            RUST_PGO_BENCH_TIME=2

@@ -152,6 +152,13 @@ GO_PGO_ENABLED ?= true
 GO_PGO_BENCHTIME ?= 3s
 PGO_OUTPUT ?= default.pgo
 
+# GOAMD64=v4 on x86_64 maximizes AVX2 paths in the Go runtime when available.
+ifeq ($(GOAMD64),)
+  ifeq ($(shell uname -m),x86_64)
+    export GOAMD64 := v4
+  endif
+endif
+
 build-release: check_go_env buildjs ##@Build Build an optimized release binary (thin LTO profile + fat LTO + PGO)
 	@if [ "$(GO_PGO_ENABLED)" = "true" ]; then \
 		echo "Collecting Go PGO profile with thin LTO..."; \
@@ -167,14 +174,22 @@ build-release: check_go_env buildjs ##@Build Build an optimized release binary (
 	CGO_ENABLED=1 go build \
 		$${PGO_FLAG} \
 		-trimpath \
+		-buildvcs=false \
 		-ldflags="-w -s -X github.com/navidrome/navidrome/consts.gitSha=$(GIT_SHA) -X github.com/navidrome/navidrome/consts.gitTag=$(GIT_TAG)" \
 		-tags=$(GO_BUILD_TAGS)
 .PHONY: build-release
 
 RUST_PROFILE ?= release-fat
-RUST_PGO_ENABLED ?= false
+# Auto-enable Rust PGO when llvm-profdata is on PATH (override with RUST_PGO_ENABLED=false).
+ifeq ($(RUST_PGO_ENABLED),)
+  ifneq ($(shell command -v llvm-profdata 2>/dev/null),)
+    RUST_PGO_ENABLED := true
+  else
+    RUST_PGO_ENABLED := false
+  endif
+endif
 
-build-rust-workers: ##@Build Build Rust gRPC workers (fat LTO; set RUST_PGO_ENABLED=true for PGO)
+build-rust-workers: ##@Build Build Rust gRPC workers (fat LTO; PGO when llvm-profdata is available)
 	@chmod +x ./release/rust-build.sh ./release/rust-pgo-train.sh
 	@if [ "$(RUST_PGO_ENABLED)" = "true" ]; then \
 		./release/rust-pgo-train.sh; \
@@ -182,6 +197,13 @@ build-rust-workers: ##@Build Build Rust gRPC workers (fat LTO; set RUST_PGO_ENAB
 		RUST_PROFILE="$(RUST_PROFILE)" ./release/rust-build.sh; \
 	fi
 .PHONY: build-rust-workers
+
+build-release-all: buildjs check_go_env ##@Build Maximum Go + Rust release build (PGO + fat LTO)
+	@chmod +x ./release/build-release-all.sh
+	@CGO_ENABLED=1 GO_PGO_ENABLED=$(GO_PGO_ENABLED) GO_PGO_BENCHTIME=$(GO_PGO_BENCHTIME) \
+		PGO_OUTPUT=$(PGO_OUTPUT) RUST_PGO_ENABLED=$(RUST_PGO_ENABLED) \
+		./release/build-release-all.sh
+.PHONY: build-release-all
 
 buildall: deprecated build
 .PHONY: buildall

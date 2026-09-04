@@ -367,6 +367,8 @@ import "github.com/navidrome/navidrome/plugins/pdk/go/host"
 
 Make HTTP requests to external services. This is a dedicated host service (separate from Extism's built-in HTTP support) with additional features like timeouts and redirect control.
 
+Plugin HTTP traffic does **not** go through `core/integration.Gateway`. Built-in adapters (Last.fm, Deezer, ListenBrainz, etc.) share the Rust outbound worker; plugins declare their own host allowlists and SSRF policy inside the Wasm sandbox.
+
 **Manifest permission:**
 
 ```json

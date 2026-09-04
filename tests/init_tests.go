@@ -10,6 +10,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/metadataworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
+	"github.com/navidrome/navidrome/core/searchworker"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -35,6 +36,9 @@ func Init(t *testing.T, skipOnShort bool) {
 			panic(err)
 		}
 		if err := scannerworker.EnsureTestBinary(); err != nil {
+			panic(err)
+		}
+		if err := searchworker.EnsureTestBinary(); err != nil {
 			panic(err)
 		}
 	})

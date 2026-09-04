@@ -218,7 +218,28 @@ func (api *Router) searchAllRust(ctx context.Context, query string, libraryIDs [
 		log.Warn(ctx, "Hydrating grouped Rust search results failed; using SQLite fallback", err)
 		return nil, nil, nil, false
 	}
+	if rustSearchResultsEmpty(sp, mediaFiles, albums, artists) {
+		log.Debug(ctx, "Rust grouped search returned no hits for requested buckets; using SQLite fallback", "query", query)
+		return nil, nil, nil, false
+	}
 	return mediaFiles, albums, artists, true
+}
+
+func rustSearchResultsEmpty(sp *searchParams, mediaFiles model.MediaFiles, albums model.Albums, artists model.Artists) bool {
+	requested := sp.songCount > 0 || sp.albumCount > 0 || sp.artistCount > 0
+	if !requested {
+		return false
+	}
+	if sp.songCount > 0 && len(mediaFiles) > 0 {
+		return false
+	}
+	if sp.albumCount > 0 && len(albums) > 0 {
+		return false
+	}
+	if sp.artistCount > 0 && len(artists) > 0 {
+		return false
+	}
+	return true
 }
 
 func (api *Router) hydrateRustSongs(ctx context.Context, ids []string) (model.MediaFiles, error) {

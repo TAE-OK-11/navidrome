@@ -24,6 +24,9 @@ var errCircuitOpen = errors.New("integration circuit open")
 // prefers the Rust gRPC worker (async I/O, pooling, signing) and falls back
 // to Go net/http when the worker is unavailable. DestArtwork uses a separate
 // SSRF-safe fallback so image CDNs never skip the private-IP checks.
+//
+// When the gRPC worker is active, circuit breaking is owned by the worker.
+// The Go-side breaker only protects the plain-HTTP fallback path.
 type Gateway struct {
 	fallback        http.RoundTripper
 	artworkFallback http.RoundTripper
@@ -108,46 +111,35 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 	if dest == "" {
 		dest = DestUnknown
 	}
-	breaker := g.breaker(dest)
-	if !breaker.allow() {
-		return nil, fmt.Errorf("%w: %s", errCircuitOpen, dest)
-	}
 
 	fallback := g.fallback
 	if dest == DestArtwork && g.artworkFallback != nil {
 		fallback = g.artworkFallback
 	}
 
-	var (
-		resp *http.Response
-		err  error
-	)
-	if g.grpc != nil && dest != DestUnknown {
-		resp, err = g.grpc.roundTrip(req.Context(), dest, req)
-	} else {
-		resp, err = fallback.RoundTrip(req)
-	}
-	if err != nil {
+	useGRPC := g.grpc != nil && dest != DestUnknown
+	if useGRPC {
+		resp, err := g.grpc.roundTrip(req.Context(), dest, req)
+		if err == nil {
+			return resp, nil
+		}
 		if isWorkerCircuitOpen(err) {
 			return nil, err
 		}
+		log.Trace(req.Context(), "gRPC outbound failed, falling back to Go HTTP", "dest", dest, err)
+	}
+
+	breaker := g.breaker(dest)
+	if !breaker.allow() {
+		return nil, fmt.Errorf("%w: %s", errCircuitOpen, dest)
+	}
+
+	resp, err := fallback.RoundTrip(req)
+	if err != nil {
 		breaker.failure()
-		if g.grpc != nil && dest != DestUnknown {
-			log.Trace(req.Context(), "gRPC outbound failed, falling back to Go HTTP", "dest", dest, err)
-			resp, err = fallback.RoundTrip(req)
-			if err != nil {
-				return nil, err
-			}
-			if resp != nil && resp.StatusCode >= 500 {
-				breaker.failure()
-			} else {
-				breaker.success()
-			}
-			return resp, nil
-		}
 		return nil, err
 	}
-	if resp != nil && resp.StatusCode >= 500 {
+	if resp.StatusCode >= 500 {
 		breaker.failure()
 	} else {
 		breaker.success()

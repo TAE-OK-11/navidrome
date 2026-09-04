@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +106,13 @@ func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.
 	}
 	for k, v := range resp.GetHeaders() {
 		out.Header.Set(k, v)
+	}
+	if ms := resp.GetRetryAfterMs(); ms > 0 {
+		secs := (ms + 999) / 1000
+		if secs < 1 {
+			secs = 1
+		}
+		out.Header.Set("Retry-After", strconv.Itoa(int(secs)))
 	}
 	out.ContentLength = int64(len(resp.GetBody()))
 	return out, nil

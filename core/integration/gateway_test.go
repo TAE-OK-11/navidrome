@@ -1,9 +1,7 @@
 package integration
 
 import (
-	"crypto/md5"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,17 +47,10 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 }
 
 func TestSignAudioscrobbler(t *testing.T) {
-	sig := signAudioscrobbler(map[string]string{
-		"d":        "444",
-		"callback": "https://myserver.com",
-		"a":        "111",
-		"format":   "json",
-		"c":        "333",
-		"b":        "222",
-	}, "SECRET")
-	want := fmt.Sprintf("%x", md5.Sum([]byte("a111b222c333d444SECRET")))
-	if sig != want {
-		t.Fatalf("sig = %s want %s", sig, want)
+	vector := loadSignVector(t)
+	sig := signAudioscrobbler(vector.Params, vector.Secret)
+	if sig != vector.Expected {
+		t.Fatalf("sig = %s want %s", sig, vector.Expected)
 	}
 }
 

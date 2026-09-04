@@ -72,6 +72,32 @@ var _ = Describe("Configuration", func() {
 		})
 	})
 
+	Describe("integration gateway", func() {
+		It("is enabled by default", func() {
+			conf.Load(true)
+			Expect(conf.Server.Integration.Enabled).To(BeTrue())
+			Expect(conf.Server.Integration.Listen).To(BeEmpty())
+		})
+
+		It("can be disabled", func() {
+			viper.Set("integration.enabled", false)
+			conf.Load(true)
+			Expect(conf.Server.Integration.Enabled).To(BeFalse())
+		})
+
+		It("accepts a custom listen address", func() {
+			viper.Set("integration.listen", "unix:/tmp/navidrome-integration.sock")
+			conf.Load(true)
+			Expect(conf.Server.Integration.Listen).To(Equal("unix:/tmp/navidrome-integration.sock"))
+		})
+
+		It("is disabled when external services are turned off", func() {
+			viper.Set("enableexternalservices", false)
+			conf.Load(true)
+			Expect(conf.Server.Integration.Enabled).To(BeFalse())
+		})
+	})
+
 	Describe("transcoding resource limits", func() {
 		It("uses bounded and cancellable defaults", func() {
 			conf.Load(true)

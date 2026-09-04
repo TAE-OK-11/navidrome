@@ -1315,6 +1315,8 @@ dependencies = [
  "prost",
  "protoc-bin-vendored",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tonic",

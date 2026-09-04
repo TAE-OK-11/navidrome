@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 const FAIL_THRESHOLD: u32 = 5;
 const OPEN_FOR: Duration = Duration::from_secs(30);
+const HALF_OPEN_MAX: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
@@ -15,6 +16,7 @@ pub struct CircuitBreaker {
     state: State,
     consecutive_fails: u32,
     opened_at: Option<Instant>,
+    half_open_in_flight: u32,
 }
 
 impl Default for CircuitBreaker {
@@ -23,6 +25,7 @@ impl Default for CircuitBreaker {
             state: State::Closed,
             consecutive_fails: 0,
             opened_at: None,
+            half_open_in_flight: 0,
         }
     }
 }
@@ -36,17 +39,26 @@ impl CircuitBreaker {
                     .is_some_and(|opened| opened.elapsed() >= OPEN_FOR)
                 {
                     self.state = State::HalfOpen;
+                    self.half_open_in_flight = 1;
                     true
                 } else {
                     false
                 }
             }
-            State::HalfOpen | State::Closed => true,
+            State::HalfOpen => {
+                if self.half_open_in_flight >= HALF_OPEN_MAX {
+                    return false;
+                }
+                self.half_open_in_flight += 1;
+                true
+            }
+            State::Closed => true,
         }
     }
 
     pub fn success(&mut self) {
         self.consecutive_fails = 0;
+        self.half_open_in_flight = 0;
         self.state = State::Closed;
         self.opened_at = None;
     }
@@ -56,6 +68,7 @@ impl CircuitBreaker {
         if self.state == State::HalfOpen || self.consecutive_fails >= FAIL_THRESHOLD {
             self.state = State::Open;
             self.opened_at = Some(Instant::now());
+            self.half_open_in_flight = 0;
         }
     }
 
@@ -91,5 +104,16 @@ mod tests {
         breaker.success();
         assert!(!breaker.is_open());
         assert!(breaker.allow());
+    }
+
+    #[test]
+    fn half_open_allows_single_probe() {
+        let mut breaker = CircuitBreaker::default();
+        for _ in 0..FAIL_THRESHOLD {
+            breaker.failure();
+        }
+        breaker.opened_at = Some(Instant::now() - OPEN_FOR - Duration::from_secs(1));
+        assert!(breaker.allow());
+        assert!(!breaker.allow());
     }
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playback"
@@ -84,6 +85,7 @@ func postRun() {
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
 	preflightRustWorkers(ctx)
+	initIntegrationGateway(ctx)
 	g, ctx := errgroup.WithContext(ctx)
 	app := CreateApp(ctx)
 	g.Go(startServer(ctx, app))
@@ -119,6 +121,14 @@ func runNavidrome(ctx context.Context) {
 	if err := g.Wait(); err != nil {
 		log.Error("Fatal error in Navidrome. Aborting", err)
 	}
+}
+
+func initIntegrationGateway(ctx context.Context) {
+	if !conf.Server.Integration.Enabled {
+		log.Info(ctx, "Outbound HTTP integration gateway is DISABLED")
+		return
+	}
+	integration.Get()
 }
 
 func schedulerRequired() bool {

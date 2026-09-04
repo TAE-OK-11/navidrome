@@ -1,0 +1,12 @@
+{
+  "secret": "SECRET",
+  "params": {
+    "a": "111",
+    "b": "222",
+    "c": "333",
+    "d": "444",
+    "callback": "https://myserver.com",
+    "format": "json"
+  },
+  "expected": "f407039b98853c6256feb5a12a878d21"
+}

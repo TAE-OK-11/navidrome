@@ -1,7 +1,7 @@
 // Package eventbus is the in-process async event stream that decouples
 // producers (playback, scanner) from consumers (scrobblers, insights).
-// Payloads match proto/navidrome/integration/v1 so the same contract can
-// ride gRPC later without another translation layer.
+// Payloads mirror proto/navidrome/integration/v1/events.proto so the same
+// contract can ride gRPC later without another translation layer.
 package eventbus
 
 import (

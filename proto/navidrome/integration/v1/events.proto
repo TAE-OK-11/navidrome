@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package navidrome.integration.v1;
+
+option go_package = "github.com/navidrome/navidrome/core/integration/gen";
+
+// Event payloads for phase-2 gRPC event streaming. The in-process event bus
+// mirrors these shapes today; this file keeps the outbound worker proto lean.
+
+message Event {
+  string id = 1;
+  string topic = 2;
+  int64 occurred_at_unix = 3;
+  map<string, string> attributes = 4;
+  oneof payload {
+    ScrobblePayload scrobble = 10;
+    NowPlayingPayload now_playing = 11;
+    PlaybackReportPayload playback_report = 12;
+    ScanProgressPayload scan_progress = 13;
+    ScanCompletedPayload scan_completed = 14;
+  }
+}
+
+message ScrobblePayload {
+  string user_id = 1;
+  string username = 2;
+  string media_file_id = 3;
+  string title = 4;
+  string artist = 5;
+  string album = 6;
+  int64 played_at_unix = 7;
+}
+
+message NowPlayingPayload {
+  string user_id = 1;
+  string media_file_id = 2;
+  string title = 3;
+  string artist = 4;
+  int32 position_sec = 5;
+}
+
+message PlaybackReportPayload {
+  string user_id = 1;
+  string player_id = 2;
+  string media_file_id = 3;
+  string state = 4;
+  int64 position_ms = 5;
+}
+
+message ScanProgressPayload {
+  int32 lib_id = 1;
+  uint32 file_count = 2;
+  string path = 3;
+  string phase = 4;
+  bool changes_detected = 5;
+  string warning = 6;
+  string error = 7;
+  bool force_update = 8;
+}
+
+message ScanCompletedPayload {
+  bool full_scan = 1;
+  bool changes_detected = 2;
+  string error = 3;
+  int64 file_count = 4;
+  int64 folder_count = 5;
+}

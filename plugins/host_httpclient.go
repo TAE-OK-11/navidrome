@@ -31,6 +31,10 @@ type contextKey struct{}
 var noFollowRedirectsKey = contextKey{}
 
 // httpServiceImpl implements host.HTTPService.
+//
+// Plugin HTTP is intentionally separate from core/integration.Gateway: plugins
+// declare their own host allowlists and SSRF policy in the Wasm sandbox, while
+// built-in adapters share the Rust outbound worker for Last.fm, Deezer, etc.
 type httpServiceImpl struct {
 	pluginName    string
 	requiredHosts []string

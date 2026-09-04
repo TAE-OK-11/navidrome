@@ -6,6 +6,8 @@ rust-version = "1.98"
 license = "GPL-3.0-only"
 description = "Tokio + tokio-quiche HTTP/3 transport companion for Navidrome"
 
+[workspace]
+
 [[bin]]
 name = "navidrome-h3"
 path = "src/main.rs"

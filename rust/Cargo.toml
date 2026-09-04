@@ -9,6 +9,12 @@ members = [
     "scanner",
     "search",
 ]
+exclude = [
+    "h3-gateway",
+    "benchmarks/metadata",
+    "benchmarks/scanner",
+    "benchmarks/search",
+]
 
 [workspace.package]
 edition = "2024"

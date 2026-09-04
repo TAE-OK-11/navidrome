@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/integration"

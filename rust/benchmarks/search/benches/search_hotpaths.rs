@@ -1,19 +1,18 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use navidrome_search::bench_support::{BenchEngine, bench_documents};
+use navidrome_search::bench_support::BenchEngine;
 
 fn search_hotpaths(c: &mut Criterion) {
-    let documents = bench_documents(2_000);
     c.bench_function("search_replace_2000_docs", |b| {
         b.iter(|| {
             let mut engine = BenchEngine::new().expect("engine");
-            engine.replace(black_box(documents.clone())).expect("replace");
+            engine.load_documents(black_box(2_000)).expect("replace");
         });
     });
 
     let mut engine = BenchEngine::new().expect("engine");
-    engine.replace(documents).expect("replace");
+    engine.load_documents(2_000).expect("replace");
     c.bench_function("search_query_latin_3_groups", |b| {
         b.iter(|| {
             engine

@@ -67,54 +67,61 @@ func (api *Router) hr(r chi.Router, endpoint string, f handlerRaw) {
 
 // Invoke runs a Subsonic endpoint as a function call instead of an HTTP
 // round-trip. Plugins use this so internal library access is not REST/P2P.
-func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (string, []byte, error) {
+func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (int, string, []byte, error) {
 	req, f, err := api.prepareInvoke(ctx, endpoint, query, username, asJSON)
 	if err != nil {
-		return "", nil, err
+		return 0, "", nil, err
 	}
 
 	rec := newLimitedBuffer(pluginInvokeBodyLimit)
 	res, err := f(rec, req)
 	if rec.err != nil {
-		return "", nil, rec.err
+		return 0, "", nil, rec.err
+	}
+	status := rec.status
+	if status == 0 {
+		status = http.StatusOK
 	}
 	if err != nil {
 		payload := errorResponse(err)
 		body, encErr := encodeInvokeJSON(payload)
 		if encErr != nil {
-			return "", nil, encErr
+			return 0, "", nil, encErr
 		}
-		return "application/json", body, nil
+		return status, "application/json", body, nil
 	}
 	if req.Context().Err() != nil {
-		return "", nil, req.Context().Err()
+		return 0, "", nil, req.Context().Err()
 	}
 	if rec.buf.Len() > 0 {
 		ct := rec.header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
-		return ct, rec.buf.Bytes(), nil
+		return status, ct, rec.buf.Bytes(), nil
 	}
 	if res == nil {
-		return rec.header.Get("Content-Type"), nil, nil
+		return status, rec.header.Get("Content-Type"), nil, nil
 	}
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	if asJSON {
 		if encErr := encodeJSON(buf, responses.JsonWrapper{Subsonic: *res}); encErr != nil {
-			return "", nil, encErr
+			return 0, "", nil, encErr
 		}
-		return "application/json", append([]byte(nil), buf.Bytes()...), nil
+		return http.StatusOK, "application/json", append([]byte(nil), buf.Bytes()...), nil
 	}
 	if encErr := xml.NewEncoder(buf).Encode(res); encErr != nil {
-		return "", nil, encErr
+		return 0, "", nil, encErr
 	}
-	return "application/xml", append([]byte(nil), buf.Bytes()...), nil
+	return http.StatusOK, "application/xml", append([]byte(nil), buf.Bytes()...), nil
 }
 
 // Open streams a Subsonic endpoint response to w (for gRPC Open/media proxy).
 func (api *Router) Open(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool, w http.ResponseWriter) error {
+	if !openEndpointAllowed(endpoint) {
+		return fmt.Errorf("endpoint %q is not streamable via Open", endpoint)
+	}
 	req, f, err := api.prepareInvoke(ctx, endpoint, query, username, asJSON)
 	if err != nil {
 		return err

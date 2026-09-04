@@ -98,6 +98,8 @@ message OpenChunk {
   string content_type = 2;
   bytes data = 3;
   bool final = 4;
+  // Response headers from the origin handler (first chunk only).
+  map<string, string> headers = 5;
 }
 
 message SubscribeRequest {

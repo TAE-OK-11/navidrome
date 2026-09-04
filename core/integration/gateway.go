@@ -190,6 +190,12 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 	return resp, nil
 }
 
+func (g *Gateway) WorkerReady() bool {
+	g.grpcMu.Lock()
+	defer g.grpcMu.Unlock()
+	return g.grpc != nil
+}
+
 func (g *Gateway) Close() {
 	g.grpcMu.Lock()
 	defer g.grpcMu.Unlock()

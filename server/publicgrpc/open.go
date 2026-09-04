@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
+	"github.com/navidrome/navidrome/server/subsonic/errmap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -43,11 +44,38 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 		}
 		chunk.Status = int32(w.status)
 		chunk.ContentType = w.header.Get("Content-Type")
+		chunk.Headers = headerMap(w.header)
 	}
 	if err := w.stream.Send(chunk); err != nil {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+func finalOpenChunk(sw *streamWriter) *gen.OpenChunk {
+	st := sw.status
+	if st == 0 {
+		st = http.StatusOK
+	}
+	chunk := &gen.OpenChunk{Status: int32(st), Final: true}
+	if !sw.sentHead {
+		chunk.ContentType = sw.header.Get("Content-Type")
+		chunk.Headers = headerMap(sw.header)
+	}
+	return chunk
+}
+
+func headerMap(h http.Header) map[string]string {
+	if len(h) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(h))
+	for k, vals := range h {
+		if len(vals) > 0 {
+			out[k] = vals[0]
+		}
+	}
+	return out
 }
 
 // SubsonicOpener streams Subsonic handler output.
@@ -84,16 +112,10 @@ func (s *Service) openSubsonic(ctx context.Context, req *gen.OpenRequest, stream
 	query := mapToURLValues(req.GetParams())
 	sw := &streamWriter{stream: stream}
 	if err := opener.Open(ctx, endpoint, query, username, req.GetJson(), sw); err != nil {
-		return status.Errorf(codes.Internal, "open %s: %v", endpoint, err)
+		code := errmap.GRPCCode(err)
+		return status.Errorf(code, "open %s: %v", endpoint, err)
 	}
-	if !sw.sentHead {
-		st := sw.status
-		if st == 0 {
-			st = http.StatusOK
-		}
-		return stream.Send(&gen.OpenChunk{Status: int32(st), Final: true})
-	}
-	return stream.Send(&gen.OpenChunk{Final: true})
+	return stream.Send(finalOpenChunk(sw))
 }
 
 func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream gen.Public_OpenServer, token string) error {
@@ -106,14 +128,7 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 		if err := opener.Open(ctx, req.GetMethod(), req.GetPath(), query, req.GetContentType(), req.GetBody(), token, sw); err != nil {
 			return status.Errorf(codes.Internal, "native %s: %v", req.GetPath(), err)
 		}
-		if !sw.sentHead {
-			st := sw.status
-			if st == 0 {
-				st = http.StatusOK
-			}
-			return stream.Send(&gen.OpenChunk{Status: int32(st), Final: true})
-		}
-		return stream.Send(&gen.OpenChunk{Final: true})
+		return stream.Send(finalOpenChunk(sw))
 	}
 	statusCode, header, body, err := s.native.Invoke(ctx, req.GetMethod(), req.GetPath(), query, req.GetContentType(), req.GetBody(), token)
 	if err != nil {
@@ -123,8 +138,9 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 	if ct == "" {
 		ct = "application/json"
 	}
+	headers := headerMap(header)
 	if len(body) == 0 {
-		return stream.Send(&gen.OpenChunk{Status: int32(statusCode), ContentType: ct, Final: true})
+		return stream.Send(&gen.OpenChunk{Status: int32(statusCode), ContentType: ct, Headers: headers, Final: true})
 	}
 	offset := 0
 	for offset < len(body) {
@@ -136,6 +152,7 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 		if offset == 0 {
 			chunk.Status = int32(statusCode)
 			chunk.ContentType = ct
+			chunk.Headers = headers
 		}
 		offset = end
 		chunk.Final = offset >= len(body)

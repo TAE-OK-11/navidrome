@@ -23,7 +23,7 @@ var errSubsonicAPIResponseTooLarge = errors.New("SubsonicAPI response body excee
 // SubsonicInvoker is implemented by the production Subsonic router so plugins
 // call handlers as functions instead of synthesizing an HTTP request.
 type SubsonicInvoker interface {
-	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (contentType string, body []byte, err error)
+	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (int, string, []byte, error)
 }
 
 // subsonicAPIServiceImpl implements host.SubsonicAPIService.
@@ -93,7 +93,7 @@ func (s *subsonicAPIServiceImpl) executeRequest(ctx context.Context, uri string,
 	if !ok || inv == nil {
 		return "", nil, fmt.Errorf("SubsonicAPI router not available")
 	}
-	ct, body, err := inv.Invoke(ctx, endpoint, query, username, setJSON)
+	_, ct, body, err := inv.Invoke(ctx, endpoint, query, username, setJSON)
 	if err != nil {
 		return "", nil, err
 	}

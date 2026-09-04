@@ -133,8 +133,8 @@ func TestToPublicEventScanStatus(t *testing.T) {
 
 type stubInvoker struct{}
 
-func (stubInvoker) Invoke(context.Context, string, url.Values, string, bool) (string, []byte, error) {
-	return "application/json", []byte(`{"ok":true}`), nil
+func (stubInvoker) Invoke(context.Context, string, url.Values, string, bool) (int, string, []byte, error) {
+	return http.StatusOK, "application/json", []byte(`{"ok":true}`), nil
 }
 
 type stubNativeInvoker struct{}

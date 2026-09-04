@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playback"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -84,8 +85,12 @@ func postRun() {
 // it will cancel the context and exit gracefully.
 func runNavidrome(ctx context.Context) {
 	defer db.Init(ctx)()
-	preflightRustWorkers(ctx)
-	initIntegrationGateway(ctx)
+	if err := preflightRustWorkers(ctx); err != nil {
+		log.Fatal(err)
+	}
+	if err := initIntegrationGateway(ctx); err != nil {
+		log.Fatal(err)
+	}
 	g, ctx := errgroup.WithContext(ctx)
 	app := CreateApp(ctx)
 	g.Go(startServer(ctx, app))
@@ -123,12 +128,16 @@ func runNavidrome(ctx context.Context) {
 	}
 }
 
-func initIntegrationGateway(ctx context.Context) {
+func initIntegrationGateway(ctx context.Context) error {
 	if !conf.Server.Integration.Enabled {
 		log.Info(ctx, "Outbound HTTP integration gateway is DISABLED")
-		return
+		return nil
 	}
-	integration.Get()
+	g := integration.Get()
+	if !rustworker.AllowLegacyNDJSON() && !g.WorkerReady() {
+		return fmt.Errorf("integration gRPC worker is not ready after startup")
+	}
+	return nil
 }
 
 func schedulerRequired() bool {

@@ -38,6 +38,43 @@ func toPublicEvent(evt eventbus.Event) *gen.Event {
 			FileCount:       evt.Scan.FileCount,
 			FolderCount:     evt.Scan.FolderCount,
 		}}
+	case evt.ScanProgress != nil:
+		out.Payload = &gen.Event_ScanProgress{ScanProgress: &gen.ScanProgress{
+			LibId:           int32(evt.ScanProgress.LibID),
+			FileCount:       evt.ScanProgress.FileCount,
+			Path:            evt.ScanProgress.Path,
+			Phase:           evt.ScanProgress.Phase,
+			ChangesDetected: evt.ScanProgress.ChangesDetected,
+			Warning:         evt.ScanProgress.Warning,
+			Error:           evt.ScanProgress.Error,
+			ForceUpdate:     evt.ScanProgress.ForceUpdate,
+		}}
+	case evt.NowPlaying != nil:
+		out.Payload = &gen.Event_NowPlaying{NowPlaying: &gen.NowPlaying{
+			UserId:      evt.NowPlaying.UserID,
+			MediaFileId: evt.NowPlaying.MediaFileID,
+			Title:       evt.NowPlaying.Title,
+			Artist:      evt.NowPlaying.Artist,
+			PositionSec: int32(evt.NowPlaying.PositionSec),
+		}}
+	case evt.Scrobble != nil:
+		out.Payload = &gen.Event_Scrobble{Scrobble: &gen.Scrobble{
+			UserId:      evt.Scrobble.UserID,
+			Username:    evt.Scrobble.Username,
+			MediaFileId: evt.Scrobble.MediaFileID,
+			Title:       evt.Scrobble.Title,
+			Artist:      evt.Scrobble.Artist,
+			Album:       evt.Scrobble.Album,
+			PlayedAtUnix: evt.Scrobble.PlayedAt.Unix(),
+		}}
+	case evt.Report != nil:
+		out.Payload = &gen.Event_PlaybackReport{PlaybackReport: &gen.PlaybackReport{
+			UserId:      evt.Report.UserID,
+			PlayerId:    evt.Report.PlayerID,
+			MediaFileId: evt.Report.MediaFileID,
+			State:       evt.Report.State,
+			PositionMs:  evt.Report.PositionMs,
+		}}
 	}
 	return out
 }

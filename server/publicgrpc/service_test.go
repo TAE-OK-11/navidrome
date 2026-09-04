@@ -40,7 +40,7 @@ func TestMuxGRPCHTTP2GoesToServer(t *testing.T) {
 }
 
 func TestPingUnauthenticated(t *testing.T) {
-	svc := NewService(nil, nil, eventbus.New())
+	svc := NewService(nil, nil, nil, eventbus.New())
 	resp, err := svc.Ping(context.Background(), &gen.PingRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +52,17 @@ func TestPingUnauthenticated(t *testing.T) {
 
 func TestInvokeRequiresAuth(t *testing.T) {
 	conf.SetPublicGRPCEnabledForTest(true)
-	svc := NewService(nil, stubInvoker{}, eventbus.New())
+	svc := NewService(nil, stubInvoker{}, nil, eventbus.New())
 	_, err := svc.Invoke(context.Background(), &gen.InvokeRequest{Endpoint: "ping"})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("code=%v err=%v", status.Code(err), err)
+	}
+}
+
+func TestInvokeNativeRequiresAuth(t *testing.T) {
+	conf.SetPublicGRPCEnabledForTest(true)
+	svc := NewService(nil, nil, stubNativeInvoker{}, eventbus.New())
+	_, err := svc.InvokeNative(context.Background(), &gen.InvokeNativeRequest{Path: "/song"})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
 	}
@@ -61,7 +70,7 @@ func TestInvokeRequiresAuth(t *testing.T) {
 
 func TestSubscribeRequiresAuth(t *testing.T) {
 	conf.SetPublicGRPCEnabledForTest(true)
-	svc := NewService(nil, nil, eventbus.New())
+	svc := NewService(nil, nil, nil, eventbus.New())
 	err := svc.Subscribe(&gen.SubscribeRequest{}, stubSubscribeStream{ctx: context.Background()})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("code=%v err=%v", status.Code(err), err)
@@ -103,6 +112,12 @@ type stubInvoker struct{}
 
 func (stubInvoker) Invoke(context.Context, string, url.Values, string, bool) (string, []byte, error) {
 	return "application/json", []byte(`{"ok":true}`), nil
+}
+
+type stubNativeInvoker struct{}
+
+func (stubNativeInvoker) Invoke(context.Context, string, string, url.Values, string, []byte, string) (int, http.Header, []byte, error) {
+	return http.StatusOK, http.Header{"Content-Type": []string{"application/json"}}, []byte(`[]`), nil
 }
 
 type stubSubscribeStream struct {

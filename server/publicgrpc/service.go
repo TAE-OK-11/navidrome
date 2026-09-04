@@ -5,6 +5,7 @@ package publicgrpc
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -28,25 +29,31 @@ type Invoker interface {
 	Invoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (string, []byte, error)
 }
 
+// NativeInvoker runs Native REST in-process.
+type NativeInvoker interface {
+	Invoke(ctx context.Context, method, path string, query url.Values, contentType string, body []byte, token string) (int, http.Header, []byte, error)
+}
+
 // Service implements navidrome.public.v1.Public.
 type Service struct {
 	gen.UnimplementedPublicServer
 	ds      model.DataStore
 	invoker Invoker
+	native  NativeInvoker
 	bus     *eventbus.Bus
 }
 
-func NewService(ds model.DataStore, invoker Invoker, bus *eventbus.Bus) *Service {
+func NewService(ds model.DataStore, invoker Invoker, native NativeInvoker, bus *eventbus.Bus) *Service {
 	if bus == nil {
 		bus = eventbus.Get()
 	}
-	return &Service{ds: ds, invoker: invoker, bus: bus}
+	return &Service{ds: ds, invoker: invoker, native: native, bus: bus}
 }
 
 // NewServer returns a gRPC server multiplexed onto the public HTTP/2 listener.
-func NewServer(ds model.DataStore, invoker Invoker) *grpc.Server {
+func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.Server {
 	gs := grpc.NewServer()
-	gen.RegisterPublicServer(gs, NewService(ds, invoker, eventbus.Get()))
+	gen.RegisterPublicServer(gs, NewService(ds, invoker, native, eventbus.Get()))
 	lifecycle.Register(grpcCloser{gs})
 	return gs
 }
@@ -84,7 +91,35 @@ func (s *Service) Invoke(ctx context.Context, req *gen.InvokeRequest) (*gen.Invo
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "invoke %s: %v", endpoint, err)
 	}
-	return &gen.InvokeResponse{ContentType: ct, Body: body}, nil
+	return &gen.InvokeResponse{ContentType: ct, Body: body, Status: http.StatusOK}, nil
+}
+
+func (s *Service) InvokeNative(ctx context.Context, req *gen.InvokeNativeRequest) (*gen.InvokeNativeResponse, error) {
+	if s.native == nil {
+		return nil, status.Error(codes.Unavailable, "Native API invoker is not configured")
+	}
+	user, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx = withUser(ctx, user)
+	path := strings.TrimSpace(req.GetPath())
+	if path == "" {
+		return nil, status.Error(codes.InvalidArgument, "path is required")
+	}
+	query := url.Values{}
+	for k, v := range req.GetParams() {
+		query.Set(k, v)
+	}
+	statusCode, header, body, err := s.native.Invoke(ctx, req.GetMethod(), path, query, req.GetContentType(), req.GetBody(), bearerToken(ctx))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "native %s: %v", path, err)
+	}
+	ct := header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/json"
+	}
+	return &gen.InvokeNativeResponse{Status: int32(statusCode), ContentType: ct, Body: body}, nil
 }
 
 func (s *Service) Subscribe(req *gen.SubscribeRequest, stream grpc.ServerStreamingServer[gen.Event]) error {
@@ -94,12 +129,7 @@ func (s *Service) Subscribe(req *gen.SubscribeRequest, stream grpc.ServerStreami
 	}
 	topics := req.GetTopics()
 	if len(topics) == 0 {
-		topics = []string{
-			string(eventbus.TopicScanStatus),
-			string(eventbus.TopicRefreshResource),
-			string(eventbus.TopicNowPlayingCount),
-			string(eventbus.TopicScanCompleted),
-		}
+		topics = defaultSubscribeTopics()
 	}
 	events := make(chan eventbus.Event, 64)
 	var unsubs []func()
@@ -131,6 +161,19 @@ func (s *Service) Subscribe(req *gen.SubscribeRequest, stream grpc.ServerStreami
 				return err
 			}
 		}
+	}
+}
+
+func defaultSubscribeTopics() []string {
+	return []string{
+		string(eventbus.TopicScanStatus),
+		string(eventbus.TopicRefreshResource),
+		string(eventbus.TopicNowPlayingCount),
+		string(eventbus.TopicScanCompleted),
+		string(eventbus.TopicScanProgress),
+		string(eventbus.TopicNowPlaying),
+		string(eventbus.TopicScrobble),
+		string(eventbus.TopicPlaybackReport),
 	}
 }
 

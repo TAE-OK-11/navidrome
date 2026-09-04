@@ -122,7 +122,7 @@ func (a *App) mountRouters(ctx context.Context) {
 func (a *App) runHTTP(ctx context.Context) error {
 	a.mountRouters(ctx)
 	if conf.PublicGRPCEnabled() {
-		a.Server.AttachPublicGRPC(publicgrpc.NewServer(a.DataStore, a.SubsonicAPI))
+		a.Server.AttachPublicGRPC(publicgrpc.NewServer(a.DataStore, a.SubsonicAPI, a.NativeAPI))
 	}
 	return a.Server.Run(ctx, conf.Server.Address, conf.Server.Port, conf.Server.TLSCert, conf.Server.TLSKey)
 }

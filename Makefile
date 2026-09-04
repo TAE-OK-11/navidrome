@@ -171,6 +171,18 @@ build-release: check_go_env buildjs ##@Build Build an optimized release binary (
 		-tags=$(GO_BUILD_TAGS)
 .PHONY: build-release
 
+RUST_PROFILE ?= release-fat
+RUST_PGO_ENABLED ?= false
+
+build-rust-workers: ##@Build Build Rust gRPC workers (fat LTO; set RUST_PGO_ENABLED=true for PGO)
+	@chmod +x ./release/rust-build.sh ./release/rust-pgo-train.sh
+	@if [ "$(RUST_PGO_ENABLED)" = "true" ]; then \
+		./release/rust-pgo-train.sh; \
+	else \
+		RUST_PROFILE="$(RUST_PROFILE)" ./release/rust-build.sh; \
+	fi
+.PHONY: build-rust-workers
+
 buildall: deprecated build
 .PHONY: buildall
 

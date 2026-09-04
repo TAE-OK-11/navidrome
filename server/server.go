@@ -128,9 +128,6 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	// Optional plaintext H2C listener for private overlays (WireGuard).
 	// gRPC-only on this port; REST stays on the main TLS listener.
 	plaintext := s.startPlaintextGRPC(ctx, listenAddr)
-	if plaintext != nil {
-		defer plaintext.Close()
-	}
 
 	errC := make(chan error, 3)
 	if h3 != nil {
@@ -292,7 +289,8 @@ func (s *Server) shutdownServers(ctx context.Context, server *http.Server, h3 ht
 	if plaintext != nil {
 		shutdownCount++
 		go func() {
-			shutdownErrC <- shutdownHTTPServer(shutdownCtx, plaintext.server)
+			plaintext.Close()
+			shutdownErrC <- nil
 		}()
 	}
 	if h3 != nil {

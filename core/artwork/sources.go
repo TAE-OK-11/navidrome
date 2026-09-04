@@ -16,6 +16,7 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/core/external"
 	"github.com/navidrome/navidrome/core/ffmpeg"
+	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/resources"
@@ -143,7 +144,7 @@ func fromAlbumExternalSource(ctx context.Context, al model.Album, provider exter
 }
 
 func fromURL(ctx context.Context, imageUrl *url.URL) (io.ReadCloser, string, error) {
-	hc := newArtworkHTTPClient()
+	hc := integration.ArtworkHTTPClient(5 * time.Second)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, imageUrl.String(), nil)
 	resp, err := hc.Do(req) //nolint:gosec
 	if err != nil {

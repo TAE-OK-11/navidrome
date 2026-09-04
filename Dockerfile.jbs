@@ -1077,162 +1077,62 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     test -x /out/jbs-helper
 
 # =========================================================
-# Rust Lofty metadata worker
-# Native tag scanning + embedded cover extraction
+# Rust gRPC workers (workspace)
+# metadata, scanner, search, apikeys, integration
 # =========================================================
 
-FROM ${RUST_IMAGE} AS metadata-builder
+FROM ${RUST_IMAGE} AS rust-workers-builder
 
 ARG NAVIDROME_BUILD_CORES
 ARG RUST_TARGET_CPU
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/var/lib/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
-WORKDIR /build/rust/metadata
+WORKDIR /build/rust
 
-COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
-COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
+COPY --link --from=source /src/rust/Cargo.toml /src/rust/Cargo.lock ./
+COPY --link --from=source /src/rust/fts-normalize ./fts-normalize
+COPY --link --from=source /src/rust/grpc-listen ./grpc-listen
+COPY --link --from=source /src/rust/apikeys ./apikeys
+COPY --link --from=source /src/rust/integration ./integration
+COPY --link --from=source /src/rust/metadata ./metadata
+COPY --link --from=source /src/rust/scanner ./scanner
+COPY --link --from=source /src/rust/search ./search
 COPY --link --from=source /src/proto /build/proto
-COPY --link --from=source /src/rust/metadata/Cargo.toml /src/rust/metadata/Cargo.lock /src/rust/metadata/build.rs ./
-COPY --link --from=source /src/rust/metadata/src ./src
+COPY --link --from=source /src/resources/mime_types.yaml /build/resources/mime_types.yaml
 COPY --link --from=source /src/core/artwork/e2e/testdata/embedded_art.mp3 /tmp/embedded_art.mp3
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/metadata-test \
+    CARGO_TARGET_DIR=/tmp/rust-workers-portable \
     RUSTFLAGS="-C target-cpu=x86-64" \
     cargo test --locked --release && \
     CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/metadata-test \
+    CARGO_TARGET_DIR=/tmp/rust-workers-portable \
     RUSTFLAGS="-C target-cpu=x86-64" \
-    cargo run --locked --release -- --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && \
+    cargo build --locked --release --bins && \
+    /tmp/rust-workers-portable/release/navidrome-metadata --extract-picture /tmp/embedded_art.mp3 > /tmp/embedded-cover.bin && \
     test -s /tmp/embedded-cover.bin && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release && \
-    install -D -m 755 target/release/navidrome-metadata /out/navidrome-metadata && \
-    test -x /out/navidrome-metadata
-
-# =========================================================
-# Rust API key cryptography worker
-# =========================================================
-
-FROM ${RUST_IMAGE} AS apikeys-builder
-
-ARG NAVIDROME_BUILD_CORES
-ARG RUST_TARGET_CPU
-
-WORKDIR /build/rust/apikeys
-
-COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
-COPY --link --from=source /src/proto /build/proto
-COPY --link --from=source /src/rust/apikeys/Cargo.toml /src/rust/apikeys/Cargo.lock /src/rust/apikeys/build.rs ./
-COPY --link --from=source /src/rust/apikeys/src ./src
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo test --locked --release && \
-    cargo build --locked --release && \
-    install -D -m 755 target/release/navidrome-apikeys /out/navidrome-apikeys && \
-    test -x /out/navidrome-apikeys
-
-# =========================================================
-# Rust filesystem scanner
-# Native traversal + ignore policy + file classification
-# =========================================================
-
-FROM ${RUST_IMAGE} AS scanner-builder
-
-ARG NAVIDROME_BUILD_CORES
-ARG RUST_TARGET_CPU
-
-WORKDIR /build/rust/scanner
-
-COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
-COPY --link --from=source /src/proto /build/proto
-COPY --link --from=source /src/resources/mime_types.yaml /build/resources/mime_types.yaml
-COPY --link --from=source /src/rust/scanner/Cargo.toml /src/rust/scanner/Cargo.lock /src/rust/scanner/build.rs ./
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    mkdir -p src && \
-    printf 'pub fn run() -> anyhow::Result<()> { Ok(()) }\n' > src/lib.rs && \
-    printf 'fn main() -> anyhow::Result<()> { navidrome_scanner::run() }\n' > src/main.rs && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release && \
-    rm -rf src target/release/deps/navidrome_scanner-* target/release/navidrome-scanner
-
-COPY --link --from=source /src/rust/scanner/src ./src
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/scanner-test \
-    RUSTFLAGS="-C target-cpu=x86-64" \
-    cargo test --locked --release && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/scanner-test \
-    RUSTFLAGS="-C target-cpu=x86-64" \
-    cargo build --locked --release && \
-    install -D -m 755 /tmp/scanner-test/release/navidrome-scanner /out/navidrome-scanner-portable && \
-    rm -rf target && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/scanner-release \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release && \
     printf '%s\n' '{"root":"/tmp","targets":["."],"follow_symlinks":false,"ignore_dot_folders":true}' \
-      | /tmp/scanner-release/release/navidrome-scanner | grep -q '"kind":"done"' && \
-    install -D -m 755 /tmp/scanner-release/release/navidrome-scanner /out/navidrome-scanner && \
-    test -x /out/navidrome-scanner
-
-# =========================================================
-# Rust Tantivy search worker
-# Unicode n-gram search + relevance ranking
-# =========================================================
-
-FROM ${RUST_IMAGE} AS search-builder
-
-ARG NAVIDROME_BUILD_CORES
-ARG RUST_TARGET_CPU
-
-WORKDIR /build/rust/search
-
-COPY --link --from=source /src/rust/fts-normalize ../fts-normalize
-COPY --link --from=source /src/rust/grpc-listen ../grpc-listen
-COPY --link --from=source /src/proto /build/proto
-COPY --link --from=source /src/rust/search/Cargo.toml /src/rust/search/Cargo.lock /src/rust/search/build.rs ./
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    mkdir -p src && \
-    printf 'pub fn run() -> anyhow::Result<()> { Ok(()) }\n' > src/lib.rs && \
-    printf 'fn main() -> anyhow::Result<()> { navidrome_search::run() }\n' > src/main.rs && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release && \
-    rm -rf src target/release/deps/navidrome_search-* target/release/navidrome-search
-
-COPY --link --from=source /src/rust/search/src ./src
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/search-test \
-    RUSTFLAGS="-C target-cpu=x86-64" \
-    cargo test --locked --release && \
-    rm -rf target && \
-    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
-    CARGO_TARGET_DIR=/tmp/search-release \
-    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
-    cargo build --locked --release && \
+      | /tmp/rust-workers-portable/release/navidrome-scanner | grep -q '"kind":"done"' && \
     printf '%s\n' '{"op":"search_all","query":"","searches":[]}' \
-      | /tmp/search-release/release/navidrome-search | grep -q '"protocol":1' && \
-    install -D -m 755 /tmp/search-release/release/navidrome-search /out/navidrome-search && \
-    test -x /out/navidrome-search
+      | /tmp/rust-workers-portable/release/navidrome-search | grep -q '"protocol":1' && \
+    install -D -m 755 /tmp/rust-workers-portable/release/navidrome-scanner /out/navidrome-scanner-portable && \
+    CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
+    CARGO_TARGET_DIR=/tmp/rust-workers-release \
+    RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
+    cargo build --locked --release --bins && \
+    install -D -m 755 /tmp/rust-workers-release/release/navidrome-metadata /out/navidrome-metadata && \
+    install -D -m 755 /tmp/rust-workers-release/release/navidrome-apikeys /out/navidrome-apikeys && \
+    install -D -m 755 /tmp/rust-workers-release/release/navidrome-scanner /out/navidrome-scanner && \
+    install -D -m 755 /tmp/rust-workers-release/release/navidrome-search /out/navidrome-search && \
+    install -D -m 755 /tmp/rust-workers-release/release/navidrome-integration /out/navidrome-integration && \
+    test -x /out/navidrome-metadata && \
+    test -x /out/navidrome-apikeys && \
+    test -x /out/navidrome-scanner && \
+    test -x /out/navidrome-search && \
+    test -x /out/navidrome-integration
 
 # =========================================================
 # Tokio-quiche HTTP/3 companion
@@ -1377,8 +1277,8 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 COPY --link --from=source /src ./
 COPY --link --from=jsbuilder /src/ui/build ./ui/build/
 COPY --link --from=h3-builder /out/navidrome-h3 /tmp/navidrome-h3
-COPY --link --from=scanner-builder /out/navidrome-scanner-portable /tmp/navidrome-scanner
-COPY --link --from=metadata-builder /out/navidrome-metadata /tmp/navidrome-metadata
+COPY --link --from=rust-workers-builder /out/navidrome-scanner-portable /tmp/navidrome-scanner
+COPY --link --from=rust-workers-builder /out/navidrome-metadata /tmp/navidrome-metadata
 
 ENV ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
     ND_SCANNERWORKERPATH=/tmp/navidrome-scanner
@@ -1554,10 +1454,11 @@ RUN printf '%s\n' 'navidrome:x:1000:1000:Navidrome:/nonexistent:/usr/sbin/nologi
 
 COPY --link --chown=1000:1000 --chmod=750 --from=gobuilder /out/navidrome /app/navidrome
 COPY --link --chown=1000:1000 --chmod=750 --from=h3-builder /out/navidrome-h3 /app/navidrome-h3
-COPY --link --chown=1000:1000 --chmod=750 --from=metadata-builder /out/navidrome-metadata /app/navidrome-metadata
-COPY --link --chown=1000:1000 --chmod=750 --from=apikeys-builder /out/navidrome-apikeys /app/navidrome-apikeys
-COPY --link --chown=1000:1000 --chmod=750 --from=scanner-builder /out/navidrome-scanner /app/navidrome-scanner
-COPY --link --chown=1000:1000 --chmod=750 --from=search-builder /out/navidrome-search /app/navidrome-search
+COPY --link --chown=1000:1000 --chmod=750 --from=rust-workers-builder /out/navidrome-metadata /app/navidrome-metadata
+COPY --link --chown=1000:1000 --chmod=750 --from=rust-workers-builder /out/navidrome-apikeys /app/navidrome-apikeys
+COPY --link --chown=1000:1000 --chmod=750 --from=rust-workers-builder /out/navidrome-scanner /app/navidrome-scanner
+COPY --link --chown=1000:1000 --chmod=750 --from=rust-workers-builder /out/navidrome-search /app/navidrome-search
+COPY --link --chown=1000:1000 --chmod=750 --from=rust-workers-builder /out/navidrome-integration /app/navidrome-integration
 COPY --link --chmod=755 --from=rust-builder /out/jbs-helper /usr/local/bin/jbs-helper
 
 RUN ln -s /usr/local/bin/jbs-helper /usr/local/bin/healthcheck && \
@@ -1571,6 +1472,7 @@ RUN test -x /app/navidrome && \
     test -x /app/navidrome-apikeys && \
     test -x /app/navidrome-scanner && \
     test -x /app/navidrome-search && \
+    test -x /app/navidrome-integration && \
     test -s /etc/ssl/certs/ca-certificates.crt && \
     test -x /usr/local/bin/ffmpeg.real && \
     test -x /usr/local/bin/ffprobe && \
@@ -1979,7 +1881,9 @@ check_rust_workers() {
     for worker in \
         "${ND_SCANNERWORKERPATH:-/app/navidrome-scanner}" \
         "${ND_METADATAWORKERPATH:-/app/navidrome-metadata}" \
-        "${ND_SEARCHWORKERPATH:-/app/navidrome-search}"; do
+        "${ND_SEARCHWORKERPATH:-/app/navidrome-search}" \
+        "${ND_APIKEYSWORKERPATH:-/app/navidrome-apikeys}" \
+        "${ND_INTEGRATIONWORKERPATH:-/app/navidrome-integration}"; do
         if [ ! -x "$worker" ]; then
             echo "[entrypoint] fatal: Rust worker is missing or not executable: $worker" >&2
             exit 1
@@ -2201,6 +2105,7 @@ ENV TZ=Asia/Seoul \
     ND_APIKEYSWORKERPATH=/app/navidrome-apikeys \
     ND_SCANNERWORKERPATH=/app/navidrome-scanner \
     ND_SEARCHWORKERPATH=/app/navidrome-search \
+    ND_INTEGRATIONWORKERPATH=/app/navidrome-integration \
     ND_MUSICFOLDER=/music \
     ND_DATAFOLDER=/data \
     ND_CACHEFOLDER=/cache \

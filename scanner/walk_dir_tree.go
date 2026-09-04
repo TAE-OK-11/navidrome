@@ -11,11 +11,16 @@ import (
 	"strings"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/storage"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils"
 )
+
+// allowGoWalkerFallback is true only in `go test`. Production local libraries
+// fail closed when the Rust walker cannot run.
+var allowGoWalkerFallback = rustworker.AllowLegacyNDJSON
 
 // walkDirTree recursively walks the directory tree starting from the given targetFolders.
 // If no targetFolders are provided, it starts from the root folder (".").
@@ -26,6 +31,11 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 		go func() {
 			defer close(results)
 			if !streamRustFoldersInto(ctx, job, targetFolders, results) {
+				if !allowGoWalkerFallback() {
+					log.Error(ctx, "Rust filesystem traversal failed; Go walker is disabled outside tests",
+						"lib", job.lib.Name, "root", job.localRoot)
+					return
+				}
 				log.Warn(ctx, "Rust filesystem traversal failed; falling back to Go walker",
 					"lib", job.lib.Name, "root", job.localRoot)
 				goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)

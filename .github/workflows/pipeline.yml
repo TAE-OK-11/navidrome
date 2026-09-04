@@ -31,28 +31,21 @@ jobs:
           go mod verify
       - name: Install Rust 1.98
         run: rustup toolchain install 1.98.0 --profile minimal
-      - name: Build metadata worker
-        working-directory: rust/metadata
-        run: cargo +1.98.0 build --release --locked
-      - name: Build scanner worker
-        working-directory: rust/scanner
-        run: cargo +1.98.0 build --release --locked
-      - name: Build search worker
-        working-directory: rust/search
-        run: cargo +1.98.0 build --release --locked
-      - name: Build apikeys worker
-        working-directory: rust/apikeys
-        run: cargo +1.98.0 build --release --locked
-      - name: Build integration worker
-        working-directory: rust/integration
-        run: cargo +1.98.0 build --release --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          shared-key: go-tests-rust-workers
+          cache-on-failure: true
+      - name: Build Rust workers
+        working-directory: rust
+        run: cargo +1.98.0 build --release --locked --bins
       - name: Test
         env:
-          ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/metadata/target/release/navidrome-metadata
-          ND_SCANNERWORKERPATH: ${{ github.workspace }}/rust/scanner/target/release/navidrome-scanner
-          ND_APIKEYSWORKERPATH: ${{ github.workspace }}/rust/apikeys/target/release/navidrome-apikeys
-          ND_SEARCHWORKERPATH: ${{ github.workspace }}/rust/search/target/release/navidrome-search
-          ND_INTEGRATIONWORKERPATH: ${{ github.workspace }}/rust/integration/target/release/navidrome-integration
+          ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-metadata
+          ND_SCANNERWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-scanner
+          ND_APIKEYSWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-apikeys
+          ND_SEARCHWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-search
+          ND_INTEGRATIONWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-integration
         run: go test -shuffle=on -tags netgo,sqlite_fts5 -race ./...
 
   lint:
@@ -83,22 +76,32 @@ jobs:
       matrix:
         include:
           - crate: metadata
-            directory: rust/metadata
+            package: navidrome-metadata
           - crate: h3-gateway
             directory: rust/h3-gateway
           - crate: search
-            directory: rust/search
+            package: navidrome-search
           - crate: scanner
-            directory: rust/scanner
+            package: navidrome-scanner
           - crate: integration
-            directory: rust/integration
+            package: navidrome-integration
           - crate: apikeys
-            directory: rust/apikeys
+            package: navidrome-apikeys
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust 1.98
         run: rustup toolchain install 1.98.0 --profile minimal
-      - name: Test
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.directory || 'rust' }}
+          shared-key: rust-tests-${{ matrix.crate }}
+          cache-on-failure: true
+      - name: Test workspace crate
+        if: matrix.package
+        working-directory: rust
+        run: cargo +1.98.0 test --locked -p ${{ matrix.package }}
+      - name: Test standalone crate
+        if: matrix.directory
         working-directory: ${{ matrix.directory }}
         run: cargo +1.98.0 test --locked
 

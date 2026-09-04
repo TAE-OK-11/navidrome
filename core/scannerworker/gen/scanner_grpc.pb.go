@@ -159,6 +159,119 @@ var FolderHash_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	Scanner_Walk_FullMethodName = "/navidrome.scanner.v1.Scanner/Walk"
+)
+
+// ScannerClient is the client API for Scanner service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Scanner streams a library walk. Production Go uses this instead of NDJSON
+// stdin/stdout. Folder hashing stays on FolderHash for folders that still
+// need a hash after the walk.
+type ScannerClient interface {
+	Walk(ctx context.Context, in *WalkRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WalkEvent], error)
+}
+
+type scannerClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewScannerClient(cc grpc.ClientConnInterface) ScannerClient {
+	return &scannerClient{cc}
+}
+
+func (c *scannerClient) Walk(ctx context.Context, in *WalkRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WalkEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Scanner_ServiceDesc.Streams[0], Scanner_Walk_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WalkRequest, WalkEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Scanner_WalkClient = grpc.ServerStreamingClient[WalkEvent]
+
+// ScannerServer is the server API for Scanner service.
+// All implementations must embed UnimplementedScannerServer
+// for forward compatibility.
+//
+// Scanner streams a library walk. Production Go uses this instead of NDJSON
+// stdin/stdout. Folder hashing stays on FolderHash for folders that still
+// need a hash after the walk.
+type ScannerServer interface {
+	Walk(*WalkRequest, grpc.ServerStreamingServer[WalkEvent]) error
+	mustEmbedUnimplementedScannerServer()
+}
+
+// UnimplementedScannerServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedScannerServer struct{}
+
+func (UnimplementedScannerServer) Walk(*WalkRequest, grpc.ServerStreamingServer[WalkEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method Walk not implemented")
+}
+func (UnimplementedScannerServer) mustEmbedUnimplementedScannerServer() {}
+func (UnimplementedScannerServer) testEmbeddedByValue()                 {}
+
+// UnsafeScannerServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ScannerServer will
+// result in compilation errors.
+type UnsafeScannerServer interface {
+	mustEmbedUnimplementedScannerServer()
+}
+
+func RegisterScannerServer(s grpc.ServiceRegistrar, srv ScannerServer) {
+	// If the following call pancis, it indicates UnimplementedScannerServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Scanner_ServiceDesc, srv)
+}
+
+func _Scanner_Walk_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WalkRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ScannerServer).Walk(m, &grpc.GenericServerStream[WalkRequest, WalkEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Scanner_WalkServer = grpc.ServerStreamingServer[WalkEvent]
+
+// Scanner_ServiceDesc is the grpc.ServiceDesc for Scanner service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Scanner_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "navidrome.scanner.v1.Scanner",
+	HandlerType: (*ScannerServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Walk",
+			Handler:       _Scanner_Walk_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "proto/navidrome/scanner/v1/scanner.proto",
+}
+
+const (
 	ScanEvents_ReportProgress_FullMethodName = "/navidrome.scanner.v1.ScanEvents/ReportProgress"
 )
 

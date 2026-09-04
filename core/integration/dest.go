@@ -15,7 +15,11 @@ const (
 	DestListenBrainz Destination = "listenbrainz"
 	DestDeezer       Destination = "deezer"
 	DestInsights     Destination = "insights"
-	DestArtwork      Destination = "artwork"
+	// DestArtwork is for external image fetches (Last.fm CDNs, playlist
+	// ExternalImageURL, agent cover URLs). Callers pass it explicitly: those
+	// URLs are attacker-influenced, so they are not inferred from the host
+	// and always go through SSRF-safe I/O.
+	DestArtwork Destination = "artwork"
 )
 
 func DestinationFromHost(host string) Destination {

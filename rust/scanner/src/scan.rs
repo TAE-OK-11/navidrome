@@ -32,18 +32,18 @@ static PLAYLIST_EXTENSION_SET: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| PLAYLIST_EXTENSIONS.iter().copied().collect());
 
 #[derive(Debug, Deserialize)]
-struct ScanRequest {
-    root: PathBuf,
+pub(crate) struct ScanRequest {
+    pub(crate) root: PathBuf,
     #[serde(default, deserialize_with = "deserialize_targets")]
-    targets: Vec<String>,
-    follow_symlinks: bool,
-    ignore_dot_folders: bool,
+    pub(crate) targets: Vec<String>,
+    pub(crate) follow_symlinks: bool,
+    pub(crate) ignore_dot_folders: bool,
     /// DB folder path -> content hash. Matching folders emit a lightweight summary.
     #[serde(default)]
-    known_hashes: HashMap<String, String>,
+    pub(crate) known_hashes: HashMap<String, String>,
     /// Parallel walk threads (0 = single-threaded).
     #[serde(default)]
-    walk_threads: usize,
+    pub(crate) walk_threads: usize,
 }
 
 fn deserialize_targets<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -55,25 +55,25 @@ where
 
 #[derive(Debug, Default, Serialize)]
 pub struct Folder {
-    path: String,
-    mod_time_ns: i64,
-    images_updated_at_ns: i64,
-    num_playlists: usize,
-    num_subfolders: usize,
-    audio_files: BTreeMap<String, FileEntry>,
-    image_files: BTreeMap<String, FileEntry>,
+    pub(crate) path: String,
+    pub(crate) mod_time_ns: i64,
+    pub(crate) images_updated_at_ns: i64,
+    pub(crate) num_playlists: usize,
+    pub(crate) num_subfolders: usize,
+    pub(crate) audio_files: BTreeMap<String, FileEntry>,
+    pub(crate) image_files: BTreeMap<String, FileEntry>,
     /// Content hash matching scanner/folder_entry.go hash(), so Go can skip
     /// recomputing MD5 on every folder during change detection / persist.
     #[serde(skip_serializing_if = "String::is_empty")]
-    hash: String,
+    pub(crate) hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileEntry {
     #[serde(default)]
-    name: String,
-    size: u64,
-    mod_time_ns: i64,
+    pub(crate) name: String,
+    pub(crate) size: u64,
+    pub(crate) mod_time_ns: i64,
 }
 
 impl FileEntry {
@@ -87,19 +87,33 @@ impl FileEntry {
 }
 
 #[derive(Debug, Serialize)]
-struct FolderSummary {
-    path: String,
-    hash: String,
+pub(crate) struct FolderSummary {
+    pub(crate) path: String,
+    pub(crate) hash: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum Event<'a> {
+pub(crate) enum Event<'a> {
     Folder { folder: &'a Folder },
     FolderSummary { folder: FolderSummary },
     Warning { message: &'a str },
     Error { message: &'a str },
     Done { folders: usize, files: usize },
+}
+
+pub(crate) trait EventSink {
+    fn emit(&mut self, event: &Event<'_>) -> Result<()>;
+}
+
+struct JsonSink<'a, W: Write> {
+    output: &'a mut W,
+}
+
+impl<W: Write> EventSink for JsonSink<'_, W> {
+    fn emit(&mut self, event: &Event<'_>) -> Result<()> {
+        write_event(self.output, event, true)
+    }
 }
 
 pub fn run() -> Result<()> {
@@ -111,9 +125,7 @@ pub fn run() -> Result<()> {
 
     loop {
         line.clear();
-        let read = input
-            .read_line(&mut line)
-            .context("reading scan request")?;
+        let read = input.read_line(&mut line).context("reading scan request")?;
         if read == 0 {
             return Ok(());
         }
@@ -155,7 +167,7 @@ pub fn run() -> Result<()> {
     }
 }
 
-fn validate_request(request: &ScanRequest) -> Result<()> {
+pub(crate) fn validate_request(request: &ScanRequest) -> Result<()> {
     if request.targets.len() > MAX_TARGETS {
         bail!(
             "scan request has {} targets; maximum is {MAX_TARGETS}",
@@ -181,7 +193,12 @@ fn validate_request(request: &ScanRequest) -> Result<()> {
     Ok(())
 }
 
-fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
+pub(crate) fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
+    let mut sink = JsonSink { output };
+    run_scan_into(request, &mut sink)
+}
+
+pub(crate) fn run_scan_into(request: ScanRequest, sink: &mut impl EventSink) -> Result<()> {
     let known_hashes = request.known_hashes.clone();
     let root = request
         .root
@@ -199,24 +216,20 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
     for target in targets {
         let target_path = root.join(Path::new(&target));
         if !target_path.exists() {
-            write_event(
-                output,
-                &Event::Warning {
-                    message: &format!("scan target does not exist: {target}"),
-                },
-                true,
-            )?;
+            sink.emit(&Event::Warning {
+                message: &format!("scan target does not exist: {target}"),
+            })?;
             continue;
         }
         if request.walk_threads > 1 {
             let (folders, warnings) = collect_target(&root, &target, &request, &ignore_cache)?;
             for warning in &warnings {
-                write_event(output, &Event::Warning { message: warning }, true)?;
+                sink.emit(&Event::Warning { message: warning })?;
             }
             emit_collected_folders(
                 &folders,
                 &known_hashes,
-                output,
+                sink,
                 &mut folder_count,
                 &mut file_count,
             )?;
@@ -227,28 +240,24 @@ fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<()> {
                 &request,
                 &known_hashes,
                 &ignore_cache,
-                output,
+                sink,
                 &mut folder_count,
                 &mut file_count,
             )?;
         }
     }
 
-    write_event(
-        output,
-        &Event::Done {
-            folders: folder_count,
-            files: file_count,
-        },
-        true,
-    )?;
+    sink.emit(&Event::Done {
+        folders: folder_count,
+        files: file_count,
+    })?;
     Ok(())
 }
 
 fn emit_collected_folders(
     folders: &BTreeMap<String, Folder>,
     known_hashes: &HashMap<String, String>,
-    output: &mut impl Write,
+    sink: &mut impl EventSink,
     folder_count: &mut usize,
     file_count: &mut usize,
 ) -> Result<()> {
@@ -259,7 +268,7 @@ fn emit_collected_folders(
             .then_with(|| left.path.cmp(&right.path))
     });
     for folder in ordered {
-        emit_folder(output, folder, known_hashes)?;
+        emit_folder(sink, folder, known_hashes)?;
         *folder_count += 1;
         *file_count += folder_file_count(folder);
     }
@@ -271,7 +280,7 @@ fn folder_file_count(folder: &Folder) -> usize {
 }
 
 fn emit_folder(
-    output: &mut impl Write,
+    sink: &mut impl EventSink,
     folder: &Folder,
     known_hashes: &HashMap<String, String>,
 ) -> Result<()> {
@@ -279,18 +288,14 @@ fn emit_folder(
         .get(&folder.path)
         .is_some_and(|known| known == &folder.hash)
     {
-        write_event(
-            output,
-            &Event::FolderSummary {
-                folder: FolderSummary {
-                    path: folder.path.clone(),
-                    hash: folder.hash.clone(),
-                },
+        sink.emit(&Event::FolderSummary {
+            folder: FolderSummary {
+                path: folder.path.clone(),
+                hash: folder.hash.clone(),
             },
-            true,
-        )
+        })
     } else {
-        write_event(output, &Event::Folder { folder }, true)
+        sink.emit(&Event::Folder { folder })
     }
 }
 
@@ -300,7 +305,7 @@ fn walk_target_post_order(
     request: &ScanRequest,
     known_hashes: &HashMap<String, String>,
     ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
-    output: &mut impl Write,
+    sink: &mut impl EventSink,
     folder_count: &mut usize,
     file_count: &mut usize,
 ) -> Result<()> {
@@ -313,7 +318,7 @@ fn walk_target_post_order(
         request,
         known_hashes,
         ignore_cache,
-        output,
+        sink,
         folder_count,
         file_count,
     )
@@ -326,11 +331,12 @@ fn walk_folder_post_order(
     request: &ScanRequest,
     known_hashes: &HashMap<String, String>,
     ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
-    output: &mut impl Write,
+    sink: &mut impl EventSink,
     folder_count: &mut usize,
     file_count: &mut usize,
 ) -> Result<()> {
-    let metadata = fs::metadata(abs_path).with_context(|| format!("reading {}", abs_path.display()))?;
+    let metadata =
+        fs::metadata(abs_path).with_context(|| format!("reading {}", abs_path.display()))?;
     let mut folder = Folder {
         path: relative.to_owned(),
         mod_time_ns: system_time_ns(metadata.modified().unwrap_or(UNIX_EPOCH)),
@@ -361,13 +367,9 @@ fn walk_folder_post_order(
         let entry = match result {
             Ok(entry) => entry,
             Err(error) => {
-                write_event(
-                    output,
-                    &Event::Warning {
-                        message: &format!("filesystem traversal warning: {error}"),
-                    },
-                    true,
-                )?;
+                sink.emit(&Event::Warning {
+                    message: &format!("filesystem traversal warning: {error}"),
+                })?;
                 continue;
             }
         };
@@ -381,13 +383,9 @@ fn walk_folder_post_order(
         let entry_metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(error) => {
-                write_event(
-                    output,
-                    &Event::Warning {
-                        message: &format!("{}: {error:#}", entry.path().display()),
-                    },
-                    true,
-                )?;
+                sink.emit(&Event::Warning {
+                    message: &format!("{}: {error:#}", entry.path().display()),
+                })?;
                 continue;
             }
         };
@@ -447,7 +445,7 @@ fn walk_folder_post_order(
             request,
             known_hashes,
             ignore_cache,
-            output,
+            sink,
             folder_count,
             file_count,
         )?;
@@ -455,7 +453,7 @@ fn walk_folder_post_order(
     }
 
     folder.hash = folder_content_hash(&folder);
-    emit_folder(output, &folder, known_hashes)?;
+    emit_folder(sink, &folder, known_hashes)?;
     *folder_count += 1;
     *file_count += folder_file_count(&folder);
     Ok(())
@@ -781,8 +779,15 @@ fn allow_entry(
     true
 }
 
-fn directory_has_empty_ignore(path: &Path, ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>) -> bool {
-    if let Some(cached) = ignore_cache.lock().ok().and_then(|cache| cache.get(path).copied()) {
+fn directory_has_empty_ignore(
+    path: &Path,
+    ignore_cache: &Arc<Mutex<HashMap<PathBuf, bool>>>,
+) -> bool {
+    if let Some(cached) = ignore_cache
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(path).copied())
+    {
         return cached;
     }
     let ignore_path = path.join(IGNORE_FILE);
@@ -1008,7 +1013,10 @@ mod tests {
         let root = temporary_music_root();
         fs::create_dir_all(root.join("cached")).unwrap();
         fs::write(root.join("cached/.ndignore"), b"\n").unwrap();
-        assert!(directory_has_empty_ignore(root.join("cached").as_path(), &cache));
+        assert!(directory_has_empty_ignore(
+            root.join("cached").as_path(),
+            &cache
+        ));
         assert!(cache.lock().unwrap().contains_key(&root.join("cached")));
         fs::remove_dir_all(root).unwrap();
     }
@@ -1174,10 +1182,7 @@ mod tests {
 
     #[test]
     fn folder_content_hash_matches_go_reference() {
-        assert_eq!(
-            go_utc_time_string(0),
-            "0001-01-01 00:00:00 +0000 UTC"
-        );
+        assert_eq!(go_utc_time_string(0), "0001-01-01 00:00:00 +0000 UTC");
         assert_eq!(
             go_utc_time_string(1_710_505_845_000_000_000),
             "2024-03-15 12:30:45 +0000 UTC"

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
 
 	"github.com/navidrome/navidrome/core/agents"
+	"github.com/navidrome/navidrome/core/external"
 	"github.com/navidrome/navidrome/model"
+	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -221,6 +224,7 @@ type mockAgents struct {
 
 	artistImagesHit atomic.Bool
 	albumInfoHit    atomic.Bool
+	topSongsHit     atomic.Bool
 }
 
 func (m *mockAgents) AgentName() string {
@@ -239,6 +243,7 @@ func (m *mockAgents) GetSimilarArtists(ctx context.Context, id, name, mbid strin
 }
 
 func (m *mockAgents) GetArtistTopSongs(ctx context.Context, id, artistName, mbid string, count int) ([]agents.Song, error) {
+	m.topSongsHit.Store(true)
 	if m.topSongsAgent != nil {
 		return m.topSongsAgent.GetArtistTopSongs(ctx, id, artistName, mbid, count)
 	}
@@ -330,4 +335,51 @@ func (m *mockAgents) GetSimilarSongsByArtist(ctx context.Context, id, name, mbid
 		return args.Get(0).([]agents.Song), args.Error(1)
 	}
 	return nil, args.Error(1)
+}
+
+func waitSongs(ctx context.Context, fetch func() (model.MediaFiles, error), n int) model.MediaFiles {
+	var songs model.MediaFiles
+	Eventually(func(g Gomega) {
+		var err error
+		songs, err = fetch()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(songs).To(HaveLen(n))
+	}).WithContext(ctx).WithTimeout(3 * time.Second).Should(Succeed())
+	return songs
+}
+
+func waitArtistInfo(ctx context.Context, p external.Provider, id string, count int, includeNotPresent bool, check func(*model.Artist) bool) *model.Artist {
+	var artist *model.Artist
+	Eventually(func(g Gomega) {
+		var err error
+		artist, err = p.UpdateArtistInfo(ctx, id, count, includeNotPresent)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(artist).NotTo(BeNil())
+		g.Expect(check(artist)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(3 * time.Second).Should(Succeed())
+	return artist
+}
+
+func waitAlbumInfo(ctx context.Context, p external.Provider, id string, check func(*model.Album) bool) *model.Album {
+	var album *model.Album
+	Eventually(func(g Gomega) {
+		var err error
+		album, err = p.UpdateAlbumInfo(ctx, id)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(album).NotTo(BeNil())
+		g.Expect(check(album)).To(BeTrue())
+	}).WithContext(ctx).WithTimeout(3 * time.Second).Should(Succeed())
+	return album
+}
+
+func waitSimilar(ctx context.Context, p external.Provider, id string, count, n int) model.MediaFiles {
+	return waitSongs(ctx, func() (model.MediaFiles, error) {
+		return p.SimilarSongs(ctx, id, count)
+	}, n)
+}
+
+func waitTopSongs(ctx context.Context, p external.Provider, artist, artistID string, count, n int) model.MediaFiles {
+	return waitSongs(ctx, func() (model.MediaFiles, error) {
+		return p.TopSongs(ctx, artist, artistID, count)
+	}, n)
 }

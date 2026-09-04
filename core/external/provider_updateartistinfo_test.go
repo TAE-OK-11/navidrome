@@ -76,18 +76,22 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		}
 		similarInDS := model.Artist{ID: "ar-similar-2", Name: "Similar Artist 2"}
 
-		ag.On("GetArtistMBID", ctx, "ar-existing", "Test Artist").Return(expectedMBID, nil).Once()
-		ag.On("GetArtistImages", ctx, "ar-existing", "Test Artist", expectedMBID).Return(expectedImages, nil).Once()
-		ag.On("GetArtistBiography", ctx, "ar-existing", "Test Artist", expectedMBID).Return(expectedBio, nil).Once()
-		ag.On("GetArtistURL", ctx, "ar-existing", "Test Artist", expectedMBID).Return(expectedURL, nil).Once()
-		ag.On("GetSimilarArtists", ctx, "ar-existing", "Test Artist", expectedMBID, 100).Return(rawSimilar, nil).Once()
+		ag.On("GetArtistMBID", mock.Anything, "ar-existing", "Test Artist").Return(expectedMBID, nil).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-existing", "Test Artist", expectedMBID).Return(expectedImages, nil).Once()
+		ag.On("GetArtistBiography", mock.Anything, "ar-existing", "Test Artist", expectedMBID).Return(expectedBio, nil).Once()
+		ag.On("GetArtistURL", mock.Anything, "ar-existing", "Test Artist", expectedMBID).Return(expectedURL, nil).Once()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-existing", "Test Artist", expectedMBID, 100).Return(rawSimilar, nil).Once()
 
 		mockArtistRepo.SetData(model.Artists{*originalArtist, similarInDS})
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-existing", 10, false)
-
+		first, err := p.UpdateArtistInfo(ctx, "ar-existing", 10, false)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updatedArtist).NotTo(BeNil())
+		Expect(first).NotTo(BeNil())
+		Expect(first.Biography).To(BeEmpty())
+
+		updatedArtist := waitArtistInfo(ctx, p, "ar-existing", 10, false, func(a *model.Artist) bool {
+			return a.Biography == "Artist Bio" && a.MbzArtistID == expectedMBID
+		})
 		Expect(updatedArtist.ID).To(Equal("ar-existing"))
 		Expect(updatedArtist.MbzArtistID).To(Equal(expectedMBID))
 		Expect(updatedArtist.Biography).To(Equal("Artist Bio"))
@@ -115,16 +119,15 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		expectedMBID := "mbid-encoded-bio"
 		expectedBio := "R&amp;B"
 
-		ag.On("GetArtistMBID", ctx, "ar-encoded-bio", "Encoded Bio Artist").Return(expectedMBID, nil).Once()
-		ag.On("GetArtistImages", ctx, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return(nil, nil).Maybe()
-		ag.On("GetArtistBiography", ctx, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return(expectedBio, nil).Once()
-		ag.On("GetArtistURL", ctx, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return("", nil).Maybe()
-		ag.On("GetSimilarArtists", ctx, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID, 100).Return(nil, nil).Maybe()
+		ag.On("GetArtistMBID", mock.Anything, "ar-encoded-bio", "Encoded Bio Artist").Return(expectedMBID, nil).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return(nil, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return(expectedBio, nil).Once()
+		ag.On("GetArtistURL", mock.Anything, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID).Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-encoded-bio", "Encoded Bio Artist", expectedMBID, 100).Return(nil, nil).Maybe()
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-encoded-bio", 10, false)
-
-		Expect(err).NotTo(HaveOccurred())
-		Expect(updatedArtist).NotTo(BeNil())
+		updatedArtist := waitArtistInfo(ctx, p, "ar-encoded-bio", 10, false, func(a *model.Artist) bool {
+			return a.Biography == "R&B"
+		})
 		Expect(updatedArtist.Biography).To(Equal("R&B"))
 	})
 
@@ -238,16 +241,20 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 		mockArtistRepo.SetData(model.Artists{*originalArtist})
 
 		expectedErr := errors.New("agent MBID failed")
-		ag.On("GetArtistMBID", ctx, "ar-agent-fail", "Agent Fail Artist").Return("", expectedErr).Once()
-		ag.On("GetArtistImages", ctx, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return(nil, nil).Maybe()
-		ag.On("GetArtistBiography", ctx, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetArtistURL", ctx, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetSimilarArtists", ctx, "ar-agent-fail", "Agent Fail Artist", mock.Anything, 100).Return(nil, nil).Maybe()
+		ag.On("GetArtistMBID", mock.Anything, "ar-agent-fail", "Agent Fail Artist").Return("", expectedErr).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return(nil, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetArtistURL", mock.Anything, "ar-agent-fail", "Agent Fail Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-agent-fail", "Agent Fail Artist", mock.Anything, 100).Return(nil, nil).Maybe()
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-agent-fail", 10, false)
-
+		first, err := p.UpdateArtistInfo(ctx, "ar-agent-fail", 10, false)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updatedArtist).NotTo(BeNil())
+		Expect(first).NotTo(BeNil())
+		Expect(first.ID).To(Equal("ar-agent-fail"))
+
+		updatedArtist := waitArtistInfo(ctx, p, "ar-agent-fail", 10, false, func(a *model.Artist) bool {
+			return a.ExternalInfoUpdatedAt != nil && !a.ExternalInfoUpdatedAt.IsZero()
+		})
 		Expect(updatedArtist.ID).To(Equal("ar-agent-fail"))
 		ag.AssertExpectations(GinkgoT())
 	})
@@ -265,15 +272,15 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 			{ID: "ar-similar-by-id", Name: "Different Name", MBID: "different-mbid"},
 		}
 
-		ag.On("GetArtistMBID", ctx, "ar-id-match", "ID Match Artist").Return("", nil).Once()
-		ag.On("GetArtistImages", ctx, "ar-id-match", "ID Match Artist", mock.Anything).Return(nil, nil).Maybe()
-		ag.On("GetArtistBiography", ctx, "ar-id-match", "ID Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetArtistURL", ctx, "ar-id-match", "ID Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetSimilarArtists", ctx, "ar-id-match", "ID Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
+		ag.On("GetArtistMBID", mock.Anything, "ar-id-match", "ID Match Artist").Return("", nil).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-id-match", "ID Match Artist", mock.Anything).Return(nil, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-id-match", "ID Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetArtistURL", mock.Anything, "ar-id-match", "ID Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-id-match", "ID Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-id-match", 10, false)
-
-		Expect(err).NotTo(HaveOccurred())
+		updatedArtist := waitArtistInfo(ctx, p, "ar-id-match", 10, false, func(a *model.Artist) bool {
+			return len(a.SimilarArtists) == 1
+		})
 		Expect(updatedArtist.SimilarArtists).To(HaveLen(1))
 		// Should match by ID, not by name or MBID
 		Expect(updatedArtist.SimilarArtists[0].ID).To(Equal("ar-similar-by-id"))
@@ -293,15 +300,15 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 			{Name: "Different Name", MBID: "mbid-similar"},
 		}
 
-		ag.On("GetArtistMBID", ctx, "ar-mbid-match", "MBID Match Artist").Return("", nil).Once()
-		ag.On("GetArtistImages", ctx, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return(nil, nil).Maybe()
-		ag.On("GetArtistBiography", ctx, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetArtistURL", ctx, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetSimilarArtists", ctx, "ar-mbid-match", "MBID Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
+		ag.On("GetArtistMBID", mock.Anything, "ar-mbid-match", "MBID Match Artist").Return("", nil).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return(nil, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetArtistURL", mock.Anything, "ar-mbid-match", "MBID Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-mbid-match", "MBID Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-mbid-match", 10, false)
-
-		Expect(err).NotTo(HaveOccurred())
+		updatedArtist := waitArtistInfo(ctx, p, "ar-mbid-match", 10, false, func(a *model.Artist) bool {
+			return len(a.SimilarArtists) == 1
+		})
 		Expect(updatedArtist.SimilarArtists).To(HaveLen(1))
 		// Should match by MBID since ID was empty
 		Expect(updatedArtist.SimilarArtists[0].ID).To(Equal("ar-similar-by-mbid"))
@@ -321,15 +328,15 @@ var _ = Describe("Provider - UpdateArtistInfo", func() {
 			{ID: "non-existent-id", Name: "Similar By Name", MBID: "non-existent-mbid"},
 		}
 
-		ag.On("GetArtistMBID", ctx, "ar-name-match", "Name Match Artist").Return("", nil).Once()
-		ag.On("GetArtistImages", ctx, "ar-name-match", "Name Match Artist", mock.Anything).Return(nil, nil).Maybe()
-		ag.On("GetArtistBiography", ctx, "ar-name-match", "Name Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetArtistURL", ctx, "ar-name-match", "Name Match Artist", mock.Anything).Return("", nil).Maybe()
-		ag.On("GetSimilarArtists", ctx, "ar-name-match", "Name Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
+		ag.On("GetArtistMBID", mock.Anything, "ar-name-match", "Name Match Artist").Return("", nil).Once()
+		ag.On("GetArtistImages", mock.Anything, "ar-name-match", "Name Match Artist", mock.Anything).Return(nil, nil).Maybe()
+		ag.On("GetArtistBiography", mock.Anything, "ar-name-match", "Name Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetArtistURL", mock.Anything, "ar-name-match", "Name Match Artist", mock.Anything).Return("", nil).Maybe()
+		ag.On("GetSimilarArtists", mock.Anything, "ar-name-match", "Name Match Artist", mock.Anything, 100).Return(rawSimilar, nil).Once()
 
-		updatedArtist, err := p.UpdateArtistInfo(ctx, "ar-name-match", 10, false)
-
-		Expect(err).NotTo(HaveOccurred())
+		updatedArtist := waitArtistInfo(ctx, p, "ar-name-match", 10, false, func(a *model.Artist) bool {
+			return len(a.SimilarArtists) == 1
+		})
 		Expect(updatedArtist.SimilarArtists).To(HaveLen(1))
 		// Should fall back to name matching since ID and MBID didn't match
 		Expect(updatedArtist.SimilarArtists[0].ID).To(Equal("ar-similar-by-name"))

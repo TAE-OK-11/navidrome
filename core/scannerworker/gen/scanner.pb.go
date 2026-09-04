@@ -21,6 +21,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type WalkEventKind int32
+
+const (
+	WalkEventKind_WALK_EVENT_KIND_UNSPECIFIED    WalkEventKind = 0
+	WalkEventKind_WALK_EVENT_KIND_FOLDER         WalkEventKind = 1
+	WalkEventKind_WALK_EVENT_KIND_FOLDER_SUMMARY WalkEventKind = 2
+	WalkEventKind_WALK_EVENT_KIND_WARNING        WalkEventKind = 3
+	WalkEventKind_WALK_EVENT_KIND_ERROR          WalkEventKind = 4
+	WalkEventKind_WALK_EVENT_KIND_DONE           WalkEventKind = 5
+)
+
+// Enum value maps for WalkEventKind.
+var (
+	WalkEventKind_name = map[int32]string{
+		0: "WALK_EVENT_KIND_UNSPECIFIED",
+		1: "WALK_EVENT_KIND_FOLDER",
+		2: "WALK_EVENT_KIND_FOLDER_SUMMARY",
+		3: "WALK_EVENT_KIND_WARNING",
+		4: "WALK_EVENT_KIND_ERROR",
+		5: "WALK_EVENT_KIND_DONE",
+	}
+	WalkEventKind_value = map[string]int32{
+		"WALK_EVENT_KIND_UNSPECIFIED":    0,
+		"WALK_EVENT_KIND_FOLDER":         1,
+		"WALK_EVENT_KIND_FOLDER_SUMMARY": 2,
+		"WALK_EVENT_KIND_WARNING":        3,
+		"WALK_EVENT_KIND_ERROR":          4,
+		"WALK_EVENT_KIND_DONE":           5,
+	}
+)
+
+func (x WalkEventKind) Enum() *WalkEventKind {
+	p := new(WalkEventKind)
+	*p = x
+	return p
+}
+
+func (x WalkEventKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WalkEventKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_navidrome_scanner_v1_scanner_proto_enumTypes[0].Descriptor()
+}
+
+func (WalkEventKind) Type() protoreflect.EnumType {
+	return &file_proto_navidrome_scanner_v1_scanner_proto_enumTypes[0]
+}
+
+func (x WalkEventKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WalkEventKind.Descriptor instead.
+func (WalkEventKind) EnumDescriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{0}
+}
+
 type FileMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -313,6 +371,266 @@ func (x *HealthResponse) GetOk() bool {
 	return false
 }
 
+type WalkRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Root             string                 `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	Targets          []string               `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
+	FollowSymlinks   bool                   `protobuf:"varint,3,opt,name=follow_symlinks,json=followSymlinks,proto3" json:"follow_symlinks,omitempty"`
+	IgnoreDotFolders bool                   `protobuf:"varint,4,opt,name=ignore_dot_folders,json=ignoreDotFolders,proto3" json:"ignore_dot_folders,omitempty"`
+	KnownHashes      map[string]string      `protobuf:"bytes,5,rep,name=known_hashes,json=knownHashes,proto3" json:"known_hashes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	WalkThreads      int32                  `protobuf:"varint,6,opt,name=walk_threads,json=walkThreads,proto3" json:"walk_threads,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *WalkRequest) Reset() {
+	*x = WalkRequest{}
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WalkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WalkRequest) ProtoMessage() {}
+
+func (x *WalkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WalkRequest.ProtoReflect.Descriptor instead.
+func (*WalkRequest) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *WalkRequest) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *WalkRequest) GetTargets() []string {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+func (x *WalkRequest) GetFollowSymlinks() bool {
+	if x != nil {
+		return x.FollowSymlinks
+	}
+	return false
+}
+
+func (x *WalkRequest) GetIgnoreDotFolders() bool {
+	if x != nil {
+		return x.IgnoreDotFolders
+	}
+	return false
+}
+
+func (x *WalkRequest) GetKnownHashes() map[string]string {
+	if x != nil {
+		return x.KnownHashes
+	}
+	return nil
+}
+
+func (x *WalkRequest) GetWalkThreads() int32 {
+	if x != nil {
+		return x.WalkThreads
+	}
+	return 0
+}
+
+type WalkFolder struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Path              string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	ModTimeNs         int64                  `protobuf:"varint,2,opt,name=mod_time_ns,json=modTimeNs,proto3" json:"mod_time_ns,omitempty"`
+	ImagesUpdatedAtNs int64                  `protobuf:"varint,3,opt,name=images_updated_at_ns,json=imagesUpdatedAtNs,proto3" json:"images_updated_at_ns,omitempty"`
+	NumPlaylists      int32                  `protobuf:"varint,4,opt,name=num_playlists,json=numPlaylists,proto3" json:"num_playlists,omitempty"`
+	NumSubfolders     int32                  `protobuf:"varint,5,opt,name=num_subfolders,json=numSubfolders,proto3" json:"num_subfolders,omitempty"`
+	AudioFiles        map[string]*FileMeta   `protobuf:"bytes,6,rep,name=audio_files,json=audioFiles,proto3" json:"audio_files,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ImageFiles        map[string]*FileMeta   `protobuf:"bytes,7,rep,name=image_files,json=imageFiles,proto3" json:"image_files,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Hash              string                 `protobuf:"bytes,8,opt,name=hash,proto3" json:"hash,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *WalkFolder) Reset() {
+	*x = WalkFolder{}
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WalkFolder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WalkFolder) ProtoMessage() {}
+
+func (x *WalkFolder) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WalkFolder.ProtoReflect.Descriptor instead.
+func (*WalkFolder) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *WalkFolder) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WalkFolder) GetModTimeNs() int64 {
+	if x != nil {
+		return x.ModTimeNs
+	}
+	return 0
+}
+
+func (x *WalkFolder) GetImagesUpdatedAtNs() int64 {
+	if x != nil {
+		return x.ImagesUpdatedAtNs
+	}
+	return 0
+}
+
+func (x *WalkFolder) GetNumPlaylists() int32 {
+	if x != nil {
+		return x.NumPlaylists
+	}
+	return 0
+}
+
+func (x *WalkFolder) GetNumSubfolders() int32 {
+	if x != nil {
+		return x.NumSubfolders
+	}
+	return 0
+}
+
+func (x *WalkFolder) GetAudioFiles() map[string]*FileMeta {
+	if x != nil {
+		return x.AudioFiles
+	}
+	return nil
+}
+
+func (x *WalkFolder) GetImageFiles() map[string]*FileMeta {
+	if x != nil {
+		return x.ImageFiles
+	}
+	return nil
+}
+
+func (x *WalkFolder) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
+type WalkEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          WalkEventKind          `protobuf:"varint,1,opt,name=kind,proto3,enum=navidrome.scanner.v1.WalkEventKind" json:"kind,omitempty"`
+	Folder        *WalkFolder            `protobuf:"bytes,2,opt,name=folder,proto3" json:"folder,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	Folders       uint64                 `protobuf:"varint,4,opt,name=folders,proto3" json:"folders,omitempty"`
+	Files         uint64                 `protobuf:"varint,5,opt,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WalkEvent) Reset() {
+	*x = WalkEvent{}
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WalkEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WalkEvent) ProtoMessage() {}
+
+func (x *WalkEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WalkEvent.ProtoReflect.Descriptor instead.
+func (*WalkEvent) Descriptor() ([]byte, []int) {
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WalkEvent) GetKind() WalkEventKind {
+	if x != nil {
+		return x.Kind
+	}
+	return WalkEventKind_WALK_EVENT_KIND_UNSPECIFIED
+}
+
+func (x *WalkEvent) GetFolder() *WalkFolder {
+	if x != nil {
+		return x.Folder
+	}
+	return nil
+}
+
+func (x *WalkEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *WalkEvent) GetFolders() uint64 {
+	if x != nil {
+		return x.Folders
+	}
+	return 0
+}
+
+func (x *WalkEvent) GetFiles() uint64 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
 type ProgressEvent struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	LibId           int32                  `protobuf:"varint,1,opt,name=lib_id,json=libId,proto3" json:"lib_id,omitempty"`
@@ -329,7 +647,7 @@ type ProgressEvent struct {
 
 func (x *ProgressEvent) Reset() {
 	*x = ProgressEvent{}
-	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -341,7 +659,7 @@ func (x *ProgressEvent) String() string {
 func (*ProgressEvent) ProtoMessage() {}
 
 func (x *ProgressEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[5]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -354,7 +672,7 @@ func (x *ProgressEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgressEvent.ProtoReflect.Descriptor instead.
 func (*ProgressEvent) Descriptor() ([]byte, []int) {
-	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{5}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ProgressEvent) GetLibId() int32 {
@@ -422,7 +740,7 @@ type ProgressAck struct {
 
 func (x *ProgressAck) Reset() {
 	*x = ProgressAck{}
-	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -434,7 +752,7 @@ func (x *ProgressAck) String() string {
 func (*ProgressAck) ProtoMessage() {}
 
 func (x *ProgressAck) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[6]
+	mi := &file_proto_navidrome_scanner_v1_scanner_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -447,7 +765,7 @@ func (x *ProgressAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgressAck.ProtoReflect.Descriptor instead.
 func (*ProgressAck) Descriptor() ([]byte, []int) {
-	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{6}
+	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ProgressAck) GetOk() bool {
@@ -488,7 +806,41 @@ const file_proto_navidrome_scanner_v1_scanner_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"\x0f\n" +
 	"\rHealthRequest\" \n" +
 	"\x0eHealthResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok\"\xed\x01\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"\xcc\x02\n" +
+	"\vWalkRequest\x12\x12\n" +
+	"\x04root\x18\x01 \x01(\tR\x04root\x12\x18\n" +
+	"\atargets\x18\x02 \x03(\tR\atargets\x12'\n" +
+	"\x0ffollow_symlinks\x18\x03 \x01(\bR\x0efollowSymlinks\x12,\n" +
+	"\x12ignore_dot_folders\x18\x04 \x01(\bR\x10ignoreDotFolders\x12U\n" +
+	"\fknown_hashes\x18\x05 \x03(\v22.navidrome.scanner.v1.WalkRequest.KnownHashesEntryR\vknownHashes\x12!\n" +
+	"\fwalk_threads\x18\x06 \x01(\x05R\vwalkThreads\x1a>\n" +
+	"\x10KnownHashesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb5\x04\n" +
+	"\n" +
+	"WalkFolder\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1e\n" +
+	"\vmod_time_ns\x18\x02 \x01(\x03R\tmodTimeNs\x12/\n" +
+	"\x14images_updated_at_ns\x18\x03 \x01(\x03R\x11imagesUpdatedAtNs\x12#\n" +
+	"\rnum_playlists\x18\x04 \x01(\x05R\fnumPlaylists\x12%\n" +
+	"\x0enum_subfolders\x18\x05 \x01(\x05R\rnumSubfolders\x12Q\n" +
+	"\vaudio_files\x18\x06 \x03(\v20.navidrome.scanner.v1.WalkFolder.AudioFilesEntryR\n" +
+	"audioFiles\x12Q\n" +
+	"\vimage_files\x18\a \x03(\v20.navidrome.scanner.v1.WalkFolder.ImageFilesEntryR\n" +
+	"imageFiles\x12\x12\n" +
+	"\x04hash\x18\b \x01(\tR\x04hash\x1a]\n" +
+	"\x0fAudioFilesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
+	"\x05value\x18\x02 \x01(\v2\x1e.navidrome.scanner.v1.FileMetaR\x05value:\x028\x01\x1a]\n" +
+	"\x0fImageFilesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x124\n" +
+	"\x05value\x18\x02 \x01(\v2\x1e.navidrome.scanner.v1.FileMetaR\x05value:\x028\x01\"\xc8\x01\n" +
+	"\tWalkEvent\x127\n" +
+	"\x04kind\x18\x01 \x01(\x0e2#.navidrome.scanner.v1.WalkEventKindR\x04kind\x128\n" +
+	"\x06folder\x18\x02 \x01(\v2 .navidrome.scanner.v1.WalkFolderR\x06folder\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12\x18\n" +
+	"\afolders\x18\x04 \x01(\x04R\afolders\x12\x14\n" +
+	"\x05files\x18\x05 \x01(\x04R\x05files\"\xed\x01\n" +
 	"\rProgressEvent\x12\x15\n" +
 	"\x06lib_id\x18\x01 \x01(\x05R\x05libId\x12\x1d\n" +
 	"\n" +
@@ -500,11 +852,20 @@ const file_proto_navidrome_scanner_v1_scanner_proto_rawDesc = "" +
 	"\x05error\x18\a \x01(\tR\x05error\x12!\n" +
 	"\fforce_update\x18\b \x01(\bR\vforceUpdate\"\x1d\n" +
 	"\vProgressAck\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok2\xb0\x01\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok*\xc2\x01\n" +
+	"\rWalkEventKind\x12\x1f\n" +
+	"\x1bWALK_EVENT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16WALK_EVENT_KIND_FOLDER\x10\x01\x12\"\n" +
+	"\x1eWALK_EVENT_KIND_FOLDER_SUMMARY\x10\x02\x12\x1b\n" +
+	"\x17WALK_EVENT_KIND_WARNING\x10\x03\x12\x19\n" +
+	"\x15WALK_EVENT_KIND_ERROR\x10\x04\x12\x18\n" +
+	"\x14WALK_EVENT_KIND_DONE\x10\x052\xb0\x01\n" +
 	"\n" +
 	"FolderHash\x12M\n" +
 	"\x04Hash\x12!.navidrome.scanner.v1.HashRequest\x1a\".navidrome.scanner.v1.HashResponse\x12S\n" +
-	"\x06Health\x12#.navidrome.scanner.v1.HealthRequest\x1a$.navidrome.scanner.v1.HealthResponse2h\n" +
+	"\x06Health\x12#.navidrome.scanner.v1.HealthRequest\x1a$.navidrome.scanner.v1.HealthResponse2W\n" +
+	"\aScanner\x12L\n" +
+	"\x04Walk\x12!.navidrome.scanner.v1.WalkRequest\x1a\x1f.navidrome.scanner.v1.WalkEvent0\x012h\n" +
 	"\n" +
 	"ScanEvents\x12Z\n" +
 	"\x0eReportProgress\x12#.navidrome.scanner.v1.ProgressEvent\x1a!.navidrome.scanner.v1.ProgressAck(\x01B7Z5github.com/navidrome/navidrome/core/scannerworker/genb\x06proto3"
@@ -521,34 +882,51 @@ func file_proto_navidrome_scanner_v1_scanner_proto_rawDescGZIP() []byte {
 	return file_proto_navidrome_scanner_v1_scanner_proto_rawDescData
 }
 
-var file_proto_navidrome_scanner_v1_scanner_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_navidrome_scanner_v1_scanner_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_navidrome_scanner_v1_scanner_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_proto_navidrome_scanner_v1_scanner_proto_goTypes = []any{
-	(*FileMeta)(nil),       // 0: navidrome.scanner.v1.FileMeta
-	(*HashRequest)(nil),    // 1: navidrome.scanner.v1.HashRequest
-	(*HashResponse)(nil),   // 2: navidrome.scanner.v1.HashResponse
-	(*HealthRequest)(nil),  // 3: navidrome.scanner.v1.HealthRequest
-	(*HealthResponse)(nil), // 4: navidrome.scanner.v1.HealthResponse
-	(*ProgressEvent)(nil),  // 5: navidrome.scanner.v1.ProgressEvent
-	(*ProgressAck)(nil),    // 6: navidrome.scanner.v1.ProgressAck
-	nil,                    // 7: navidrome.scanner.v1.HashRequest.AudioFilesEntry
-	nil,                    // 8: navidrome.scanner.v1.HashRequest.ImageFilesEntry
+	(WalkEventKind)(0),     // 0: navidrome.scanner.v1.WalkEventKind
+	(*FileMeta)(nil),       // 1: navidrome.scanner.v1.FileMeta
+	(*HashRequest)(nil),    // 2: navidrome.scanner.v1.HashRequest
+	(*HashResponse)(nil),   // 3: navidrome.scanner.v1.HashResponse
+	(*HealthRequest)(nil),  // 4: navidrome.scanner.v1.HealthRequest
+	(*HealthResponse)(nil), // 5: navidrome.scanner.v1.HealthResponse
+	(*WalkRequest)(nil),    // 6: navidrome.scanner.v1.WalkRequest
+	(*WalkFolder)(nil),     // 7: navidrome.scanner.v1.WalkFolder
+	(*WalkEvent)(nil),      // 8: navidrome.scanner.v1.WalkEvent
+	(*ProgressEvent)(nil),  // 9: navidrome.scanner.v1.ProgressEvent
+	(*ProgressAck)(nil),    // 10: navidrome.scanner.v1.ProgressAck
+	nil,                    // 11: navidrome.scanner.v1.HashRequest.AudioFilesEntry
+	nil,                    // 12: navidrome.scanner.v1.HashRequest.ImageFilesEntry
+	nil,                    // 13: navidrome.scanner.v1.WalkRequest.KnownHashesEntry
+	nil,                    // 14: navidrome.scanner.v1.WalkFolder.AudioFilesEntry
+	nil,                    // 15: navidrome.scanner.v1.WalkFolder.ImageFilesEntry
 }
 var file_proto_navidrome_scanner_v1_scanner_proto_depIdxs = []int32{
-	7, // 0: navidrome.scanner.v1.HashRequest.audio_files:type_name -> navidrome.scanner.v1.HashRequest.AudioFilesEntry
-	8, // 1: navidrome.scanner.v1.HashRequest.image_files:type_name -> navidrome.scanner.v1.HashRequest.ImageFilesEntry
-	0, // 2: navidrome.scanner.v1.HashRequest.AudioFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
-	0, // 3: navidrome.scanner.v1.HashRequest.ImageFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
-	1, // 4: navidrome.scanner.v1.FolderHash.Hash:input_type -> navidrome.scanner.v1.HashRequest
-	3, // 5: navidrome.scanner.v1.FolderHash.Health:input_type -> navidrome.scanner.v1.HealthRequest
-	5, // 6: navidrome.scanner.v1.ScanEvents.ReportProgress:input_type -> navidrome.scanner.v1.ProgressEvent
-	2, // 7: navidrome.scanner.v1.FolderHash.Hash:output_type -> navidrome.scanner.v1.HashResponse
-	4, // 8: navidrome.scanner.v1.FolderHash.Health:output_type -> navidrome.scanner.v1.HealthResponse
-	6, // 9: navidrome.scanner.v1.ScanEvents.ReportProgress:output_type -> navidrome.scanner.v1.ProgressAck
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	11, // 0: navidrome.scanner.v1.HashRequest.audio_files:type_name -> navidrome.scanner.v1.HashRequest.AudioFilesEntry
+	12, // 1: navidrome.scanner.v1.HashRequest.image_files:type_name -> navidrome.scanner.v1.HashRequest.ImageFilesEntry
+	13, // 2: navidrome.scanner.v1.WalkRequest.known_hashes:type_name -> navidrome.scanner.v1.WalkRequest.KnownHashesEntry
+	14, // 3: navidrome.scanner.v1.WalkFolder.audio_files:type_name -> navidrome.scanner.v1.WalkFolder.AudioFilesEntry
+	15, // 4: navidrome.scanner.v1.WalkFolder.image_files:type_name -> navidrome.scanner.v1.WalkFolder.ImageFilesEntry
+	0,  // 5: navidrome.scanner.v1.WalkEvent.kind:type_name -> navidrome.scanner.v1.WalkEventKind
+	7,  // 6: navidrome.scanner.v1.WalkEvent.folder:type_name -> navidrome.scanner.v1.WalkFolder
+	1,  // 7: navidrome.scanner.v1.HashRequest.AudioFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
+	1,  // 8: navidrome.scanner.v1.HashRequest.ImageFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
+	1,  // 9: navidrome.scanner.v1.WalkFolder.AudioFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
+	1,  // 10: navidrome.scanner.v1.WalkFolder.ImageFilesEntry.value:type_name -> navidrome.scanner.v1.FileMeta
+	2,  // 11: navidrome.scanner.v1.FolderHash.Hash:input_type -> navidrome.scanner.v1.HashRequest
+	4,  // 12: navidrome.scanner.v1.FolderHash.Health:input_type -> navidrome.scanner.v1.HealthRequest
+	6,  // 13: navidrome.scanner.v1.Scanner.Walk:input_type -> navidrome.scanner.v1.WalkRequest
+	9,  // 14: navidrome.scanner.v1.ScanEvents.ReportProgress:input_type -> navidrome.scanner.v1.ProgressEvent
+	3,  // 15: navidrome.scanner.v1.FolderHash.Hash:output_type -> navidrome.scanner.v1.HashResponse
+	5,  // 16: navidrome.scanner.v1.FolderHash.Health:output_type -> navidrome.scanner.v1.HealthResponse
+	8,  // 17: navidrome.scanner.v1.Scanner.Walk:output_type -> navidrome.scanner.v1.WalkEvent
+	10, // 18: navidrome.scanner.v1.ScanEvents.ReportProgress:output_type -> navidrome.scanner.v1.ProgressAck
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_proto_navidrome_scanner_v1_scanner_proto_init() }
@@ -561,13 +939,14 @@ func file_proto_navidrome_scanner_v1_scanner_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc), len(file_proto_navidrome_scanner_v1_scanner_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   9,
+			NumEnums:      1,
+			NumMessages:   15,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   3,
 		},
 		GoTypes:           file_proto_navidrome_scanner_v1_scanner_proto_goTypes,
 		DependencyIndexes: file_proto_navidrome_scanner_v1_scanner_proto_depIdxs,
+		EnumInfos:         file_proto_navidrome_scanner_v1_scanner_proto_enumTypes,
 		MessageInfos:      file_proto_navidrome_scanner_v1_scanner_proto_msgTypes,
 	}.Build()
 	File_proto_navidrome_scanner_v1_scanner_proto = out.File

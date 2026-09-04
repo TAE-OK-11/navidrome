@@ -201,27 +201,38 @@ type cachedFTS5Query struct {
 
 var ftsQueryCache sync.Map
 
+// allowGoFTS5Builder is true only in `go test`. Production search uses the Rust
+// FTS5 query builder; if that worker is down, newFTSSearch falls through to LIKE.
+var allowGoFTS5Builder = rustworker.AllowLegacyNDJSON
+
 func buildFTS5QueryCached(userInput string) (string, bool) {
 	if cached, ok := ftsQueryCache.Load(userInput); ok {
 		entry := cached.(cachedFTS5Query)
 		return entry.query, entry.degraded
 	}
-	query, degraded := buildFTS5QueryRust(context.Background(), userInput)
-	ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
+	query, degraded, cacheable := buildFTS5QueryRust(context.Background(), userInput)
+	if cacheable {
+		ftsQueryCache.Store(userInput, cachedFTS5Query{query: query, degraded: degraded})
+	}
 	return query, degraded
 }
 
-func buildFTS5QueryRust(ctx context.Context, userInput string) (string, bool) {
+func buildFTS5QueryRust(ctx context.Context, userInput string) (query string, degraded, cacheable bool) {
 	result, err := metadataworker.PersistentBuildFTS5QueryWorkers().Build(ctx, userInput)
-	if err != nil {
-		if rustworker.AllowLegacyNDJSON() {
-			log.Trace(ctx, "Rust FTS5 query builder unavailable; using Go fallback", err)
-		} else {
-			log.Warn(ctx, "Rust FTS5 query builder unavailable; using Go query builder", err)
-		}
+	query, degraded = applyFTS5WorkerResult(ctx, userInput, result.Query, result.Degraded, err)
+	return query, degraded, err == nil || allowGoFTS5Builder()
+}
+
+func applyFTS5WorkerResult(ctx context.Context, userInput, rustQuery string, rustDegraded bool, err error) (string, bool) {
+	if err == nil {
+		return rustQuery, rustDegraded
+	}
+	if allowGoFTS5Builder() {
+		log.Trace(ctx, "Rust FTS5 query builder unavailable; using Go fallback", err)
 		return buildFTS5Query(userInput)
 	}
-	return result.Query, result.Degraded
+	log.Error(ctx, "Rust FTS5 query builder unavailable; using LIKE search", err)
+	return "", true
 }
 
 // ftsColumn pairs an FTS5 column name with its BM25 relevance weight.

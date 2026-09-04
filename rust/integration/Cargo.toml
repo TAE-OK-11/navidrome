@@ -16,19 +16,13 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.104"
 md-5 = "0.10.6"
-prost = "0.13.5"
+prost = "0.14.4"
 reqwest = { version = "0.12.24", default-features = false, features = ["rustls-tls", "http2"] }
 tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1.17", features = ["net"] }
-tonic = { version = "0.13.1", features = ["transport"] }
+tonic = { version = "0.14.6", features = ["transport"] }
+tonic-prost = "0.14.6"
 
 [build-dependencies]
 protoc-bin-vendored = "3.2.0"
-tonic-build = "0.13.1"
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-strip = "symbols"
-panic = "abort"
+tonic-prost-build = "0.14.6"

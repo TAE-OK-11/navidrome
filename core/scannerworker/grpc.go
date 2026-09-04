@@ -11,21 +11,26 @@ import (
 )
 
 var (
-	folderHashGRPCOnce  sync.Once
-	folderHashGRPCProc  *rustworker.GRPCProcess
+	scannerGRPCOnce     sync.Once
+	scannerGRPCProc     *rustworker.GRPCProcess
 	folderHashGRPCCli   gen.FolderHashClient
+	scannerGRPCCli      gen.ScannerClient
 	errFolderHashNoGRPC = errors.New("folder-hash gRPC worker unavailable")
+	errWalkNoGRPC       = errors.New("scanner walk gRPC worker unavailable")
 )
 
-func folderHashGRPC() gen.FolderHashClient {
-	folderHashGRPCOnce.Do(func() {
+// ErrWalkNoGRPC is returned when the scanner Walk RPC cannot be started.
+var ErrWalkNoGRPC = errWalkNoGRPC
+
+func ensureScannerGRPC() {
+	scannerGRPCOnce.Do(func() {
 		binary, err := Resolve()
 		if err != nil {
 			return
 		}
-		proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-folder-hash"), nil)
+		proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-scanner"), nil)
 		if err != nil {
-			rustworker.LogGRPCUnavailable("folder-hash", err)
+			rustworker.LogGRPCUnavailable("scanner", err)
 			return
 		}
 		cli := gen.NewFolderHashClient(proc.Conn)
@@ -33,18 +38,29 @@ func folderHashGRPC() gen.FolderHashClient {
 		defer cancel()
 		if _, err := cli.Health(healthCtx, &gen.HealthRequest{}); err != nil {
 			proc.Close()
-			rustworker.LogGRPCUnavailable("folder-hash", err)
+			rustworker.LogGRPCUnavailable("scanner", err)
 			return
 		}
-		folderHashGRPCProc = proc
+		scannerGRPCProc = proc
 		folderHashGRPCCli = cli
-		if folderHashGRPCProc.Cmd != nil && folderHashGRPCProc.Cmd.Process != nil {
-			log.Info("Folder hashing routed through Rust gRPC worker", "pid", folderHashGRPCProc.Cmd.Process.Pid, "listen", folderHashGRPCProc.Addr)
+		scannerGRPCCli = gen.NewScannerClient(proc.Conn)
+		if scannerGRPCProc.Cmd != nil && scannerGRPCProc.Cmd.Process != nil {
+			log.Info("Scanner hashing and walk routed through Rust gRPC worker", "pid", scannerGRPCProc.Cmd.Process.Pid, "listen", scannerGRPCProc.Addr)
 		} else {
-			log.Info("Folder hashing routed through Rust gRPC worker", "listen", folderHashGRPCProc.Addr)
+			log.Info("Scanner hashing and walk routed through Rust gRPC worker", "listen", scannerGRPCProc.Addr)
 		}
 	})
+}
+
+func folderHashGRPC() gen.FolderHashClient {
+	ensureScannerGRPC()
 	return folderHashGRPCCli
+}
+
+// ScannerGRPC returns the Walk client, or nil when the worker is unavailable.
+func ScannerGRPC() gen.ScannerClient {
+	ensureScannerGRPC()
+	return scannerGRPCCli
 }
 
 func hashGRPC(ctx context.Context, request FolderHashRequest) (string, error) {

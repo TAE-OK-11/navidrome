@@ -66,6 +66,9 @@ type provider struct {
 	similarMu         sync.Mutex
 	similarCache      map[string]similarCacheEntry
 	similarRefreshing map[string]struct{}
+	infoMu            sync.Mutex
+	artistRefreshing  map[string]struct{}
+	albumRefreshing   map[string]struct{}
 }
 
 type auxAlbum struct {
@@ -115,12 +118,14 @@ func NewProvider(ds model.DataStore, agents Agents, m *matcher.Matcher) Provider
 		matcher:           m,
 		similarCache:      make(map[string]similarCacheEntry),
 		similarRefreshing: make(map[string]struct{}),
+		artistRefreshing:  make(map[string]struct{}),
+		albumRefreshing:   make(map[string]struct{}),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.queueCtx = ctx
 	e.cancel = cancel
-	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfo)
-	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfo)
+	e.artistQueue = newRefreshQueue(ctx, &e.wg, e.populateArtistInfoQueued)
+	e.albumQueue = newRefreshQueue(ctx, &e.wg, e.populateAlbumInfoQueued)
 	lifecycle.Register(e)
 	return e
 }
@@ -155,21 +160,22 @@ func (e *provider) UpdateAlbumInfo(ctx context.Context, id string) (*model.Album
 		return nil, err
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	updatedAt := V(album.ExternalInfoUpdatedAt)
 	albumName := album.Name()
 	if updatedAt.IsZero() {
-		log.Debug(ctx, "AlbumInfo not cached. Retrieving it now", "updatedAt", updatedAt, "id", id, "name", albumName)
-		album, err = e.populateAlbumInfo(ctx, album)
-		if err != nil {
-			return nil, err
-		}
+		log.Debug(ctx, "AlbumInfo not cached. Retrieving it in the background", "updatedAt", updatedAt, "id", id, "name", albumName)
+		e.enqueueAlbumRefresh(&album)
 		return &album.Album, nil
 	}
 
 	// If info is expired, trigger a populateAlbumInfo in the background
 	if time.Since(updatedAt) > conf.Server.DevAlbumInfoTimeToLive {
 		log.Debug("Found expired cached AlbumInfo, refreshing in the background", "updatedAt", album.ExternalInfoUpdatedAt, "name", albumName)
-		e.albumQueue.enqueue(&album)
+		e.enqueueAlbumRefresh(&album)
 	}
 
 	return &album.Album, nil
@@ -251,18 +257,23 @@ func (e *provider) refreshArtistInfo(ctx context.Context, id string) (auxArtist,
 		return auxArtist{}, err
 	}
 
-	// If we don't have any info, retrieves it now
+	if err := ctx.Err(); err != nil {
+		return auxArtist{}, err
+	}
+
+	// First miss: do not block the HTTP handler on Last.fm/ListenBrainz.
 	updatedAt := V(artist.ExternalInfoUpdatedAt)
 	artistName := artist.Name()
 	if updatedAt.IsZero() {
-		log.Debug(ctx, "ArtistInfo not cached. Retrieving it now", "updatedAt", updatedAt, "id", id, "name", artistName)
-		return e.populateArtistInfo(ctx, artist)
+		log.Debug(ctx, "ArtistInfo not cached. Retrieving it in the background", "updatedAt", updatedAt, "id", id, "name", artistName)
+		e.enqueueArtistRefresh(&artist)
+		return artist, nil
 	}
 
 	// If info is expired, trigger a populateArtistInfo in the background
 	if time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
 		log.Debug("Found expired cached ArtistInfo, refreshing in the background", "updatedAt", updatedAt, "name", artistName)
-		e.artistQueue.enqueue(&artist)
+		e.enqueueArtistRefresh(&artist)
 	}
 	return artist, nil
 }
@@ -384,36 +395,36 @@ func (e *provider) SimilarSongs(ctx context.Context, id string, count int) (mode
 }
 
 func (e *provider) cachedMix(ctx context.Context, key string, count int, run func(context.Context) (model.MediaFiles, error)) (model.MediaFiles, error) {
-	if songs, fresh := e.lookupSimilarCache(key, count); songs != nil {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if songs, hit, fresh := e.lookupSimilarCache(key, count); hit {
 		if !fresh {
 			e.refreshMixAsync(key, count, run)
 		}
 		return songs, nil
 	}
-	songs, err := run(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(songs) > 0 {
-		e.storeSimilarCache(key, songs)
-	}
-	return songs, nil
+	// First miss: do not block the HTTP handler on Last.fm/ListenBrainz.
+	// Local cache + eventbus notify when the agent mix lands.
+	e.refreshMixAsync(key, count, run)
+	return nil, nil
 }
 
-func (e *provider) lookupSimilarCache(key string, count int) (model.MediaFiles, bool) {
+func (e *provider) lookupSimilarCache(key string, count int) (songs model.MediaFiles, hit, fresh bool) {
 	e.similarMu.Lock()
 	defer e.similarMu.Unlock()
 	entry, ok := e.similarCache[key]
-	if !ok || len(entry.songs) == 0 {
-		return nil, false
+	if !ok {
+		return nil, false, false
 	}
-	if count > len(entry.songs) {
-		return nil, false
+	fresh = time.Since(entry.at) <= conf.Server.DevArtistInfoTimeToLive
+	if len(entry.songs) == 0 {
+		return nil, true, fresh
 	}
-	fresh := time.Since(entry.at) <= conf.Server.DevArtistInfoTimeToLive
-	out := make(model.MediaFiles, count)
-	copy(out, entry.songs[:count])
-	return out, fresh
+	n := min(count, len(entry.songs))
+	out := make(model.MediaFiles, n)
+	copy(out, entry.songs[:n])
+	return out, true, fresh
 }
 
 func (e *provider) storeSimilarCache(key string, songs model.MediaFiles) {
@@ -432,7 +443,9 @@ func (e *provider) refreshMixAsync(key string, count int, run func(context.Conte
 	}
 	e.similarRefreshing[key] = struct{}{}
 	e.similarMu.Unlock()
+	e.wg.Add(1)
 	go func() {
+		defer e.wg.Done()
 		defer func() {
 			e.similarMu.Lock()
 			delete(e.similarRefreshing, key)
@@ -441,11 +454,37 @@ func (e *provider) refreshMixAsync(key string, count int, run func(context.Conte
 		ctx, cancel := context.WithTimeout(e.queueCtx, refreshTimeout)
 		defer cancel()
 		songs, err := run(ctx)
-		if err != nil || len(songs) == 0 {
+		if err != nil {
 			return
 		}
 		e.storeSimilarCache(key, songs)
+		if len(songs) == 0 {
+			return
+		}
+		resource, id := mixRefreshTarget(key)
+		e.publishExternalRefresh(ctx, resource, id)
 	}()
+}
+
+func mixRefreshTarget(key string) (resource, id string) {
+	kind, id, ok := strings.Cut(key, ":")
+	if !ok {
+		return "", ""
+	}
+	switch kind {
+	case "mf":
+		return "mediaFile", id
+	case "al":
+		return "album", id
+	case "ar", "top":
+		return "artist", id
+	case "pl":
+		return "playlist", id
+	case "genre":
+		return "genre", id
+	default:
+		return "", ""
+	}
 }
 
 func (e *provider) mixFromAgent(ctx context.Context, count int, fetch func() ([]agents.Song, error), fallback func() (model.MediaFiles, error)) (model.MediaFiles, error) {
@@ -564,7 +603,7 @@ func (e *provider) similarSongsFallback(ctx context.Context, id string, count in
 	haveCache := len(artist.SimilarArtists) > 0 || !updatedAt.IsZero()
 	if haveCache {
 		if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
-			e.artistQueue.enqueue(&artist)
+			e.enqueueArtistRefresh(&artist)
 		}
 	} else {
 		e.callGetSimilarArtists(ctx, e.ag, &artist, 15, false)
@@ -634,12 +673,12 @@ func (e *provider) ArtistImage(ctx context.Context, id string) (*url.URL, error)
 	updatedAt := V(artist.ExternalInfoUpdatedAt)
 	if imageUrl == "" && updatedAt.IsZero() {
 		log.Debug(ctx, "Artist image not cached, enqueuing background fetch", "artist", artist.Name(), "id", artist.ID)
-		e.artistQueue.enqueue(&artist)
+		e.enqueueArtistRefresh(&artist)
 		return nil, model.ErrNotFound
 	}
 	if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevArtistInfoTimeToLive {
 		log.Debug(ctx, "Artist image info expired, enqueuing background refresh", "artist", artist.Name(), "updatedAt", updatedAt)
-		e.artistQueue.enqueue(&artist)
+		e.enqueueArtistRefresh(&artist)
 	}
 	if imageUrl == "" {
 		return nil, model.ErrNotFound
@@ -661,12 +700,12 @@ func (e *provider) AlbumImage(ctx context.Context, id string) (*url.URL, error) 
 	updatedAt := V(album.ExternalInfoUpdatedAt)
 	if imageUrl == "" && updatedAt.IsZero() {
 		log.Debug(ctx, "Album image not cached, enqueuing background fetch", "album", album.Name(), "id", album.ID)
-		e.albumQueue.enqueue(&album)
+		e.enqueueAlbumRefresh(&album)
 		return nil, model.ErrNotFound
 	}
 	if !updatedAt.IsZero() && time.Since(updatedAt) > conf.Server.DevAlbumInfoTimeToLive {
 		log.Debug(ctx, "Album image info expired, enqueuing background refresh", "album", album.Name(), "updatedAt", updatedAt)
-		e.albumQueue.enqueue(&album)
+		e.enqueueAlbumRefresh(&album)
 	}
 	if imageUrl == "" {
 		return nil, model.ErrNotFound
@@ -1078,9 +1117,71 @@ func newRefreshQueue[T any](ctx context.Context, wg *sync.WaitGroup, processFn f
 	return queue
 }
 
-func (q *refreshQueue[T]) enqueue(item *T) {
+func (e *provider) populateArtistInfoQueued(ctx context.Context, artist auxArtist) (auxArtist, error) {
+	defer e.clearArtistRefreshing(artist.ID)
+	return e.populateArtistInfo(ctx, artist)
+}
+
+func (e *provider) populateAlbumInfoQueued(ctx context.Context, album auxAlbum) (auxAlbum, error) {
+	defer e.clearAlbumRefreshing(album.ID)
+	return e.populateAlbumInfo(ctx, album)
+}
+
+func (e *provider) enqueueArtistRefresh(artist *auxArtist) {
+	if artist == nil || !e.markArtistRefreshing(artist.ID) {
+		return
+	}
+	if !e.artistQueue.enqueue(artist) {
+		e.clearArtistRefreshing(artist.ID)
+	}
+}
+
+func (e *provider) enqueueAlbumRefresh(album *auxAlbum) {
+	if album == nil || !e.markAlbumRefreshing(album.ID) {
+		return
+	}
+	if !e.albumQueue.enqueue(album) {
+		e.clearAlbumRefreshing(album.ID)
+	}
+}
+
+func (e *provider) markArtistRefreshing(id string) bool {
+	e.infoMu.Lock()
+	defer e.infoMu.Unlock()
+	if _, busy := e.artistRefreshing[id]; busy {
+		return false
+	}
+	e.artistRefreshing[id] = struct{}{}
+	return true
+}
+
+func (e *provider) clearArtistRefreshing(id string) {
+	e.infoMu.Lock()
+	delete(e.artistRefreshing, id)
+	e.infoMu.Unlock()
+}
+
+func (e *provider) markAlbumRefreshing(id string) bool {
+	e.infoMu.Lock()
+	defer e.infoMu.Unlock()
+	if _, busy := e.albumRefreshing[id]; busy {
+		return false
+	}
+	e.albumRefreshing[id] = struct{}{}
+	return true
+}
+
+func (e *provider) clearAlbumRefreshing(id string) {
+	e.infoMu.Lock()
+	delete(e.albumRefreshing, id)
+	e.infoMu.Unlock()
+}
+
+func (q refreshQueue[T]) enqueue(item *T) bool {
 	select {
-	case *q <- item:
+	case q <- item:
+		return true
 	default: // It is ok to miss a refresh request
+		return false
 	}
 }

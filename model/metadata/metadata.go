@@ -13,10 +13,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/utils/slice"
 )
+
+// allowGoTagClean is true only in `go test`. Production extractors must
+// supply Rust-cleaned tags (Lofty already does).
+var allowGoTagClean = rustworker.AllowLegacyNDJSON
 
 type Info struct {
 	FileInfo        FileInfo
@@ -74,11 +79,18 @@ func NewPair(key, value string) string {
 }
 
 func New(filePath string, info Info) Metadata {
+	return newWithTagClean(filePath, info, allowGoTagClean())
+}
+
+func newWithTagClean(filePath string, info Info, goFallback bool) Metadata {
 	var tags model.Tags
 	if len(info.CleanedTags) > 0 {
 		tags = info.CleanedTags
-	} else {
+	} else if goFallback {
 		tags = clean(filePath, info.Tags)
+	} else {
+		log.Error("Rust-cleaned tags missing; not using Go tag clean", "file", filePath)
+		tags = model.Tags{}
 	}
 	return Metadata{
 		filePath:      filePath,
@@ -92,12 +104,12 @@ func New(filePath string, info Info) Metadata {
 }
 
 type Metadata struct {
-	filePath   string
-	fileInfo   FileInfo
-	tags       model.Tags
-	audioProps AudioProperties
-	hasPicture bool
-	lyricsJSON string
+	filePath      string
+	fileInfo      FileInfo
+	tags          model.Tags
+	audioProps    AudioProperties
+	hasPicture    bool
+	lyricsJSON    string
 	mediaFileJSON string
 }
 

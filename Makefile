@@ -357,14 +357,10 @@ check_go_env:
 .PHONY: check_go_env
 
 check_bun_env:
-	@(hash bun) || (echo "
-ERROR: Bun environment not setup properly!
-"; exit 1)
+	@(hash bun) || (echo "\nERROR: Bun environment not setup properly!\n"; exit 1)
 	@current_bun_version=`bun --version` && \
 		case "$$current_bun_version" in 1.4.*) ;; *) \
-			echo "
-ERROR: Bun 1.4 is required (channel: $(BUN_CHANNEL)); got $$current_bun_version
-"; exit 1 ;; esac
+			echo "\nERROR: Bun 1.4 is required (channel: $(BUN_CHANNEL)); got $$current_bun_version\n"; exit 1 ;; esac
 .PHONY: check_bun_env
 
 pre-push: lintall testall

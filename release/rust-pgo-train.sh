@@ -11,15 +11,17 @@
 #   RUST_PGO_DIR            profile output directory (default: /tmp/rust-pgo)
 #   RUST_PGO_BENCH_TIME     criterion measurement time in seconds (default: 3)
 #   RUST_PGO_GO_ROUNDS      Go integration test repetitions (default: 25, 0=skip)
+#   RUST_PGO_TRAIN_CPU      CPU target for profile collection (default: x86-64)
 #   RUST_PROFILE            final Cargo profile (default: release-fat)
 #   CARGO_TARGET_DIR        cargo output directory
-#   RUSTFLAGS               extra rustc flags (e.g. -C target-cpu=znver3)
+#   RUSTFLAGS               production rustc flags for the final build (e.g. -C target-cpu=znver3)
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 PGO_DIR="${RUST_PGO_DIR:-/tmp/rust-pgo}"
 BENCH_TIME="${RUST_PGO_BENCH_TIME:-3}"
 GO_ROUNDS="${RUST_PGO_GO_ROUNDS:-25}"
+TRAIN_CPU="${RUST_PGO_TRAIN_CPU:-x86-64}"
 PROFILE="${RUST_PROFILE:-release-fat}"
 MERGED="${PGO_DIR}/merged.profdata"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/rust/target}"
@@ -42,9 +44,12 @@ fi
 mkdir -p "${PGO_DIR}"
 rm -f "${PGO_DIR}"/*.profraw "${MERGED}"
 
-GEN_FLAGS="${RUSTFLAGS:-} -Cprofile-generate=${PGO_DIR} -Clto=off"
+# Collect profiles on a portable CPU target so CI runners can execute the
+# instrumented binaries. metadata_hotpaths SIGILLs with znver3 + profile-generate
+# on non-Zen3 hosts when criterion rebuilds deps under the default bench profile.
+GEN_FLAGS="-C target-cpu=${TRAIN_CPU} -Cprofile-generate=${PGO_DIR} -Clto=off"
 
-echo "[rust-pgo] phase 1: instrumented build (profile-generate, all workers)"
+echo "[rust-pgo] phase 1: instrumented build (profile-generate, train-cpu=${TRAIN_CPU})"
 (
   cd "${ROOT}/rust"
   CARGO_TARGET_DIR="${INSTR_TARGET}" \
@@ -52,7 +57,7 @@ echo "[rust-pgo] phase 1: instrumented build (profile-generate, all workers)"
     cargo_cmd build --locked --release --bins
 )
 
-echo "[rust-pgo] phase 2: collecting profiles (criterion ${BENCH_TIME}s)"
+echo "[rust-pgo] phase 2: collecting profiles (criterion ${BENCH_TIME}s, train-cpu=${TRAIN_CPU})"
 for bench in integration metadata scanner search; do
   bench_dir="${ROOT}/rust/benchmarks/${bench}"
   if [ ! -f "${bench_dir}/Cargo.toml" ]; then
@@ -65,7 +70,7 @@ for bench in integration metadata scanner search; do
     cd "${bench_dir}"
     CARGO_TARGET_DIR="${INSTR_TARGET}" \
       RUSTFLAGS="${GEN_FLAGS}" \
-      cargo_cmd bench --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
+      cargo_cmd bench --profile release --locked --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
   )
 done
 

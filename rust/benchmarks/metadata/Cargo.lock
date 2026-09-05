@@ -910,6 +910,7 @@ dependencies = [
  "anyhow",
  "tokio",
  "tokio-stream",
+ "tonic",
 ]
 
 [[package]]

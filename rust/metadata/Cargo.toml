@@ -23,7 +23,7 @@ prost = "0.14.4"
 quick-xml = { version = "0.42.0", default-features = false, features = ["escape-html"] }
 regex = "1.13.1"
 deunicode = "1.6.2"
-uuid = "1.18.0"
+uuid = "1.26.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 md-5 = "0.10.6"

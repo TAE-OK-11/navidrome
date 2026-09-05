@@ -76,17 +76,28 @@ impl OutboundService {
 
     async fn breaker_allow(&self, dest: &str) -> bool {
         let mut map = self.breakers.lock().await;
-        map.entry(dest.to_string()).or_default().allow()
+        if let Some(breaker) = map.get_mut(dest) {
+            return breaker.allow();
+        }
+        map.entry(dest.to_owned()).or_default().allow()
     }
 
     async fn breaker_success(&self, dest: &str) {
         let mut map = self.breakers.lock().await;
-        map.entry(dest.to_string()).or_default().success();
+        if let Some(breaker) = map.get_mut(dest) {
+            breaker.success();
+            return;
+        }
+        map.entry(dest.to_owned()).or_default().success();
     }
 
     async fn breaker_failure(&self, dest: &str) {
         let mut map = self.breakers.lock().await;
-        map.entry(dest.to_string()).or_default().failure();
+        if let Some(breaker) = map.get_mut(dest) {
+            breaker.failure();
+            return;
+        }
+        map.entry(dest.to_owned()).or_default().failure();
     }
 }
 

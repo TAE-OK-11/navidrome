@@ -235,18 +235,16 @@ impl Engine {
         if keys.len() > MAX_DOCUMENTS_PER_REQUEST {
             bail!("delete contains too many keys");
         }
+        let mut unique = HashSet::with_capacity(keys.len());
         for key in &keys {
             if key.is_empty() {
                 bail!("delete keys must be non-empty");
             }
-        }
-        let mut unique = HashSet::with_capacity(keys.len());
-        for key in keys {
-            if !unique.insert(key.clone()) {
+            if !unique.insert(key.as_str()) {
                 continue;
             }
             self.writer
-                .delete_term(Term::from_field_text(self.fields.key, &key));
+                .delete_term(Term::from_field_text(self.fields.key, key));
         }
         Ok(())
     }
@@ -259,13 +257,13 @@ impl Engine {
             } else {
                 normalize(&document.secondary)
             };
-            let mut indexed = doc!(
-                self.fields.key => document.key,
-                self.fields.id => document.id,
-                self.fields.kind => document.kind,
-                self.fields.exact => normalized_primary.clone(),
-                self.fields.primary => normalized_primary,
-                self.fields.secondary => normalized_secondary,
+            let mut indexed = tantivy::doc!(
+                self.fields.key => document.key.as_str(),
+                self.fields.id => document.id.as_str(),
+                self.fields.kind => document.kind.as_str(),
+                self.fields.exact => normalized_primary.as_str(),
+                self.fields.primary => normalized_primary.as_str(),
+                self.fields.secondary => normalized_secondary.as_str(),
             );
             for library_id in document.library_ids {
                 indexed.add_u64(self.fields.library_id, library_id);
@@ -384,9 +382,9 @@ impl Engine {
         let mut seen = HashSet::with_capacity(query.len() / 2);
         let mut tokens = Vec::with_capacity(query.len() / 2);
         while stream.advance() {
-            let token = stream.token();
-            if seen.insert(token.text.clone()) {
-                tokens.push(token.text.clone());
+            let text = stream.token().text.clone();
+            if seen.insert(text.clone()) {
+                tokens.push(text);
             }
         }
         if tokens.is_empty() {

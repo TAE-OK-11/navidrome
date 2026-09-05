@@ -1,5 +1,29 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use tokio::signal;
+use tonic::transport::Server;
+
+/// Match Go `core/rustworker.DialGRPC` local IPC windows (1 MiB stream / 2 MiB conn).
+pub const LOCAL_STREAM_WINDOW: u32 = 1 << 20;
+pub const LOCAL_CONN_WINDOW: u32 = 2 << 20;
+pub const LOCAL_MAX_FRAME: u32 = 64 * 1024;
+/// Soft HTTP/2 keepalive matching Go client Time/Timeout (unix peers usually
+/// notice via socket close; pings still help TCP fallback / long-idle workers).
+pub const LOCAL_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(120);
+pub const LOCAL_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Match Go `maxGRPCMsgSize` (64 MiB) for bulk metadata/search payloads.
+pub const LOCAL_MAX_MSG: usize = 64 << 20;
+
+/// Tonic server tuned for Navidrome Go↔Rust unix/TCP companion IPC.
+pub fn local_ipc_server() -> Server {
+    Server::builder()
+        .initial_stream_window_size(LOCAL_STREAM_WINDOW)
+        .initial_connection_window_size(LOCAL_CONN_WINDOW)
+        .max_frame_size(LOCAL_MAX_FRAME)
+        .http2_keepalive_interval(Some(LOCAL_KEEPALIVE_INTERVAL))
+        .http2_keepalive_timeout(Some(LOCAL_KEEPALIVE_TIMEOUT))
+}
 
 pub fn arg_value(args: &[String], name: &str) -> Option<String> {
     args.windows(2).find_map(|pair| {
@@ -59,4 +83,18 @@ pub async fn bind_tcp(listen: &str) -> Result<tokio_stream::wrappers::TcpListene
     let bound = listener.local_addr()?;
     println!("READY {bound}");
     Ok(TcpListenerStream::new(listener))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_windows_match_go_dial() {
+        assert_eq!(LOCAL_STREAM_WINDOW, 1 << 20);
+        assert_eq!(LOCAL_CONN_WINDOW, 2 << 20);
+        assert_eq!(LOCAL_MAX_MSG, 64 << 20);
+        assert_eq!(LOCAL_KEEPALIVE_INTERVAL, Duration::from_secs(120));
+        assert_eq!(LOCAL_KEEPALIVE_TIMEOUT, Duration::from_secs(5));
+    }
 }

@@ -8,14 +8,14 @@ replace github.com/djherbis/fscache => github.com/deluan/fscache v0.9.1-0.202608
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/andybalholm/brotli v1.2.3
-	github.com/andybalholm/cascadia v1.3.4
+	github.com/andybalholm/cascadia v1.3.5
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/deluan/rest v0.0.0-20211102003136-6260bc399cbf
 	github.com/deluan/sanitize v0.0.0-20241120162836-fdfd8fdfaa55
 	github.com/dexterlb/mpvipc v0.0.0-20260722094525-0cf47d745b36
 	github.com/djherbis/atime v1.1.0
 	github.com/djherbis/fscache v0.10.2-0.20231127215153-442a07e326c4
-	github.com/djherbis/stream v1.5.0
+	github.com/djherbis/stream v1.5.1
 	github.com/djherbis/times v1.6.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/extism/go-sdk v1.7.1
@@ -28,7 +28,7 @@ require (
 	github.com/go-viper/encoding/ini v0.1.1
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/goccy/go-json v0.10.6
-	github.com/gohugoio/hashstructure v1.0.0
+	github.com/gohugoio/hashstructure v1.1.0
 	github.com/google/go-pipeline v0.0.0-20230411140531-6cbedfc1d3fc
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
@@ -40,7 +40,7 @@ require (
 	github.com/kr/pretty v0.3.1
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
 	github.com/lestrrat-go/jwx/v3 v3.2.0
-	github.com/mattn/go-sqlite3 v1.14.50
+	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mileusna/useragent v1.3.5
 	github.com/onsi/ginkgo/v2 v2.32.1
@@ -114,8 +114,8 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ogier/pflag v0.0.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.70.1 // indirect
+	github.com/prometheus/client_model v0.6.3 // indirect
+	github.com/prometheus/common v0.71.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
@@ -135,7 +135,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260821201142-16c97dc83219 // indirect
 	golang.org/x/tools v0.49.0 // indirect

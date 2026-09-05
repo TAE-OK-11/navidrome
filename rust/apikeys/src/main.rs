@@ -4,8 +4,7 @@ use anyhow::{Result, bail};
 use navidrome_apikeys::grpc::ApiKeysService;
 use navidrome_apikeys::proto::api_keys_server::ApiKeysServer;
 use navidrome_apikeys::run_worker;
-use navidrome_grpc_listen::{arg_value, bind_tcp, default_listen, shutdown};
-use tonic::transport::Server;
+use navidrome_grpc_listen::{arg_value, bind_tcp, default_listen, local_ipc_server, shutdown, LOCAL_MAX_MSG};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,12 +23,14 @@ async fn main() -> Result<()> {
 }
 
 async fn serve(listen: String) -> Result<()> {
-    let service = ApiKeysServer::new(ApiKeysService);
+    let service = ApiKeysServer::new(ApiKeysService)
+        .max_decoding_message_size(LOCAL_MAX_MSG)
+        .max_encoding_message_size(LOCAL_MAX_MSG);
     if let Some(path) = listen.strip_prefix("unix:") {
         #[cfg(unix)]
         {
             let incoming = navidrome_grpc_listen::bind_unix(path).await?;
-            return Server::builder()
+            return local_ipc_server()
                 .add_service(service)
                 .serve_with_incoming_shutdown(incoming, shutdown())
                 .await
@@ -42,7 +43,7 @@ async fn serve(listen: String) -> Result<()> {
         }
     }
     let incoming = bind_tcp(&listen).await?;
-    Server::builder()
+    local_ipc_server()
         .add_service(service)
         .serve_with_incoming_shutdown(incoming, shutdown())
         .await

@@ -144,9 +144,14 @@ func artworkIDFromPlaylist(pls Playlist) ArtworkID {
 }
 
 func artworkIDFromArtist(ar Artist) ArtworkID {
+	var lastUpdate time.Time
+	if ar.UpdatedAt != nil {
+		lastUpdate = *ar.UpdatedAt
+	}
 	return ArtworkID{
-		Kind: KindArtistArtwork,
-		ID:   ar.ID,
+		Kind:       KindArtistArtwork,
+		ID:         ar.ID,
+		LastUpdate: lastUpdate,
 	}
 }
 

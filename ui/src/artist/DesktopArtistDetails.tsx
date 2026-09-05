@@ -76,31 +76,29 @@ const DesktopArtistDetails = ({
             desktopOverride('artistImage'),
           ]}
         >
-          {artistInfo && (
-            <CardMedia
-              key={record.id}
-              component="img"
-              src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
-              sx={[
-                {
-                  width: '12rem',
-                  height: '12rem',
-                  borderRadius: '6em',
-                  cursor: imageError ? 'default' : 'pointer',
-                  bgcolor: 'transparent',
-                  transition: 'opacity 0.3s ease-in-out',
-                  objectFit: 'cover',
-                  opacity: imageLoading ? 0.5 : 1,
-                },
-                desktopOverride('cover'),
-                imageLoading && desktopOverride('coverLoading'),
-              ]}
-              onClick={handleOpenLightbox}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-              title={title}
-            />
-          )}
+          <CardMedia
+            key={record.id}
+            component="img"
+            src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
+            sx={[
+              {
+                width: '12rem',
+                height: '12rem',
+                borderRadius: '6em',
+                cursor: imageError ? 'default' : 'pointer',
+                bgcolor: 'transparent',
+                transition: 'opacity 0.3s ease-in-out',
+                objectFit: 'cover',
+                opacity: imageLoading ? 0.5 : 1,
+              },
+              desktopOverride('cover'),
+              imageLoading && desktopOverride('coverLoading'),
+            ]}
+            onClick={handleOpenLightbox}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            title={title}
+          />
           <ImageUploadOverlay
             entityType="artist"
             entityId={record.id}

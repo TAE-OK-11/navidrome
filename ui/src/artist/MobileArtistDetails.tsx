@@ -85,31 +85,29 @@ const MobileArtistDetails = ({
               mobileOverride('artistImage'),
             ]}
           >
-            {artistInfo && (
-              <CardMedia
-                key={record.id}
-                component="img"
-                src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
-                sx={[
-                  {
-                    width: 151,
-                    boxShadow: '0px 0px 6px 0px #565656',
-                    borderRadius: '5px',
-                    bgcolor: 'transparent',
-                    transition: 'opacity 0.3s ease-in-out',
-                    objectFit: 'cover',
-                    opacity: imageLoading ? 0.5 : 1,
-                    cursor: imageError ? 'default' : 'pointer',
-                  },
-                  mobileOverride('cover'),
-                  imageLoading && mobileOverride('coverLoading'),
-                ]}
-                onClick={handleOpenLightbox}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-                title={title}
-              />
-            )}
+            <CardMedia
+              key={record.id}
+              component="img"
+              src={subsonic.getCoverArtUrl(record, config.uiCoverArtSize)}
+              sx={[
+                {
+                  width: 151,
+                  boxShadow: '0px 0px 6px 0px #565656',
+                  borderRadius: '5px',
+                  bgcolor: 'transparent',
+                  transition: 'opacity 0.3s ease-in-out',
+                  objectFit: 'cover',
+                  opacity: imageLoading ? 0.5 : 1,
+                  cursor: imageError ? 'default' : 'pointer',
+                },
+                mobileOverride('cover'),
+                imageLoading && mobileOverride('coverLoading'),
+              ]}
+              onClick={handleOpenLightbox}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              title={title}
+            />
             <ImageUploadOverlay
               entityType="artist"
               entityId={record.id}

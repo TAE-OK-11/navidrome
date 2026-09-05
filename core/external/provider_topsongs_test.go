@@ -3,7 +3,6 @@ package external_test
 import (
 	"context"
 	"errors"
-	"time"
 
 	_ "github.com/navidrome/navidrome/adapters/lastfm"
 	_ "github.com/navidrome/navidrome/adapters/listenbrainz"
@@ -172,12 +171,8 @@ var _ = Describe("Provider - TopSongs", func() {
 		songs, err := p.TopSongs(ctx, "Artist One", "", 1)
 
 		Expect(err).ToNot(HaveOccurred())
-		// First miss is empty; the async mix still does not resolve Artist Two to One's track.
 		Expect(songs).To(BeEmpty())
-		Eventually(func() bool { return ag.topSongsHit.Load() }).WithContext(ctx).WithTimeout(3 * time.Second).Should(BeTrue())
-		songs, err = p.TopSongs(ctx, "Artist One", "", 1)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(songs).To(BeEmpty())
+		ag.AssertExpectations(GinkgoT())
 	})
 
 	It("returns nil for an unknown artist", func() {
@@ -192,7 +187,7 @@ var _ = Describe("Provider - TopSongs", func() {
 		ag.AssertNotCalled(GinkgoT(), "GetArtistTopSongs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	It("returns empty on first miss when the agent returns an error", func() {
+	It("returns empty when the agent returns an error", func() {
 		// Mock finding the artist
 		artist1 := model.Artist{ID: "artist-1", Name: "Artist One", MbzArtistID: "mbid-artist-1"}
 		artistRepo.On("GetAll", mock.AnythingOfType("model.QueryOptions")).Return(model.Artists{artist1}, nil).Maybe()
@@ -205,12 +200,11 @@ var _ = Describe("Provider - TopSongs", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(songs).To(BeEmpty())
-		Eventually(func() bool { return ag.topSongsHit.Load() }).WithContext(ctx).WithTimeout(3 * time.Second).Should(BeTrue())
 		artistRepo.AssertExpectations(GinkgoT())
 		ag.AssertExpectations(GinkgoT())
 	})
 
-	It("returns empty on first miss when the agent returns ErrNotFound", func() {
+	It("returns empty when the agent returns ErrNotFound", func() {
 		// Mock finding the artist
 		artist1 := model.Artist{ID: "artist-1", Name: "Artist One", MbzArtistID: "mbid-artist-1"}
 		artistRepo.On("GetAll", mock.AnythingOfType("model.QueryOptions")).Return(model.Artists{artist1}, nil).Maybe()
@@ -222,7 +216,6 @@ var _ = Describe("Provider - TopSongs", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(songs).To(BeEmpty())
-		Eventually(func() bool { return ag.topSongsHit.Load() }).WithContext(ctx).WithTimeout(3 * time.Second).Should(BeTrue())
 		artistRepo.AssertExpectations(GinkgoT())
 		ag.AssertExpectations(GinkgoT())
 	})

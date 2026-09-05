@@ -13,11 +13,12 @@
 #   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
 #   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
 #
-# Final scenario (19 workloads, overlaps removed):
+# Final scenario (20 workloads, overlaps removed):
 #
 #   Domain          | Name            | Benchmark
 #   ----------------+-----------------+------------------------------------------
 #   Scanner         | scan            | BenchmarkScan
+#   DB / CGO sqlite | db_sqlite       | BenchmarkSQLiteHotPath
 #   DB / search     | db_tags         | BenchmarkUnmarshalTags
 #   DB / search     | search_fts      | BenchmarkSearchFTS5QueryCached
 #   API             | api_json        | BenchmarkSubsonicJSONMarshal
@@ -85,7 +86,10 @@ echo "[pgo] starting training: heavy=${HEAVY_BENCHTIME} light=${LIGHT_BENCHTIME}
 # Scanner (CGO + SQLite + optional Rust worker)
 train scan ./scanner '^BenchmarkScan$' "${HEAVY_BENCHTIME}"
 
-# DB reads and search query preparation
+# CGO sqlite amalgamation hot path (WAL upsert/select via production driver)
+train db_sqlite ./db '^BenchmarkSQLiteHotPath$' "${HEAVY_BENCHTIME}"
+
+# DB reads and search query preparation (Go-side; pairs with db_sqlite for CGO)
 train db_tags ./persistence '^BenchmarkUnmarshalTags$' "${HEAVY_BENCHTIME}"
 train search_fts ./persistence '^BenchmarkSearchFTS5QueryCached$' "${LIGHT_BENCHTIME}"
 

@@ -9,6 +9,10 @@
 # Environment (optional, fat/thin modes):
 #   CGO_RELEASE_CFLAGS   extra -O3 / march flags prepended to CGO_CFLAGS
 #   CGO_BASE_CFLAGS      base flags before LTO (default: empty)
+#   SQLITE_EXTRA_CFLAGS  amalgamation -D flags (default: release/sqlite-cflags.sh
+#                        when that script exists; empty otherwise). Applied to
+#                        CGO_CFLAGS only so the sqlite amalgamation is compiled
+#                        with the same defines under thin and fat LTO.
 set -e
 
 mode="${1:-thin}"
@@ -54,11 +58,23 @@ base_c="${CGO_BASE_CFLAGS:-}"
 base_cxx="${CGO_BASE_CXXFLAGS:-}"
 base_ld="${CGO_BASE_LDFLAGS:-}"
 
+# Resolve SQLite amalgamation defines once so thin (PGO train) and fat (final)
+# LTO builds compile sqlite with identical feature/default flags.
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -z "${SQLITE_EXTRA_CFLAGS+x}" ]; then
+  if [ -x "${script_dir}/sqlite-cflags.sh" ]; then
+    SQLITE_EXTRA_CFLAGS="$("${script_dir}/sqlite-cflags.sh")"
+  else
+    SQLITE_EXTRA_CFLAGS=""
+  fi
+fi
+
 if [ "$mode" != "off" ]; then
   base_c="${opt_flags}${base_c:+ ${base_c}}"
   base_cxx="${opt_flags}${base_cxx:+ ${base_cxx}}"
 fi
 
-printf 'export CGO_CFLAGS="%s%s"\n' "${base_c}" "${lto_flags:+ ${lto_flags}}"
+# SQLITE defines belong on CFLAGS (amalgamation is C), not CXXFLAGS.
+printf 'export CGO_CFLAGS="%s%s%s"\n' "${base_c}" "${lto_flags:+ ${lto_flags}}" "${SQLITE_EXTRA_CFLAGS:+ ${SQLITE_EXTRA_CFLAGS}}"
 printf 'export CGO_CXXFLAGS="%s%s"\n' "${base_cxx}" "${lto_flags:+ ${lto_flags}}"
 printf 'export CGO_LDFLAGS="%s%s%s"\n' "${base_ld}" "${lto_flags:+ ${lto_flags}}" "${lld_flags:+ ${lld_flags}}"

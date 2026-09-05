@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/mattn/go-sqlite3"
@@ -63,23 +64,46 @@ func Db() *sql.DB {
 		}
 		maxConns := maxOpenConns()
 		db.SetMaxOpenConns(maxConns)
+		// Keep idle conns warm for latency, but reclaim page-cache RSS after idle.
 		db.SetMaxIdleConns(maxConns)
+		db.SetConnMaxIdleTime(5 * time.Minute)
 		return db
 	})
 }
 
+// maxOpenConns sizes the pool for SQLite. Writers are serialized; with
+// SQLITE_OMIT_SHARED_CACHE (JBS) each connection owns a private page cache, so
+// a large pool multiplies RSS. Cap at 8 and scale with GOMAXPROCS (not 2x).
 func maxOpenConns() int {
-	return max(2, min(16, runtime.GOMAXPROCS(0)*2))
+	return max(2, min(8, runtime.GOMAXPROCS(0)))
 }
 
 func configureSQLiteConn(conn *sqlite3.SQLiteConn) error {
+	// Connection-scoped pragmas complement DSN options (busy_timeout, cache_size,
+	// journal_mode, txlock). Tuned for the light/EPYC Zen3 JBS profile:
+	//   - mmap_size=64MiB: fewer read syscalls without the prior 128MiB compile default
+	//   - journal_size_limit: bound WAL growth so PASSIVE checkpoints stay cheap
+	//   - cache_spill=OFF + modest DSN _cache_size: prefer RAM over spill latency
+	//   - temp_store=MEMORY: avoid temp-file I/O on sorts/hash joins
 	_, err := conn.Exec(`
 		PRAGMA foreign_keys=ON;
 		PRAGMA temp_store=MEMORY;
-		PRAGMA mmap_size=33554432;
+		PRAGMA mmap_size=67108864;
 		PRAGMA cache_spill=OFF;
+		PRAGMA journal_size_limit=67108864;
 	`, nil)
 	return err
+}
+
+// UsesImmediateTxLock reports whether the configured DSN already begins
+// transactions with BEGIN IMMEDIATE (_txlock=immediate). Callers can skip the
+// Property put/delete workaround in that case.
+func UsesImmediateTxLock() bool {
+	path := Path
+	if path == "" {
+		path = conf.Server.DbPath
+	}
+	return strings.Contains(strings.ToLower(path), "_txlock=immediate")
 }
 
 func Close(ctx context.Context) {

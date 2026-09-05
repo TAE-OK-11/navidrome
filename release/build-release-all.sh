@@ -10,7 +10,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "${ROOT}"
 
-chmod +x ./release/rust-build.sh ./release/rust-pgo-train.sh ./release/pgo-train.sh ./release/cgo-lto-env.sh
+chmod +x ./release/rust-build.sh ./release/rust-pgo-train.sh ./release/pgo-train.sh ./release/cgo-lto-env.sh ./release/sqlite-cflags.sh
 
 if [ "${RUST_PGO_ENABLED:-true}" = "true" ] && command -v llvm-profdata >/dev/null 2>&1; then
   echo "[release-all] Rust PGO enabled (llvm-profdata found)"

@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/log"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 )
 
@@ -17,6 +19,11 @@ const DefaultMaxWorkerRestarts = 3
 // worker lived at least this long, so infrequent crashes do not permanently
 // disable the companion after three lifetime failures.
 const restartBudgetWindow = time.Minute
+
+const (
+	restartBaseDelay = 50 * time.Millisecond
+	restartMaxDelay  = 2 * time.Second
+)
 
 // ErrWorkerUnavailable is returned when the Rust gRPC worker cannot be started.
 var ErrWorkerUnavailable = errors.New("gRPC worker unavailable")
@@ -40,6 +47,7 @@ type ManagedGRPC struct {
 	restarts  int
 	lastStart time.Time
 	closed    bool
+	startSF   singleflight.Group
 }
 
 // NewManagedGRPC returns a worker host that is not started until Conn is called.
@@ -48,19 +56,44 @@ func NewManagedGRPC(cfg ManagedGRPCConfig) *ManagedGRPC {
 }
 
 // Conn returns a live gRPC connection, starting the worker on first use.
+// Concurrent callers share a single start via singleflight; the mutex is not
+// held across process spawn or the health RPC.
 func (m *ManagedGRPC) Conn() (*grpc.ClientConn, error) {
+	if m == nil {
+		return nil, errors.New("managed gRPC worker is nil")
+	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.closed {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("Rust %s gRPC worker is closed", m.cfg.Name)
 	}
 	if m.proc != nil {
-		return m.proc.Conn, nil
+		conn := m.proc.Conn
+		m.mu.Unlock()
+		return conn, nil
 	}
-	if err := m.startLocked(); err != nil {
+	m.mu.Unlock()
+
+	v, err, _ := m.startSF.Do("start", func() (any, error) {
+		return m.ensureStarted()
+	})
+	if err != nil {
 		return nil, err
 	}
-	return m.proc.Conn, nil
+	return v.(*grpc.ClientConn), nil
+}
+
+// Warm starts the worker in the background so the first RPC avoids cold spawn.
+// Safe to call concurrently; errors are logged and retried on the next Conn.
+func (m *ManagedGRPC) Warm() {
+	if m == nil {
+		return
+	}
+	go func() {
+		if _, err := m.Conn(); err != nil && !errors.Is(err, ErrWorkerUnavailable) && !errors.Is(err, ErrSkippedInTests) {
+			log.Debug("Rust "+m.cfg.Name+" gRPC warm failed", err)
+		}
+	}()
 }
 
 // Invalidate closes the current worker so the next Conn call starts a fresh process.
@@ -86,35 +119,36 @@ func (m *ManagedGRPC) closeLocked() {
 	m.proc = nil
 }
 
-func (m *ManagedGRPC) startLocked() error {
-	if m.cfg.Resolve == nil {
-		return fmt.Errorf("Rust %s gRPC worker has no binary resolver", m.cfg.Name)
+// ensureStarted launches the worker when none is live. Must only run under
+// startSF so concurrent Conn callers coalesce.
+func (m *ManagedGRPC) ensureStarted() (*grpc.ClientConn, error) {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("Rust %s gRPC worker is closed", m.cfg.Name)
 	}
-	binary, err := m.cfg.Resolve()
+	if m.proc != nil {
+		conn := m.proc.Conn
+		m.mu.Unlock()
+		return conn, nil
+	}
+	m.mu.Unlock()
+
+	proc, err := m.launch()
 	if err != nil {
-		return fmt.Errorf("resolving Rust %s worker: %w", m.cfg.Name, err)
+		return nil, err
 	}
-	listen := m.cfg.Listen
-	if listen == "" {
-		listen = DefaultListenAddr("navidrome-" + m.cfg.Name)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		proc.Close()
+		return nil, fmt.Errorf("Rust %s gRPC worker is closed", m.cfg.Name)
 	}
-	proc, err := StartGRPC(context.Background(), binary, listen, m.workerEnv())
-	if err != nil {
-		if errors.Is(err, ErrSkippedInTests) {
-			return ErrWorkerUnavailable
-		}
-		LogGRPCUnavailable(m.cfg.Name, err)
-		return err
-	}
-	if m.cfg.Health != nil {
-		healthCtx, cancel := context.WithTimeout(context.Background(), DefaultGRPCDialTimeout)
-		err := m.cfg.Health(healthCtx, proc.Conn)
-		cancel()
-		if err != nil {
-			proc.Close()
-			LogGRPCUnavailable(m.cfg.Name, err)
-			return fmt.Errorf("Rust %s worker health: %w", m.cfg.Name, err)
-		}
+	if m.proc != nil {
+		// Another installer won (e.g. watchProcess); drop ours.
+		proc.Close()
+		return m.proc.Conn, nil
 	}
 	m.proc = proc
 	m.lastStart = time.Now()
@@ -124,7 +158,41 @@ func (m *ManagedGRPC) startLocked() error {
 	} else {
 		log.Info("Rust "+m.cfg.Name+" gRPC worker ready", "listen", proc.Addr)
 	}
-	return nil
+	return m.proc.Conn, nil
+}
+
+// launch starts the process and runs Health without holding m.mu.
+func (m *ManagedGRPC) launch() (*GRPCProcess, error) {
+	if m.cfg.Resolve == nil {
+		return nil, fmt.Errorf("Rust %s gRPC worker has no binary resolver", m.cfg.Name)
+	}
+	binary, err := m.cfg.Resolve()
+	if err != nil {
+		return nil, fmt.Errorf("resolving Rust %s worker: %w", m.cfg.Name, err)
+	}
+	listen := m.cfg.Listen
+	if listen == "" {
+		listen = DefaultListenAddr("navidrome-" + m.cfg.Name)
+	}
+	proc, err := StartGRPC(context.Background(), binary, listen, m.workerEnv())
+	if err != nil {
+		if errors.Is(err, ErrSkippedInTests) {
+			return nil, ErrWorkerUnavailable
+		}
+		LogGRPCUnavailable(m.cfg.Name, err)
+		return nil, err
+	}
+	if m.cfg.Health != nil {
+		healthCtx, cancel := context.WithTimeout(context.Background(), DefaultGRPCHealthTimeout)
+		err := m.cfg.Health(healthCtx, proc.Conn)
+		cancel()
+		if err != nil {
+			proc.Close()
+			LogGRPCUnavailable(m.cfg.Name, err)
+			return nil, fmt.Errorf("Rust %s worker health: %w", m.cfg.Name, err)
+		}
+	}
+	return proc, nil
 }
 
 func (m *ManagedGRPC) workerEnv() []string {
@@ -144,8 +212,8 @@ func (m *ManagedGRPC) watchProcess() {
 	_ = proc.Wait()
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.closed || m.proc != proc {
+		m.mu.Unlock()
 		return
 	}
 	m.proc = nil
@@ -154,14 +222,55 @@ func (m *ManagedGRPC) watchProcess() {
 	}
 	if m.restarts >= DefaultMaxWorkerRestarts {
 		log.Error("Rust "+m.cfg.Name+" gRPC worker restart limit reached", "attempts", m.restarts)
+		m.mu.Unlock()
 		return
 	}
 	m.restarts++
-	if err := m.startLocked(); err != nil {
-		log.Error("Rust "+m.cfg.Name+" gRPC worker restart failed", "attempt", m.restarts, err)
+	attempt := m.restarts
+	m.mu.Unlock()
+
+	delay := restartDelay(attempt)
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+
+	m.mu.Lock()
+	if m.closed || m.proc != nil {
+		m.mu.Unlock()
 		return
 	}
-	log.Info("Rust "+m.cfg.Name+" gRPC worker restarted", "attempt", m.restarts)
+	m.mu.Unlock()
+
+	_, err, _ := m.startSF.Do("start", func() (any, error) {
+		return m.ensureStarted()
+	})
+	if err != nil {
+		log.Error("Rust "+m.cfg.Name+" gRPC worker restart failed", "attempt", attempt, err)
+		return
+	}
+	log.Info("Rust "+m.cfg.Name+" gRPC worker restarted", "attempt", attempt, "backoff", delay)
+}
+
+// restartDelay returns a jittered exponential backoff for crash restarts.
+// attempt is 1-based (first restart after the initial start).
+func restartDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := restartBaseDelay
+	for i := 1; i < attempt; i++ {
+		delay *= 2
+		if delay >= restartMaxDelay {
+			delay = restartMaxDelay
+			break
+		}
+	}
+	if delay > restartMaxDelay {
+		delay = restartMaxDelay
+	}
+	// +/- 20% jitter avoids synchronized reconnects across workers.
+	jitter := 1 + (rand.Float64()*0.4 - 0.2) //nolint:gosec // non-crypto reconnect jitter
+	return time.Duration(float64(delay) * jitter)
 }
 
 // CallGRPC executes fn against the managed connection, retrying once after a

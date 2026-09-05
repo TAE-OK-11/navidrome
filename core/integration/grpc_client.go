@@ -40,7 +40,7 @@ func startGRPCClient(ctx context.Context) (*grpcClient, error) {
 		return nil, err
 	}
 	client := gen.NewOutboundClient(proc.Conn)
-	healthCtx, healthCancel := context.WithTimeout(context.Background(), rustworker.DefaultGRPCDialTimeout)
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), rustworker.DefaultGRPCHealthTimeout)
 	defer healthCancel()
 	if _, err := client.Health(healthCtx, &gen.HealthRequest{}); err != nil {
 		proc.Close()

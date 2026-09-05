@@ -90,6 +90,7 @@ func runNavidrome(ctx context.Context) {
 	if err := preflightRustWorkers(ctx); err != nil {
 		log.Fatal(err)
 	}
+	warmRustWorkers()
 	stream.ValidateDefaultDownsamplingFormat(conf.Server.DefaultDownsamplingFormat)
 	if err := initIntegrationGateway(ctx); err != nil {
 		log.Fatal(err)

@@ -38,3 +38,12 @@ func TestIsTransportFailure(t *testing.T) {
 		t.Fatal("connection reset should be transport failure")
 	}
 }
+
+func TestLooksLikeDeadChannel(t *testing.T) {
+	if !LooksLikeDeadChannel("use of closed network connection") {
+		t.Fatal("closed network connection should match")
+	}
+	if LooksLikeDeadChannel("tag parse failed") {
+		t.Fatal("application error must not match")
+	}
+}

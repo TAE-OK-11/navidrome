@@ -67,6 +67,11 @@ func InvalidateGRPC() {
 	searchGRPC.Invalidate()
 }
 
+// WarmGRPC starts the search worker in the background for a warm first RPC.
+func WarmGRPC() {
+	searchGRPC.Warm()
+}
+
 // CallSearch executes fn with automatic transport-error retry.
 func CallSearch[T any](ctx context.Context, fn func(context.Context, gen.SearchClient) (T, error)) (T, error) {
 	return rustworker.CallGRPC(searchGRPC, ctx, func(ctx context.Context, conn *grpc.ClientConn) (T, error) {

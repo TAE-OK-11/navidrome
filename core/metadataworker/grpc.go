@@ -28,6 +28,11 @@ var (
 // ErrNoGRPC is returned when the metadata gRPC worker is not running.
 var ErrNoGRPC = errNoGRPC
 
+// WarmGRPC starts the metadata worker in the background for a warm first RPC.
+func WarmGRPC() {
+	metadataGRPC.Warm()
+}
+
 func callMetadata[T any](ctx context.Context, fn func(context.Context, *grpc.ClientConn) (T, error)) (T, error) {
 	result, err := rustworker.CallGRPC(metadataGRPC, ctx, fn)
 	if errors.Is(err, rustworker.ErrWorkerUnavailable) {

@@ -47,5 +47,7 @@ func LooksLikeDeadChannel(msg string) bool {
 		strings.Contains(msg, "broken pipe") ||
 		strings.Contains(msg, "transport is closing") ||
 		strings.Contains(msg, "error reading from server") ||
-		strings.Contains(msg, "connection closed")
+		strings.Contains(msg, "connection closed") ||
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "server closed the stream without sending trailers")
 }

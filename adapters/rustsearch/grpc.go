@@ -37,6 +37,28 @@ func (e *Engine) startGRPC() error {
 }
 
 func (e *Engine) grpcRoundTrip(ctx context.Context, req request) (response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if e.grpc == nil {
+			return response{}, errors.New("search gRPC client closed")
+		}
+		resp, err := e.grpcRoundTripOnce(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !rustworker.IsTransportFailure(err) || attempt > 0 {
+			return response{}, err
+		}
+		e.stopWorker()
+		if err := e.ensureWorker(); err != nil {
+			return response{}, err
+		}
+	}
+	return response{}, lastErr
+}
+
+func (e *Engine) grpcRoundTripOnce(ctx context.Context, req request) (response, error) {
 	if e.grpc == nil {
 		return response{}, errors.New("search gRPC client closed")
 	}

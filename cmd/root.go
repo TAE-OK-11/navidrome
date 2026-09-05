@@ -17,6 +17,7 @@ import (
 	"github.com/navidrome/navidrome/core/metrics"
 	"github.com/navidrome/navidrome/core/playback"
 	"github.com/navidrome/navidrome/core/rustworker"
+	"github.com/navidrome/navidrome/core/stream"
 	"github.com/navidrome/navidrome/db"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
@@ -89,6 +90,7 @@ func runNavidrome(ctx context.Context) {
 	if err := preflightRustWorkers(ctx); err != nil {
 		log.Fatal(err)
 	}
+	stream.ValidateDefaultDownsamplingFormat(conf.Server.DefaultDownsamplingFormat)
 	if err := initIntegrationGateway(ctx); err != nil {
 		log.Fatal(err)
 	}

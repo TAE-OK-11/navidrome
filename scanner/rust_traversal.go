@@ -163,10 +163,26 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 }
 
 func streamRustFoldersGRPC(ctx context.Context, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
-	cli := scannerworker.ScannerGRPC()
-	if cli == nil {
-		return nil, scannerworker.ErrWalkNoGRPC
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		cli := scannerworker.ScannerGRPC()
+		if cli == nil {
+			return nil, scannerworker.ErrWalkNoGRPC
+		}
+		warnings, err := streamRustFoldersGRPCOnce(ctx, cli, request, folders)
+		if err == nil {
+			return warnings, nil
+		}
+		lastErr = err
+		if !rustworker.IsTransportFailure(err) || attempt > 0 {
+			return warnings, err
+		}
+		scannerworker.InvalidateGRPC()
 	}
+	return nil, lastErr
+}
+
+func streamRustFoldersGRPCOnce(ctx context.Context, cli gen.ScannerClient, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
 	stream, err := cli.Walk(ctx, toProtoWalkRequest(request))
 	if err != nil {
 		return nil, err

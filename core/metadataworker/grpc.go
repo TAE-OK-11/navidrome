@@ -135,13 +135,27 @@ func cleanTagsGRPC(ctx context.Context, filePath string, tags map[string][]strin
 	})
 }
 
-func mapMediaGRPC(ctx context.Context, path string, tags map[string][]string, lyricsJSON string) (string, error) {
+func mapMediaGRPC(ctx context.Context, path string, tags map[string][]string, lyricsJSON string, cfg WorkerScanConfig) (string, error) {
 	return callMetadata(ctx, func(ctx context.Context, conn *grpc.ClientConn) (string, error) {
 		cli := gen.NewMetadataClient(conn)
+		var pidJSON string
+		if len(cfg.PIDConfig) > 0 {
+			raw, err := json.Marshal(cfg.PIDConfig)
+			if err != nil {
+				return "", err
+			}
+			pidJSON = string(raw)
+		}
 		resp, err := cli.MapMedia(ctx, &gen.MapMediaRequest{
-			Tags:       tagsToProto(tags),
-			Path:       path,
-			LyricsJson: lyricsJSON,
+			Tags:                  tagsToProto(tags),
+			Path:                  path,
+			LyricsJson:            lyricsJSON,
+			ArtistSplitExceptions: append([]string(nil), cfg.ArtistSplitExceptions...),
+			ArtistsSplit:          append([]string(nil), cfg.ArtistsSplit...),
+			RolesSplit:            append([]string(nil), cfg.RolesSplit...),
+			ArtistJoiner:          cfg.ArtistJoiner,
+			PidConfigJson:         pidJSON,
+			LibraryId:             int32(cfg.LibraryID),
 		})
 		if err != nil {
 			return "", err

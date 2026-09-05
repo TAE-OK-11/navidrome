@@ -17,11 +17,12 @@ var ErrWorkerUnavailable = errors.New("gRPC worker unavailable")
 
 // ManagedGRPCConfig describes how to launch and health-check a Rust gRPC worker.
 type ManagedGRPCConfig struct {
-	Name     string
-	Listen   string
-	ExtraEnv []string
-	Resolve  func() (string, error)
-	Health   func(context.Context, *grpc.ClientConn) error
+	Name      string
+	Listen    string
+	ExtraEnv  []string
+	ExtraEnvFn func() []string
+	Resolve   func() (string, error)
+	Health    func(context.Context, *grpc.ClientConn) error
 }
 
 // ManagedGRPC hosts one Rust gRPC worker process and recreates it after crashes.
@@ -90,7 +91,7 @@ func (m *ManagedGRPC) startLocked() error {
 	if listen == "" {
 		listen = DefaultListenAddr("navidrome-" + m.cfg.Name)
 	}
-	proc, err := StartGRPC(context.Background(), binary, listen, m.cfg.ExtraEnv)
+	proc, err := StartGRPC(context.Background(), binary, listen, m.workerEnv())
 	if err != nil {
 		if errors.Is(err, ErrSkippedInTests) {
 			return ErrWorkerUnavailable
@@ -116,6 +117,13 @@ func (m *ManagedGRPC) startLocked() error {
 		log.Info("Rust "+m.cfg.Name+" gRPC worker ready", "listen", proc.Addr)
 	}
 	return nil
+}
+
+func (m *ManagedGRPC) workerEnv() []string {
+	if m.cfg.ExtraEnvFn == nil {
+		return m.cfg.ExtraEnv
+	}
+	return append(append([]string(nil), m.cfg.ExtraEnv...), m.cfg.ExtraEnvFn()...)
 }
 
 func (m *ManagedGRPC) watchProcess() {

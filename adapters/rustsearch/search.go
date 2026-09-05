@@ -11,14 +11,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/auth"
 	"github.com/navidrome/navidrome/core/eventbus"
 	"github.com/navidrome/navidrome/core/ftsnormalize"
@@ -110,7 +108,6 @@ type worker struct {
 type Engine struct {
 	gate         sync.RWMutex
 	worker       *worker
-	grpcProc     *rustworker.GRPCProcess
 	grpc         gen.SearchClient
 	grpcFailed   bool
 	ready        atomic.Bool
@@ -912,11 +909,8 @@ func (e *Engine) stopWorker() {
 }
 
 func (e *Engine) closeGRPC() {
-	if e.grpcProc != nil {
-		e.grpcProc.Close()
-		e.grpcProc = nil
-		e.grpc = nil
-	}
+	searchworker.InvalidateGRPC()
+	e.grpc = nil
 }
 
 func (w *worker) kill() {
@@ -926,9 +920,5 @@ func (w *worker) kill() {
 }
 
 func searchIndexPath() string {
-	dataFolder, err := conf.Server.DataFolder.Path()
-	if err != nil || dataFolder == "" {
-		return ""
-	}
-	return filepath.Join(dataFolder, "rust-search-index")
+	return searchworker.IndexPath()
 }

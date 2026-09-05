@@ -2,6 +2,7 @@ package rustworker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -65,6 +66,9 @@ func (c GRPCWorkerCheck) run(ctx context.Context) error {
 
 	listen := DefaultListenAddr("preflight-" + c.Name)
 	proc, err := StartGRPC(ctx, c.Path, listen, nil)
+	if SkipPreflightInTests(err) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("starting gRPC worker: %w", err)
 	}
@@ -73,4 +77,9 @@ func (c GRPCWorkerCheck) run(ctx context.Context) error {
 		return fmt.Errorf("health check: %w", err)
 	}
 	return nil
+}
+
+// SkipPreflightInTests reports whether gRPC worker preflight should be skipped.
+func SkipPreflightInTests(err error) bool {
+	return errors.Is(err, ErrSkippedInTests)
 }

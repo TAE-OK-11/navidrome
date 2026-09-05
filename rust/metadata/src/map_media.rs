@@ -835,6 +835,36 @@ mod tests {
     }
 
     #[test]
+    fn maps_picard_track_and_disc_aliases() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert("track".to_owned(), vec!["3/12".to_owned()]);
+        tags.insert("disc".to_owned(), vec!["2/2".to_owned()]);
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""trackNumber":3"#), "json={json}");
+        assert!(json.contains(r#""discNumber":2"#), "json={json}");
+    }
+
+    #[test]
+    fn maps_musicbrainz_release_track_aliases() {
+        let mut tags = HashMap::new();
+        tags.insert("title".to_owned(), vec!["Song".to_owned()]);
+        tags.insert("album".to_owned(), vec!["Album".to_owned()]);
+        tags.insert(
+            "musicbrainz_releasetrackid".to_owned(),
+            vec!["release-track-id".to_owned()],
+        );
+        tags.insert(
+            "musicbrainz_trackid".to_owned(),
+            vec!["recording-id".to_owned()],
+        );
+        let json = map_to_json(&tags, Path::new("music/song.mp3"), Some("[]")).expect("json");
+        assert!(json.contains(r#""mbzReleaseTrackID":"release-track-id""#), "json={json}");
+        assert!(json.contains(r#""mbzRecordingID":"recording-id""#), "json={json}");
+    }
+
+    #[test]
     fn maps_properly_tagged_dates() {
         let mut tags = HashMap::new();
         tags.insert("title".to_owned(), vec!["Song".to_owned()]);

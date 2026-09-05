@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.98"
 publish = false
-description = "Shared unix/TCP bind + READY banner for Navidrome tonic workers"
+description = "Shared unix/TCP bind + READY banner + local IPC tonic settings for Navidrome workers"
 
 [dependencies]
 anyhow = "1.0.104"
 tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tokio-stream = { version = "0.1.17", features = ["net"] }
+tonic = { version = "0.14.6", features = ["transport"] }

@@ -1,11 +1,10 @@
 use std::env;
 
 use anyhow::{Result, bail};
-use navidrome_grpc_listen::{arg_value, bind_tcp, default_listen, shutdown};
+use navidrome_grpc_listen::{arg_value, bind_tcp, default_listen, local_ipc_server, shutdown, LOCAL_MAX_MSG};
 use navidrome_scanner::grpc::{FolderHashService, ScannerService};
 use navidrome_scanner::proto::folder_hash_server::FolderHashServer;
 use navidrome_scanner::proto::scanner_server::ScannerServer;
-use tonic::transport::Server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,13 +27,17 @@ async fn main() -> Result<()> {
 }
 
 async fn serve(listen: String) -> Result<()> {
-    let folder_hash = FolderHashServer::new(FolderHashService);
-    let scanner = ScannerServer::new(ScannerService);
+    let folder_hash = FolderHashServer::new(FolderHashService)
+        .max_decoding_message_size(LOCAL_MAX_MSG)
+        .max_encoding_message_size(LOCAL_MAX_MSG);
+    let scanner = ScannerServer::new(ScannerService)
+        .max_decoding_message_size(LOCAL_MAX_MSG)
+        .max_encoding_message_size(LOCAL_MAX_MSG);
     if let Some(path) = listen.strip_prefix("unix:") {
         #[cfg(unix)]
         {
             let incoming = navidrome_grpc_listen::bind_unix(path).await?;
-            return Server::builder()
+            return local_ipc_server()
                 .add_service(folder_hash)
                 .add_service(scanner)
                 .serve_with_incoming_shutdown(incoming, shutdown())
@@ -48,7 +51,7 @@ async fn serve(listen: String) -> Result<()> {
         }
     }
     let incoming = bind_tcp(&listen).await?;
-    Server::builder()
+    local_ipc_server()
         .add_service(folder_hash)
         .add_service(scanner)
         .serve_with_incoming_shutdown(incoming, shutdown())

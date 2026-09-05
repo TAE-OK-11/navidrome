@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use navidrome_grpc_listen::{bind_tcp, shutdown};
+use navidrome_grpc_listen::{bind_tcp, local_ipc_server, shutdown, LOCAL_MAX_MSG};
 use navidrome_metadata::proto::metadata_server::{Metadata, MetadataServer};
 use navidrome_metadata::proto::{
     BuildFts5QueryRequest, BuildFts5QueryResponse, CleanTagsRequest, CleanTagsResponse,
@@ -12,13 +12,10 @@ use navidrome_metadata::proto::{
     ParseLyricsRequest, ParseLyricsResponse, StringList, TagMapping,
 };
 use navidrome_metadata::tag_clean::TagMappingConfig;
-use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 
 use crate::image_worker::{self, ImageOutcome};
 use crate::{handle_request, picture_data, read_file, InputFile, Request as ExtractIn};
-
-const MAX_GRPC_MSG: usize = 64 * 1024 * 1024;
 
 pub struct MetadataService;
 
@@ -122,13 +119,13 @@ impl Metadata for MetadataService {
 
 pub async fn serve(listen: String) -> Result<()> {
     let service = MetadataServer::new(MetadataService)
-        .max_decoding_message_size(MAX_GRPC_MSG)
-        .max_encoding_message_size(MAX_GRPC_MSG);
+        .max_decoding_message_size(LOCAL_MAX_MSG)
+        .max_encoding_message_size(LOCAL_MAX_MSG);
     if let Some(path) = listen.strip_prefix("unix:") {
         #[cfg(unix)]
         {
             let incoming = navidrome_grpc_listen::bind_unix(path).await?;
-            return Server::builder()
+            return local_ipc_server()
                 .add_service(service)
                 .serve_with_incoming_shutdown(incoming, shutdown())
                 .await
@@ -141,7 +138,7 @@ pub async fn serve(listen: String) -> Result<()> {
         }
     }
     let incoming = bind_tcp(&listen).await?;
-    Server::builder()
+    local_ipc_server()
         .add_service(service)
         .serve_with_incoming_shutdown(incoming, shutdown())
         .await
@@ -252,7 +249,7 @@ fn map_media_sync(req: MapMediaRequest) -> MapMediaResponse {
         },
     };
     let tags = from_proto_tags(req.tags);
-    let path = PathBuf::from(req.path.clone());
+    let path = PathBuf::from(&req.path);
     match navidrome_metadata::map_media::map_to_json_with_pid(
         &tags,
         &path,
@@ -334,7 +331,7 @@ fn process_image_sync(req: ImageRequest) -> ImageResponse {
 }
 
 fn extract_picture_sync(req: ExtractPictureRequest) -> ExtractPictureResponse {
-    let path = PathBuf::from(req.path);
+    let path = PathBuf::from(&req.path);
     match read_file(&path).and_then(|(tagged, _, _, _)| {
         let picture = picture_data(&tagged, &path)?;
         if req.max_bytes > 0 && picture.len() as i64 > req.max_bytes {

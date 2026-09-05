@@ -63,12 +63,9 @@ impl Scanner for ScannerService {
         request: Request<WalkRequest>,
     ) -> Result<Response<Self::WalkStream>, Status> {
         let req = request.into_inner();
-        let (tx, rx) = mpsc::channel(64);
-        tokio::task::spawn_blocking(move || {
-            if let Err(err) = walk_sync(req, tx.clone()) {
-                let _ = tx.blocking_send(Err(Status::internal(err.to_string())));
-            }
-        });
+        // Larger buffer reduces backpressure stalls on busy libraries over unix IPC.
+        let (tx, rx) = mpsc::channel(256);
+        tokio::task::spawn_blocking(move || walk_sync(req, tx));
         Ok(Response::new(ReceiverStream::new(rx)))
     }
 }
@@ -85,21 +82,20 @@ impl EventSink for ChannelSink {
     }
 }
 
-fn walk_sync(req: WalkRequest, tx: mpsc::Sender<Result<WalkEvent, Status>>) -> Result<()> {
+fn walk_sync(req: WalkRequest, tx: mpsc::Sender<Result<WalkEvent, Status>>) {
     let mut sink = ChannelSink { tx };
     let request = to_scan_request(req);
     if let Err(error) = validate_request(&request) {
-        sink.emit(&Event::Error {
+        let _ = sink.emit(&Event::Error {
             message: &format!("{error:#}"),
-        })?;
-        return Ok(());
+        });
+        return;
     }
     if let Err(error) = run_scan_into(request, &mut sink) {
         let _ = sink.emit(&Event::Error {
             message: &format!("{error:#}"),
         });
     }
-    Ok(())
 }
 
 fn to_scan_request(req: WalkRequest) -> ScanRequest {

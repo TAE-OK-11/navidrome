@@ -1,17 +1,18 @@
 use std::env;
-use std::net::SocketAddr;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
+use navidrome_grpc_listen::{
+    arg_value, bind_tcp, default_listen, local_ipc_server, shutdown, LOCAL_MAX_MSG,
+};
 use navidrome_integration::OutboundService;
 use navidrome_integration::proto::outbound_server::OutboundServer;
-use tokio::signal;
-use tonic::transport::Server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.iter().any(|a| a == "--grpc-worker") {
-        let listen = arg_value(&args, "--listen").unwrap_or_else(default_listen);
+        let listen =
+            arg_value(&args, "--listen").unwrap_or_else(|| default_listen("navidrome-integration"));
         return serve(listen).await;
     }
     bail!(
@@ -22,86 +23,30 @@ async fn main() -> Result<()> {
     );
 }
 
-fn arg_value(args: &[String], name: &str) -> Option<String> {
-    args.windows(2).find_map(|pair| {
-        if pair[0] == name {
-            Some(pair[1].clone())
-        } else {
-            None
-        }
-    })
-}
-
-fn default_listen() -> String {
-    #[cfg(unix)]
-    {
-        let path =
-            std::env::temp_dir().join(format!("navidrome-integration-{}.sock", std::process::id()));
-        return format!("unix:{}", path.display());
-    }
-    #[cfg(not(unix))]
-    {
-        "127.0.0.1:0".to_string()
-    }
-}
-
 async fn serve(listen: String) -> Result<()> {
-    let service = OutboundService::new().context("building outbound HTTP client")?;
+    let service = OutboundServer::new(OutboundService::new()?)
+        .max_decoding_message_size(LOCAL_MAX_MSG)
+        .max_encoding_message_size(LOCAL_MAX_MSG);
     if let Some(path) = listen.strip_prefix("unix:") {
-        return serve_unix(path, service).await;
+        #[cfg(unix)]
+        {
+            let incoming = navidrome_grpc_listen::bind_unix(path).await?;
+            return local_ipc_server()
+                .add_service(service)
+                .serve_with_incoming_shutdown(incoming, shutdown())
+                .await
+                .map_err(|err| anyhow::anyhow!(err));
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            bail!("unix sockets are not supported on this platform");
+        }
     }
-    serve_tcp(&listen, service).await
-}
-
-#[cfg(unix)]
-async fn serve_unix(path: &str, service: OutboundService) -> Result<()> {
-    use std::path::PathBuf;
-
-    use tokio::net::UnixListener;
-    use tokio_stream::wrappers::UnixListenerStream;
-
-    let sock = PathBuf::from(path);
-    if sock.exists() {
-        std::fs::remove_file(&sock).ok();
-    }
-    if let Some(parent) = sock.parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
-    let listener = UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
-    println!("READY unix:{}", sock.display());
-    let incoming = UnixListenerStream::new(listener);
-    Server::builder()
-        .add_service(OutboundServer::new(service))
+    let incoming = bind_tcp(&listen).await?;
+    local_ipc_server()
+        .add_service(service)
         .serve_with_incoming_shutdown(incoming, shutdown())
         .await
-        .context("gRPC unix server")?;
-    let _ = std::fs::remove_file(&sock);
-    Ok(())
-}
-
-#[cfg(not(unix))]
-async fn serve_unix(_path: &str, _service: OutboundService) -> Result<()> {
-    bail!("unix sockets are not supported on this platform")
-}
-
-async fn serve_tcp(listen: &str, service: OutboundService) -> Result<()> {
-    use tokio_stream::wrappers::TcpListenerStream;
-
-    let addr: SocketAddr = listen.parse().context("parse listen address")?;
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .with_context(|| format!("bind {addr}"))?;
-    let bound = listener.local_addr()?;
-    println!("READY {bound}");
-    let incoming = TcpListenerStream::new(listener);
-    Server::builder()
-        .add_service(OutboundServer::new(service))
-        .serve_with_incoming_shutdown(incoming, shutdown())
-        .await
-        .context("gRPC tcp server")?;
-    Ok(())
-}
-
-async fn shutdown() {
-    let _ = signal::ctrl_c().await;
+        .map_err(|err| anyhow::anyhow!(err))
 }

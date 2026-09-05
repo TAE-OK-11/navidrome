@@ -198,8 +198,8 @@ pub(crate) fn run_scan(request: ScanRequest, output: &mut impl Write) -> Result<
     run_scan_into(request, &mut sink)
 }
 
-pub(crate) fn run_scan_into(request: ScanRequest, sink: &mut impl EventSink) -> Result<()> {
-    let known_hashes = request.known_hashes.clone();
+pub(crate) fn run_scan_into(mut request: ScanRequest, sink: &mut impl EventSink) -> Result<()> {
+    let known_hashes = std::mem::take(&mut request.known_hashes);
     let root = request
         .root
         .canonicalize()
@@ -207,7 +207,7 @@ pub(crate) fn run_scan_into(request: ScanRequest, sink: &mut impl EventSink) -> 
     let targets = if request.targets.is_empty() {
         vec![".".to_owned()]
     } else {
-        request.targets.clone()
+        std::mem::take(&mut request.targets)
     };
     let ignore_cache = Arc::new(Mutex::new(HashMap::<PathBuf, bool>::new()));
     let mut folder_count = 0usize;

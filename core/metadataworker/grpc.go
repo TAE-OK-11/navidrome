@@ -28,6 +28,12 @@ var (
 // ErrNoGRPC is returned when the metadata gRPC worker is not running.
 var ErrNoGRPC = errNoGRPC
 
+// AdoptGRPC installs a preflight-started worker process into the managed host.
+// Returns false when proc is nil or the host already has a live process.
+func AdoptGRPC(proc *rustworker.GRPCProcess) bool {
+	return metadataGRPC.Adopt(proc)
+}
+
 // WarmGRPC starts the metadata worker in the background for a warm first RPC.
 func WarmGRPC() {
 	metadataGRPC.Warm()

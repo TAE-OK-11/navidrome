@@ -68,9 +68,13 @@ func (m *ManagedGRPC) Conn() (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("Rust %s gRPC worker is closed", m.cfg.Name)
 	}
 	if m.proc != nil {
-		conn := m.proc.Conn
-		m.mu.Unlock()
-		return conn, nil
+		if !processGone(m.proc) {
+			conn := m.proc.Conn
+			m.mu.Unlock()
+			return conn, nil
+		}
+		// watchProcess has not cleared yet; drop the dead handle so we respawn.
+		m.closeLocked()
 	}
 	m.mu.Unlock()
 
@@ -85,6 +89,7 @@ func (m *ManagedGRPC) Conn() (*grpc.ClientConn, error) {
 
 // Warm starts the worker in the background so the first RPC avoids cold spawn.
 // Safe to call concurrently; errors are logged and retried on the next Conn.
+// No-op when a process was already Adopted or Conn-started.
 func (m *ManagedGRPC) Warm() {
 	if m == nil {
 		return
@@ -94,6 +99,29 @@ func (m *ManagedGRPC) Warm() {
 			log.Debug("Rust "+m.cfg.Name+" gRPC warm failed", err)
 		}
 	}()
+}
+
+// Adopt installs an already-started, health-checked process into the manager.
+// Returns true when ownership transfers; on false the caller must Close(proc).
+// Used to reuse the startup preflight worker instead of spawn-kill-respawn.
+func (m *ManagedGRPC) Adopt(proc *GRPCProcess) bool {
+	if m == nil || proc == nil || proc.Conn == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || m.proc != nil {
+		return false
+	}
+	m.proc = proc
+	m.lastStart = time.Now()
+	go m.watchProcess()
+	if proc.Cmd != nil && proc.Cmd.Process != nil {
+		log.Info("Rust "+m.cfg.Name+" gRPC worker adopted", "pid", proc.Cmd.Process.Pid, "listen", proc.Addr)
+	} else {
+		log.Info("Rust "+m.cfg.Name+" gRPC worker adopted", "listen", proc.Addr)
+	}
+	return true
 }
 
 // Invalidate closes the current worker so the next Conn call starts a fresh process.
@@ -128,9 +156,12 @@ func (m *ManagedGRPC) ensureStarted() (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("Rust %s gRPC worker is closed", m.cfg.Name)
 	}
 	if m.proc != nil {
-		conn := m.proc.Conn
-		m.mu.Unlock()
-		return conn, nil
+		if !processGone(m.proc) {
+			conn := m.proc.Conn
+			m.mu.Unlock()
+			return conn, nil
+		}
+		m.closeLocked()
 	}
 	m.mu.Unlock()
 
@@ -251,6 +282,19 @@ func (m *ManagedGRPC) watchProcess() {
 	log.Info("Rust "+m.cfg.Name+" gRPC worker restarted", "attempt", attempt, "backoff", delay)
 }
 
+// processGone reports whether a managed process can no longer serve RPCs.
+// ProcessState is set only after Wait returns, so this catches the window
+// between exit and watchProcess clearing m.proc without probing signals.
+func processGone(p *GRPCProcess) bool {
+	if p == nil || p.Conn == nil {
+		return true
+	}
+	if p.Cmd != nil && p.Cmd.ProcessState != nil {
+		return true
+	}
+	return false
+}
+
 // restartDelay returns a jittered exponential backoff for crash restarts.
 // attempt is 1-based (first restart after the initial start).
 func restartDelay(attempt int) time.Duration {
@@ -292,6 +336,10 @@ func CallGRPC[T any](m *ManagedGRPC, ctx context.Context, fn func(context.Contex
 		}
 		lastErr = err
 		if !IsTransportFailure(err) || attempt > 0 {
+			return zero, err
+		}
+		// Soft-fail: do not respawn if the caller already gave up.
+		if ctx.Err() != nil {
 			return zero, err
 		}
 		m.Invalidate()

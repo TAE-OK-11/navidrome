@@ -69,6 +69,12 @@ func InvalidateGRPC() {
 	scannerGRPC.Invalidate()
 }
 
+// AdoptGRPC installs a preflight-started worker process into the managed host.
+// Returns false when proc is nil or the host already has a live process.
+func AdoptGRPC(proc *rustworker.GRPCProcess) bool {
+	return scannerGRPC.Adopt(proc)
+}
+
 // WarmGRPC starts the scanner worker in the background for a warm first RPC.
 func WarmGRPC() {
 	scannerGRPC.Warm()

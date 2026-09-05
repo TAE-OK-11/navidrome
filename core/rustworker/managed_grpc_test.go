@@ -119,3 +119,52 @@ func TestEnsureStartedSingleflightCoalesces(t *testing.T) {
 		}
 	}
 }
+
+func TestManagedGRPCAdopt(t *testing.T) {
+	m := NewManagedGRPC(ManagedGRPCConfig{Name: "adopt"})
+	if m.Adopt(nil) {
+		t.Fatal("Adopt(nil) must be false")
+	}
+	if m.Adopt(&GRPCProcess{}) {
+		t.Fatal("Adopt without Conn must be false")
+	}
+
+	// Fake a live process with a non-nil Conn pointer we never dial.
+	// Conn field is only checked for nil; Adopt does not use it for RPCs here.
+	fake := &GRPCProcess{Conn: &grpc.ClientConn{}, Addr: "unix:/tmp/adopt-test.sock"}
+	if !m.Adopt(fake) {
+		t.Fatal("first Adopt should succeed")
+	}
+	if m.Adopt(&GRPCProcess{Conn: &grpc.ClientConn{}}) {
+		t.Fatal("second Adopt must fail while live")
+	}
+
+	conn, err := m.Conn()
+	if err != nil {
+		t.Fatalf("Conn after Adopt: %v", err)
+	}
+	if conn != fake.Conn {
+		t.Fatal("Conn should return adopted connection")
+	}
+
+	// Detach without ClientConn.Close — fake Conn is not a real dial result.
+	m.mu.Lock()
+	m.closed = true
+	m.proc = nil
+	m.mu.Unlock()
+	if m.Adopt(&GRPCProcess{Conn: &grpc.ClientConn{}}) {
+		t.Fatal("Adopt after Close must fail")
+	}
+}
+
+func TestProcessGone(t *testing.T) {
+	if !processGone(nil) {
+		t.Fatal("nil process is gone")
+	}
+	if !processGone(&GRPCProcess{}) {
+		t.Fatal("nil Conn is gone")
+	}
+	if processGone(&GRPCProcess{Conn: &grpc.ClientConn{}}) {
+		t.Fatal("live-looking process should not be gone")
+	}
+}

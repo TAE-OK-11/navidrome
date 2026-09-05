@@ -40,10 +40,15 @@ func preflightRustWorkers(ctx context.Context) error {
 		})
 	}
 	if path, err := searchworker.Resolve(); err == nil {
+		var extraEnv []string
+		if indexPath := searchworker.IndexPath(); indexPath != "" {
+			extraEnv = []string{"NAVIDROME_SEARCH_INDEX_PATH=" + indexPath}
+		}
 		checks = append(checks, rustworker.GRPCWorkerCheck{
 			Name:     "search",
 			Path:     path,
 			MinBytes: rustworker.MinSearchBytes,
+			ExtraEnv: extraEnv,
 			Health:   searchGRPCHealth,
 		})
 	}
@@ -56,9 +61,11 @@ func preflightRustWorkers(ctx context.Context) error {
 		})
 	}
 	if len(checks) > 0 {
-		if err := rustworker.PreflightGRPCStrict(ctx, checks); err != nil {
+		kept, err := rustworker.PreflightGRPCStrictKeep(ctx, checks)
+		if err != nil {
 			return fmt.Errorf("rust gRPC worker preflight: %w", err)
 		}
+		adoptPreflightWorkers(kept)
 	}
 
 	if !conf.Server.Integration.Enabled {
@@ -71,12 +78,33 @@ func preflightRustWorkers(ctx context.Context) error {
 		}
 		return fmt.Errorf("integration worker binary: %w", err)
 	}
+	// Integration uses its own gateway lifecycle, not ManagedGRPC — keep
+	// spawn-and-close preflight (no adopt).
 	return rustworker.PreflightGRPCStrict(ctx, []rustworker.GRPCWorkerCheck{{
 		Name:     "integration",
 		Path:     path,
 		MinBytes: rustworker.MinIntegrationBytes,
 		Health:   integrationGRPCHealth,
 	}})
+}
+
+func adoptPreflightWorkers(kept map[string]*rustworker.GRPCProcess) {
+	for name, proc := range kept {
+		adopted := false
+		switch name {
+		case "metadata":
+			adopted = metadataworker.AdoptGRPC(proc)
+		case "scanner":
+			adopted = scannerworker.AdoptGRPC(proc)
+		case "search":
+			adopted = searchworker.AdoptGRPC(proc)
+		case "apikeys":
+			adopted = apikeyworker.AdoptGRPC(proc)
+		}
+		if !adopted {
+			proc.Close()
+		}
+	}
 }
 
 func metadataGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) error {
@@ -140,8 +168,8 @@ func integrationGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) er
 }
 
 // warmRustWorkers starts managed gRPC companions after preflight so the first
-// request avoids a cold spawn. Preflight still uses a short-lived process for
-// strict health; adopting that process into ManagedGRPC is deferred.
+// request avoids a cold spawn. Workers already adopted from preflight make
+// Warm a cheap Conn hit; only unresolved binaries pay a background spawn.
 func warmRustWorkers() {
 	metadataworker.WarmGRPC()
 	scannerworker.WarmGRPC()

@@ -20,6 +20,8 @@ on:
       - "proto/**"
       - "core/artwork/e2e/testdata/embedded_art.mp3"
       - "ui/**"
+      - "release/rust-pgo-train.sh"
+      - "release/rust-build.sh"
       - "Dockerfile.jbs"
       - ".github/workflows/jbs-ghcr.yml"
   pull_request:
@@ -41,6 +43,8 @@ on:
       - "proto/**"
       - "core/artwork/e2e/testdata/embedded_art.mp3"
       - "ui/**"
+      - "release/rust-pgo-train.sh"
+      - "release/rust-build.sh"
       - "Dockerfile.jbs"
       - ".github/workflows/jbs-ghcr.yml"
   workflow_dispatch:

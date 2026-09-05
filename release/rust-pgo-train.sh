@@ -82,7 +82,7 @@ for bench in integration metadata scanner search; do
     cd "${bench_dir}"
     CARGO_TARGET_DIR="${INSTR_TARGET}" \
       RUSTFLAGS="${GEN_FLAGS}" \
-      cargo_cmd bench --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
+      cargo_cmd bench --profile release --locked --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
   )
 done
 

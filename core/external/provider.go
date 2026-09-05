@@ -404,10 +404,15 @@ func (e *provider) cachedMix(ctx context.Context, key string, count int, run fun
 		}
 		return songs, nil
 	}
-	// First miss: do not block the HTTP handler on Last.fm/ListenBrainz.
-	// Local cache + eventbus notify when the agent mix lands.
-	e.refreshMixAsync(key, count, run)
-	return nil, nil
+	songs, err := run(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, nil
+	}
+	e.storeSimilarCache(key, songs)
+	return songs, nil
 }
 
 func (e *provider) lookupSimilarCache(key string, count int) (songs model.MediaFiles, hit, fresh bool) {

@@ -29,10 +29,7 @@ func (p *localAgent) GetArtistTopSongs(ctx context.Context, id, artistName, mbid
 		Max:   count,
 		Filters: query.And(
 			query.Eq("artist_id", id),
-			query.Or(
-				query.Eq("starred", true),
-				query.Eq("rating", 5),
-			),
+			query.NotMissing(),
 		),
 	})
 	if err != nil {

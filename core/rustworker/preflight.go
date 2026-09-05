@@ -16,6 +16,7 @@ const (
 	MinScannerBytes     = 800_000
 	MinMetadataBytes    = 800_000
 	MinSearchBytes      = 800_000
+	MinApikeysBytes     = 800_000
 	MinIntegrationBytes = 800_000
 )
 

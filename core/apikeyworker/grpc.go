@@ -17,8 +17,14 @@ var (
 			return Resolve()
 		},
 		Health: func(ctx context.Context, conn *grpc.ClientConn) error {
-			_, err := gen.NewApiKeysClient(conn).Health(ctx, &gen.HealthRequest{})
-			return err
+			resp, err := gen.NewApiKeysClient(conn).Health(ctx, &gen.HealthRequest{})
+			if err != nil {
+				return err
+			}
+			if !resp.GetOk() {
+				return errNoGRPC
+			}
+			return nil
 		},
 	})
 	errNoGRPC = errors.New("apikeys gRPC worker unavailable")

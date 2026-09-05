@@ -31,11 +31,7 @@ case "${BENCH_TIME}" in
 esac
 
 cargo_cmd() {
-  if command -v rustup >/dev/null 2>&1 && rustup run 1.98.0 cargo --version >/dev/null 2>&1; then
-    rustup run 1.98.0 cargo "$@"
-  else
-    cargo "$@"
-  fi
+  cargo "$@"
 }
 
 if ! command -v llvm-profdata >/dev/null 2>&1; then

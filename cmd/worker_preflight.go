@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/core/apikeyworker"
+	apikeysgen "github.com/navidrome/navidrome/core/apikeyworker/gen"
 	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/core/integration/gen"
 	"github.com/navidrome/navidrome/core/metadataworker"
@@ -20,7 +22,7 @@ import (
 var errWorkerHealthNotOK = errors.New("worker health check returned not ok")
 
 func preflightRustWorkers(ctx context.Context) error {
-	checks := make([]rustworker.GRPCWorkerCheck, 0, 3)
+	checks := make([]rustworker.GRPCWorkerCheck, 0, 4)
 	if path, err := metadataworker.Resolve(); err == nil {
 		checks = append(checks, rustworker.GRPCWorkerCheck{
 			Name:     "metadata",
@@ -43,6 +45,14 @@ func preflightRustWorkers(ctx context.Context) error {
 			Path:     path,
 			MinBytes: rustworker.MinSearchBytes,
 			Health:   searchGRPCHealth,
+		})
+	}
+	if path, err := apikeyworker.Resolve(); err == nil {
+		checks = append(checks, rustworker.GRPCWorkerCheck{
+			Name:     "apikeys",
+			Path:     path,
+			MinBytes: rustworker.MinApikeysBytes,
+			Health:   apikeysGRPCHealth,
 		})
 	}
 	if len(checks) > 0 {
@@ -96,6 +106,18 @@ func scannerGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) error 
 func searchGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) error {
 	client := searchgen.NewSearchClient(proc.Conn)
 	resp, err := client.Health(ctx, &searchgen.HealthRequest{})
+	if err != nil {
+		return err
+	}
+	if !resp.GetOk() {
+		return errWorkerHealthNotOK
+	}
+	return nil
+}
+
+func apikeysGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) error {
+	client := apikeysgen.NewApiKeysClient(proc.Conn)
+	resp, err := client.Health(ctx, &apikeysgen.HealthRequest{})
 	if err != nil {
 		return err
 	}

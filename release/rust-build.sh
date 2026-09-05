@@ -14,11 +14,7 @@ JOBS="${CARGO_BUILD_JOBS:-}"
 cd "${ROOT}/rust"
 
 cargo_cmd() {
-  if command -v rustup >/dev/null 2>&1 && rustup run 1.98.0 cargo --version >/dev/null 2>&1; then
-    rustup run 1.98.0 cargo "$@"
-  else
-    cargo "$@"
-  fi
+  cargo "$@"
 }
 
 ARGS="build --locked --profile ${PROFILE} --bins"

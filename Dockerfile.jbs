@@ -1298,14 +1298,17 @@ COPY --link --from=jsbuilder /src/ui/build ./ui/build/
 COPY --link --from=h3-builder /out/navidrome-h3 /tmp/navidrome-h3
 COPY --link --from=rust-workers-builder /out/navidrome-scanner-portable /tmp/navidrome-scanner
 COPY --link --from=rust-workers-builder /out/navidrome-metadata /tmp/navidrome-metadata
+COPY --link --from=rust-workers-builder /out/navidrome-search /tmp/navidrome-search
 COPY --link --from=rust-workers-builder /out/navidrome-integration /tmp/navidrome-integration
 
 ENV ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
     ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
+    ND_SEARCHWORKERPATH=/tmp/navidrome-search \
     ND_INTEGRATIONWORKERPATH=/tmp/navidrome-integration
 
 RUN test -x /tmp/navidrome-metadata && \
     test -x /tmp/navidrome-scanner && \
+    test -x /tmp/navidrome-search && \
     test -x /tmp/navidrome-integration && \
     test -s ./ui/build/index.html && \
     test -n "$(find ./ui/build -type f -name '*.br' -print -quit)" && \

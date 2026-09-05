@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +40,9 @@ type GRPCProcess struct {
 	Cmd  *exec.Cmd
 	Conn *grpc.ClientConn
 	Addr string
+
+	waitOnce sync.Once
+	waitErr  error
 }
 
 // StartGRPC launches binary with --grpc-worker --listen, waits for READY, and dials.
@@ -86,7 +90,6 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 		return nil, err
 	}
 
-	go func() { _ = cmd.Wait() }()
 	proc := &GRPCProcess{Cmd: cmd, Conn: conn, Addr: addr}
 	lifecycle.Register(proc)
 	return proc, nil
@@ -113,6 +116,20 @@ func UnlinkUnixListen(listen string) {
 	_ = os.Remove(cleaned) //nolint:gosec // G703: stale unix socket we created under TempDir
 }
 
+// Wait reaps the worker process exactly once. Safe for concurrent callers
+// (ManagedGRPC watch + Close, integration watch + close).
+func (p *GRPCProcess) Wait() error {
+	if p == nil {
+		return nil
+	}
+	p.waitOnce.Do(func() {
+		if p.Cmd != nil {
+			p.waitErr = p.Cmd.Wait()
+		}
+	})
+	return p.waitErr
+}
+
 func (p *GRPCProcess) Close() {
 	if p == nil {
 		return
@@ -122,6 +139,7 @@ func (p *GRPCProcess) Close() {
 		p.Conn = nil
 	}
 	Kill(p.Cmd)
+	_ = p.Wait()
 }
 
 // WaitReady reads the worker's "READY <addr>" banner from stdout.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/navidrome/navidrome/core/rustworker"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -26,10 +27,16 @@ func isWorkerTransportFailure(err error) bool {
 	}
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
-		case codes.Unavailable, codes.DeadlineExceeded, codes.Internal, codes.Unknown:
+		case codes.Unavailable:
 			return true
-		default:
+		case codes.Canceled, codes.DeadlineExceeded, codes.InvalidArgument,
+			codes.NotFound, codes.AlreadyExists, codes.PermissionDenied,
+			codes.FailedPrecondition, codes.OutOfRange, codes.Unimplemented,
+			codes.ResourceExhausted, codes.Unauthenticated:
 			return false
+		default:
+			// Internal/Unknown: only kill the worker when the channel looks dead.
+			return rustworker.LooksLikeDeadChannel(st.Message())
 		}
 	}
 	return true

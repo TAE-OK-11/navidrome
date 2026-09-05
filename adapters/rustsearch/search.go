@@ -751,23 +751,31 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 		return response{}, err
 	}
 	e.gate.Lock()
-	defer e.gate.Unlock()
-
 	if err := e.ensureWorker(); err != nil {
+		e.gate.Unlock()
 		return response{}, err
 	}
 	if e.grpc != nil {
+		// gRPC is multiplexed; do not hold the NDJSON stdin gate across the RPC.
+		e.gate.Unlock()
 		resp, err := e.grpcRoundTrip(ctx, req)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
 				return response{}, err
 			}
-			e.stopWorker()
+			if rustworker.IsTransportFailure(err) {
+				e.gate.Lock()
+				// Drop the client so the next call redials. Keep ready=true: the
+				// on-disk Tantivy index survives a worker restart.
+				e.closeGRPC()
+				e.gate.Unlock()
+			}
 			return response{}, err
 		}
 		return resp, nil
 	}
 
+	defer e.gate.Unlock()
 	w := e.worker
 	cancelDone := make(chan struct{})
 	stopCancel := context.AfterFunc(ctx, func() {
@@ -823,16 +831,18 @@ func (e *Engine) ensureWorker() error {
 	if e.grpc != nil || e.worker != nil {
 		return nil
 	}
-	if !e.grpcFailed {
-		if err := e.startGRPC(); err == nil {
-			return nil
-		} else {
-			e.grpcFailed = true
-			if !rustworker.AllowLegacyNDJSON() {
-				return fmt.Errorf("search gRPC worker unavailable: %w", err)
-			}
-			rustworker.LogGRPCUnavailable("search", err)
-		}
+	// In tests, remember a failed gRPC dial so we stay on NDJSON. In production
+	// always retry gRPC — the companion binary may appear after a transient miss.
+	if e.grpcFailed && rustworker.AllowLegacyNDJSON() {
+		return e.startNDJSON()
+	}
+	if err := e.startGRPC(); err == nil {
+		return nil
+	} else if !rustworker.AllowLegacyNDJSON() {
+		return fmt.Errorf("search gRPC worker unavailable: %w", err)
+	} else {
+		e.grpcFailed = true
+		rustworker.LogGRPCUnavailable("search", err)
 	}
 	return e.startNDJSON()
 }
@@ -911,6 +921,7 @@ func (e *Engine) stopWorker() {
 func (e *Engine) closeGRPC() {
 	searchworker.InvalidateGRPC()
 	e.grpc = nil
+	e.grpcFailed = false
 }
 
 func (w *worker) kill() {

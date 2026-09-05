@@ -75,6 +75,16 @@ if [ "$mode" != "off" ]; then
 fi
 
 # SQLITE defines belong on CFLAGS (amalgamation is C), not CXXFLAGS.
+# FTS5 BM25 needs libm (log). go-sqlite3 adds -lm only with the sqlite_fts5
+# build tag; when SQLITE_EXTRA_CFLAGS enables FTS5 via -D (LTO train/final),
+# still link libm so mismatched tags cannot break the link.
+if printf '%s' "${SQLITE_EXTRA_CFLAGS}" | grep -q 'DSQLITE_ENABLE_FTS5'; then
+  case " ${base_ld} " in
+    *" -lm "*) ;;
+    *) base_ld="${base_ld:+${base_ld} }-lm" ;;
+  esac
+fi
+
 printf 'export CGO_CFLAGS="%s%s%s"\n' "${base_c}" "${lto_flags:+ ${lto_flags}}" "${SQLITE_EXTRA_CFLAGS:+ ${SQLITE_EXTRA_CFLAGS}}"
 printf 'export CGO_CXXFLAGS="%s%s"\n' "${base_cxx}" "${lto_flags:+ ${lto_flags}}"
 printf 'export CGO_LDFLAGS="%s%s%s"\n' "${base_ld}" "${lto_flags:+ ${lto_flags}}" "${lld_flags:+ ${lld_flags}}"

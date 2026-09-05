@@ -43,6 +43,12 @@ func TestLooksLikeDeadChannel(t *testing.T) {
 	if !LooksLikeDeadChannel("use of closed network connection") {
 		t.Fatal("closed network connection should match")
 	}
+	if !LooksLikeDeadChannel("EOF") {
+		t.Fatal("bare EOF should match")
+	}
+	if !LooksLikeDeadChannel("error reading from server: EOF") {
+		t.Fatal("EOF suffix should match")
+	}
 	if LooksLikeDeadChannel("tag parse failed") {
 		t.Fatal("application error must not match")
 	}

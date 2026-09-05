@@ -67,6 +67,12 @@ func InvalidateGRPC() {
 	searchGRPC.Invalidate()
 }
 
+// AdoptGRPC installs a preflight-started worker process into the managed host.
+// Returns false when proc is nil or the host already has a live process.
+func AdoptGRPC(proc *rustworker.GRPCProcess) bool {
+	return searchGRPC.Adopt(proc)
+}
+
 // WarmGRPC starts the search worker in the background for a warm first RPC.
 func WarmGRPC() {
 	searchGRPC.Warm()

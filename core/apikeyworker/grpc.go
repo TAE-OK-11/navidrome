@@ -30,6 +30,12 @@ var (
 	errNoGRPC = errors.New("apikeys gRPC worker unavailable")
 )
 
+// AdoptGRPC installs a preflight-started worker process into the managed host.
+// Returns false when proc is nil or the host already has a live process.
+func AdoptGRPC(proc *rustworker.GRPCProcess) bool {
+	return apikeysGRPC.Adopt(proc)
+}
+
 // WarmGRPC starts the apikeys worker in the background for a warm first RPC.
 func WarmGRPC() {
 	apikeysGRPC.Warm()

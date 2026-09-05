@@ -49,5 +49,9 @@ func LooksLikeDeadChannel(msg string) bool {
 		strings.Contains(msg, "error reading from server") ||
 		strings.Contains(msg, "connection closed") ||
 		strings.Contains(msg, "use of closed network connection") ||
-		strings.Contains(msg, "server closed the stream without sending trailers")
+		strings.Contains(msg, "server closed the stream without sending trailers") ||
+		// grpc-go often surfaces a bare EOF / "code = Unavailable desc = error reading from server: EOF"
+		msg == "eof" ||
+		strings.HasSuffix(msg, ": eof") ||
+		strings.Contains(msg, "rpc error: code = unavailable")
 }

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	PreflightTimeout = 5 * time.Second
+	PreflightTimeout    = 5 * time.Second
 	MinScannerBytes     = 800_000
 	MinMetadataBytes    = 800_000
 	MinSearchBytes      = 800_000

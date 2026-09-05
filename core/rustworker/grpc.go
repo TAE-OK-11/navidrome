@@ -63,6 +63,10 @@ type GRPCProcess struct {
 }
 
 // StartGRPC launches binary with --grpc-worker --listen, waits for READY, and dials.
+// The worker process outlives ctx: ctx only bounds the READY wait. Callers that
+// need a temporary probe must Close the returned process themselves. This lets
+// startup preflight Adopt the same process into ManagedGRPC without the
+// preflight timeout cancelling CommandContext and killing the companion.
 func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []string) (*GRPCProcess, error) {
 	if skipGRPCWorkerInTests() {
 		return nil, ErrSkippedInTests
@@ -72,7 +76,7 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 	}
 	UnlinkUnixListen(listen)
 
-	cmd := exec.CommandContext(ctx, binary, "--grpc-worker", "--listen", listen) //nolint:gosec // administrator-controlled worker
+	cmd := exec.Command(binary, "--grpc-worker", "--listen", listen) //nolint:gosec // administrator-controlled worker
 	prepareCmd(cmd)
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)

@@ -30,6 +30,11 @@ var (
 	errNoGRPC = errors.New("apikeys gRPC worker unavailable")
 )
 
+// WarmGRPC starts the apikeys worker in the background for a warm first RPC.
+func WarmGRPC() {
+	apikeysGRPC.Warm()
+}
+
 func callAPIKeys[T any](ctx context.Context, fn func(context.Context, *grpc.ClientConn) (T, error)) (T, error) {
 	result, err := rustworker.CallGRPC(apikeysGRPC, ctx, fn)
 	if errors.Is(err, rustworker.ErrWorkerUnavailable) {

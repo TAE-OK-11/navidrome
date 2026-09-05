@@ -69,6 +69,11 @@ func InvalidateGRPC() {
 	scannerGRPC.Invalidate()
 }
 
+// WarmGRPC starts the scanner worker in the background for a warm first RPC.
+func WarmGRPC() {
+	scannerGRPC.Warm()
+}
+
 func toProtoHashRequest(request FolderHashRequest) *gen.HashRequest {
 	return &gen.HashRequest{
 		Path:              request.Path,

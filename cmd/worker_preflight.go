@@ -138,3 +138,13 @@ func integrationGRPCHealth(ctx context.Context, proc *rustworker.GRPCProcess) er
 	}
 	return nil
 }
+
+// warmRustWorkers starts managed gRPC companions after preflight so the first
+// request avoids a cold spawn. Preflight still uses a short-lived process for
+// strict health; adopting that process into ManagedGRPC is deferred.
+func warmRustWorkers() {
+	metadataworker.WarmGRPC()
+	scannerworker.WarmGRPC()
+	searchworker.WarmGRPC()
+	apikeyworker.WarmGRPC()
+}

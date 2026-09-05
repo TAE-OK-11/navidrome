@@ -17,18 +17,35 @@ import (
 
 	"github.com/navidrome/navidrome/core/lifecycle"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
 const DefaultGRPCDialTimeout = 5 * time.Second
 
+// DefaultGRPCHealthTimeout bounds the post-dial Health RPC. READY already
+// proves the listener is up; health only confirms the service is registered.
+const DefaultGRPCHealthTimeout = 2 * time.Second
+
 const maxGRPCMsgSize = 64 << 20
+
+// Local IPC window sizes: default HTTP/2 windows (64KiB) add RTT stalls on
+// bulk metadata/search payloads over unix sockets. 1–2 MiB keeps large unary
+// RPCs from waiting on window updates without ballooning RAM.
+const (
+	grpcStreamWindowSize = 1 << 20 // 1 MiB
+	grpcConnWindowSize   = 2 << 20 // 2 MiB
+)
 
 // ErrSkippedInTests is returned when a gRPC worker would be spawned from a
 // `go test` process. Child workers hold stdout pipes open and make the test
 // binary hang on "WaitDelay expired before I/O complete".
 var ErrSkippedInTests = errors.New("gRPC worker not started in Go tests")
+
+// Shared across dials: insecure.NewCredentials() allocates; local workers all
+// use the same plaintext transport.
+var insecureLocal = insecure.NewCredentials()
 
 // DefaultListenAddr returns a process-local unix socket (TCP on Windows).
 func DefaultListenAddr(prefix string) string {
@@ -144,7 +161,7 @@ func (p *GRPCProcess) Close() {
 
 // WaitReady reads the worker's "READY <addr>" banner from stdout.
 func WaitReady(ctx context.Context, stdout io.Reader) (string, error) {
-	reader := bufio.NewReader(stdout)
+	reader := bufio.NewReaderSize(stdout, 256)
 	type result struct {
 		line string
 		err  error
@@ -171,22 +188,36 @@ func WaitReady(ctx context.Context, stdout io.Reader) (string, error) {
 }
 
 func DialGRPC(addr string) (*grpc.ClientConn, error) {
+	// Local companion IPC: no TLS, no compression, soft keepalive (dead unix
+	// peers are noticed via socket close; idle pings only add chatter and can
+	// trip server min-time enforcement on long-idle workers).
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(insecureLocal),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                20 * time.Second,
+			Time:                2 * time.Minute,
 			Timeout:             5 * time.Second,
-			PermitWithoutStream: true,
+			PermitWithoutStream: false,
 		}),
+		grpc.WithInitialWindowSize(grpcStreamWindowSize),
+		grpc.WithInitialConnWindowSize(grpcConnWindowSize),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(maxGRPCMsgSize),
 			grpc.MaxCallSendMsgSize(maxGRPCMsgSize),
 		),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay:  100 * time.Millisecond,
+				Multiplier: 1.6,
+				Jitter:     0.2,
+				MaxDelay:   2 * time.Second,
+			},
+			MinConnectTimeout: DefaultGRPCDialTimeout,
+		}),
 	}
 	dialAddr := addr
 	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
 		opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-			var d net.Dialer
+			d := net.Dialer{Timeout: DefaultGRPCDialTimeout}
 			return d.DialContext(ctx, "unix", path)
 		}))
 		dialAddr = "passthrough:///unix"

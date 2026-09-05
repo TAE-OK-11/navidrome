@@ -44,18 +44,21 @@ func (e *Engine) grpcRoundTripOnce(ctx context.Context, client gen.SearchClient,
 		}
 		return response{}, errors.New(msg)
 	}
+	groups := resp.GetGroups()
 	out := response{
 		Protocol:   int(resp.GetProtocol()),
 		OK:         true,
 		Indexed:    resp.GetIndexed(),
 		Normalized: resp.GetNormalized(),
+		Groups:     make([]searchGroup, 0, len(groups)),
 	}
 	if out.Protocol == 0 {
 		out.Protocol = protocolVersion
 	}
-	for _, group := range resp.GetGroups() {
-		hits := make([]hit, len(group.GetHits()))
-		for i, h := range group.GetHits() {
+	for _, group := range groups {
+		protoHits := group.GetHits()
+		hits := make([]hit, len(protoHits))
+		for i, h := range protoHits {
 			hits[i] = hit{ID: h.GetId(), Score: h.GetScore()}
 		}
 		out.Groups = append(out.Groups, searchGroup{Kind: group.GetKind(), Hits: hits})

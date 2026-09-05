@@ -56,3 +56,14 @@ func TestCopyFallsBackToBuffer(t *testing.T) {
 		t.Fatalf("copied %d bytes, want %d", n, len(payload))
 	}
 }
+
+func TestCopyUsesWriterReadFrom(t *testing.T) {
+	payload := []byte("stream payload")
+	dst := &readerFromWriter{Writer: io.Discard}
+	if _, err := Copy(dst, bytes.NewReader(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if !dst.called {
+		t.Fatal("expected Copy to delegate to writer ReadFrom")
+	}
+}

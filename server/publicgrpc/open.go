@@ -2,6 +2,8 @@ package publicgrpc
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,6 +46,37 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	return w.sendBody(p)
+}
+
+// ReadFrom streams in 64 KiB chunks so gRPC Open avoids per-write copies.
+func (w *streamWriter) ReadFrom(source io.Reader) (int64, error) {
+	bufPtr := openChunkBufPool.Get().(*[]byte)
+	defer openChunkBufPool.Put(bufPtr)
+	buf := *bufPtr
+	var total int64
+	for {
+		n, err := source.Read(buf)
+		if n > 0 {
+			written, writeErr := w.sendBody(buf[:n])
+			total += int64(written)
+			if writeErr != nil {
+				return total, writeErr
+			}
+			if written != n {
+				return total, io.ErrShortWrite
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return total, nil
+			}
+			return total, err
+		}
+	}
+}
+
+func (w *streamWriter) sendBody(p []byte) (int, error) {
 	bufPtr := openChunkBufPool.Get().(*[]byte)
 	buf := (*bufPtr)[:len(p)]
 	copy(buf, p)

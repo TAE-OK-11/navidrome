@@ -14,6 +14,7 @@ import (
 	"github.com/navidrome/navidrome/core/integration"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/utils/cache"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/random"
 	"gopkg.in/yaml.v3"
 )
@@ -64,7 +65,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.Close()
 
 	w.Header().Set("content-type", "image/webp")
-	_, _ = io.Copy(w, s.Reader)
+	_, _ = ioutils.Copy(w, s)
 }
 
 func (h *Handler) serveDefaultImage(w http.ResponseWriter) {

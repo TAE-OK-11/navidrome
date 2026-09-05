@@ -10,6 +10,7 @@ import (
 	"github.com/andybalholm/brotli"
 	gzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	"github.com/navidrome/navidrome/utils/ioutils"
 )
 
 const (
@@ -399,10 +400,7 @@ func (w *compressResponseWriter) ReadFrom(source io.Reader) (int64, error) {
 }
 
 func copyResponseBody(destination http.ResponseWriter, source io.Reader) (int64, error) {
-	if readerFrom, ok := destination.(io.ReaderFrom); ok {
-		return readerFrom.ReadFrom(source)
-	}
-	return io.Copy(struct{ io.Writer }{destination}, source)
+	return ioutils.Copy(destination, source)
 }
 
 func (w *compressResponseWriter) Close() error {

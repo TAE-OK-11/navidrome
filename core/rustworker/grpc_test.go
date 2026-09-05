@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -40,4 +41,19 @@ func TestUnlinkUnixListenOnlyRemovesTempDirSockets(t *testing.T) {
 	if _, err := os.Stat(inside); !os.IsNotExist(err) {
 		t.Fatalf("stale socket under TempDir should be removed, stat=%v", err)
 	}
+}
+
+func TestGRPCProcessWaitOnce(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	proc := &GRPCProcess{Cmd: cmd}
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("first Wait: %v", err)
+	}
+	if err := proc.Wait(); err != nil {
+		t.Fatalf("second Wait should reuse first result, got %v", err)
+	}
+	proc.Close() // must not panic or hang after Wait
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/navidrome/navidrome/log"
 	"google.golang.org/grpc"
@@ -12,27 +13,33 @@ import (
 
 const DefaultMaxWorkerRestarts = 3
 
+// restartBudgetWindow resets the crash-restart counter when the previous
+// worker lived at least this long, so infrequent crashes do not permanently
+// disable the companion after three lifetime failures.
+const restartBudgetWindow = time.Minute
+
 // ErrWorkerUnavailable is returned when the Rust gRPC worker cannot be started.
 var ErrWorkerUnavailable = errors.New("gRPC worker unavailable")
 
 // ManagedGRPCConfig describes how to launch and health-check a Rust gRPC worker.
 type ManagedGRPCConfig struct {
-	Name      string
-	Listen    string
-	ExtraEnv  []string
+	Name       string
+	Listen     string
+	ExtraEnv   []string
 	ExtraEnvFn func() []string
-	Resolve   func() (string, error)
-	Health    func(context.Context, *grpc.ClientConn) error
+	Resolve    func() (string, error)
+	Health     func(context.Context, *grpc.ClientConn) error
 }
 
 // ManagedGRPC hosts one Rust gRPC worker process and recreates it after crashes.
 type ManagedGRPC struct {
 	cfg ManagedGRPCConfig
 
-	mu       sync.Mutex
-	proc     *GRPCProcess
-	restarts int
-	closed   bool
+	mu        sync.Mutex
+	proc      *GRPCProcess
+	restarts  int
+	lastStart time.Time
+	closed    bool
 }
 
 // NewManagedGRPC returns a worker host that is not started until Conn is called.
@@ -110,6 +117,7 @@ func (m *ManagedGRPC) startLocked() error {
 		}
 	}
 	m.proc = proc
+	m.lastStart = time.Now()
 	go m.watchProcess()
 	if proc.Cmd != nil && proc.Cmd.Process != nil {
 		log.Info("Rust "+m.cfg.Name+" gRPC worker ready", "pid", proc.Cmd.Process.Pid, "listen", proc.Addr)
@@ -133,7 +141,7 @@ func (m *ManagedGRPC) watchProcess() {
 	if proc == nil || proc.Cmd == nil {
 		return
 	}
-	_ = proc.Cmd.Wait()
+	_ = proc.Wait()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -141,6 +149,9 @@ func (m *ManagedGRPC) watchProcess() {
 		return
 	}
 	m.proc = nil
+	if !m.lastStart.IsZero() && time.Since(m.lastStart) >= restartBudgetWindow {
+		m.restarts = 0
+	}
 	if m.restarts >= DefaultMaxWorkerRestarts {
 		log.Error("Rust "+m.cfg.Name+" gRPC worker restart limit reached", "attempts", m.restarts)
 		return

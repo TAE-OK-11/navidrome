@@ -20,7 +20,9 @@ func TestIsWorkerTransportFailure(t *testing.T) {
 		{"upstream failure", workerResponseError("connection refused"), false},
 		{"body too large", fmt.Errorf("%w (8 bytes)", errBodyTooLarge), false},
 		{"grpc unavailable", status.Error(codes.Unavailable, "transport"), true},
-		{"grpc internal", status.Error(codes.Internal, "worker died"), true},
+		{"grpc internal app", status.Error(codes.Internal, "upstream mapping failed"), false},
+		{"grpc internal transport", status.Error(codes.Internal, "transport is closing"), true},
+		{"grpc deadline", status.Error(codes.DeadlineExceeded, "timeout"), false},
 		{"client closed", errors.New("integration gRPC client closed"), true},
 	}
 	for _, tc := range cases {

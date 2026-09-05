@@ -55,7 +55,7 @@ func (c *grpcClient) watchProcess() {
 	if c.proc == nil || c.proc.Cmd == nil {
 		return
 	}
-	_ = c.proc.Cmd.Wait()
+	_ = c.proc.Wait()
 	c.mu.Lock()
 	closed := c.closed
 	onDead := c.onDead

@@ -11,7 +11,16 @@ import (
 const (
 	AppName = "navidrome"
 
-	DefaultDbPath                 = "navidrome.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal"
+	// DefaultDbPath is used when ND_DBPATH / DbPath is unset.
+	// Tradeoffs (light / single-node SQLite):
+	//   - WAL + NORMAL sync: low read latency, durable enough for media libraries
+	//   - _txlock=immediate: avoids writer deadlocks (see WithTxImmediate)
+	//   - _cache_size=-16384 (16MiB): lower RSS than 32MiB when many pooled conns
+	//   - _stmt_cache_size=64: reuse prepared statements (go-sqlite3 default is 0/off)
+	//   - _secure_delete=OFF: faster deletes; DB may retain deleted page contents
+	//   - cache=shared: shared page cache when the amalgamation supports it; JBS
+	//     builds omit shared cache and override via ND_DBPATH (cache=private)
+	DefaultDbPath                 = "navidrome.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_synchronous=NORMAL&_txlock=immediate&_foreign_keys=on&_cache_size=-16384&_stmt_cache_size=64&_secure_delete=OFF"
 	InitialSetupFlagKey           = "InitialSetup"
 	FullScanAfterMigrationFlagKey = "FullScanAfterMigration"
 	// PlaylistsImportPendingFlagKey marks that playlist import was deferred because

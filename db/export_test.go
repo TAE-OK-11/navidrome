@@ -8,4 +8,5 @@ var (
 	OptimizeDBIfNeeded   = optimizeIfNeeded
 	ReloadPlannerStats   = reloadPlannerStatistics
 	RecordAnalyzeFailure = recordAnalyzeFailure
+	MaxOpenConns         = maxOpenConns
 )

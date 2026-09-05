@@ -23,14 +23,15 @@
 #   - Avoid GOMEMLIMIT minimum exceeding tiny containers
 #   - Verify /data, /cache and /music runtime paths
 #   - Remove risky SQLITE_USE_ALLOCA
-#   - Reduce per-connection SQLite memory for light servers
+#   - Reduce per-connection SQLite memory for light servers (16MiB cache, 64MiB mmap)
+#   - Ensure SQLITE amalgamation CFLAGS ride with fat LTO; PGO trains CGO sqlite hot path
 #   - Validate FFmpeg capabilities at image build time
 #   - Use two scanner I/O workers from 512MiB while keeping GOMAXPROCS cgroup-bound
 #   - Precompress production UI with Brotli 11/9, Zstd 19 and gzip 9
 #   - Drop production source maps and unused builder packages
 #   - Use LLVM full (fat) LTO for every native component and final CGO link
 #   - Train Go PGO with thin LTO, then apply the merged profile on the fat LTO build
-#     (19 workloads — see release/pgo-train.sh for the final scenario table)
+#     (20 workloads — see release/pgo-train.sh for the final scenario table)
 #   - Rust gRPC workers use release-fat (LLVM fat LTO); optional RUST_PGO_ENABLED
 #     runs release/rust-pgo-train.sh before the final worker link
 #
@@ -78,18 +79,27 @@ ARG LLD_FLAGS="-fuse-ld=lld -Wl,-O2 -Wl,--lto-O3 -Wl,--gc-sections -Wl,--icf=saf
 ARG GO_PGO_ENABLED=true
 ARG GO_PGO_BENCHTIME=1s
 
+# SQLite amalgamation flags for CGO (keep in sync with release/sqlite-cflags.sh).
+# Light/EPYC profile: smaller default page cache + mmap than prior 32/128MiB to
+# cut per-connection RSS under SQLITE_OMIT_SHARED_CACHE; DSN may still override
+# cache_size. Fat LTO is applied via CGO_CFLAGS (-flto=full) in gobuilder.
 ARG SQLITE_EXTRA_CFLAGS="\
 -DSQLITE_ENABLE_FTS5 \
 -DSQLITE_ENABLE_STAT4 \
 -DSQLITE_OMIT_SHARED_CACHE \
--DSQLITE_DEFAULT_WAL_AUTOCHECKPOINT=4096 \
+-DSQLITE_DEFAULT_WAL_AUTOCHECKPOINT=1000 \
 -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 \
 -DSQLITE_TEMP_STORE=2 \
--DSQLITE_DEFAULT_MMAP_SIZE=134217728 \
--DSQLITE_MAX_MMAP_SIZE=536870912 \
--DSQLITE_DEFAULT_CACHE_SIZE=-32768 \
+-DSQLITE_DEFAULT_MMAP_SIZE=67108864 \
+-DSQLITE_MAX_MMAP_SIZE=268435456 \
+-DSQLITE_DEFAULT_CACHE_SIZE=-16384 \
 -DSQLITE_DEFAULT_MEMSTATUS=0 \
--DSQLITE_LIKE_DOESNT_MATCH_BLOBS"
+-DSQLITE_LIKE_DOESNT_MATCH_BLOBS \
+-DSQLITE_DQS=0 \
+-DSQLITE_DEFAULT_FOREIGN_KEYS=1 \
+-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT \
+-DSQLITE_OMIT_DEPRECATED \
+-DSQLITE_USE_URI=1"
 
 ARG JEMALLOC_SHA256=3826bc80232f22ed5c4662f3034f799ca316e819103bdc7bb99018a421706f92
 ARG FFMPEG_SHA256=464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c
@@ -763,7 +773,7 @@ fn run_sqlite_maint(args: &[String]) -> i32 {
             PRAGMA synchronous=NORMAL;
             PRAGMA foreign_keys=ON;
             PRAGMA temp_store=MEMORY;
-            PRAGMA mmap_size=134217728;
+            PRAGMA mmap_size=67108864;
             PRAGMA analysis_limit=2000;
             PRAGMA optimize=0x10002;
             PRAGMA wal_checkpoint(PASSIVE);
@@ -2137,7 +2147,7 @@ ENV TZ=Asia/Seoul \
     ND_DATAFOLDER=/data \
     ND_CACHEFOLDER=/cache \
     ND_CONFIGFILE=/data/navidrome.toml \
-    ND_DBPATH="file:/data/navidrome.db?mode=rwc&cache=private&_journal_mode=WAL&_synchronous=NORMAL&_locking_mode=NORMAL&_txlock=immediate&_busy_timeout=120000&_foreign_keys=on&_cache_size=-32768&_stmt_cache_size=64&_secure_delete=OFF" \
+    ND_DBPATH="file:/data/navidrome.db?mode=rwc&cache=private&_journal_mode=WAL&_synchronous=NORMAL&_locking_mode=NORMAL&_txlock=immediate&_busy_timeout=120000&_foreign_keys=on&_cache_size=-16384&_stmt_cache_size=96&_secure_delete=OFF" \
     ND_ENABLESCHEDULEDDBANALYZE=true \
     ND_ENFORCENONROOTUSER=true \
     ND_SCANNER_ENABLED=true \

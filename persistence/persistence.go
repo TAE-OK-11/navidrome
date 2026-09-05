@@ -168,6 +168,11 @@ func (s *SQLStore) WithTx(block func(tx model.DataStore) error, scope ...string)
 }
 
 func (s *SQLStore) WithTxImmediate(block func(tx model.DataStore) error, scope ...string) error {
+	// When the DSN already uses _txlock=immediate, BEGIN is IMMEDIATE and the
+	// Property put/delete workaround only adds two extra round-trips per tx.
+	if db.UsesImmediateTxLock() {
+		return s.WithTx(block, scope...)
+	}
 	ctx := context.Background()
 	return s.WithTx(func(tx model.DataStore) error {
 		// Workaround to force the transaction to be upgraded to immediate mode to avoid deadlocks

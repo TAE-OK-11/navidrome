@@ -227,7 +227,7 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 		req.ProtoMajor = 3
 		req.ProtoMinor = 0
 		req.TLS = tlsState
-		rw := http.ResponseWriter(w)
+		rw := w
 		var bfw *bridgeFrameWriter
 		if bfw = newBridgeFrameWriter(w, req.URL.Path); bfw != nil {
 			rw = bfw

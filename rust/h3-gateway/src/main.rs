@@ -1241,19 +1241,37 @@ async fn forward_raw_body(
     while let Some(data) = prefix.pop_front() {
         send.send(OutboundFrame::Body(data, false)).await?;
     }
+    let frame_cap = BRIDGE_MAX_FRAME_SIZE as usize;
+    let mut pending = BytesMut::with_capacity(frame_cap);
     loop {
         match tokio::time::timeout(idle_timeout, body.frame()).await {
             Ok(Some(Ok(frame))) => {
                 if let Ok(data) = frame.into_data()
                     && !data.is_empty()
                 {
-                    send.send(OutboundFrame::Body(data, false)).await?;
+                    if pending.len() + data.len() > frame_cap && !pending.is_empty() {
+                        send.send(OutboundFrame::Body(pending.freeze(), false))
+                            .await?;
+                        pending = BytesMut::with_capacity(frame_cap);
+                    }
+                    pending.extend_from_slice(&data);
+                    if pending.len() >= frame_cap {
+                        send.send(OutboundFrame::Body(pending.freeze(), false))
+                            .await?;
+                        pending = BytesMut::with_capacity(frame_cap);
+                    }
                 }
             }
             Ok(Some(Err(error))) => {
                 return Err(error).context("failed to read inherited HTTP/2 response body");
             }
-            Ok(None) => return Ok(()),
+            Ok(None) => {
+                if !pending.is_empty() {
+                    send.send(OutboundFrame::Body(pending.freeze(), false))
+                        .await?;
+                }
+                return Ok(());
+            }
             Err(_) => {
                 return Err(anyhow::anyhow!("response body idle timeout"));
             }

@@ -53,7 +53,7 @@ func EnsureTestBinary(envKey, packageName, binaryName string) error {
 		}
 	}
 
-	cmd := exec.Command("cargo", "+1.98.0", "build", "--release", "--locked", "-p", packageName)
+	cmd := exec.Command("cargo", "build", "--release", "--locked", "-p", packageName)
 	cmd.Dir = filepath.Join(root, "rust")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

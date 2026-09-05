@@ -29,8 +29,9 @@ jobs:
         run: |
           go mod download
           go mod verify
-      - name: Install Rust 1.98
-        run: rustup toolchain install 1.98.0 --profile minimal
+      - name: Install Rust toolchain
+        working-directory: rust
+        run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
@@ -38,7 +39,7 @@ jobs:
           cache-on-failure: true
       - name: Build Rust workers
         working-directory: rust
-        run: cargo +1.98.0 build --release --locked --bins
+        run: cargo build --release --locked --bins
       - name: Test
         env:
           ND_METADATAWORKERPATH: ${{ github.workspace }}/rust/target/release/navidrome-metadata
@@ -95,8 +96,9 @@ jobs:
             package: navidrome-apikeys
     steps:
       - uses: actions/checkout@v7
-      - name: Install Rust 1.98
-        run: rustup toolchain install 1.98.0 --profile minimal
+      - name: Install Rust toolchain
+        working-directory: ${{ matrix.directory || 'rust' }}
+        run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ matrix.directory || 'rust' }}
@@ -105,11 +107,11 @@ jobs:
       - name: Test workspace crate
         if: matrix.package
         working-directory: rust
-        run: cargo +1.98.0 test --locked -p ${{ matrix.package }}
+        run: cargo test --locked -p ${{ matrix.package }}
       - name: Test standalone crate
         if: matrix.directory
         working-directory: ${{ matrix.directory }}
-        run: cargo +1.98.0 test --locked
+        run: cargo test --locked
 
   ui:
     name: UI tests and build

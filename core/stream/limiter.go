@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,23 @@ func (r *releasingReadCloser) Close() error {
 	err := r.ReadCloser.Close()
 	r.release()
 	return err
+}
+
+// UnderlyingFile forwards the ffmpeg stdout pipe so ioutils.Copy can use
+// sendfile/splice on live transcode streams.
+func (r *releasingReadCloser) UnderlyingFile() *os.File {
+	if uf, ok := r.ReadCloser.(interface{ UnderlyingFile() *os.File }); ok {
+		return uf.UnderlyingFile()
+	}
+	return nil
+}
+
+// ExitError forwards ffmpeg exit status after EOF on the stdout pipe.
+func (r *releasingReadCloser) ExitError() error {
+	if ec, ok := r.ReadCloser.(interface{ ExitError() error }); ok {
+		return ec.ExitError()
+	}
+	return nil
 }
 
 type noopLimiter struct{}

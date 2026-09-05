@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/utils/ioutils"
 )
 
 var (
@@ -187,7 +188,7 @@ func (w *bufferedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
 				if err := w.startPassthrough(); err != nil {
 					return 0, err
 				}
-				return io.Copy(w.destination, r)
+				return ioutils.Copy(w.destination, r)
 			}
 		}
 	}

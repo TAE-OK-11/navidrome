@@ -3,7 +3,6 @@ package subsonic
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/gravatar"
 	"github.com/navidrome/navidrome/utils/httpcache"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -49,7 +49,7 @@ func (api *Router) getPlaceHolderAvatar(w http.ResponseWriter, r *http.Request) 
 		return nil, newError(responses.ErrorDataNotFound, "Avatar image not found")
 	}
 	defer f.Close()
-	_, _ = io.Copy(w, f)
+	_, _ = ioutils.Copy(w, f)
 
 	return nil, nil
 }
@@ -85,7 +85,7 @@ func (api *Router) GetCoverArt(w http.ResponseWriter, r *http.Request) (*respons
 		return nil, nil
 	}
 
-	cnt, err := io.Copy(w, imgReader)
+	cnt, err := ioutils.Copy(w, imgReader)
 	if err != nil {
 		if !server.IsExpectedTransportError(ctx, err) {
 			log.Warn(ctx, "Error sending image", "count", cnt, err)

@@ -30,7 +30,7 @@ func MapMediaFileJSON(path string, tags map[string][]string, lyricsJSON string) 
 	if lyricsJSON == "" {
 		lyricsJSON = "[]"
 	}
-	if mediaJSON, err := mapMediaGRPC(context.Background(), path, tags, lyricsJSON); rustworker.PreferGRPC(err, errNoGRPC) {
+	if mediaJSON, err := mapMediaGRPC(context.Background(), path, tags, lyricsJSON, WorkerScanConfig{}); rustworker.PreferGRPC(err, errNoGRPC) {
 		return mediaJSON, err
 	}
 	pipes, err := rustworker.Start(binary, "--map-media-worker")

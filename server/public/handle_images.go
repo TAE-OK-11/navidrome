@@ -3,7 +3,6 @@ package public
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server"
 	"github.com/navidrome/navidrome/utils/httpcache"
+	"github.com/navidrome/navidrome/utils/ioutils"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -64,7 +64,7 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	if httpcache.SetArtworkHeaders(w, r, lastUpdate) {
 		return
 	}
-	cnt, err := io.Copy(w, imgReader)
+	cnt, err := ioutils.Copy(w, imgReader)
 	if err != nil {
 		if !server.IsExpectedTransportError(ctx, err) {
 			log.Warn(ctx, "Error sending image", "count", cnt, err)

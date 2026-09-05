@@ -95,6 +95,12 @@ message MapMediaRequest {
   map<string, StringList> tags = 1;
   string path = 2;
   string lyrics_json = 3;
+  repeated string artist_split_exceptions = 4;
+  repeated string artists_split = 5;
+  repeated string roles_split = 6;
+  string artist_joiner = 7;
+  string pid_config_json = 8;
+  int32 library_id = 9;
 }
 
 message MapMediaResponse {

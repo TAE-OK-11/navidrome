@@ -4,35 +4,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/searchworker"
 	"github.com/navidrome/navidrome/core/searchworker/gen"
-	"github.com/navidrome/navidrome/log"
 )
 
 func (e *Engine) startGRPC() error {
-	binary, err := searchworker.Resolve()
-	if err != nil {
-		return err
+	client := searchworker.SearchClient()
+	if client == nil {
+		return searchworker.ErrNoGRPC
 	}
-	var extraEnv []string
-	if indexPath := searchIndexPath(); indexPath != "" {
-		extraEnv = []string{"NAVIDROME_SEARCH_INDEX_PATH=" + indexPath}
-	}
-	proc, err := rustworker.StartGRPC(context.Background(), binary, rustworker.DefaultListenAddr("navidrome-search"), extraEnv)
-	if err != nil {
-		return err
-	}
-	cli := gen.NewSearchClient(proc.Conn)
-	healthCtx, cancel := context.WithTimeout(context.Background(), rustworker.DefaultGRPCDialTimeout)
-	defer cancel()
-	if _, err := cli.Health(healthCtx, &gen.HealthRequest{}); err != nil {
-		proc.Close()
-		return err
-	}
-	e.grpcProc = proc
-	e.grpc = cli
-	log.Info("Search index routed through Rust gRPC worker")
+	e.grpc = client
 	return nil
 }
 
@@ -40,7 +21,16 @@ func (e *Engine) grpcRoundTrip(ctx context.Context, req request) (response, erro
 	if e.grpc == nil {
 		return response{}, errors.New("search gRPC client closed")
 	}
-	resp, err := e.grpc.Apply(ctx, toIndexRequest(req))
+	return searchworker.CallSearch(ctx, func(ctx context.Context, client gen.SearchClient) (response, error) {
+		return e.grpcRoundTripOnce(ctx, client, req)
+	})
+}
+
+func (e *Engine) grpcRoundTripOnce(ctx context.Context, client gen.SearchClient, req request) (response, error) {
+	if client == nil {
+		return response{}, errors.New("search gRPC client closed")
+	}
+	resp, err := client.Apply(ctx, toIndexRequest(req))
 	if err != nil {
 		return response{}, err
 	}

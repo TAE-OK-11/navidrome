@@ -228,10 +228,39 @@ fn map_media_sync(req: MapMediaRequest) -> MapMediaResponse {
     } else {
         &req.lyrics_json
     };
-    match navidrome_metadata::map_media::map_to_json(
-        &from_proto_tags(req.tags),
-        &PathBuf::from(req.path),
+    let pid_config = if req.pid_config_json.trim().is_empty() {
+        None
+    } else {
+        serde_json::from_str(&req.pid_config_json).ok()
+    };
+    let map_config = navidrome_metadata::map_media::MapMediaConfig {
+        artists_split: if req.artists_split.is_empty() {
+            navidrome_metadata::map_media::MapMediaConfig::with_defaults().artists_split
+        } else {
+            req.artists_split
+        },
+        roles_split: if req.roles_split.is_empty() {
+            navidrome_metadata::map_media::MapMediaConfig::with_defaults().roles_split
+        } else {
+            req.roles_split
+        },
+        artist_split_exceptions: req.artist_split_exceptions,
+        artist_joiner: if req.artist_joiner.is_empty() {
+            navidrome_metadata::map_media::MapMediaConfig::with_defaults().artist_joiner
+        } else {
+            req.artist_joiner
+        },
+    };
+    let tags = from_proto_tags(req.tags);
+    let path = PathBuf::from(req.path.clone());
+    match navidrome_metadata::map_media::map_to_json_with_pid(
+        &tags,
+        &path,
         Some(lyrics),
+        pid_config.as_ref(),
+        req.library_id,
+        &req.path,
+        Some(&map_config),
     ) {
         Some(json) => MapMediaResponse {
             ok: true,

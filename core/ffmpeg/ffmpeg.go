@@ -376,13 +376,23 @@ func (e *ffmpeg) Version() string {
 
 func (e *ffmpeg) start(ctx context.Context, args []string, input ...io.Reader) (io.ReadCloser, error) {
 	log.Trace(ctx, "Executing ffmpeg command", "cmd", args)
-	j := &ffCmd{args: args}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating ffmpeg stdout pipe: %w", err)
+	}
+	j := &ffCmd{
+		reader: reader,
+		out:    writer,
+		args:   args,
+		done:   make(chan struct{}),
+	}
 	if len(input) > 0 {
 		j.input = input[0]
 	}
-	j.PipeReader, j.out = io.Pipe()
-	err := j.start(ctx)
+	err = j.start(ctx)
 	if err != nil {
+		_ = reader.Close()
+		_ = writer.Close()
 		return nil, err
 	}
 	go j.wait()
@@ -390,12 +400,40 @@ func (e *ffmpeg) start(ctx context.Context, args []string, input ...io.Reader) (
 }
 
 type ffCmd struct {
-	*io.PipeReader
-	out    *io.PipeWriter
+	reader *os.File
+	out    *os.File
 	args   []string
 	cmd    *exec.Cmd
 	input  io.Reader // optional stdin source
 	stderr *bytes.Buffer
+	done   chan struct{}
+	errMu  sync.Mutex
+	waitErr error
+}
+
+// UnderlyingFile exposes the stdout pipe for zero-copy streaming paths.
+func (j *ffCmd) UnderlyingFile() *os.File { return j.reader }
+
+// ExitError waits for ffmpeg to exit and returns a non-nil error when it failed.
+func (j *ffCmd) ExitError() error {
+	<-j.done
+	j.errMu.Lock()
+	defer j.errMu.Unlock()
+	return j.waitErr
+}
+
+func (j *ffCmd) Read(p []byte) (int, error) {
+	n, err := j.reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		if waitErr := j.ExitError(); waitErr != nil {
+			return n, waitErr
+		}
+	}
+	return n, err
+}
+
+func (j *ffCmd) Close() error {
+	return j.reader.Close()
 }
 
 func (j *ffCmd) start(ctx context.Context) error {
@@ -420,19 +458,23 @@ func (j *ffCmd) start(ctx context.Context) error {
 }
 
 func (j *ffCmd) wait() {
-	if err := j.cmd.Wait(); err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			errMsg := fmt.Sprintf("%s exited with non-zero status code: %d", j.args[0], exitErr.ExitCode())
-			if stderrOutput := strings.TrimSpace(j.stderr.String()); stderrOutput != "" {
-				errMsg += ": " + stderrOutput
-			}
-			_ = j.out.CloseWithError(errors.New(errMsg))
-		} else {
-			_ = j.out.CloseWithError(fmt.Errorf("waiting %s cmd: %w", j.args[0], err))
-		}
+	defer close(j.done)
+	err := j.cmd.Wait()
+	_ = j.out.Close()
+	if err == nil {
 		return
 	}
-	_ = j.out.Close()
+	j.errMu.Lock()
+	defer j.errMu.Unlock()
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		errMsg := fmt.Sprintf("%s exited with non-zero status code: %d", j.args[0], exitErr.ExitCode())
+		if stderrOutput := strings.TrimSpace(j.stderr.String()); stderrOutput != "" {
+			errMsg += ": " + stderrOutput
+		}
+		j.waitErr = errors.New(errMsg)
+		return
+	}
+	j.waitErr = fmt.Errorf("waiting %s cmd: %w", j.args[0], err)
 }
 
 // limitedWriter wraps a bytes.Buffer and stops writing once the limit is reached.

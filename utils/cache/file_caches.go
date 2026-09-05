@@ -236,6 +236,17 @@ func (s *CachedStream) SyscallConn() (syscall.RawConn, error) {
 	return s.conn.SyscallConn()
 }
 
+// UnderlyingFile exposes a file-backed cache reader for sendfile paths.
+func (s *CachedStream) UnderlyingFile() *os.File {
+	if f, ok := s.Reader.(*os.File); ok {
+		return f
+	}
+	if uf, ok := s.Reader.(interface{ UnderlyingFile() *os.File }); ok {
+		return uf.UnderlyingFile()
+	}
+	return nil
+}
+
 // RemainingLength returns the bytes left in a completed, file-backed cache
 // stream. Consumers can use it to avoid chunked HTTP responses without seeking
 // to the end and disturbing an active reader.

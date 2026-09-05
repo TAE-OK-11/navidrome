@@ -50,7 +50,7 @@ func BenchmarkHTTP2CompressedAPIResponse(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		if _, err := ioutils.Copy(io.Discard, resp.Body); err != nil {
 			_ = resp.Body.Close()
 			b.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func BenchmarkHTTP2StreamingResponse(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		if _, err := ioutils.Copy(io.Discard, resp.Body); err != nil {
 			_ = resp.Body.Close()
 			b.Fatal(err)
 		}

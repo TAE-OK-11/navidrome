@@ -67,7 +67,17 @@ func applyLimitation(sourceBitrate int, lim *Limitation, ts *Details) adjustResu
 			return applyIntLimitation(lim.Comparison, lim.Values, ts.BitDepth, func(v int) { ts.BitDepth = v })
 		}
 	case LimitationAudioProfile:
-		// TODO: implement when audio profile data is available
+		if ts.Profile == "" {
+			// Profile cannot be adjusted; missing data fails required checks.
+			if len(lim.Values) > 0 && lim.Comparison != ComparisonNotEquals {
+				return adjustCannotFit
+			}
+			return adjustNone
+		}
+		if checkStringLimitation(ts.Profile, lim.Comparison, lim.Values) {
+			return adjustNone
+		}
+		return adjustCannotFit
 	}
 	return adjustNone
 }

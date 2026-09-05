@@ -14,6 +14,7 @@
 #   RUST_PROFILE            final Cargo profile (default: release-fat)
 #   CARGO_TARGET_DIR        cargo output directory
 #   RUSTFLAGS               extra rustc flags (e.g. -C target-cpu=znver3)
+#   RUST_PGO_HOST_CPU       CPU for instrument+bench phases (default: x86-64)
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
@@ -21,6 +22,7 @@ PGO_DIR="${RUST_PGO_DIR:-/tmp/rust-pgo}"
 BENCH_TIME="${RUST_PGO_BENCH_TIME:-3}"
 GO_ROUNDS="${RUST_PGO_GO_ROUNDS:-25}"
 PROFILE="${RUST_PROFILE:-release-fat}"
+PGO_HOST_CPU="${RUST_PGO_HOST_CPU:-x86-64}"
 MERGED="${PGO_DIR}/merged.profdata"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/rust/target}"
 INSTR_TARGET="${TARGET_DIR}/pgo-instrument"
@@ -34,6 +36,21 @@ cargo_cmd() {
   cargo "$@"
 }
 
+# Instrumentation and profile collection run on the build host. Release
+# RUSTFLAGS may target znver3 (or another micro-arch), but CI runners are not
+# guaranteed to execute those instructions (SIGILL during criterion benches).
+pgo_host_rustflags() {
+  _base="${RUSTFLAGS:-}"
+  _base=$(printf '%s' "$_base" | sed 's/-C target-cpu=[^ ]*//g' | sed 's/^ *//;s/ *$//')
+  if [ -n "$_base" ]; then
+    printf '%s -C target-cpu=%s' "$_base" "$PGO_HOST_CPU"
+  else
+    printf '%s' "-C target-cpu=${PGO_HOST_CPU}"
+  fi
+}
+
+HOST_RUSTFLAGS="$(pgo_host_rustflags)"
+
 if ! command -v llvm-profdata >/dev/null 2>&1; then
   echo "[rust-pgo] llvm-profdata not found; install LLVM tools (clang/llvm)" >&2
   exit 1
@@ -42,9 +59,9 @@ fi
 mkdir -p "${PGO_DIR}"
 rm -f "${PGO_DIR}"/*.profraw "${MERGED}"
 
-GEN_FLAGS="${RUSTFLAGS:-} -Cprofile-generate=${PGO_DIR} -Clto=off"
+GEN_FLAGS="${HOST_RUSTFLAGS} -Cprofile-generate=${PGO_DIR} -Clto=off"
 
-echo "[rust-pgo] phase 1: instrumented build (profile-generate, all workers)"
+echo "[rust-pgo] phase 1: instrumented build (profile-generate, all workers, host cpu=${PGO_HOST_CPU})"
 (
   cd "${ROOT}/rust"
   CARGO_TARGET_DIR="${INSTR_TARGET}" \

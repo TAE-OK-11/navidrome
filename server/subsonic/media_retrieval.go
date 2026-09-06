@@ -106,9 +106,12 @@ func (api *Router) GetCoverArt(w http.ResponseWriter, r *http.Request) (*respons
 		if !server.IsExpectedTransportError(ctx, err) {
 			log.Warn(ctx, "Error sending image", "count", cnt, err)
 		}
+		// Bytes may already be on the wire; never return err (sendError would
+		// append XML/JSON onto the image body).
+		return nil, nil
 	}
 
-	return nil, err
+	return nil, nil
 }
 
 func (api *Router) GetLyrics(r *http.Request) (*responses.Subsonic, error) {

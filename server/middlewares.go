@@ -363,7 +363,27 @@ func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http
 }
 
 func shouldSkipLastAccessUpdate(path string) bool {
-	return isSubsonicPingPath(path) || isNativeKeepAlivePath(path) || isSubsonicCoverArtPath(path)
+	return isSubsonicPingPath(path) || isNativeKeepAlivePath(path) || isSubsonicCoverArtPath(path) ||
+		isSubsonicMediaHotPath(path)
+}
+
+// isSubsonicMediaHotPath skips last-access writes on high-churn playback paths.
+// Stream/download/transcode requests arrive in bursts while listening; updating
+// lastAccessAt there only contends with SQLite and does not improve UX.
+func isSubsonicMediaHotPath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, "/"))
+	path = strings.TrimSuffix(path, ".view")
+	for _, suffix := range []string{
+		"/rest/stream",
+		"/rest/download",
+		"/rest/gettranscodestream",
+		"/rest/gettranscodedecision",
+	} {
+		if path == strings.TrimPrefix(suffix, "/rest") || strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return path == "/stream" || path == "/download" || path == "/gettranscodestream" || path == "/gettranscodedecision"
 }
 
 func isSubsonicPingPath(path string) bool {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 )
@@ -126,8 +127,38 @@ func (api *Router) Open(ctx context.Context, endpoint string, query url.Values, 
 	if err != nil {
 		return err
 	}
+	req = api.attachOpenPlayer(req, endpoint)
 	_, err = f(w, req)
 	return err
+}
+
+// attachOpenPlayer registers a cached player for media Open paths so gRPC/H2
+// proxies get the same NowPlaying/scrobble context as HTTP stream middleware.
+func (api *Router) attachOpenPlayer(req *http.Request, endpoint string) *http.Request {
+	endpoint = strings.ToLower(strings.TrimSuffix(path.Base(endpoint), ".view"))
+	switch endpoint {
+	case "stream", "download", "gettranscodestream":
+	default:
+		return req
+	}
+	if api.players == nil {
+		return req
+	}
+	if _, ok := request.PlayerFrom(req.Context()); ok {
+		return req
+	}
+	ctx := req.Context()
+	client, _ := request.ClientFrom(ctx)
+	player, trc, err := api.players.Register(ctx, "", client, "grpc-open", "")
+	if err != nil {
+		log.Debug(ctx, "Could not register player for Open", "endpoint", endpoint, "client", client, err)
+		return req
+	}
+	ctx = request.WithPlayer(ctx, *player)
+	if trc != nil {
+		ctx = request.WithTranscoding(ctx, *trc)
+	}
+	return req.WithContext(ctx)
 }
 
 func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (*http.Request, handlerRaw, error) {

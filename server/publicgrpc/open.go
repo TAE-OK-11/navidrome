@@ -27,6 +27,7 @@ type streamWriter struct {
 	status   int
 	header   http.Header
 	sentHead bool
+	flushErr error
 }
 
 func (w *streamWriter) Header() http.Header {
@@ -88,14 +89,21 @@ func (w *streamWriter) Flush() {
 	if status == 0 {
 		status = http.StatusOK
 	}
-	_ = w.stream.Send(&gen.OpenChunk{
+	if err := w.stream.Send(&gen.OpenChunk{
 		Status:      int32(status),
 		ContentType: w.Header().Get("Content-Type"),
 		Headers:     headerMap(w.header),
-	})
+	}); err != nil {
+		// Remember the failure so the next Write surfaces a transport error
+		// instead of pretending headers were delivered.
+		w.flushErr = err
+	}
 }
 
 func (w *streamWriter) sendBody(p []byte) (int, error) {
+	if w.flushErr != nil {
+		return 0, w.flushErr
+	}
 	// gRPC Send marshals synchronously before returning, so p need not be
 	// copied into a second pooled buffer on the Open hot path.
 	chunk := &gen.OpenChunk{Data: p}

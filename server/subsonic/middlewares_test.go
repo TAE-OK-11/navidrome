@@ -552,12 +552,12 @@ var _ = Describe("Middlewares", func() {
 			Expect(mockedPlayers.freshCalls).To(BeZero())
 		})
 
-		It("keeps non-raw formats on the fresh lookup path", func() {
+		It("uses the cached lookup path for non-raw formats too", func() {
 			r.URL.RawQuery = "format=mp3"
 			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
 
-			Expect(mockedPlayers.registerCalls).To(BeZero())
-			Expect(mockedPlayers.freshCalls).To(Equal(1))
+			Expect(mockedPlayers.registerCalls).To(Equal(1))
+			Expect(mockedPlayers.freshCalls).To(BeZero())
 		})
 	})
 

@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/cache"
 	"github.com/navidrome/navidrome/utils/ioutils"
+	"github.com/navidrome/navidrome/utils/neterr"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -269,17 +269,18 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	id := s.mf.ID
 	c, err := ioutils.CopyFlush(w, s)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		// Headers were already flushed above. Never return an error: Subsonic
+		// sendError would append XML/JSON onto the audio body on H1/H2/H3/gRPC.
+		if neterr.IsExpectedClientDisconnect(ctx, err) {
 			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)
 			return c, nil //nolint:nilerr // client disconnect; not a server error
 		}
-		log.Error(ctx, "Error sending transcoded file", "id", id, err)
-		if c == 0 {
-			w.Header().Del("Content-Length")
-			return 0, fmt.Errorf("sending transcoded file: %w", err)
+		log.Error(ctx, "Error sending transcoded file", "id", id, "bytesSent", c, err)
+		if c > 0 {
+			// Truncated after payload started — abort without a Subsonic error body.
+			panic(http.ErrAbortHandler)
 		}
-		// The 200 is already sent, so dropping the connection is the only way to say "truncated".
-		panic(http.ErrAbortHandler)
+		return c, nil //nolint:nilerr // 200 already committed; avoid corrupt trailer
 	}
 	if c == 0 {
 		log.Error(ctx, "Transcoding returned empty output, ffmpeg may have failed. "+

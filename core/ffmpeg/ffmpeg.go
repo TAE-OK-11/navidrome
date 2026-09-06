@@ -433,7 +433,17 @@ func (j *ffCmd) Read(p []byte) (int, error) {
 }
 
 func (j *ffCmd) Close() error {
-	return j.reader.Close()
+	err := j.reader.Close()
+	// Tear down ffmpeg promptly when the stream consumer disconnects so
+	// transcoder slots and OS pipes are not held until the next ctx cancel.
+	if j.cmd != nil && j.cmd.Process != nil {
+		_ = j.cmd.Process.Kill()
+	}
+	select {
+	case <-j.done:
+	case <-time.After(250 * time.Millisecond):
+	}
+	return err
 }
 
 func (j *ffCmd) start(ctx context.Context) error {
@@ -449,6 +459,15 @@ func (j *ffCmd) start(ctx context.Context) error {
 	} else {
 		cmd.Stderr = stderrWriter
 	}
+	// Prefer Kill over the default Interrupt so ctx cancel frees slots quickly
+	// even when ffmpeg ignores SIGINT while blocked on I/O.
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return cmd.Process.Kill()
+	}
+	cmd.WaitDelay = 100 * time.Millisecond
 	j.cmd = cmd
 
 	if err := cmd.Start(); err != nil {

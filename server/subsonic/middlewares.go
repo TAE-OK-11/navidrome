@@ -451,14 +451,12 @@ func getPlayerWithLookupMode(players core.Players, fresh, cacheRawStream bool) f
 			var trc *model.Transcoding
 			var err error
 			useFresh := fresh
-			// Most clients omit format (direct play) or send format=raw. Those
-			// paths do not need a fresh SQLite player lookup on every play —
-			// MaxBitRate/transcoding prefs rarely change mid-session.
+			// Stream endpoints only need player identity for NowPlaying/scrobble.
+			// MaxBitRate/transcoding prefs rarely change mid-session, so reuse the
+			// cached Register path for every format (raw, mp3, opus, …) and avoid
+			// a fresh SQLite hit on each play.
 			if cacheRawStream {
-				format := strings.ToLower(req.Params(r).StringOr("format", ""))
-				if format == "" || format == "raw" {
-					useFresh = false
-				}
+				useFresh = false
 			}
 			if useFresh {
 				player, trc, err = players.RegisterFresh(ctx, playerId, client, userAgent, ip)

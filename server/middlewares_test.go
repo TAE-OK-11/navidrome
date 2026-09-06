@@ -846,6 +846,15 @@ var _ = Describe("middlewares", func() {
 				Consistently(updates, 20*time.Millisecond, time.Millisecond).ShouldNot(Receive())
 			})
 		})
+		Context("when the request is a Subsonic stream", func() {
+			It("does not update the last access time", func() {
+				req, _ = http.NewRequest(http.MethodGet, "/rest/stream.view", nil)
+				req = req.WithContext(ctx)
+				callMiddleware(req)
+
+				Consistently(updates, 20*time.Millisecond, time.Millisecond).ShouldNot(Receive())
+			})
+		})
 		Context("when the request has no user", func() {
 			It("does not update the last access time", func() {
 				req = req.WithContext(context.Background())

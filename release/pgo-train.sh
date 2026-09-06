@@ -12,6 +12,7 @@
 #   PGO_BUILD_TAGS          go test -tags value
 #   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
 #   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
+#   ND_GRPCWORKERINTESTS    required during go test -bench so worker binaries start
 #
 # Final scenario (20 workloads, overlaps removed):
 #
@@ -60,6 +61,9 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT")"
 mkdir -p "${PROFILE_DIR}"
+
+# go test skips gRPC worker startup unless this is set; artwork PGO needs metadata.
+export ND_GRPCWORKERINTESTS="${ND_GRPCWORKERINTESTS:-1}"
 
 PROFILE_FILES=""
 

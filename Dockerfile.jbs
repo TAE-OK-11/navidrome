@@ -1436,6 +1436,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     export CGO_CFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_THIN_LTO_FLAGS} ${SQLITE_EXTRA_CFLAGS}" && \
     export CGO_CXXFLAGS="${CPU_OPTIMIZATION_FLAGS} ${LLVM_THIN_LTO_FLAGS}" && \
     export CGO_LDFLAGS="${LLVM_THIN_LTO_FLAGS} ${LLD_FLAGS}" && \
+    ND_GRPCWORKERINTESTS=1 \
     ND_SCANNERWORKERPATH=/tmp/navidrome-scanner \
     ND_METADATAWORKERPATH=/tmp/navidrome-metadata \
     ND_SEARCHWORKERPATH=/tmp/navidrome-search \

@@ -151,14 +151,28 @@ async fn lookup_public(
 }
 
 fn validate_artwork_url(url: &str) -> Result<(), Status> {
+    use std::net::IpAddr;
+
     let parsed = reqwest::Url::parse(url)
         .map_err(|err| Status::invalid_argument(format!("invalid artwork url: {err}")))?;
     match parsed.scheme() {
-        "http" | "https" => Ok(()),
-        other => Err(Status::invalid_argument(format!(
-            "unsupported artwork scheme {other}"
-        ))),
+        "http" | "https" => {}
+        other => {
+            return Err(Status::invalid_argument(format!(
+                "unsupported artwork scheme {other}"
+            )));
+        }
     }
+    if let Some(host) = parsed.host_str() {
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            if !is_safe_artwork_ip(ip) {
+                return Err(Status::invalid_argument(format!(
+                    "artwork destination {host} resolved to disallowed address {ip}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[tonic::async_trait]
@@ -305,4 +319,20 @@ fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> i32 {
         return 0;
     };
     value.parse::<i32>().ok().unwrap_or(0).saturating_mul(1000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_artwork_url_rejects_literal_loopback() {
+        let err = validate_artwork_url("http://127.0.0.1:8080/cover.jpg").unwrap_err();
+        assert!(err.message().contains("disallowed address"));
+    }
+
+    #[test]
+    fn validate_artwork_url_allows_public_literal_ip() {
+        validate_artwork_url("http://8.8.8.8/cover.jpg").unwrap();
+    }
 }

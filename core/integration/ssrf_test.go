@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -65,6 +66,16 @@ func TestSSRFDialerBlocksResolvedPrivateAddressAndRedirect(t *testing.T) {
 	}
 	if targetHits.Load() != 0 {
 		t.Fatal("private redirect target was reached")
+	}
+}
+
+func TestValidateArtworkURLBlocksLiteralLoopback(t *testing.T) {
+	u, err := url.Parse("http://127.0.0.1:8080/cover.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateArtworkURL(u); err == nil {
+		t.Fatal("expected literal loopback artwork URL to be rejected")
 	}
 }
 

@@ -12,6 +12,7 @@
 #   PGO_BUILD_TAGS          go test -tags value
 #   ND_SCANNERWORKERPATH    navidrome-scanner for scan benchmark (JBS sets this)
 #   ND_METADATAWORKERPATH   navidrome-metadata for artwork + FTS query benchmarks
+#   ND_GRPCWORKERINTESTS    set to 1 during go test -bench so worker binaries start
 #
 # Final scenario (20 workloads, overlaps removed):
 #

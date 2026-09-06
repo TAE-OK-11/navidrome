@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"time"
 )
 
@@ -72,6 +73,25 @@ func (d ssrfDialer) DialContext(ctx context.Context, network, address string) (n
 		lastErr = fmt.Errorf("artwork destination %q has no usable addresses", host)
 	}
 	return nil, lastErr
+}
+
+func validateArtworkURL(u *url.URL) error {
+	if u == nil {
+		return errors.New("nil artwork url")
+	}
+	switch u.Scheme {
+	case "http", "https":
+	default:
+		return fmt.Errorf("unsupported artwork scheme %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return errors.New("artwork url missing host")
+	}
+	if ip := net.ParseIP(host); ip != nil && !isSafeArtworkIP(ip) {
+		return fmt.Errorf("artwork destination %q resolved to disallowed address %s", host, ip)
+	}
+	return nil
 }
 
 func newSSRFTransport() *http.Transport {

@@ -137,6 +137,12 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		return nil, fmt.Errorf("%w: unknown outbound host %q", errWorkerUnavailable, host)
 	}
 
+	if dest == DestArtwork {
+		if err := validateArtworkURL(req.URL); err != nil {
+			return nil, err
+		}
+	}
+
 	fallback := g.fallback
 	if dest == DestArtwork && g.artworkFallback != nil {
 		fallback = g.artworkFallback

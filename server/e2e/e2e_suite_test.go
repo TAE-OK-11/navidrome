@@ -315,7 +315,7 @@ func parseJSONResponse(w *httptest.ResponseRecorder) *responses.Subsonic {
 	Expect(w.Code).To(Equal(http.StatusOK))
 	var wrapper responses.JsonWrapper
 	Expect(json.Unmarshal(w.Body.Bytes(), &wrapper)).To(Succeed())
-	// JsonWrapper.Subsonic is already *Subsonic (pointer field for zero-copy encode).
+	// JsonWrapper.Subsonic is already *Subsonic after the pointer-field change.
 	return wrapper.Subsonic
 }
 

@@ -6,7 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	json "github.com/goccy/go-json"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -98,8 +98,8 @@ func isBareOKResponse(payload *responses.Subsonic) bool {
 }
 
 func encodeJSON(buf *bytes.Buffer, value any) error {
-	// goccy/go-json is already a module dependency and avoids Encoder newline
-	// trimming plus some reflection cost on large Subsonic payloads.
+	// encoding/json: goccy mis-encodes anonymous embedded pointer structs
+	// (e.g. Child.OpenSubsonicChild) into invalid JSON.
 	b, err := json.Marshal(value)
 	if err != nil {
 		return err

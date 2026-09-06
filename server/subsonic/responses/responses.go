@@ -680,7 +680,7 @@ func marshalJSONArray[T any](v []T) ([]byte, error) {
 		return []byte("[]"), nil
 	}
 	// Keep a single marshal of the concrete slice (no intermediate Array wrapper).
-	return json.Marshal([]T(v))
+	return json.Marshal(v)
 }
 
 // TranscodeDecision represents the response for getTranscodeDecision (OpenSubsonic transcoding extension)

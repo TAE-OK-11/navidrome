@@ -16,7 +16,7 @@ func (w fileWrapper) UnderlyingFile() *os.File { return w.File }
 func TestUnderlyingSeekableFilePreferosFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "track.flac")
-	if err := os.WriteFile(path, []byte("audio"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("audio"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(path)

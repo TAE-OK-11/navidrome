@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/navidrome/navidrome/utils/ioutils"
@@ -64,21 +65,32 @@ type inheritedBridgeAddr struct{}
 func (inheritedBridgeAddr) Network() string { return "unix" }
 func (inheritedBridgeAddr) String() string  { return "navidrome-h3-inherited" }
 
-// bridgeFrameWriter batches media responses to the largest HTTP/2 frame size
-// used by the Rust HTTP/3 companion so transcoded audio does not fragment the
-// inherited bridge with many small DATA frames.
+// isBridgeCoalescePath reports paths where batching small Write() calls into
+// 64 KiB HTTP/2 DATA frames helps throughput without hurting first-byte
+// latency. Live /rest/stream and getTranscodeStream produce data near
+// realtime; holding them until a full frame fills adds multi-second TTFB and
+// can stall concurrent /rest/ping on the shared bridge connection window.
+func isBridgeCoalescePath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, ".view"))
+	return strings.HasSuffix(path, "/rest/download") ||
+		strings.Contains(path, "/share/d/")
+}
+
+// bridgeFrameWriter batches bulk download responses to the largest HTTP/2
+// frame size used by the Rust HTTP/3 companion so large transfers do not
+// fragment the inherited bridge with many small DATA frames.
 type bridgeFrameWriter struct {
 	http.ResponseWriter
 	buf []byte
 }
 
 func newBridgeFrameWriter(w http.ResponseWriter, path string) *bridgeFrameWriter {
-	if !isMediaResponsePath(path) {
+	if !isBridgeCoalescePath(path) {
 		return nil
 	}
 	return &bridgeFrameWriter{
 		ResponseWriter: w,
-		buf:          make([]byte, 0, ioutils.DefaultCopyBufferSize),
+		buf:            make([]byte, 0, ioutils.DefaultCopyBufferSize),
 	}
 }
 
@@ -89,6 +101,15 @@ func (w *bridgeFrameWriter) flush() error {
 	_, err := w.ResponseWriter.Write(w.buf)
 	w.buf = w.buf[:0]
 	return err
+}
+
+// Flush implements http.Flusher so callers can push a partial coalesce buffer
+// without waiting for a full 64 KiB frame.
+func (w *bridgeFrameWriter) Flush() {
+	_ = w.flush()
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (w *bridgeFrameWriter) Write(p []byte) (int, error) {

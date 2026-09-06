@@ -160,6 +160,7 @@ var _ = Describe("ffmpeg", func() {
 				"-ar", "48000",
 				"-ac", "2",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "mp3",
 				"-",
 			}))
@@ -178,6 +179,7 @@ var _ = Describe("ffmpeg", func() {
 				"-c:a", "flac",
 				"-ar", "48000",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "flac",
 				"-",
 			}))
@@ -196,6 +198,7 @@ var _ = Describe("ffmpeg", func() {
 				"-c:a", "libopus",
 				"-b:a", "128k",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "opus",
 				"-",
 			}))
@@ -217,6 +220,7 @@ var _ = Describe("ffmpeg", func() {
 				"-c:a", "libmp3lame",
 				"-b:a", "192k",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "mp3",
 				"-",
 			}))
@@ -235,6 +239,7 @@ var _ = Describe("ffmpeg", func() {
 				"-c:a", "aac",
 				"-b:a", "256k",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "adts",
 				"-",
 			}))
@@ -253,6 +258,7 @@ var _ = Describe("ffmpeg", func() {
 				"-c:a", "flac",
 				"-sample_fmt", "s32",
 				"-v", "0",
+				"-flush_packets", "1",
 				"-f", "flac",
 				"-",
 			}))

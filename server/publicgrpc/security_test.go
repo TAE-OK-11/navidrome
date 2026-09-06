@@ -45,6 +45,19 @@ func TestClientIPTrustedProxyForwardedFor(t *testing.T) {
 	}
 }
 
+func TestClientIPLoopbackProxyForwardsWithoutConfig(t *testing.T) {
+	conf.SetPublicGRPCNetworkPolicyForTest("", "")
+	t.Cleanup(func() { conf.SetPublicGRPCNetworkPolicyForTest("", "") })
+
+	ctx := metadata.NewIncomingContext(
+		peerContext("127.0.0.1:9000"),
+		metadata.Pairs("x-forwarded-for", "198.51.100.9"),
+	)
+	if got := clientIP(ctx); got != "198.51.100.9" {
+		t.Fatalf("loopback proxy clientIP=%q, want 198.51.100.9", got)
+	}
+}
+
 func TestLoginRateLimitUnknownPeerFailClosed(t *testing.T) {
 	conf.SetPublicGRPCEnabledForTest(true)
 	oldLimit := conf.Server.AuthRequestLimit

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 )
@@ -106,7 +107,7 @@ func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	if asJSON {
-		if encErr := encodeJSON(buf, responses.JsonWrapper{Subsonic: *res}); encErr != nil {
+		if encErr := encodeJSON(buf, responses.JsonWrapper{Subsonic: res}); encErr != nil {
 			return 0, "", nil, encErr
 		}
 		return http.StatusOK, "application/json", append([]byte(nil), buf.Bytes()...), nil
@@ -126,8 +127,38 @@ func (api *Router) Open(ctx context.Context, endpoint string, query url.Values, 
 	if err != nil {
 		return err
 	}
+	req = api.attachOpenPlayer(req, endpoint)
 	_, err = f(w, req)
 	return err
+}
+
+// attachOpenPlayer registers a cached player for media Open paths so gRPC/H2
+// proxies get the same NowPlaying/scrobble context as HTTP stream middleware.
+func (api *Router) attachOpenPlayer(req *http.Request, endpoint string) *http.Request {
+	endpoint = strings.ToLower(strings.TrimSuffix(path.Base(endpoint), ".view"))
+	switch endpoint {
+	case "stream", "download", "gettranscodestream":
+	default:
+		return req
+	}
+	if api.players == nil {
+		return req
+	}
+	if _, ok := request.PlayerFrom(req.Context()); ok {
+		return req
+	}
+	ctx := req.Context()
+	client, _ := request.ClientFrom(ctx)
+	player, trc, err := api.players.Register(ctx, "", client, "grpc-open", "")
+	if err != nil {
+		log.Debug(ctx, "Could not register player for Open", "endpoint", endpoint, "client", client, err)
+		return req
+	}
+	ctx = request.WithPlayer(ctx, *player)
+	if trc != nil {
+		ctx = request.WithTranscoding(ctx, *trc)
+	}
+	return req.WithContext(ctx)
 }
 
 func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url.Values, username string, asJSON bool) (*http.Request, handlerRaw, error) {
@@ -150,13 +181,20 @@ func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url
 		return nil, nil, err
 	}
 	req = req.WithContext(request.WithInternalAuth(req.Context(), username))
-	if api.ds != nil && username != "" {
-		usr, err := api.ds.User(ctx).FindByUsername(username)
-		if err != nil || usr == nil {
-			return nil, nil, fmt.Errorf("authenticated user %q not found", username)
+	if username != "" {
+		// Public gRPC Invoke already authenticated and attached the user; reuse it
+		// instead of a second SQLite FindByUsername on every proxy call.
+		if usr, ok := request.UserFrom(ctx); ok && strings.EqualFold(usr.UserName, username) {
+			req = req.WithContext(request.WithUser(req.Context(), usr))
+			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
+		} else if api.ds != nil {
+			usr, err := api.ds.User(ctx).FindByUsername(username)
+			if err != nil || usr == nil {
+				return nil, nil, fmt.Errorf("authenticated user %q not found", username)
+			}
+			req = req.WithContext(request.WithUser(req.Context(), *usr))
+			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
 		}
-		req = req.WithContext(request.WithUser(req.Context(), *usr))
-		req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
 	}
 	if client := query.Get("c"); client != "" {
 		req = req.WithContext(request.WithClient(req.Context(), client))
@@ -175,7 +213,7 @@ func cloneValues(in url.Values) url.Values {
 func encodeInvokeJSON(payload *responses.Subsonic) ([]byte, error) {
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
-	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload}); err != nil {
+	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: payload}); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), buf.Bytes()...), nil

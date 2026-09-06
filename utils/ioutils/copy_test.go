@@ -67,3 +67,34 @@ func TestCopyUsesWriterReadFrom(t *testing.T) {
 		t.Fatal("expected Copy to delegate to writer ReadFrom")
 	}
 }
+
+type flushWriter struct {
+	io.Writer
+	flushes int
+	readerFromCalled bool
+}
+
+func (w *flushWriter) Flush() { w.flushes++ }
+
+func (w *flushWriter) ReadFrom(r io.Reader) (int64, error) {
+	w.readerFromCalled = true
+	return io.Copy(w.Writer, r)
+}
+
+func TestCopyFlushAvoidsReaderFromAndFlushesOnce(t *testing.T) {
+	payload := []byte("live-audio-chunk")
+	dst := &flushWriter{Writer: io.Discard}
+	n, err := CopyFlush(dst, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != int64(len(payload)) {
+		t.Fatalf("copied %d, want %d", n, len(payload))
+	}
+	if dst.readerFromCalled {
+		t.Fatal("CopyFlush must not use io.ReaderFrom")
+	}
+	if dst.flushes != 1 {
+		t.Fatalf("flushes=%d, want 1", dst.flushes)
+	}
+}

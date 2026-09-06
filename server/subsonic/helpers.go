@@ -140,9 +140,16 @@ func toArtistID3(r *http.Request, a model.Artist) responses.ArtistID3 {
 	return artist
 }
 
+func clientNameFrom(ctx context.Context) string {
+	if player, ok := request.PlayerFrom(ctx); ok && player.Client != "" {
+		return player.Client
+	}
+	client, _ := request.ClientFrom(ctx)
+	return client
+}
+
 func toOSArtistID3(ctx context.Context, a model.Artist) *responses.OpenSubsonicArtistID3 {
-	player, _ := request.PlayerFrom(ctx)
-	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, clientNameFrom(ctx)) {
 		return nil
 	}
 	artist := responses.OpenSubsonicArtistID3{
@@ -214,7 +221,7 @@ func childFromMediaFile(ctx context.Context, mf model.MediaFile) responses.Child
 	child.IsDir = false
 
 	player, ok := request.PlayerFrom(ctx)
-	if ok && isClientInList(conf.Server.Subsonic.MinimalClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.MinimalClients, clientNameFrom(ctx)) {
 		return child
 	}
 
@@ -261,8 +268,7 @@ func childFromMediaFile(ctx context.Context, mf model.MediaFile) responses.Child
 }
 
 func osChildFromMediaFile(ctx context.Context, mf model.MediaFile) *responses.OpenSubsonicChild {
-	player, ok := request.PlayerFrom(ctx)
-	if ok && isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, clientNameFrom(ctx)) {
 		return nil
 	}
 	child := responses.OpenSubsonicChild{}
@@ -438,8 +444,7 @@ func childFromAlbum(ctx context.Context, al model.Album) responses.Child {
 }
 
 func osChildFromAlbum(ctx context.Context, al model.Album) *responses.OpenSubsonicChild {
-	player, _ := request.PlayerFrom(ctx)
-	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, clientNameFrom(ctx)) {
 		return nil
 	}
 	child := responses.OpenSubsonicChild{}
@@ -529,8 +534,7 @@ func buildAlbumID3(ctx context.Context, album model.Album) responses.AlbumID3 {
 }
 
 func buildOSAlbumID3(ctx context.Context, album model.Album) *responses.OpenSubsonicAlbumID3 {
-	player, _ := request.PlayerFrom(ctx)
-	if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+	if isClientInList(conf.Server.Subsonic.LegacyClients, clientNameFrom(ctx)) {
 		return nil
 	}
 	dir := responses.OpenSubsonicAlbumID3{}

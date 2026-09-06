@@ -3,10 +3,10 @@ package subsonic
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -59,15 +59,53 @@ func recycleResponseBuffer(buf *bytes.Buffer) {
 	responseBufferPool.Put(buf)
 }
 
+// Precomputed empty OK bodies for /rest/ping and other ack-only endpoints.
+// Built once from newResponse() so Version/Type/ServerVersion stay correct.
+var (
+	bareOKJSON []byte
+	bareOKXML  []byte
+	bareOKOnce sync.Once
+)
+
+func bareOKBodies() (jsonBody, xmlBody []byte) {
+	bareOKOnce.Do(func() {
+		payload := newResponse()
+		var err error
+		bareOKJSON, err = json.Marshal(responses.JsonWrapper{Subsonic: payload})
+		if err != nil {
+			panic("subsonic: encode bare OK JSON: " + err.Error())
+		}
+		bareOKXML, err = xml.Marshal(payload)
+		if err != nil {
+			panic("subsonic: encode bare OK XML: " + err.Error())
+		}
+	})
+	return bareOKJSON, bareOKXML
+}
+
+func isBareOKResponse(payload *responses.Subsonic) bool {
+	if payload == nil || payload.Status != responses.StatusOK || payload.Error != nil {
+		return false
+	}
+	// Ping / star / scrobble acks only fill the envelope fields.
+	stripped := *payload
+	stripped.Status = ""
+	stripped.Version = ""
+	stripped.Type = ""
+	stripped.ServerVersion = ""
+	stripped.OpenSubsonic = false
+	return stripped == responses.Subsonic{}
+}
+
 func encodeJSON(buf *bytes.Buffer, value any) error {
-	if err := json.NewEncoder(buf).Encode(value); err != nil {
+	// encoding/json: goccy mis-encodes anonymous embedded pointer structs
+	// (e.g. Child.OpenSubsonicChild) into invalid JSON.
+	b, err := json.Marshal(value)
+	if err != nil {
 		return err
 	}
-	// Encoder always appends a newline; keep the historical Marshal payload.
-	if n := buf.Len(); n > 0 && buf.Bytes()[n-1] == '\n' {
-		buf.Truncate(n - 1)
-	}
-	return nil
+	_, err = buf.Write(b)
+	return err
 }
 
 type handler = func(*http.Request) (*responses.Subsonic, error)
@@ -234,81 +272,87 @@ func (api *Router) registerSystemRoutes(r chi.Router) {
 }
 
 func (api *Router) registerPlayerRoutes(r chi.Router) {
+	// Catalog / browse endpoints only need the Subsonic `c` client name for
+	// Legacy/Minimal response shaping (via ClientFrom). Skip players.Register
+	// so album grids and search do not touch the players table.
+	api.h(r, "getIndexes", api.GetIndexes)
+	api.h(r, "getArtists", api.GetArtists)
+	api.h(r, "getMusicDirectory", api.GetMusicDirectory)
+	api.h(r, "getArtist", api.GetArtist)
+	api.h(r, "getAlbum", api.GetAlbum)
+	api.h(r, "getSong", api.GetSong)
+	api.h(r, "getAlbumInfo", api.GetAlbumInfo)
+	api.h(r, "getAlbumInfo2", api.GetAlbumInfo)
+	api.h(r, "getArtistInfo", api.GetArtistInfo)
+	api.h(r, "getArtistInfo2", api.GetArtistInfo2)
+	api.h(r, "getTopSongs", api.GetTopSongs)
+	api.h(r, "getSimilarSongs", api.GetSimilarSongs)
+	api.h(r, "getSimilarSongs2", api.GetSimilarSongs2)
+	api.hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
+	api.hr(r, "findSonicPath", api.FindSonicPath)
+
+	api.hr(r, "getAlbumList", api.GetAlbumList)
+	api.hr(r, "getAlbumList2", api.GetAlbumList2)
+	api.h(r, "getStarred", api.GetStarred)
+	api.h(r, "getStarred2", api.GetStarred2)
+	api.h(r, "getNowPlaying", api.GetNowPlaying)
+	api.h(r, "getRandomSongs", api.GetRandomSongs)
+	api.h(r, "getSongsByGenre", api.GetSongsByGenre)
+
+	api.h(r, "getPlaylists", api.GetPlaylists)
+	api.h(r, "getPlaylist", api.GetPlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
+
+	api.h(r, "getBookmarks", api.GetBookmarks)
+	api.h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
+	api.h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
+	api.h(r, "getPlayQueue", api.GetPlayQueue)
+	api.h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
+	api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
+	api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
+
+	api.h(r, "search2", api.Search2)
+	api.h(r, "search3", api.Search3)
+
+	api.h(r, "getUser", api.GetUser)
+	api.h(r.With(adminOnly), "getUsers", api.GetUsers)
+
+	api.h(r, "getInternetRadioStations", api.GetInternetRadios)
+	r.Group(func(r chi.Router) {
+		r.Use(adminOnly)
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "createInternetRadioStation", api.CreateInternetRadio)
+		api.h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
+		api.h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "setRating", api.SetRating)
+		api.h(r, "star", api.Star)
+		api.h(r, "unstar", api.Unstar)
+	})
+
+	if conf.Server.EnableSharing {
+		api.h(r, "getShares", api.GetShares)
+		api.h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
+		api.h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
+		api.h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
+	}
+
+	if conf.Server.Jukebox.Enabled {
+		api.h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
+	}
+
+	// Playback reporting needs a registered player id when clients omit
+	// clientUniqueId (used as NowPlaying / scrobble client identity).
 	r.Group(func(r chi.Router) {
 		r.Use(getPlayer(api.players))
-
-		api.h(r, "getIndexes", api.GetIndexes)
-		api.h(r, "getArtists", api.GetArtists)
-		api.h(r, "getMusicDirectory", api.GetMusicDirectory)
-		api.h(r, "getArtist", api.GetArtist)
-		api.h(r, "getAlbum", api.GetAlbum)
-		api.h(r, "getSong", api.GetSong)
-		api.h(r, "getAlbumInfo", api.GetAlbumInfo)
-		api.h(r, "getAlbumInfo2", api.GetAlbumInfo)
-		api.h(r, "getArtistInfo", api.GetArtistInfo)
-		api.h(r, "getArtistInfo2", api.GetArtistInfo2)
-		api.h(r, "getTopSongs", api.GetTopSongs)
-		api.h(r, "getSimilarSongs", api.GetSimilarSongs)
-		api.h(r, "getSimilarSongs2", api.GetSimilarSongs2)
-		api.hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
-		api.hr(r, "findSonicPath", api.FindSonicPath)
-
-		api.hr(r, "getAlbumList", api.GetAlbumList)
-		api.hr(r, "getAlbumList2", api.GetAlbumList2)
-		api.h(r, "getStarred", api.GetStarred)
-		api.h(r, "getStarred2", api.GetStarred2)
-		api.h(r, "getNowPlaying", api.GetNowPlaying)
-		api.h(r, "getRandomSongs", api.GetRandomSongs)
-		api.h(r, "getSongsByGenre", api.GetSongsByGenre)
-
-		api.h(r, "getPlaylists", api.GetPlaylists)
-		api.h(r, "getPlaylist", api.GetPlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
-
-		api.h(r, "getBookmarks", api.GetBookmarks)
-		api.h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
-		api.h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
-		api.h(r, "getPlayQueue", api.GetPlayQueue)
-		api.h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
-		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
-		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
-
-		api.h(r, "search2", api.Search2)
-		api.h(r, "search3", api.Search3)
-
-		api.h(r, "getUser", api.GetUser)
-		api.h(r.With(adminOnly), "getUsers", api.GetUsers)
-
-		api.h(r, "getInternetRadioStations", api.GetInternetRadios)
-		r.Group(func(r chi.Router) {
-			r.Use(adminOnly)
-			r.Use(rejectCrossSiteProxyMutation)
-			api.h(r, "createInternetRadioStation", api.CreateInternetRadio)
-			api.h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
-			api.h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
-		})
-
-		r.Group(func(r chi.Router) {
-			r.Use(rejectCrossSiteProxyMutation)
-			api.h(r, "setRating", api.SetRating)
-			api.h(r, "star", api.Star)
-			api.h(r, "unstar", api.Unstar)
-			api.h(r, "scrobble", api.Scrobble)
-			api.h(r, "reportPlayback", api.ReportPlayback)
-		})
-
-		if conf.Server.EnableSharing {
-			api.h(r, "getShares", api.GetShares)
-			api.h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
-			api.h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
-			api.h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
-		}
-
-		if conf.Server.Jukebox.Enabled {
-			api.h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
-		}
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "scrobble", api.Scrobble)
+		api.h(r, "reportPlayback", api.ReportPlayback)
 	})
 }
 
@@ -433,13 +477,34 @@ func sendResponse(w http.ResponseWriter, r *http.Request, payload *responses.Sub
 func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *responses.Subsonic, status int) {
 	p := req.Params(r)
 	f := p.StringOr("f", "")
+	// /rest/ping and other ack-only OK replies skip encoding entirely.
+	if isBareOKResponse(payload) && f != "jsonp" {
+		jsonBody, xmlBody := bareOKBodies()
+		var body []byte
+		switch f {
+		case "json":
+			w.Header().Set("Content-Type", "application/json")
+			body = jsonBody
+		default:
+			w.Header().Set("Content-Type", "application/xml")
+			body = xmlBody
+		}
+		if status != 0 {
+			w.WriteHeader(status)
+		}
+		if w.Header().Get("Content-Length") == "" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		}
+		_, _ = w.Write(body)
+		return
+	}
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	var err error
 	switch f {
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
-		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: payload})
 	case "jsonp":
 		callback := p.StringOr("callback", "")
 		if !validJSIdentifier.MatchString(callback) {
@@ -448,13 +513,13 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 			errResp := newResponse()
 			errResp.Status = responses.StatusFailed
 			errResp.Error = &responses.Error{Code: responses.ErrorGeneric, Message: "invalid callback parameter"}
-			_ = encodeJSON(buf, responses.JsonWrapper{Subsonic: *errResp})
+			_ = encodeJSON(buf, responses.JsonWrapper{Subsonic: errResp})
 			break
 		}
 		w.Header().Set("Content-Type", "application/javascript")
 		buf.WriteString(callback)
 		buf.WriteByte('(')
-		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: payload})
 		if err == nil {
 			buf.WriteByte(')')
 		}

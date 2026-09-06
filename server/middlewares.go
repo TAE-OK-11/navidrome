@@ -333,24 +333,68 @@ func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			usr, ok := request.UserFrom(ctx)
-			if ok {
-				userAccessLimiter.Do(usr.ID, func() {
-					start := time.Now()
-					updateCtx, cancel := context.WithTimeout(ctx, time.Second)
-					defer cancel()
+			// Skip high-churn paths: /rest/ping (clients poll while streaming),
+			// UI keepalive, and cover-art grids (hundreds of GETs while browsing).
+			if !shouldSkipLastAccessUpdate(r.URL.Path) {
+				if usr, ok := request.UserFrom(ctx); ok {
+					userAccessLimiter.Do(usr.ID, func() {
+						userID := usr.ID
+						userName := usr.UserName
+						go func() {
+							start := time.Now()
+							updateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+							defer cancel()
 
-					err := ds.User(updateCtx).UpdateLastAccessAt(usr.ID)
-					if err != nil {
-						log.Warn(updateCtx, "Could not update user's lastAccessAt", "username", usr.UserName,
-							"elapsed", time.Since(start), err)
-					} else {
-						log.Trace(updateCtx, "Update user's lastAccessAt", "username", usr.UserName,
-							"elapsed", time.Since(start))
-					}
-				})
+							err := ds.User(updateCtx).UpdateLastAccessAt(userID)
+							if err != nil {
+								log.Warn(updateCtx, "Could not update user's lastAccessAt", "username", userName,
+									"elapsed", time.Since(start), err)
+							} else {
+								log.Trace(updateCtx, "Update user's lastAccessAt", "username", userName,
+									"elapsed", time.Since(start))
+							}
+						}()
+					})
+				}
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func shouldSkipLastAccessUpdate(path string) bool {
+	return isSubsonicPingPath(path) || isNativeKeepAlivePath(path) || isSubsonicCoverArtPath(path) ||
+		isSubsonicMediaHotPath(path)
+}
+
+// isSubsonicMediaHotPath skips last-access writes on high-churn playback paths.
+// Stream/download/transcode requests arrive in bursts while listening; updating
+// lastAccessAt there only contends with SQLite and does not improve UX.
+func isSubsonicMediaHotPath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, "/"))
+	path = strings.TrimSuffix(path, ".view")
+	for _, suffix := range []string{
+		"/rest/stream",
+		"/rest/download",
+		"/rest/gettranscodestream",
+		"/rest/gettranscodedecision",
+	} {
+		if path == strings.TrimPrefix(suffix, "/rest") || strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return path == "/stream" || path == "/download" || path == "/gettranscodestream" || path == "/gettranscodedecision"
+}
+
+func isSubsonicPingPath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, "/"))
+	path = strings.TrimSuffix(path, ".view")
+	// Full server mounts Subsonic under /rest; unit tests hit the sub-router at /ping.
+	return path == "/ping" || strings.HasSuffix(path, "/rest/ping")
+}
+
+func isSubsonicCoverArtPath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, "/"))
+	path = strings.TrimSuffix(path, ".view")
+	return path == "/getcoverart" || strings.HasSuffix(path, "/rest/getcoverart")
 }

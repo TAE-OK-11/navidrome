@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/model"
@@ -18,12 +19,15 @@ func CreateMockUserRepo() *MockedUserRepo {
 
 type MockedUserRepo struct {
 	model.UserRepository
+	mu            sync.RWMutex
 	Error         error
 	Data          map[string]*model.User
 	UserLibraries map[string][]int // userID -> libraryIDs
 }
 
 func (u *MockedUserRepo) CountAll(qo ...model.QueryOptions) (int64, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return 0, u.Error
 	}
@@ -31,6 +35,8 @@ func (u *MockedUserRepo) CountAll(qo ...model.QueryOptions) (int64, error) {
 }
 
 func (u *MockedUserRepo) Put(usr *model.User) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	if u.Error != nil {
 		return u.Error
 	}
@@ -38,11 +44,16 @@ func (u *MockedUserRepo) Put(usr *model.User) error {
 		usr.ID = base64.StdEncoding.EncodeToString([]byte(usr.UserName))
 	}
 	usr.Password = usr.NewPassword
-	u.Data[strings.ToLower(usr.UserName)] = usr
+	// Store a copy so async last-access updates cannot race with test vars
+	// that reuse the same *model.User pointer across specs.
+	cpy := *usr
+	u.Data[strings.ToLower(usr.UserName)] = &cpy
 	return nil
 }
 
 func (u *MockedUserRepo) FindByUsername(username string) (*model.User, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return nil, u.Error
 	}
@@ -50,7 +61,8 @@ func (u *MockedUserRepo) FindByUsername(username string) (*model.User, error) {
 	if !ok {
 		return nil, model.ErrNotFound
 	}
-	return usr, nil
+	cpy := *usr
+	return &cpy, nil
 }
 
 func (u *MockedUserRepo) FindByUsernameWithPassword(username string) (*model.User, error) {
@@ -58,30 +70,38 @@ func (u *MockedUserRepo) FindByUsernameWithPassword(username string) (*model.Use
 }
 
 func (u *MockedUserRepo) FindFirstAdmin() (*model.User, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return nil, u.Error
 	}
 	for _, usr := range u.Data {
 		if usr.IsAdmin {
-			return usr, nil
+			cpy := *usr
+			return &cpy, nil
 		}
 	}
 	return nil, model.ErrNotFound
 }
 
 func (u *MockedUserRepo) Get(id string) (*model.User, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return nil, u.Error
 	}
 	for _, usr := range u.Data {
 		if usr.ID == id {
-			return usr, nil
+			cpy := *usr
+			return &cpy, nil
 		}
 	}
 	return nil, model.ErrNotFound
 }
 
 func (u *MockedUserRepo) GetAll(options ...model.QueryOptions) (model.Users, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return nil, u.Error
 	}
@@ -93,6 +113,8 @@ func (u *MockedUserRepo) GetAll(options ...model.QueryOptions) (model.Users, err
 }
 
 func (u *MockedUserRepo) UpdateLastLoginAt(id string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	for _, usr := range u.Data {
 		if usr.ID == id {
 			usr.LastLoginAt = new(time.Now())
@@ -103,6 +125,8 @@ func (u *MockedUserRepo) UpdateLastLoginAt(id string) error {
 }
 
 func (u *MockedUserRepo) UpdateLastAccessAt(id string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	for _, usr := range u.Data {
 		if usr.ID == id {
 			usr.LastAccessAt = new(time.Now())
@@ -115,6 +139,8 @@ func (u *MockedUserRepo) UpdateLastAccessAt(id string) error {
 // Library association methods - mock implementations
 
 func (u *MockedUserRepo) GetUserLibraries(userID string) (model.Libraries, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
 	if u.Error != nil {
 		return nil, u.Error
 	}
@@ -136,6 +162,8 @@ func (u *MockedUserRepo) GetUserLibraries(userID string) (model.Libraries, error
 }
 
 func (u *MockedUserRepo) SetUserLibraries(userID string, libraryIDs []int) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	if u.Error != nil {
 		return u.Error
 	}
@@ -147,6 +175,8 @@ func (u *MockedUserRepo) SetUserLibraries(userID string, libraryIDs []int) error
 }
 
 func (u *MockedUserRepo) Delete(id string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	if u.Error != nil {
 		return u.Error
 	}
@@ -169,8 +199,11 @@ func (u *MockedUserRepo) Save(entity any) (string, error) {
 }
 
 func (u *MockedUserRepo) Update(id string, entity any, cols ...string) error {
-	if u.Error != nil {
-		return u.Error
+	u.mu.RLock()
+	err := u.Error
+	u.mu.RUnlock()
+	if err != nil {
+		return err
 	}
 	usr := entity.(*model.User)
 	usr.ID = id

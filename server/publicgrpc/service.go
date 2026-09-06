@@ -83,6 +83,10 @@ func NewServer(ds model.DataStore, invoker Invoker, native NativeInvoker) *grpc.
 		grpc.ChainStreamInterceptor(networkStreamInterceptor),
 		grpc.MaxRecvMsgSize(publicGRPCMaxMsgBytes),
 		grpc.MaxSendMsgSize(publicGRPCMaxMsgBytes),
+		// Match local worker windows so Open/Subscribe media bursts are not
+		// stalled on default 64 KiB HTTP/2 flow-control windows.
+		grpc.InitialWindowSize(1<<20),
+		grpc.InitialConnWindowSize(4<<20),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			MaxConnectionIdle:     5 * time.Minute,
 			MaxConnectionAge:      0,

@@ -46,7 +46,7 @@ func buildBenchmarkJSONResponse() *responses.JsonWrapper {
 			},
 		}
 	}
-	return &responses.JsonWrapper{Subsonic: responses.Subsonic{
+	return &responses.JsonWrapper{Subsonic: &responses.Subsonic{
 		Status:        responses.StatusOK,
 		Version:       "1.16.1",
 		Type:          "navidrome",

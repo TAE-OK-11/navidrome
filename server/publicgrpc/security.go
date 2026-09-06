@@ -65,13 +65,25 @@ func checkClientNetwork(ctx context.Context) error {
 
 func clientIP(ctx context.Context) string {
 	peerIP := peerHost(ctx)
-	trusted := conf.PublicGRPCTrustedProxies()
-	if trusted != "" && peerIP != "" && ipallowlist.Contains(peerIP, trusted, false) {
+	// Same-host reverse proxies bind to loopback; trust their X-Forwarded-For
+	// without requiring ND_PUBLICGRPCTRUSTEDPROXIES so local middleware can
+	// preserve the real client address for allowlists/rate limits.
+	if peerIP != "" && (isLoopbackIP(peerIP) || trustedProxy(peerIP)) {
 		if forwarded := forwardedClientIP(ctx); forwarded != "" {
 			return forwarded
 		}
 	}
 	return peerIP
+}
+
+func trustedProxy(peerIP string) bool {
+	trusted := conf.PublicGRPCTrustedProxies()
+	return trusted != "" && ipallowlist.Contains(peerIP, trusted, false)
+}
+
+func isLoopbackIP(ip string) bool {
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
 }
 
 func peerHost(ctx context.Context) string {

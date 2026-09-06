@@ -191,7 +191,9 @@ func validateLogin(userRepo model.UserRepository, userName, password string) (*m
 
 func JWTVerifier(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isProbeRequest(r) {
+		// Subsonic authenticates in its own middleware; outer JWT verify would
+		// duplicate crypto work on every /rest call (including jwt= query).
+		if shouldSkipJWTVerifier(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -256,7 +258,9 @@ func UsernameFromConfig(*http.Request) string {
 }
 
 func contextWithUser(ctx context.Context, ds model.DataStore, username string) (context.Context, error) {
-	user, err := ds.User(ctx).FindByUsername(username)
+	user, err := nativeAuthUsers.get(ctx, username, func(loadCtx context.Context) (*model.User, error) {
+		return ds.User(loadCtx).FindByUsername(username)
+	})
 	if err == nil {
 		ctx = log.NewContext(ctx, "username", username)
 		ctx = request.WithUsername(ctx, user.UserName)
@@ -298,9 +302,21 @@ func Authenticator(ds model.DataStore) func(next http.Handler) http.Handler {
 // JWTRefresher updates the expiry date of the received JWT token, and add the new one to the Authorization Header
 func JWTRefresher(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// UI keepalive polls frequently; skip JWT re-signing on that path.
+		if isNativeKeepAlivePath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ctx := r.Context()
 		token, _, err := jwtauth.FromContext(ctx)
 		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Only re-encode when less than half the session remains. Otherwise
+		// every authenticated /api call pays for a JWT sign under load.
+		claims := auth.ClaimsFromToken(token)
+		if !claims.ExpiresAt.IsZero() && time.Until(claims.ExpiresAt) > conf.Server.SessionTimeout/2 {
 			next.ServeHTTP(w, r)
 			return
 		}

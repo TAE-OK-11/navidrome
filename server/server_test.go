@@ -29,7 +29,7 @@ var _ = Describe("HTTP server protocols", func() {
 		Expect(server.WriteTimeout).To(BeZero(), "streaming responses must not have a whole-response deadline")
 		Expect(server.Protocols.HTTP1()).To(BeTrue())
 		Expect(server.Protocols.HTTP2()).To(BeTrue())
-		Expect(server.Protocols.UnencryptedHTTP2()).To(BeFalse())
+		Expect(server.Protocols.UnencryptedHTTP2()).To(BeTrue(), "cleartext listeners enable h2c for same-host proxies")
 		Expect(server.HTTP2).ToNot(BeNil())
 		Expect(server.HTTP2.MaxConcurrentStreams).To(Equal(serverH2MaxConcurrentStreams))
 		Expect(server.HTTP2.MaxReceiveBufferPerConnection).To(Equal(serverH2ConnectionWindow))
@@ -80,9 +80,11 @@ var _ = Describe("HTTP server protocols", func() {
 		Expect(resp.ProtoMajor).To(Equal(2))
 	})
 
-	It("enables unencrypted HTTP/2 when public gRPC is served without TLS", func() {
-		server := newHTTPServer(http.NotFoundHandler(), false, true)
-		Expect(server.Protocols.UnencryptedHTTP2()).To(BeTrue())
+	It("enables unencrypted HTTP/2 for cleartext listeners and public gRPC", func() {
+		Expect(newHTTPServer(http.NotFoundHandler(), false, false).Protocols.UnencryptedHTTP2()).To(BeTrue())
+		Expect(newHTTPServer(http.NotFoundHandler(), false, true).Protocols.UnencryptedHTTP2()).To(BeTrue())
+		Expect(newHTTPServer(http.NotFoundHandler(), true, true).Protocols.UnencryptedHTTP2()).To(BeTrue())
+		Expect(newHTTPServer(http.NotFoundHandler(), true, false).Protocols.UnencryptedHTTP2()).To(BeFalse())
 	})
 })
 

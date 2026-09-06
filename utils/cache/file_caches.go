@@ -171,7 +171,10 @@ func (fc *fileCache) Get(ctx context.Context, arg Item) (*CachedStream, error) {
 
 	if !cached {
 		log.Trace(ctx, "Cache MISS", "cache", fc.name, "key", key)
-		reader, err := fc.getReader(ctx, arg)
+		// Detach fill from the request so a client disconnect does not abort
+		// transcoder/artwork population mid-write (next play can then HIT).
+		fillCtx := context.WithoutCancel(ctx)
+		reader, err := fc.getReader(fillCtx, arg)
 		if err != nil {
 			_ = r.Close()
 			_ = w.Close()
@@ -179,11 +182,11 @@ func (fc *fileCache) Get(ctx context.Context, arg Item) (*CachedStream, error) {
 			return nil, err
 		}
 		go func() {
-			if err := fc.copyAndClose(ctx, key, w, reader); err != nil {
-				log.Debug(ctx, "Error storing file in cache", "cache", fc.name, "key", key, err)
-				_ = fc.invalidate(ctx, key)
+			if err := fc.copyAndClose(fillCtx, key, w, reader); err != nil {
+				log.Debug(fillCtx, "Error storing file in cache", "cache", fc.name, "key", key, err)
+				_ = fc.invalidate(fillCtx, key)
 			} else {
-				log.Trace(ctx, "File successfully stored in cache", "cache", fc.name, "key", key)
+				log.Trace(fillCtx, "File successfully stored in cache", "cache", fc.name, "key", key)
 			}
 		}()
 	}

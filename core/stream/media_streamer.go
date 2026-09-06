@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/cache"
 	"github.com/navidrome/navidrome/utils/ioutils"
+	"github.com/navidrome/navidrome/utils/neterr"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
@@ -224,9 +224,13 @@ func (s *Stream) EstimatedContentLength() int {
 func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request) (int64, error) {
 	if s.Seekable() {
 		content := io.ReadSeeker(s)
-		// Preserve file-backed readers so net/http can use sendfile for direct
-		// play and completed transcoding-cache hits.
-		if source, ok := s.ReadCloser.(interface {
+		// Prefer a real *os.File when available. Go's TCPConn.ReadFrom only
+		// sendfiles from *os.File; syscall.Conn wrappers (CachedStream) still
+		// force a userspace copy on HTTP/1.1. Unwrapping also removes one
+		// Read indirection on HTTP/2 and HTTP/3.
+		if file := underlyingSeekableFile(s.ReadCloser); file != nil {
+			content = file
+		} else if source, ok := s.ReadCloser.(interface {
 			io.ReadSeeker
 			syscall.Conn
 		}); ok {
@@ -254,20 +258,29 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return 0, nil
 	}
 
+	// Flush headers before waiting on ffmpeg's first byte so clients (and
+	// H2/H3 bridges) learn Content-Type / 200 immediately instead of sitting
+	// on an idle stream until the encoder produces audio.
+	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
 	id := s.mf.ID
-	c, err := ioutils.Copy(w, s)
+	c, err := ioutils.CopyFlush(w, s)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
+		// Headers were already flushed above. Never return an error: Subsonic
+		// sendError would append XML/JSON onto the audio body on H1/H2/H3/gRPC.
+		if neterr.IsExpectedClientDisconnect(ctx, err) {
 			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)
 			return c, nil //nolint:nilerr // client disconnect; not a server error
 		}
-		log.Error(ctx, "Error sending transcoded file", "id", id, err)
-		if c == 0 {
-			w.Header().Del("Content-Length")
-			return 0, fmt.Errorf("sending transcoded file: %w", err)
+		log.Error(ctx, "Error sending transcoded file", "id", id, "bytesSent", c, err)
+		if c > 0 {
+			// Truncated after payload started — abort without a Subsonic error body.
+			panic(http.ErrAbortHandler)
 		}
-		// The 200 is already sent, so dropping the connection is the only way to say "truncated".
-		panic(http.ErrAbortHandler)
+		return c, nil //nolint:nilerr // 200 already committed; avoid corrupt trailer
 	}
 	if c == 0 {
 		log.Error(ctx, "Transcoding returned empty output, ffmpeg may have failed. "+
@@ -279,6 +292,18 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 	return c, nil
+}
+
+// underlyingSeekableFile returns the *os.File behind a direct-play or completed
+// transcoder-cache reader. TCP sendfile requires this concrete type.
+func underlyingSeekableFile(r io.Reader) *os.File {
+	if f, ok := r.(*os.File); ok {
+		return f
+	}
+	if uf, ok := r.(interface{ UnderlyingFile() *os.File }); ok {
+		return uf.UnderlyingFile()
+	}
+	return nil
 }
 
 // NewStream creates a non-seekable Stream from the given components.

@@ -257,9 +257,18 @@ func (s *Server) startPlaintextGRPC(ctx context.Context, mainAddr string) *plain
 		log.Warn(ctx, "Plaintext H2C gRPC unavailable; TLS listener remains", "address", listenAddr, err)
 		return nil
 	}
-	srv := newHTTPServer(publicgrpc.GRPCOnly(s.grpcServer), false, true)
+	// Same-host proxies (loopback) get full Mux: gRPC + REST/API over h2c so
+	// middleware does not need a second TLS hop. Non-loopback overlays stay
+	// gRPC-only to keep the public TLS port as the only REST entrypoint.
+	var handler http.Handler
+	if isLoopbackBind(bindAddr) {
+		handler = publicgrpc.Mux(s.grpcServer, s.router)
+	} else {
+		handler = publicgrpc.GRPCOnly(s.grpcServer)
+	}
+	srv := newHTTPServer(handler, false, true)
 	go func() {
-		log.Info(ctx, "Starting plaintext H2C gRPC listener (WireGuard)", "address", listener.Addr().String())
+		log.Info(ctx, "Starting plaintext H2C listener (local proxy / WireGuard)", "address", listener.Addr().String(), "rest", isLoopbackBind(bindAddr))
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error(ctx, "Plaintext H2C listener stopped", err)
 		}
@@ -331,8 +340,10 @@ func newHTTPServer(handler http.Handler, tlsEnabled bool, publicGRPC bool) *http
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)
-	if publicGRPC && !tlsEnabled {
-		// Reverse proxies that terminate TLS forward h2c; gRPC needs HTTP/2.
+	// Cleartext HTTP/2 (h2c) for same-host reverse proxies that terminate TLS
+	// and forward to Navidrome without a second TLS hop. Needed for gRPC and
+	// also for REST/API when the main listener itself is cleartext.
+	if !tlsEnabled || publicGRPC {
 		protocols.SetUnencryptedHTTP2(true)
 	}
 
@@ -361,12 +372,20 @@ func createTCPListener(ctx context.Context, address string) (net.Listener, error
 			Interval: serverTCPKeepAliveInterval,
 			Count:    serverTCPKeepAliveCount,
 		},
+		// TCP_NODELAY + larger socket buffers cut localhost proxy latency
+		// when nginx/caddy/middleware share the host with Navidrome.
+		Control: configureTCPListenerSocket,
 	}
 	listener, err := config.Listen(ctx, "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("creating tcp listener: %w", err)
 	}
 	return listener, nil
+}
+
+func isLoopbackBind(address string) bool {
+	ip := net.ParseIP(address)
+	return ip != nil && ip.IsLoopback()
 }
 
 func createUnixSocketFile(socketPath string, socketPerm string) (net.Listener, error) {

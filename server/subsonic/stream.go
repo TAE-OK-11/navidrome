@@ -13,6 +13,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
+	"github.com/navidrome/navidrome/server"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 )
@@ -51,8 +52,8 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(stream.Duration()), 'G', -1, 32))
 
-	_, err = stream.Serve(ctx, w, r)
-	return nil, err
+	n, err := stream.Serve(ctx, w, r)
+	return nil, streamServeError(ctx, "stream", id, n, err)
 }
 
 func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
@@ -169,8 +170,26 @@ func (api *Router) serveMediaDownload(ctx context.Context, w http.ResponseWriter
 		}
 	}()
 	w.Header().Set("Content-Disposition", attachmentDisposition(stream.Name()))
-	_, err = stream.Serve(ctx, w, r)
-	return nil, err
+	n, err := stream.Serve(ctx, w, r)
+	return nil, streamServeError(ctx, "download", id, n, err)
+}
+
+// streamServeError returns err only when Serve failed before committing a
+// media response. After any bytes (or live-stream header flush), returning an
+// error would let sendError append XML/JSON onto the audio body.
+func streamServeError(ctx context.Context, kind, id string, n int64, err error) error {
+	if err == nil {
+		return nil
+	}
+	if n != 0 {
+		if server.IsExpectedTransportError(ctx, err) {
+			log.Debug(ctx, "Client disconnected during media response", "kind", kind, "id", id, "bytesSent", n, err)
+		} else {
+			log.Error(ctx, "Media response failed after headers", "kind", kind, "id", id, "bytesSent", n, err)
+		}
+		return nil
+	}
+	return err
 }
 
 func attachmentDisposition(name string) string {

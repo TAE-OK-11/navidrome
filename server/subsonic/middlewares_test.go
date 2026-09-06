@@ -537,19 +537,27 @@ var _ = Describe("Middlewares", func() {
 			Expect(mockedPlayers.freshCalls).To(BeZero())
 		})
 
-		It("uses a fresh lookup when the stream format is resolved from player settings", func() {
+		It("uses the cached lookup path when format is omitted (direct play)", func() {
 			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
 
-			Expect(mockedPlayers.registerCalls).To(BeZero())
-			Expect(mockedPlayers.freshCalls).To(Equal(1))
+			Expect(mockedPlayers.registerCalls).To(Equal(1))
+			Expect(mockedPlayers.freshCalls).To(BeZero())
 		})
 
-		It("keeps noncanonical format values on the fresh lookup path", func() {
+		It("treats format=RAW as raw for the cached lookup path", func() {
 			r.URL.RawQuery = "format=RAW"
 			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
 
-			Expect(mockedPlayers.registerCalls).To(BeZero())
-			Expect(mockedPlayers.freshCalls).To(Equal(1))
+			Expect(mockedPlayers.registerCalls).To(Equal(1))
+			Expect(mockedPlayers.freshCalls).To(BeZero())
+		})
+
+		It("uses the cached lookup path for non-raw formats too", func() {
+			r.URL.RawQuery = "format=mp3"
+			getStreamPlayer(mockedPlayers)(next).ServeHTTP(w, r)
+
+			Expect(mockedPlayers.registerCalls).To(Equal(1))
+			Expect(mockedPlayers.freshCalls).To(BeZero())
 		})
 	})
 

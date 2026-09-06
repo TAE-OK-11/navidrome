@@ -72,7 +72,9 @@ const (
 )
 
 type JsonWrapper struct {
-	Subsonic Subsonic `json:"subsonic-response"`
+	// Pointer avoids copying large album/song payloads into the wrapper
+	// on every encode (getAlbumList2 / getIndexes / search).
+	Subsonic *Subsonic `json:"subsonic-response"`
 }
 
 type Error struct {
@@ -677,6 +679,7 @@ func marshalJSONArray[T any](v []T) ([]byte, error) {
 	if len(v) == 0 {
 		return []byte("[]"), nil
 	}
+	// Keep a single marshal of the concrete slice (no intermediate Array wrapper).
 	return json.Marshal(v)
 }
 

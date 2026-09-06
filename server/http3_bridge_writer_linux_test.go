@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 type recordingWriter struct {
 	httptest.ResponseRecorder
 	writes []int
+	flushed int
 }
 
 func (w *recordingWriter) Write(p []byte) (int, error) {
@@ -24,11 +26,15 @@ func (w *recordingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func TestBridgeFrameWriterBatchesMediaWrites(t *testing.T) {
+func (w *recordingWriter) Flush() {
+	w.flushed++
+}
+
+func TestBridgeFrameWriterBatchesDownloadWrites(t *testing.T) {
 	rec := &recordingWriter{}
-	w := newBridgeFrameWriter(rec, "/rest/stream.view")
+	w := newBridgeFrameWriter(rec, "/rest/download.view")
 	if w == nil {
-		t.Fatal("expected media path to use bridge frame writer")
+		t.Fatal("expected download path to use bridge frame writer")
 	}
 
 	chunk := bytes.Repeat([]byte("a"), ioutils.DefaultCopyBufferSize/2)
@@ -46,9 +52,28 @@ func TestBridgeFrameWriterBatchesMediaWrites(t *testing.T) {
 	}
 }
 
+func TestBridgeFrameWriterFlushPushesPartialBuffer(t *testing.T) {
+	rec := &recordingWriter{}
+	w := newBridgeFrameWriter(rec, "/rest/download")
+	chunk := bytes.Repeat([]byte("c"), 1024)
+	if _, err := w.Write(chunk); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.writes) != 0 {
+		t.Fatalf("writes=%v, want buffered until Flush", rec.writes)
+	}
+	w.Flush()
+	if len(rec.writes) != 1 || rec.writes[0] != len(chunk) {
+		t.Fatalf("writes=%v, want one %d-byte flush", rec.writes, len(chunk))
+	}
+	if rec.flushed != 1 {
+		t.Fatalf("underlying Flush calls=%d, want 1", rec.flushed)
+	}
+}
+
 func TestBridgeFrameWriterReadFromDelegates(t *testing.T) {
 	rec := &recordingWriter{}
-	w := newBridgeFrameWriter(rec, "/rest/stream.view")
+	w := newBridgeFrameWriter(rec, "/rest/download.view")
 	payload := bytes.Repeat([]byte("b"), ioutils.DefaultCopyBufferSize+1)
 	n, err := w.ReadFrom(bytes.NewReader(payload))
 	if err != nil {
@@ -69,11 +94,33 @@ func TestBridgeFrameWriterReadFromDelegates(t *testing.T) {
 	}
 }
 
-func TestBridgeFrameWriterSkipsNonMedia(t *testing.T) {
+func TestBridgeFrameWriterSkipsLiveStreamAndPing(t *testing.T) {
 	rec := httptest.NewRecorder()
-	if newBridgeFrameWriter(rec, "/rest/ping.view") != nil {
-		t.Fatal("non-media path should not wrap response writer")
+	for _, path := range []string{
+		"/rest/ping.view",
+		"/rest/stream.view",
+		"/rest/getTranscodeStream",
+		"/rest/getCoverArt.view",
+	} {
+		if newBridgeFrameWriter(rec, path) != nil {
+			t.Fatalf("%s should not wrap response writer", path)
+		}
 	}
 }
 
-var _ io.ReaderFrom = (*bridgeFrameWriter)(nil)
+func TestIsBridgeCoalescePath(t *testing.T) {
+	if !isBridgeCoalescePath("/rest/download.view") {
+		t.Fatal("download should coalesce")
+	}
+	if !isBridgeCoalescePath("/share/d/abc") {
+		t.Fatal("share download should coalesce")
+	}
+	if isBridgeCoalescePath("/rest/stream") {
+		t.Fatal("live stream must not coalesce on the Go bridge")
+	}
+}
+
+var (
+	_ io.ReaderFrom = (*bridgeFrameWriter)(nil)
+	_ http.Flusher  = (*bridgeFrameWriter)(nil)
+)

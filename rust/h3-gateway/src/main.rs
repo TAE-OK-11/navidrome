@@ -70,6 +70,13 @@ const BROTLI_HUGE_LEVEL: i32 = 6;
 const BRIDGE_MAX_FRAME_SIZE: u32 = 64 * 1024;
 const BRIDGE_STREAM_WINDOW: u32 = 512 * 1024;
 const BRIDGE_CONNECTION_WINDOW: u32 = 4 * 1024 * 1024;
+// Size-only coalescing waits for a full 64 KiB frame before forwarding. Live
+// ffmpeg/transcode output arrives near realtime, so that can add seconds of
+// TTFB and also stalls other H2 streams (including /rest/ping) on the shared
+// bridge via connection flow-control. Bound waits so bursty sendfile still
+// packs large frames while slow producers flush promptly.
+const BRIDGE_BODY_COALESCE_WAIT: Duration = Duration::from_millis(2);
+const BRIDGE_BULK_BODY_COALESCE_WAIT: Duration = Duration::from_millis(8);
 
 static CONNECTION_REJECTIONS: AtomicU64 = AtomicU64::new(0);
 static REQUEST_REJECTIONS: AtomicU64 = AtomicU64::new(0);
@@ -715,12 +722,14 @@ async fn proxy_request_inner(
             .context("inherited HTTP/2 bridge request failed")?;
     drop(request_permit);
     let body_idle_timeout = response_body_idle_timeout(&request_path);
+    let coalesce_wait = body_coalesce_wait(&request_path);
     forward_response(
         response,
         &mut send,
         &context.alt_svc,
         compression,
         body_idle_timeout,
+        coalesce_wait,
     )
     .await
 }
@@ -905,13 +914,18 @@ fn is_api_path(path: &str) -> bool {
         || path.contains("/auth/")
 }
 
-fn is_media_path(path: &str) -> bool {
+fn normalize_request_path(path: &str) -> String {
+    let path = path.split_once('?').map_or(path, |(path, _)| path);
     let path = path.strip_suffix(".view").unwrap_or(path);
-    let normalized = if path.bytes().any(|byte| byte.is_ascii_uppercase()) {
+    if path.bytes().any(|byte| byte.is_ascii_uppercase()) {
         path.to_ascii_lowercase()
     } else {
         path.to_string()
-    };
+    }
+}
+
+fn is_media_path(path: &str) -> bool {
+    let normalized = normalize_request_path(path);
     normalized.ends_with("/rest/stream")
         || normalized.ends_with("/rest/download")
         || normalized.ends_with("/rest/gettranscodestream")
@@ -922,15 +936,21 @@ fn is_media_path(path: &str) -> bool {
         || normalized.contains("/share/img/")
 }
 
+fn is_bulk_media_path(path: &str) -> bool {
+    let normalized = normalize_request_path(path);
+    normalized.ends_with("/rest/download") || normalized.contains("/share/d/")
+}
+
+fn body_coalesce_wait(path: &str) -> Duration {
+    if is_bulk_media_path(path) {
+        BRIDGE_BULK_BODY_COALESCE_WAIT
+    } else {
+        BRIDGE_BODY_COALESCE_WAIT
+    }
+}
+
 fn response_body_idle_timeout(path: &str) -> Duration {
-    let path = path.split_once('?').map_or(path, |(path, _)| path);
-    let normalized_storage = path
-        .bytes()
-        .any(|byte| byte.is_ascii_uppercase())
-        .then(|| path.to_ascii_lowercase());
-    let normalized = normalized_storage.as_deref().unwrap_or(path);
-    let normalized = normalized.strip_suffix(".view").unwrap_or(normalized);
-    if is_media_path(normalized) {
+    if is_media_path(path) {
         BRIDGE_MEDIA_RESPONSE_BODY_IDLE_TIMEOUT
     } else {
         BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT
@@ -1083,6 +1103,7 @@ async fn forward_response(
     alt_svc: &HeaderValue,
     compression: Option<CompressionProfile>,
     body_idle_timeout: Duration,
+    coalesce_wait: Duration,
 ) -> Result<()> {
     let (mut parts, mut body) = response.into_parts();
     let mut prefix = VecDeque::new();
@@ -1135,7 +1156,7 @@ async fn forward_response(
     if let Some(profile) = compress {
         forward_compressed_body(body, prefix, send, profile, body_idle_timeout).await?;
     } else {
-        forward_raw_body(&mut body, prefix, send, body_idle_timeout).await?;
+        forward_raw_body(&mut body, prefix, send, body_idle_timeout, coalesce_wait).await?;
     }
     send.send(OutboundFrame::Body(Bytes::new(), true)).await?;
     Ok(())
@@ -1232,11 +1253,48 @@ async fn buffer_response_prefix(
     Ok((buffered, false))
 }
 
+async fn flush_pending_body(
+    pending: &mut BytesMut,
+    send: &mut OutboundFrameSender,
+    frame_cap: usize,
+) -> Result<()> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    send.send(OutboundFrame::Body(pending.split().freeze(), false))
+        .await?;
+    *pending = BytesMut::with_capacity(frame_cap);
+    Ok(())
+}
+
+async fn append_coalesced_body(
+    pending: &mut BytesMut,
+    data: Bytes,
+    send: &mut OutboundFrameSender,
+    frame_cap: usize,
+) -> Result<()> {
+    let mut offset = 0;
+    while offset < data.len() {
+        if pending.len() == frame_cap {
+            flush_pending_body(pending, send, frame_cap).await?;
+        }
+        let space = frame_cap - pending.len();
+        let take = (data.len() - offset).min(space);
+        pending.extend_from_slice(&data[offset..offset + take]);
+        offset += take;
+        if pending.len() >= frame_cap {
+            flush_pending_body(pending, send, frame_cap).await?;
+        }
+    }
+    Ok(())
+}
+
 async fn forward_raw_body(
     body: &mut hyper::body::Incoming,
     mut prefix: VecDeque<Bytes>,
     send: &mut OutboundFrameSender,
     idle_timeout: Duration,
+    coalesce_wait: Duration,
 ) -> Result<()> {
     while let Some(data) = prefix.pop_front() {
         send.send(OutboundFrame::Body(data, false)).await?;
@@ -1244,33 +1302,31 @@ async fn forward_raw_body(
     let frame_cap = BRIDGE_MAX_FRAME_SIZE as usize;
     let mut pending = BytesMut::with_capacity(frame_cap);
     loop {
-        match tokio::time::timeout(idle_timeout, body.frame()).await {
+        let wait = if pending.is_empty() {
+            idle_timeout
+        } else {
+            coalesce_wait.min(idle_timeout)
+        };
+        match tokio::time::timeout(wait, body.frame()).await {
             Ok(Some(Ok(frame))) => {
                 if let Ok(data) = frame.into_data()
                     && !data.is_empty()
                 {
-                    if pending.len() + data.len() > frame_cap && !pending.is_empty() {
-                        send.send(OutboundFrame::Body(pending.freeze(), false))
-                            .await?;
-                        pending = BytesMut::with_capacity(frame_cap);
-                    }
-                    pending.extend_from_slice(&data);
-                    if pending.len() >= frame_cap {
-                        send.send(OutboundFrame::Body(pending.freeze(), false))
-                            .await?;
-                        pending = BytesMut::with_capacity(frame_cap);
-                    }
+                    append_coalesced_body(&mut pending, data, send, frame_cap).await?;
                 }
             }
             Ok(Some(Err(error))) => {
+                let _ = flush_pending_body(&mut pending, send, frame_cap).await;
                 return Err(error).context("failed to read inherited HTTP/2 response body");
             }
             Ok(None) => {
-                if !pending.is_empty() {
-                    send.send(OutboundFrame::Body(pending.freeze(), false))
-                        .await?;
-                }
+                flush_pending_body(&mut pending, send, frame_cap).await?;
                 return Ok(());
+            }
+            Err(_) if !pending.is_empty() => {
+                // Coalesce deadline: forward what we have so live audio and
+                // concurrent pings are not held behind a full 64 KiB frame.
+                flush_pending_body(&mut pending, send, frame_cap).await?;
             }
             Err(_) => {
                 return Err(anyhow::anyhow!("response body idle timeout"));
@@ -1719,6 +1775,8 @@ mod tests {
         assert!(is_media_path("/rest/stream.view"));
         assert!(is_media_path("/rest/getTranscodeStream.view"));
         assert!(!is_media_path("/rest/ping.view"));
+        assert!(is_bulk_media_path("/rest/download.view"));
+        assert!(!is_bulk_media_path("/rest/stream.view"));
 
         assert_eq!(
             response_body_idle_timeout("/rest/stream.view"),
@@ -1728,5 +1786,15 @@ mod tests {
             response_body_idle_timeout("/rest/ping"),
             BRIDGE_RESPONSE_BODY_IDLE_TIMEOUT
         );
+        assert_eq!(
+            body_coalesce_wait("/rest/stream.view"),
+            BRIDGE_BODY_COALESCE_WAIT
+        );
+        assert_eq!(
+            body_coalesce_wait("/rest/download"),
+            BRIDGE_BULK_BODY_COALESCE_WAIT
+        );
+        assert!(BRIDGE_BODY_COALESCE_WAIT < BRIDGE_BULK_BODY_COALESCE_WAIT);
+        assert!(BRIDGE_BODY_COALESCE_WAIT < Duration::from_millis(50));
     }
 }

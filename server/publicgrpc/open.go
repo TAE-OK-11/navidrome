@@ -49,7 +49,8 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	return w.sendBody(p)
 }
 
-// ReadFrom streams in 64 KiB chunks so gRPC Open avoids per-write copies.
+// ReadFrom streams in 64 KiB chunks. Send completes before the next Read, so
+// the pooled buffer can be passed through without a second copy.
 func (w *streamWriter) ReadFrom(source io.Reader) (int64, error) {
 	bufPtr := openChunkBufPool.Get().(*[]byte)
 	defer openChunkBufPool.Put(bufPtr)
@@ -76,23 +77,38 @@ func (w *streamWriter) ReadFrom(source io.Reader) (int64, error) {
 	}
 }
 
+// Flush implements http.Flusher so Stream.Serve can push response headers
+// (status / Content-Type) before ffmpeg emits the first audio byte.
+func (w *streamWriter) Flush() {
+	if w.sentHead {
+		return
+	}
+	w.sentHead = true
+	status := w.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	_ = w.stream.Send(&gen.OpenChunk{
+		Status:      int32(status),
+		ContentType: w.Header().Get("Content-Type"),
+		Headers:     headerMap(w.header),
+	})
+}
+
 func (w *streamWriter) sendBody(p []byte) (int, error) {
-	bufPtr := openChunkBufPool.Get().(*[]byte)
-	buf := (*bufPtr)[:len(p)]
-	copy(buf, p)
-	chunk := &gen.OpenChunk{Data: buf}
+	// gRPC Send marshals synchronously before returning, so p need not be
+	// copied into a second pooled buffer on the Open hot path.
+	chunk := &gen.OpenChunk{Data: p}
 	if !w.sentHead {
 		w.sentHead = true
 		if w.status == 0 {
 			w.status = http.StatusOK
 		}
 		chunk.Status = int32(w.status)
-		chunk.ContentType = w.header.Get("Content-Type")
+		chunk.ContentType = w.Header().Get("Content-Type")
 		chunk.Headers = headerMap(w.header)
 	}
-	err := w.stream.Send(chunk)
-	openChunkBufPool.Put(bufPtr)
-	if err != nil {
+	if err := w.stream.Send(chunk); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -105,7 +121,7 @@ func finalOpenChunk(sw *streamWriter) *gen.OpenChunk {
 	}
 	chunk := &gen.OpenChunk{Status: int32(st), Final: true}
 	if !sw.sentHead {
-		chunk.ContentType = sw.header.Get("Content-Type")
+		chunk.ContentType = sw.Header().Get("Content-Type")
 		chunk.Headers = headerMap(sw.header)
 	}
 	return chunk

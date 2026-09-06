@@ -1312,7 +1312,19 @@ async fn forward_raw_body(
                 if let Ok(data) = frame.into_data()
                     && !data.is_empty()
                 {
+                    // Live/API paths still use a short coalesce window for
+                    // subsequent frames, but the first audio/data frame must
+                    // leave immediately — otherwise play-start TTFB waits the
+                    // full coalesce timer even when ffmpeg already produced
+                    // bytes.
+                    let first_frame = pending.is_empty();
                     append_coalesced_body(&mut pending, data, send, frame_cap).await?;
+                    if first_frame
+                        && coalesce_wait < BRIDGE_BULK_BODY_COALESCE_WAIT
+                        && !pending.is_empty()
+                    {
+                        flush_pending_body(&mut pending, send, frame_cap).await?;
+                    }
                 }
             }
             Ok(Some(Err(error))) => {

@@ -596,6 +596,9 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 	args = injectFFmpegThreads(args)
 
 	args = append(args, "-v", "0")
+	// Push encoded packets to stdout promptly so live /rest/stream TTFB
+	// is not held in ffmpeg's muxer buffer.
+	args = append(args, "-flush_packets", "1")
 
 	if outputFmt, ok := formatOutputMap[opts.Format]; ok {
 		args = append(args, "-f", outputFmt)

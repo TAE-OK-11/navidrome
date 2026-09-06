@@ -254,8 +254,16 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return 0, nil
 	}
 
+	// Flush headers before waiting on ffmpeg's first byte so clients (and
+	// H2/H3 bridges) learn Content-Type / 200 immediately instead of sitting
+	// on an idle stream until the encoder produces audio.
+	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
 	id := s.mf.ID
-	c, err := ioutils.Copy(w, s)
+	c, err := ioutils.CopyFlush(w, s)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			log.Debug(ctx, "Transcoded stream closed by client", "id", id, "bytesSent", c, "error", err)

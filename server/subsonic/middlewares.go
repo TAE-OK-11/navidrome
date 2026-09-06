@@ -451,8 +451,14 @@ func getPlayerWithLookupMode(players core.Players, fresh, cacheRawStream bool) f
 			var trc *model.Transcoding
 			var err error
 			useFresh := fresh
-			if cacheRawStream && req.Params(r).StringOr("format", "") == "raw" {
-				useFresh = false
+			// Most clients omit format (direct play) or send format=raw. Those
+			// paths do not need a fresh SQLite player lookup on every play —
+			// MaxBitRate/transcoding prefs rarely change mid-session.
+			if cacheRawStream {
+				format := strings.ToLower(req.Params(r).StringOr("format", ""))
+				if format == "" || format == "raw" {
+					useFresh = false
+				}
 			}
 			if useFresh {
 				player, trc, err = players.RegisterFresh(ctx, playerId, client, userAgent, ip)

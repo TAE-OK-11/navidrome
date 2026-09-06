@@ -224,9 +224,13 @@ func (s *Stream) EstimatedContentLength() int {
 func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request) (int64, error) {
 	if s.Seekable() {
 		content := io.ReadSeeker(s)
-		// Preserve file-backed readers so net/http can use sendfile for direct
-		// play and completed transcoding-cache hits.
-		if source, ok := s.ReadCloser.(interface {
+		// Prefer a real *os.File when available. Go's TCPConn.ReadFrom only
+		// sendfiles from *os.File; syscall.Conn wrappers (CachedStream) still
+		// force a userspace copy on HTTP/1.1. Unwrapping also removes one
+		// Read indirection on HTTP/2 and HTTP/3.
+		if file := underlyingSeekableFile(s.ReadCloser); file != nil {
+			content = file
+		} else if source, ok := s.ReadCloser.(interface {
 			io.ReadSeeker
 			syscall.Conn
 		}); ok {
@@ -287,6 +291,18 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 	return c, nil
+}
+
+// underlyingSeekableFile returns the *os.File behind a direct-play or completed
+// transcoder-cache reader. TCP sendfile requires this concrete type.
+func underlyingSeekableFile(r io.Reader) *os.File {
+	if f, ok := r.(*os.File); ok {
+		return f
+	}
+	if uf, ok := r.(interface{ UnderlyingFile() *os.File }); ok {
+		return uf.UnderlyingFile()
+	}
+	return nil
 }
 
 // NewStream creates a non-seekable Stream from the given components.

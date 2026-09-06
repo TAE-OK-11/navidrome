@@ -106,7 +106,7 @@ func (api *Router) Invoke(ctx context.Context, endpoint string, query url.Values
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	if asJSON {
-		if encErr := encodeJSON(buf, responses.JsonWrapper{Subsonic: *res}); encErr != nil {
+		if encErr := encodeJSON(buf, responses.JsonWrapper{Subsonic: res}); encErr != nil {
 			return 0, "", nil, encErr
 		}
 		return http.StatusOK, "application/json", append([]byte(nil), buf.Bytes()...), nil
@@ -182,7 +182,7 @@ func cloneValues(in url.Values) url.Values {
 func encodeInvokeJSON(payload *responses.Subsonic) ([]byte, error) {
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
-	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload}); err != nil {
+	if err := encodeJSON(buf, responses.JsonWrapper{Subsonic: payload}); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), buf.Bytes()...), nil

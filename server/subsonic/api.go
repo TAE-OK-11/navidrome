@@ -3,10 +3,10 @@ package subsonic
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	json "github.com/goccy/go-json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -59,15 +59,53 @@ func recycleResponseBuffer(buf *bytes.Buffer) {
 	responseBufferPool.Put(buf)
 }
 
+// Precomputed empty OK bodies for /rest/ping and other ack-only endpoints.
+// Built once from newResponse() so Version/Type/ServerVersion stay correct.
+var (
+	bareOKJSON []byte
+	bareOKXML  []byte
+	bareOKOnce sync.Once
+)
+
+func bareOKBodies() (jsonBody, xmlBody []byte) {
+	bareOKOnce.Do(func() {
+		payload := newResponse()
+		var err error
+		bareOKJSON, err = json.Marshal(responses.JsonWrapper{Subsonic: payload})
+		if err != nil {
+			panic("subsonic: encode bare OK JSON: " + err.Error())
+		}
+		bareOKXML, err = xml.Marshal(payload)
+		if err != nil {
+			panic("subsonic: encode bare OK XML: " + err.Error())
+		}
+	})
+	return bareOKJSON, bareOKXML
+}
+
+func isBareOKResponse(payload *responses.Subsonic) bool {
+	if payload == nil || payload.Status != responses.StatusOK || payload.Error != nil {
+		return false
+	}
+	// Ping / star / scrobble acks only fill the envelope fields.
+	stripped := *payload
+	stripped.Status = ""
+	stripped.Version = ""
+	stripped.Type = ""
+	stripped.ServerVersion = ""
+	stripped.OpenSubsonic = false
+	return stripped == responses.Subsonic{}
+}
+
 func encodeJSON(buf *bytes.Buffer, value any) error {
-	if err := json.NewEncoder(buf).Encode(value); err != nil {
+	// goccy/go-json is already a module dependency and avoids Encoder newline
+	// trimming plus some reflection cost on large Subsonic payloads.
+	b, err := json.Marshal(value)
+	if err != nil {
 		return err
 	}
-	// Encoder always appends a newline; keep the historical Marshal payload.
-	if n := buf.Len(); n > 0 && buf.Bytes()[n-1] == '\n' {
-		buf.Truncate(n - 1)
-	}
-	return nil
+	_, err = buf.Write(b)
+	return err
 }
 
 type handler = func(*http.Request) (*responses.Subsonic, error)
@@ -439,13 +477,34 @@ func sendResponse(w http.ResponseWriter, r *http.Request, payload *responses.Sub
 func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *responses.Subsonic, status int) {
 	p := req.Params(r)
 	f := p.StringOr("f", "")
+	// /rest/ping and other ack-only OK replies skip encoding entirely.
+	if isBareOKResponse(payload) && f != "jsonp" {
+		jsonBody, xmlBody := bareOKBodies()
+		var body []byte
+		switch f {
+		case "json":
+			w.Header().Set("Content-Type", "application/json")
+			body = jsonBody
+		default:
+			w.Header().Set("Content-Type", "application/xml")
+			body = xmlBody
+		}
+		if status != 0 {
+			w.WriteHeader(status)
+		}
+		if w.Header().Get("Content-Length") == "" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		}
+		_, _ = w.Write(body)
+		return
+	}
 	buf := borrowResponseBuffer()
 	defer recycleResponseBuffer(buf)
 	var err error
 	switch f {
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
-		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: payload})
 	case "jsonp":
 		callback := p.StringOr("callback", "")
 		if !validJSIdentifier.MatchString(callback) {
@@ -454,13 +513,13 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 			errResp := newResponse()
 			errResp.Status = responses.StatusFailed
 			errResp.Error = &responses.Error{Code: responses.ErrorGeneric, Message: "invalid callback parameter"}
-			_ = encodeJSON(buf, responses.JsonWrapper{Subsonic: *errResp})
+			_ = encodeJSON(buf, responses.JsonWrapper{Subsonic: errResp})
 			break
 		}
 		w.Header().Set("Content-Type", "application/javascript")
 		buf.WriteString(callback)
 		buf.WriteByte('(')
-		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: *payload})
+		err = encodeJSON(buf, responses.JsonWrapper{Subsonic: payload})
 		if err == nil {
 			buf.WriteByte(')')
 		}

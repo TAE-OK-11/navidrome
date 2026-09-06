@@ -823,7 +823,11 @@ fn select_request_compression(
         .then(|| path.to_ascii_lowercase());
     let normalized = normalized_storage.as_deref().unwrap_or(path);
     let normalized = normalized.strip_suffix(".view").unwrap_or(&normalized);
-    if !is_api_path(normalized) || is_media_path(normalized) || is_sensitive_auth_path(normalized) {
+    if !is_api_path(normalized)
+        || is_media_path(normalized)
+        || is_sensitive_auth_path(normalized)
+        || is_probe_path(normalized)
+    {
         return None;
     }
     let accepted = parse_accept_encoding(headers.get(ACCEPT_ENCODING)?.to_str().ok()?);
@@ -922,6 +926,14 @@ fn normalize_request_path(path: &str) -> String {
     } else {
         path.to_string()
     }
+}
+
+fn is_probe_path(path: &str) -> bool {
+    let normalized = normalize_request_path(path);
+    normalized.ends_with("/rest/ping")
+        || normalized.ends_with("/api/health")
+        || normalized.ends_with("/api/keepalive")
+        || normalized.contains("/api/keepalive/")
 }
 
 fn is_media_path(path: &str) -> bool {
@@ -1584,7 +1596,7 @@ mod tests {
             h3::Header::new(b":method", b"GET"),
             h3::Header::new(b":scheme", b"https"),
             h3::Header::new(b":authority", b"music.example"),
-            h3::Header::new(b":path", b"/rest/ping?x=1"),
+            h3::Header::new(b":path", b"/api/album?x=1"),
             h3::Header::new(b"accept-encoding", b"br, zstd, gzip"),
             h3::Header::new(b"x-forwarded-for", b"attacker"),
             h3::Header::new(b"x-real-ip", b"198.51.100.99"),
@@ -1598,7 +1610,7 @@ mod tests {
         );
         assert_eq!(
             decoded.uri.path_and_query().unwrap().as_str(),
-            "/rest/ping?x=1"
+            "/api/album?x=1"
         );
         assert_eq!(decoded.headers["x-forwarded-for"], "192.0.2.10");
         assert_eq!(decoded.headers[TOKEN_HEADER], "test-token");
@@ -1613,6 +1625,18 @@ mod tests {
             })
         );
         assert!(!decoded.headers.contains_key("x-real-ip"));
+
+        // Probe paths like /rest/ping skip H3-side compression selection entirely.
+        let ping_headers = vec![
+            h3::Header::new(b":method", b"GET"),
+            h3::Header::new(b":scheme", b"https"),
+            h3::Header::new(b":authority", b"music.example"),
+            h3::Header::new(b":path", b"/rest/ping?x=1"),
+            h3::Header::new(b"accept-encoding", b"br, zstd, gzip"),
+        ];
+        let ping = decode_request_headers(&ping_headers, &bridge_headers()).unwrap();
+        assert!(ping.compression.is_none());
+        assert!(!ping.headers.contains_key(COMPRESSION_HEADER));
     }
 
     #[test]
@@ -1651,6 +1675,7 @@ mod tests {
         assert!(select_request_compression(&Method::GET, "/api/album", &headers).is_none());
         headers.remove(RANGE);
         assert!(select_request_compression(&Method::GET, "/rest/stream.view", &headers).is_none());
+        assert!(select_request_compression(&Method::GET, "/rest/ping.view", &headers).is_none());
         assert!(
             select_request_compression(&Method::GET, "/rest/stream.view?id=track", &headers)
                 .is_none()
@@ -1787,6 +1812,8 @@ mod tests {
         assert!(is_media_path("/rest/stream.view"));
         assert!(is_media_path("/rest/getTranscodeStream.view"));
         assert!(!is_media_path("/rest/ping.view"));
+        assert!(is_probe_path("/rest/ping.view"));
+        assert!(is_probe_path("/rest/ping"));
         assert!(is_bulk_media_path("/rest/download.view"));
         assert!(!is_bulk_media_path("/rest/stream.view"));
 

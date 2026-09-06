@@ -17,7 +17,12 @@ func isProbeRequest(r *http.Request) bool {
 		return false
 	}
 	base := strings.TrimSuffix(conf.Server.BasePath, "/")
-	pingPath := base + "/ping"
-	healthPath := base + consts.URLPathNativeAPI + "/health"
-	return path == pingPath || path == healthPath
+	path = strings.TrimSuffix(strings.ToLower(path), ".view")
+	pingPath := strings.ToLower(base + "/ping")
+	healthPath := strings.ToLower(base + consts.URLPathNativeAPI + "/health")
+	restPingPath := strings.ToLower(base + consts.URLPathSubsonicAPI + "/ping")
+	// Subsonic clients poll /rest/ping while streaming; treat it as a probe so
+	// compression/JWT middleware stay off the hot path (auth still runs in
+	// the Subsonic stack).
+	return path == pingPath || path == healthPath || path == restPingPath
 }

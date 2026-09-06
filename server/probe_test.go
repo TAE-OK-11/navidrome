@@ -17,7 +17,8 @@ func TestIsProbeRequest(t *testing.T) {
 		{"/ping", true},
 		{"/api/health", true},
 		{"/api/health/", true},
-		{"/rest/ping", false},
+		{"/rest/ping", true},
+		{"/rest/ping.view", true},
 		{"/api/album", false},
 	}
 	for _, test := range tests {

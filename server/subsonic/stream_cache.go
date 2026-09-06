@@ -136,3 +136,17 @@ func (api *Router) mediaFileForStreaming(ctx context.Context, id string) (*model
 		return api.ds.MediaFile(lookupCtx).GetForStreaming(id)
 	})
 }
+
+// mediaFileForStreamingFresh always hits the DB. Used by getTranscodeStream so
+// token staleness checks see the real UpdatedAt instead of a cached snapshot
+// left by getTranscodeDecision /stream a moment earlier.
+func (api *Router) mediaFileForStreamingFresh(ctx context.Context, id string) (*model.MediaFile, error) {
+	mf, err := api.ds.MediaFile(ctx).GetForStreaming(id)
+	if err != nil {
+		return nil, err
+	}
+	if user, ok := request.UserFrom(ctx); ok && api.streamFiles != nil {
+		api.streamFiles.store(streamMediaCacheKey(user, id), *mf, time.Now())
+	}
+	return mf, nil
+}

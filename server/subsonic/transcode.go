@@ -387,8 +387,9 @@ func (api *Router) GetTranscodeStream(w http.ResponseWriter, r *http.Request) (*
 		return nil, nil
 	}
 
-	// Fetch only fields needed by stream setup.
-	mf, err := api.mediaFileForStreaming(ctx, mediaID)
+	// Fresh load: token staleness is based on UpdatedAt, so a cached media
+	// row from getTranscodeDecision would incorrectly accept a stale token.
+	mf, err := api.mediaFileForStreamingFresh(ctx, mediaID)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			http.Error(w, "Not Found", http.StatusNotFound)

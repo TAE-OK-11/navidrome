@@ -234,81 +234,87 @@ func (api *Router) registerSystemRoutes(r chi.Router) {
 }
 
 func (api *Router) registerPlayerRoutes(r chi.Router) {
+	// Catalog / browse endpoints only need the Subsonic `c` client name for
+	// Legacy/Minimal response shaping (via ClientFrom). Skip players.Register
+	// so album grids and search do not touch the players table.
+	api.h(r, "getIndexes", api.GetIndexes)
+	api.h(r, "getArtists", api.GetArtists)
+	api.h(r, "getMusicDirectory", api.GetMusicDirectory)
+	api.h(r, "getArtist", api.GetArtist)
+	api.h(r, "getAlbum", api.GetAlbum)
+	api.h(r, "getSong", api.GetSong)
+	api.h(r, "getAlbumInfo", api.GetAlbumInfo)
+	api.h(r, "getAlbumInfo2", api.GetAlbumInfo)
+	api.h(r, "getArtistInfo", api.GetArtistInfo)
+	api.h(r, "getArtistInfo2", api.GetArtistInfo2)
+	api.h(r, "getTopSongs", api.GetTopSongs)
+	api.h(r, "getSimilarSongs", api.GetSimilarSongs)
+	api.h(r, "getSimilarSongs2", api.GetSimilarSongs2)
+	api.hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
+	api.hr(r, "findSonicPath", api.FindSonicPath)
+
+	api.hr(r, "getAlbumList", api.GetAlbumList)
+	api.hr(r, "getAlbumList2", api.GetAlbumList2)
+	api.h(r, "getStarred", api.GetStarred)
+	api.h(r, "getStarred2", api.GetStarred2)
+	api.h(r, "getNowPlaying", api.GetNowPlaying)
+	api.h(r, "getRandomSongs", api.GetRandomSongs)
+	api.h(r, "getSongsByGenre", api.GetSongsByGenre)
+
+	api.h(r, "getPlaylists", api.GetPlaylists)
+	api.h(r, "getPlaylist", api.GetPlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
+	api.h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
+
+	api.h(r, "getBookmarks", api.GetBookmarks)
+	api.h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
+	api.h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
+	api.h(r, "getPlayQueue", api.GetPlayQueue)
+	api.h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
+	api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
+	api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
+
+	api.h(r, "search2", api.Search2)
+	api.h(r, "search3", api.Search3)
+
+	api.h(r, "getUser", api.GetUser)
+	api.h(r.With(adminOnly), "getUsers", api.GetUsers)
+
+	api.h(r, "getInternetRadioStations", api.GetInternetRadios)
+	r.Group(func(r chi.Router) {
+		r.Use(adminOnly)
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "createInternetRadioStation", api.CreateInternetRadio)
+		api.h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
+		api.h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "setRating", api.SetRating)
+		api.h(r, "star", api.Star)
+		api.h(r, "unstar", api.Unstar)
+	})
+
+	if conf.Server.EnableSharing {
+		api.h(r, "getShares", api.GetShares)
+		api.h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
+		api.h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
+		api.h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
+	}
+
+	if conf.Server.Jukebox.Enabled {
+		api.h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
+	}
+
+	// Playback reporting needs a registered player id when clients omit
+	// clientUniqueId (used as NowPlaying / scrobble client identity).
 	r.Group(func(r chi.Router) {
 		r.Use(getPlayer(api.players))
-
-		api.h(r, "getIndexes", api.GetIndexes)
-		api.h(r, "getArtists", api.GetArtists)
-		api.h(r, "getMusicDirectory", api.GetMusicDirectory)
-		api.h(r, "getArtist", api.GetArtist)
-		api.h(r, "getAlbum", api.GetAlbum)
-		api.h(r, "getSong", api.GetSong)
-		api.h(r, "getAlbumInfo", api.GetAlbumInfo)
-		api.h(r, "getAlbumInfo2", api.GetAlbumInfo)
-		api.h(r, "getArtistInfo", api.GetArtistInfo)
-		api.h(r, "getArtistInfo2", api.GetArtistInfo2)
-		api.h(r, "getTopSongs", api.GetTopSongs)
-		api.h(r, "getSimilarSongs", api.GetSimilarSongs)
-		api.h(r, "getSimilarSongs2", api.GetSimilarSongs2)
-		api.hr(r, "getSonicSimilarTracks", api.GetSonicSimilarTracks)
-		api.hr(r, "findSonicPath", api.FindSonicPath)
-
-		api.hr(r, "getAlbumList", api.GetAlbumList)
-		api.hr(r, "getAlbumList2", api.GetAlbumList2)
-		api.h(r, "getStarred", api.GetStarred)
-		api.h(r, "getStarred2", api.GetStarred2)
-		api.h(r, "getNowPlaying", api.GetNowPlaying)
-		api.h(r, "getRandomSongs", api.GetRandomSongs)
-		api.h(r, "getSongsByGenre", api.GetSongsByGenre)
-
-		api.h(r, "getPlaylists", api.GetPlaylists)
-		api.h(r, "getPlaylist", api.GetPlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "createPlaylist", api.CreatePlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "deletePlaylist", api.DeletePlaylist)
-		api.h(r.With(rejectCrossSiteProxyMutation), "updatePlaylist", api.UpdatePlaylist)
-
-		api.h(r, "getBookmarks", api.GetBookmarks)
-		api.h(r.With(rejectCrossSiteProxyMutation), "createBookmark", api.CreateBookmark)
-		api.h(r.With(rejectCrossSiteProxyMutation), "deleteBookmark", api.DeleteBookmark)
-		api.h(r, "getPlayQueue", api.GetPlayQueue)
-		api.h(r, "getPlayQueueByIndex", api.GetPlayQueueByIndex)
-		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueue", api.SavePlayQueue)
-		api.h(r.With(rejectCrossSiteProxyMutation), "savePlayQueueByIndex", api.SavePlayQueueByIndex)
-
-		api.h(r, "search2", api.Search2)
-		api.h(r, "search3", api.Search3)
-
-		api.h(r, "getUser", api.GetUser)
-		api.h(r.With(adminOnly), "getUsers", api.GetUsers)
-
-		api.h(r, "getInternetRadioStations", api.GetInternetRadios)
-		r.Group(func(r chi.Router) {
-			r.Use(adminOnly)
-			r.Use(rejectCrossSiteProxyMutation)
-			api.h(r, "createInternetRadioStation", api.CreateInternetRadio)
-			api.h(r, "deleteInternetRadioStation", api.DeleteInternetRadio)
-			api.h(r, "updateInternetRadioStation", api.UpdateInternetRadio)
-		})
-
-		r.Group(func(r chi.Router) {
-			r.Use(rejectCrossSiteProxyMutation)
-			api.h(r, "setRating", api.SetRating)
-			api.h(r, "star", api.Star)
-			api.h(r, "unstar", api.Unstar)
-			api.h(r, "scrobble", api.Scrobble)
-			api.h(r, "reportPlayback", api.ReportPlayback)
-		})
-
-		if conf.Server.EnableSharing {
-			api.h(r, "getShares", api.GetShares)
-			api.h(r.With(rejectCrossSiteProxyMutation), "createShare", api.CreateShare)
-			api.h(r.With(rejectCrossSiteProxyMutation), "updateShare", api.UpdateShare)
-			api.h(r.With(rejectCrossSiteProxyMutation), "deleteShare", api.DeleteShare)
-		}
-
-		if conf.Server.Jukebox.Enabled {
-			api.h(r.With(rejectCrossSiteProxyMutation), "jukeboxControl", api.JukeboxControl)
-		}
+		r.Use(rejectCrossSiteProxyMutation)
+		api.h(r, "scrobble", api.Scrobble)
+		api.h(r, "reportPlayback", api.ReportPlayback)
 	})
 }
 

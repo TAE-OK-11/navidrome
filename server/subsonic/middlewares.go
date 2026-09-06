@@ -260,7 +260,7 @@ type authFailureEntry struct {
 }
 
 type authFailureLimiter struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	entries map[string]authFailureEntry
 	limit   int
 }
@@ -281,13 +281,20 @@ func (l *authFailureLimiter) allow(key string, now time.Time, requestLimit int, 
 	if requestLimit <= 0 || window <= 0 {
 		return 0, true
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mu.RLock()
 	entry, ok := l.entries[key]
-	if !ok || !now.Before(entry.reset) {
-		if ok {
+	n := len(l.entries)
+	l.mu.RUnlock()
+	// Common case: no recent failures anywhere (or for this client).
+	if n == 0 || !ok {
+		return 0, true
+	}
+	if !now.Before(entry.reset) {
+		l.mu.Lock()
+		if current, exists := l.entries[key]; exists && !now.Before(current.reset) {
 			delete(l.entries, key)
 		}
+		l.mu.Unlock()
 		return 0, true
 	}
 	if entry.count < requestLimit {
@@ -328,6 +335,12 @@ func (l *authFailureLimiter) failed(key string, now time.Time, window time.Durat
 }
 
 func (l *authFailureLimiter) succeeded(key string) {
+	l.mu.RLock()
+	_, ok := l.entries[key]
+	l.mu.RUnlock()
+	if !ok {
+		return
+	}
 	l.mu.Lock()
 	delete(l.entries, key)
 	l.mu.Unlock()

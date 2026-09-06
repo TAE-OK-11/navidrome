@@ -5,7 +5,6 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 )
@@ -69,8 +68,7 @@ func (api *Router) GetInternetRadios(r *http.Request) (*responses.Subsonic, erro
 			HomepageUrl: g.HomePageUrl,
 		}
 
-		player, _ := request.PlayerFrom(ctx)
-		if isClientInList(conf.Server.Subsonic.LegacyClients, player.Client) {
+		if isClientInList(conf.Server.Subsonic.LegacyClients, clientNameFrom(ctx)) {
 			continue
 		}
 		// Add coverArt if not legacy client

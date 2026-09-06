@@ -11,6 +11,7 @@ import (
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/resources"
 	"github.com/navidrome/navidrome/server"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
@@ -30,9 +31,15 @@ func (api *Router) GetAvatar(w http.ResponseWriter, r *http.Request) (*responses
 		return nil, err
 	}
 	ctx := r.Context()
-	u, err := api.ds.User(ctx).FindByUsername(username)
-	if err != nil {
-		return nil, err
+	var u *model.User
+	if usr, ok := request.UserFrom(ctx); ok && strings.EqualFold(usr.UserName, username) {
+		copied := usr
+		u = &copied
+	} else {
+		u, err = api.ds.User(ctx).FindByUsername(username)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if u.Email == "" {
 		log.Warn(ctx, "User needs an email for gravatar to work", "username", username)
@@ -60,13 +67,22 @@ func (api *Router) GetCoverArt(w http.ResponseWriter, r *http.Request) (*respons
 		return nil, nil //nolint:nilerr
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
 	p := req.Params(r)
 	id, _ := p.String("id")
 	size := p.IntOr("size", 0)
 	square := p.BoolOr("square", false)
+
+	// Artwork IDs embed LastUpdate (al-<id>_<hex>). Honor conditional requests
+	// before allocating a timeout or opening the artwork reader — cover grids
+	// send many If-None-Match hits while browsing.
+	if artID, parseErr := model.ParseArtworkID(id); parseErr == nil && !artID.LastUpdate.IsZero() {
+		if httpcache.SetArtworkHeaders(w, r, artID.LastUpdate) {
+			return nil, nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
 
 	imgReader, lastUpdate, err := api.artwork.GetOrPlaceholder(ctx, id, size, square)
 	switch {

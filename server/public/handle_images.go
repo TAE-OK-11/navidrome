@@ -22,9 +22,6 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
 	p := req.Params(r)
 	id, _ := p.String(":id")
 	if id == "" {
@@ -41,6 +38,15 @@ func (pub *Router) handleImages(w http.ResponseWriter, r *http.Request) {
 	}
 	size := p.IntOr("size", 0)
 	square := p.BoolOr("square", false)
+
+	// Share image URLs embed LastUpdate in the artwork id claim. Honor
+	// conditional requests before opening the artwork reader.
+	if !artId.LastUpdate.IsZero() && httpcache.SetArtworkHeaders(w, r, artId.LastUpdate) {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
 
 	imgReader, lastUpdate, err := pub.artwork.Get(ctx, artId, size, square)
 	switch {

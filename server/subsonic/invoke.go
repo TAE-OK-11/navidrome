@@ -150,13 +150,20 @@ func (api *Router) prepareInvoke(ctx context.Context, endpoint string, query url
 		return nil, nil, err
 	}
 	req = req.WithContext(request.WithInternalAuth(req.Context(), username))
-	if api.ds != nil && username != "" {
-		usr, err := api.ds.User(ctx).FindByUsername(username)
-		if err != nil || usr == nil {
-			return nil, nil, fmt.Errorf("authenticated user %q not found", username)
+	if username != "" {
+		// Public gRPC Invoke already authenticated and attached the user; reuse it
+		// instead of a second SQLite FindByUsername on every proxy call.
+		if usr, ok := request.UserFrom(ctx); ok && strings.EqualFold(usr.UserName, username) {
+			req = req.WithContext(request.WithUser(req.Context(), usr))
+			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
+		} else if api.ds != nil {
+			usr, err := api.ds.User(ctx).FindByUsername(username)
+			if err != nil || usr == nil {
+				return nil, nil, fmt.Errorf("authenticated user %q not found", username)
+			}
+			req = req.WithContext(request.WithUser(req.Context(), *usr))
+			req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
 		}
-		req = req.WithContext(request.WithUser(req.Context(), *usr))
-		req = req.WithContext(request.WithUsername(req.Context(), usr.UserName))
 	}
 	if client := query.Get("c"); client != "" {
 		req = req.WithContext(request.WithClient(req.Context(), client))

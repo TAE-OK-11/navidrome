@@ -14,7 +14,7 @@ const (
 // authCredentialCache remembers successful Subsonic credential checks briefly
 // so bursty /rest/ping polls during playback skip repeated MD5 work.
 type authCredentialCache struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	entries map[string]time.Time
 	limit   int
 	ttl     time.Duration
@@ -49,12 +49,16 @@ func authCredentialCacheKey(username, pass, token, salt, jwt string) string {
 }
 
 func (c *authCredentialCache) seen(key string, now time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
 	expires, ok := c.entries[key]
+	c.mu.RUnlock()
 	if !ok || !now.Before(expires) {
 		if ok {
-			delete(c.entries, key)
+			c.mu.Lock()
+			if current, exists := c.entries[key]; exists && !now.Before(current) {
+				delete(c.entries, key)
+			}
+			c.mu.Unlock()
 		}
 		return false
 	}

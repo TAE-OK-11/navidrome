@@ -333,9 +333,9 @@ func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			// Subsonic clients poll /rest/ping while streaming. Never block that
-			// path on a users-table write or it shows up as momentary ping spikes.
-			if !isSubsonicPingPath(r.URL.Path) {
+			// Skip high-churn paths: /rest/ping (clients poll while streaming),
+			// UI keepalive, and cover-art grids (hundreds of GETs while browsing).
+			if !shouldSkipLastAccessUpdate(r.URL.Path) {
 				if usr, ok := request.UserFrom(ctx); ok {
 					userAccessLimiter.Do(usr.ID, func() {
 						userID := usr.ID
@@ -362,9 +362,19 @@ func UpdateLastAccessMiddleware(ds model.DataStore) func(next http.Handler) http
 	}
 }
 
+func shouldSkipLastAccessUpdate(path string) bool {
+	return isSubsonicPingPath(path) || isNativeKeepAlivePath(path) || isSubsonicCoverArtPath(path)
+}
+
 func isSubsonicPingPath(path string) bool {
 	path = strings.ToLower(strings.TrimSuffix(path, "/"))
 	path = strings.TrimSuffix(path, ".view")
 	// Full server mounts Subsonic under /rest; unit tests hit the sub-router at /ping.
 	return path == "/ping" || strings.HasSuffix(path, "/rest/ping")
+}
+
+func isSubsonicCoverArtPath(path string) bool {
+	path = strings.ToLower(strings.TrimSuffix(path, "/"))
+	path = strings.TrimSuffix(path, ".view")
+	return path == "/getcoverart" || strings.HasSuffix(path, "/rest/getcoverart")
 }

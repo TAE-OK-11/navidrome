@@ -1,3 +1,6 @@
+mod blocking;
+pub use blocking::run_blocking;
+
 use std::time::Duration;
 
 use anyhow::{Context, Result};

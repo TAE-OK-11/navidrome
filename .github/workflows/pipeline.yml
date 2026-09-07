@@ -83,6 +83,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - crate: grpc-listen
+            package: navidrome-grpc-listen
+          - crate: fts-normalize
+            package: fts-normalize
           - crate: metadata
             package: navidrome-metadata
           - crate: h3-gateway

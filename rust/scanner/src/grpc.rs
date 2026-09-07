@@ -36,9 +36,8 @@ impl FolderHash for FolderHashService {
             audio_files: to_files(req.audio_files),
             image_files: to_files(req.image_files),
         };
-        let hash = tokio::task::spawn_blocking(move || folder_hash_from_input(&input))
-            .await
-            .map_err(|err| Status::internal(format!("folder hash join: {err}")))?;
+        let hash =
+            navidrome_grpc_listen::run_blocking(move || folder_hash_from_input(&input)).await?;
         Ok(Response::new(HashResponse {
             ok: true,
             hash,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use navidrome_grpc_listen::{bind_tcp, local_ipc_server, shutdown, LOCAL_MAX_MSG};
+use navidrome_grpc_listen::{LOCAL_MAX_MSG, bind_tcp, local_ipc_server, shutdown};
 use navidrome_metadata::proto::metadata_server::{Metadata, MetadataServer};
 use navidrome_metadata::proto::{
     BuildFts5QueryRequest, BuildFts5QueryResponse, CleanTagsRequest, CleanTagsResponse,
@@ -16,7 +16,7 @@ use navidrome_metadata::tag_clean::TagMappingConfig;
 use tonic::{Request, Response, Status};
 
 use crate::image_worker::{self, ImageOutcome};
-use crate::{handle_request, picture_data, read_file, InputFile, Request as ExtractIn};
+use crate::{InputFile, Request as ExtractIn, handle_request, picture_data, read_file};
 
 pub struct MetadataService;
 
@@ -27,9 +27,7 @@ impl Metadata for MetadataService {
         request: Request<ExtractRequest>,
     ) -> Result<Response<ExtractResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || extract_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("extract join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || extract_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -38,9 +36,7 @@ impl Metadata for MetadataService {
         request: Request<CleanTagsRequest>,
     ) -> Result<Response<CleanTagsResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || clean_tags_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("clean_tags join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || clean_tags_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -49,9 +45,7 @@ impl Metadata for MetadataService {
         request: Request<MapMediaRequest>,
     ) -> Result<Response<MapMediaResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || map_media_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("map_media join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || map_media_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -60,9 +54,7 @@ impl Metadata for MetadataService {
         request: Request<ParseLyricsRequest>,
     ) -> Result<Response<ParseLyricsResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || parse_lyrics_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("parse_lyrics join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || parse_lyrics_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -71,9 +63,7 @@ impl Metadata for MetadataService {
         request: Request<ImageRequest>,
     ) -> Result<Response<ImageResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || process_image_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("process_image join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || process_image_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -82,9 +72,7 @@ impl Metadata for MetadataService {
         request: Request<ExtractPictureRequest>,
     ) -> Result<Response<ExtractPictureResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || extract_picture_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("extract_picture join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || extract_picture_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -93,9 +81,7 @@ impl Metadata for MetadataService {
         request: Request<NormalizeFtsRequest>,
     ) -> Result<Response<NormalizeFtsResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || normalize_fts_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("normalize_fts join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || normalize_fts_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -104,9 +90,8 @@ impl Metadata for MetadataService {
         request: Request<NormalizeFtsBatchRequest>,
     ) -> Result<Response<NormalizeFtsBatchResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || normalize_fts_batch_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("normalize_fts_batch join: {err}")))?;
+        let result =
+            navidrome_grpc_listen::run_blocking(move || normalize_fts_batch_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -115,9 +100,8 @@ impl Metadata for MetadataService {
         request: Request<BuildFts5QueryRequest>,
     ) -> Result<Response<BuildFts5QueryResponse>, Status> {
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || build_fts5_query_sync(req))
-            .await
-            .map_err(|err| Status::internal(format!("build_fts5_query join: {err}")))?;
+        let result =
+            navidrome_grpc_listen::run_blocking(move || build_fts5_query_sync(req)).await?;
         Ok(Response::new(result))
     }
 
@@ -424,7 +408,5 @@ fn to_proto_tags(tags: HashMap<String, Vec<String>>) -> HashMap<String, StringLi
 }
 
 fn from_proto_tags(tags: HashMap<String, StringList>) -> HashMap<String, Vec<String>> {
-    tags.into_iter()
-        .map(|(k, list)| (k, list.values))
-        .collect()
+    tags.into_iter().map(|(k, list)| (k, list.values)).collect()
 }

@@ -29,9 +29,7 @@ impl Search for SearchService {
     ) -> Result<Response<IndexResponse>, Status> {
         let engine = Arc::clone(&self.engine);
         let req = request.into_inner();
-        let result = tokio::task::spawn_blocking(move || apply_sync(&engine, req))
-            .await
-            .map_err(|err| Status::internal(format!("search worker join: {err}")))?;
+        let result = navidrome_grpc_listen::run_blocking(move || apply_sync(&engine, req)).await?;
         Ok(Response::new(result))
     }
 
@@ -104,7 +102,9 @@ fn to_search_op(op: index_request::Op) -> Result<SearchOp, String> {
                 })
                 .collect(),
         }),
-        index_request::Op::NormalizeFts(norm) => Ok(SearchOp::NormalizeFts { values: norm.values }),
+        index_request::Op::NormalizeFts(norm) => Ok(SearchOp::NormalizeFts {
+            values: norm.values,
+        }),
     }
 }
 

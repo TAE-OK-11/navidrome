@@ -293,7 +293,9 @@ func (api *Router) GetTranscodeDecision(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get media file
-	mf, err := api.mediaFileForStreaming(ctx, mediaID)
+	// A newly issued token must describe the current row, even when a prior
+	// stream populated the short-lived Range/seek cache before a scan.
+	mf, err := api.mediaFileForStreamingFresh(ctx, mediaID)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			return nil, newError(responses.ErrorDataNotFound, "media file not found: %s", mediaID)

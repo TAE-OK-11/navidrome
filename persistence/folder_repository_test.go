@@ -101,17 +101,17 @@ var _ = Describe("FolderRepository", func() {
 			})
 
 			It("treats percent and underscore in target paths literally", func() {
-				target := model.NewFolder(testLib, "Literal/Album_100%")
-				child := model.NewFolder(testLib, "Literal/Album_100%/Child")
-				unrelated := model.NewFolder(testLib, "Literal/AlbumX100more/Child")
+				target := model.NewFolder(testLib, "TestLiteral/Album_100%")
+				child := model.NewFolder(testLib, "TestLiteral/Album_100%/Child")
+				unrelated := model.NewFolder(testLib, "TestLiteral/AlbumX100more/Child")
 				Expect(repo.Put(target)).To(Succeed())
 				Expect(repo.Put(child)).To(Succeed())
 				Expect(repo.Put(unrelated)).To(Succeed())
-				results, err := repo.GetFolderUpdateInfo(testLib, "Literal/Album_100%")
+				results, err := repo.GetFolderUpdateInfo(testLib, "TestLiteral/Album_100%")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(results).To(HaveLen(2))
 				Expect(results).To(HaveKey(target.ID))
-				Expect(results[child.ID].FullPath).To(Equal("Literal/Album_100%/Child"))
+				Expect(results[child.ID].FullPath).To(Equal("TestLiteral/Album_100%/Child"))
 				Expect(results).ToNot(HaveKey(unrelated.ID))
 			})
 
@@ -202,15 +202,14 @@ var _ = Describe("FolderRepository", func() {
 			})
 
 			It("handles empty folder path as root", func() {
-				// Test querying for root folder without creating it (fixtures should have one)
-				rootFolderID := model.FolderID(testLib, ".")
-
-				results, err := repo.GetFolderUpdateInfo(testLib, "")
+				root := model.NewFolder(otherLib, ".")
+				child := model.NewFolder(otherLib, "TestRoot/Child")
+				Expect(repo.Put(root)).To(Succeed())
+				Expect(repo.Put(child)).To(Succeed())
+				results, err := repo.GetFolderUpdateInfo(otherLib, "")
 				Expect(err).ToNot(HaveOccurred())
-				// Should return the root folder if it exists
-				if len(results) > 0 {
-					Expect(results).To(HaveKey(rootFolderID))
-				}
+				Expect(results).To(HaveKey(root.ID))
+				Expect(results).To(HaveKey(child.ID))
 			})
 
 			It("returns empty map for non-existent folders", func() {

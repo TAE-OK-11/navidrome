@@ -122,7 +122,10 @@ func (c *client) parseError(data []byte) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(data, &envelope); err != nil || envelope.Error == nil {
+	// This pass only detects an API error envelope; the result decoder below
+	// remains responsible for rejecting malformed successful responses.
+	_ = json.Unmarshal(data, &envelope)
+	if envelope.Error == nil {
 		return nil
 	}
 	err := fmt.Errorf("deezer error(%d): %s", envelope.Error.Code, envelope.Error.Message)

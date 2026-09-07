@@ -40,7 +40,6 @@ type Gateway struct {
 	grpc            *grpcClient
 	workerExpected  bool
 	shutdown        bool
-	restarts        int
 }
 
 func Get() *Gateway {
@@ -57,14 +56,13 @@ func newGateway() *Gateway {
 	}
 	if conf.Server.Integration.Enabled {
 		if client, err := startGRPCClient(context.Background()); err != nil {
-			if errors.Is(err, rustworker.ErrSkippedInTests) {
+			if errors.Is(err, rustworker.ErrSkippedInTests) || errors.Is(err, rustworker.ErrWorkerUnavailable) {
 				g.workerExpected = false
 			} else {
 				log.Error("Rust integration gRPC worker unavailable", err)
 			}
 		} else {
 			g.grpc = client
-			g.attachWorker(client)
 			log.Info("Outbound HTTP routed through Rust gRPC integration worker")
 		}
 	}
@@ -154,9 +152,6 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		}
 		if isWorkerCircuitOpen(err) {
 			return nil, err
-		}
-		if isWorkerTransportFailure(err) {
-			g.tryRestartWorker(err)
 		}
 		if !allowHTTPFallback() {
 			return nil, err

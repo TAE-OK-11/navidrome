@@ -10,74 +10,46 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/core/integration/gen"
 	"github.com/navidrome/navidrome/core/rustworker"
+	"google.golang.org/grpc"
 )
 
 var errBodyTooLarge = errors.New("integration request body too large")
 
+// grpcClient delegates process ownership to the shared worker supervisor.
+// Outbound HTTP is never automatically replayed: a lost reply may already
+// have produced a remote side effect (scrobble, webhook, etc.).
 type grpcClient struct {
-	proc     *rustworker.GRPCProcess
-	client   gen.OutboundClient
-	mu       sync.Mutex
-	closed   bool
-	inflight sync.WaitGroup
-	onDead   func()
+	manager *rustworker.ManagedGRPC
 }
 
 func startGRPCClient(ctx context.Context) (*grpcClient, error) {
-	binary, err := Resolve()
-	if err != nil {
+	manager := rustworker.NewManagedGRPC(rustworker.ManagedGRPCConfig{
+		Name:    "integration",
+		Listen:  grpcListenAddr(),
+		Resolve: Resolve,
+		Health: func(ctx context.Context, conn *grpc.ClientConn) error {
+			_, err := gen.NewOutboundClient(conn).Health(ctx, &gen.HealthRequest{})
+			return err
+		},
+	})
+	if _, err := manager.ConnContext(ctx); err != nil {
+		manager.Close()
 		return nil, err
 	}
-	listen := grpcListenAddr()
-	proc, err := rustworker.StartGRPC(ctx, binary, listen, nil)
-	if err != nil {
-		return nil, err
-	}
-	client := gen.NewOutboundClient(proc.Conn)
-	healthCtx, healthCancel := context.WithTimeout(context.Background(), rustworker.DefaultGRPCHealthTimeout)
-	defer healthCancel()
-	if _, err := client.Health(healthCtx, &gen.HealthRequest{}); err != nil {
-		proc.Close()
-		return nil, fmt.Errorf("integration worker health: %w", err)
-	}
-	c := &grpcClient{proc: proc, client: client}
-	go c.watchProcess()
-	return c, nil
-}
-
-func (c *grpcClient) watchProcess() {
-	if c.proc == nil || c.proc.Cmd == nil {
-		return
-	}
-	_ = c.proc.Wait()
-	c.mu.Lock()
-	closed := c.closed
-	onDead := c.onDead
-	c.mu.Unlock()
-	if !closed && onDead != nil {
-		onDead()
-	}
+	return &grpcClient{manager: manager}, nil
 }
 
 func (c *grpcClient) roundTrip(ctx context.Context, dest Destination, req *http.Request) (*http.Response, error) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return nil, errors.New("integration gRPC client closed")
+	conn, err := c.manager.ConnContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	client := c.client
-	c.inflight.Add(1)
-	c.mu.Unlock()
-	defer c.inflight.Done()
-	if client == nil {
-		return nil, errors.New("integration gRPC client closed")
-	}
+	client := gen.NewOutboundClient(conn)
 
 	var body []byte
 	if req.Body != nil {
@@ -183,15 +155,5 @@ func isWorkerCircuitOpen(err error) bool {
 }
 
 func (c *grpcClient) close() {
-	c.mu.Lock()
-	c.closed = true
-	c.mu.Unlock()
-	c.inflight.Wait()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.proc != nil {
-		c.proc.Close()
-		c.proc = nil
-	}
-	c.client = nil
+	c.manager.Close()
 }

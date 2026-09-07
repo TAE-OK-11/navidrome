@@ -157,7 +157,7 @@ func (r folderRepository) getFolderUpdateInfoBatch(lib model.Library, targetPath
 		// Include all descendants: folders whose path field equals or starts with the target path
 		// Note: Folder.Path is the directory path, so children have path = targetPath
 		pathConditions = append(pathConditions, Eq{"path": cleanPath})
-		pathConditions = append(pathConditions, Like{"path": cleanPath + "/%"})
+		pathConditions = append(pathConditions, Expr(`path LIKE ? ESCAPE '\'`, escapeLikePrefix(cleanPath)+"/%"))
 	}
 
 	// Combine conditions: exact folder IDs OR descendant path patterns
@@ -172,9 +172,11 @@ func (r folderRepository) getFolderUpdateInfoBatch(lib model.Library, targetPath
 
 // queryFolderUpdateInfo executes the query and returns the result map
 func (r folderRepository) queryFolderUpdateInfo(where And) (map[string]model.FolderUpdateInfo, error) {
-	sq := r.newSelect().Columns("id", "updated_at", "hash").Where(where)
+	sq := r.newSelect().Columns("id", "path", "name", "updated_at", "hash").Where(where)
 	var res []struct {
 		ID        string
+		Path      string
+		Name      string
 		UpdatedAt time.Time
 		Hash      string
 	}
@@ -184,7 +186,7 @@ func (r folderRepository) queryFolderUpdateInfo(where And) (map[string]model.Fol
 	}
 	m := make(map[string]model.FolderUpdateInfo, len(res))
 	for _, f := range res {
-		m[f.ID] = model.FolderUpdateInfo{UpdatedAt: f.UpdatedAt, Hash: f.Hash}
+		m[f.ID] = model.FolderUpdateInfo{FullPath: path.Join(f.Path, f.Name), UpdatedAt: f.UpdatedAt, Hash: f.Hash}
 	}
 	return m, nil
 }

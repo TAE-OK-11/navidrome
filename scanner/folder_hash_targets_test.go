@@ -1,18 +1,18 @@
 package scanner
 
 import (
-	"testing"
-
+	"github.com/navidrome/navidrome/model"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
-func TestFolderHashInScanTargets(t *testing.T) {
-	t.Parallel()
-	targets := []string{"The Beatles/Help!", "Pink Floyd"}
-
-	require.True(t, folderHashInScanTargets("The Beatles/Help!", nil))
-	require.True(t, folderHashInScanTargets("The Beatles/Help!/01", targets))
-	require.True(t, folderHashInScanTargets("Pink Floyd/The Wall", targets))
-	require.False(t, folderHashInScanTargets("The Beatles/Revolver", targets))
-	require.False(t, folderHashInScanTargets("Other/Artist", targets))
+func TestKnownFolderHashesPreservesSiblingAndRootPaths(t *testing.T) {
+	updates := map[string]model.FolderUpdateInfo{
+		"root":  {FullPath: ".", Hash: "root-hash"},
+		"a":     {FullPath: "Artist/Album A", Hash: "a-hash"},
+		"b":     {FullPath: "Artist/Album B", Hash: "b-hash"},
+		"empty": {FullPath: "Empty"},
+	}
+	require.Equal(t, map[string]string{".": "root-hash", "Artist/Album A": "a-hash", "Artist/Album B": "b-hash"}, knownFolderHashes(updates, false))
+	require.Nil(t, knownFolderHashes(updates, true), "full scans need complete file lists even for unchanged hashes")
 }

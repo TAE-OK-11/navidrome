@@ -112,10 +112,8 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 		localRoot = localFS.RootPath()
 	}
 
-	knownHashes, err := loadKnownFolderHashes(ctx, ds, lib, targetFolders)
-	if err != nil {
-		return nil, fmt.Errorf("loading folder hashes: %w", err)
-	}
+	// Reuse the scoped snapshot instead of querying every Folder again.
+	knownHashes := knownFolderHashes(lastUpdates, lib.FullScanInProgress)
 
 	return &scanJob{
 		lib:           lib,
@@ -128,33 +126,19 @@ func newScanJob(ctx context.Context, ds model.DataStore, cw artwork.CacheWarmer,
 	}, nil
 }
 
-func loadKnownFolderHashes(ctx context.Context, ds model.DataStore, lib model.Library, targetFolders []string) (map[string]string, error) {
-	folders, err := ds.Folder(ctx).GetAll(model.QueryOptions{
-		Filters: query.And(query.Eq("library_id", lib.ID), query.NotMissing()),
-	})
-	if err != nil {
-		return nil, err
+func knownFolderHashes(updates map[string]model.FolderUpdateInfo, fullScan bool) map[string]string {
+	// Full scans must extract every file. A hash-only summary has no file list
+	// and must never be processed as an outdated, empty folder.
+	if fullScan {
+		return nil
 	}
-	hashes := make(map[string]string, len(folders))
-	for _, folder := range folders {
-		if folder.Hash == "" || !folderHashInScanTargets(folder.Path, targetFolders) {
-			continue
-		}
-		hashes[folder.Path] = folder.Hash
-	}
-	return hashes, nil
-}
-
-func folderHashInScanTargets(folderPath string, targetFolders []string) bool {
-	if len(targetFolders) == 0 {
-		return true
-	}
-	for _, target := range targetFolders {
-		if folderPath == target || strings.HasPrefix(folderPath, target+"/") {
-			return true
+	hashes := make(map[string]string, len(updates))
+	for _, info := range updates {
+		if info.FullPath != "" && info.Hash != "" {
+			hashes[info.FullPath] = info.Hash
 		}
 	}
-	return false
+	return hashes
 }
 
 // popLastUpdate retrieves and removes the last update info for the given folder ID

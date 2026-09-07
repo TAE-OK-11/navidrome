@@ -76,6 +76,7 @@ func NewFolder(lib Library, folderPath string) *Folder {
 type FolderCursor iter.Seq2[Folder, error]
 
 type FolderUpdateInfo struct {
+	FullPath  string // library-relative path including the folder name
 	UpdatedAt time.Time
 	Hash      string
 }

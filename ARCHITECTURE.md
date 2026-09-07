@@ -61,6 +61,12 @@ unvisited folders/tracks are marked missing; later cleanup phases do not run.
 
 ### Less repeated work and buffering
 
+Scanner startup reuses its scoped folder-update snapshot to construct Rust hash
+hints, removing a second whole-library query and folder/JSON hydration pass.
+Hash hints use the complete folder path, preserving siblings. Full scans omit
+hints so Rust sends complete file lists. Selective-scan SQL escapes literal
+percent/underscore characters to keep unrelated folders out of missing cleanup.
+
 Audioscrobbler signing uses the existing Go implementation and shared test
 vector. This removes a signing RPC and its worker-health dependency from the
 normal request path. The Rust signing protocol remains available for existing

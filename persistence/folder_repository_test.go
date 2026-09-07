@@ -97,6 +97,22 @@ var _ = Describe("FolderRepository", func() {
 				// Verify update info is populated
 				Expect(results[folder1.ID].UpdatedAt).ToNot(BeZero())
 				Expect(results[folder1.ID].Hash).To(Equal(folder1.Hash))
+				Expect(results[folder1.ID].FullPath).To(Equal("TestSpecific/Rock"))
+			})
+
+			It("treats percent and underscore in target paths literally", func() {
+				target := model.NewFolder(testLib, "Literal/Album_100%")
+				child := model.NewFolder(testLib, "Literal/Album_100%/Child")
+				unrelated := model.NewFolder(testLib, "Literal/AlbumX100more/Child")
+				Expect(repo.Put(target)).To(Succeed())
+				Expect(repo.Put(child)).To(Succeed())
+				Expect(repo.Put(unrelated)).To(Succeed())
+				results, err := repo.GetFolderUpdateInfo(testLib, "Literal/Album_100%")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(results).To(HaveLen(2))
+				Expect(results).To(HaveKey(target.ID))
+				Expect(results[child.ID].FullPath).To(Equal("Literal/Album_100%/Child"))
+				Expect(results).ToNot(HaveKey(unrelated.ID))
 			})
 
 			It("includes all child folders when querying parent", func() {

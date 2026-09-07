@@ -26,13 +26,9 @@ var _ = Describe("Responses", func() {
 
 	Describe("Error", func() {
 		It("parses the error response correctly", func() {
-			var errorResp Error
 			body := []byte(`{"error":{"type":"MissingParameterException","message":"Missing parameters: q","code":501}}`)
-			err := json.Unmarshal(body, &errorResp)
-			Expect(err).To(BeNil())
-
-			Expect(errorResp.Error.Code).To(Equal(501))
-			Expect(errorResp.Error.Message).To(Equal("Missing parameters: q"))
+			err := (&client{}).parseError(body)
+			Expect(err).To(MatchError("deezer error(501): Missing parameters: q"))
 		})
 	})
 

@@ -1,7 +1,7 @@
 package persistence
 
 import (
-	. "github.com/Masterminds/squirrel"
+	"github.com/Masterminds/squirrel"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -211,7 +211,7 @@ var _ = Describe("PlaylistRepository - Smart Playlists", func() {
 			UpdatedAt   time.Time
 			EvaluatedAt time.Time
 		}
-		Expect(r.queryOne(Select("updated_at", "evaluated_at").From("playlist").Where(Eq{"id": playlist.ID}), &stored)).To(Succeed())
+		Expect(r.queryOne(squirrel.Select("updated_at", "evaluated_at").From("playlist").Where(squirrel.Eq{"id": playlist.ID}), &stored)).To(Succeed())
 		Expect(stored.UpdatedAt).To(Equal(stored.EvaluatedAt))
 		Expect(stored.UpdatedAt).To(BeTemporally("~", playlist.UpdatedAt, time.Millisecond))
 	})

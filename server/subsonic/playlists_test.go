@@ -183,6 +183,13 @@ var _ = Describe("buildPlaylist", func() {
 			}
 		})
 
+		It("reports edits and a stable timestamp before initial evaluation", func() {
+			playlist.UpdatedAt = evaluatedAt.Add(time.Minute)
+			Expect(router.buildPlaylist(ctx, playlist).Changed).To(Equal(playlist.UpdatedAt))
+			playlist.EvaluatedAt = nil
+			Expect(router.buildPlaylist(ctx, playlist).Changed).To(Equal(playlist.UpdatedAt))
+		})
+
 		Context("with minimal client", func() {
 			BeforeEach(func() {
 				conf.Server.Subsonic.MinimalClients = "minimal-client"
@@ -198,7 +205,7 @@ var _ = Describe("buildPlaylist", func() {
 				Expect(result.SongCount).To(Equal(int32(10)))
 				Expect(result.Duration).To(Equal(int32(600)))
 				Expect(result.Created).To(Equal(playlist.CreatedAt))
-				Expect(result.Changed).To(Equal(evaluatedAt))
+				Expect(result.Changed).To(Equal(playlist.UpdatedAt))
 
 				// These should not be set
 				Expect(result.Comment).To(BeEmpty())
@@ -223,7 +230,7 @@ var _ = Describe("buildPlaylist", func() {
 				Expect(result.SongCount).To(Equal(int32(10)))
 				Expect(result.Duration).To(Equal(int32(600)))
 				Expect(result.Created).To(Equal(playlist.CreatedAt))
-				Expect(result.Changed).To(Equal(*playlist.EvaluatedAt))
+				Expect(result.Changed).To(Equal(playlist.UpdatedAt))
 				Expect(result.Comment).To(Equal("Test comment"))
 				Expect(result.Owner).To(Equal("admin"))
 				Expect(result.Public).To(BeTrue())

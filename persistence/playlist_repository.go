@@ -254,6 +254,12 @@ func (r *playlistRepository) addTracks(playlistId string, startingPos int, media
 
 // refreshCounters updates total playlist duration, size and count
 func (r *playlistRepository) refreshCounters(pls *model.Playlist) error {
+	return r.refreshPlaylistCounters(pls, false)
+}
+
+// Smart evaluation updates counters and both timestamps in one write, so the
+// response model and persisted freshness markers describe the same revision.
+func (r *playlistRepository) refreshPlaylistCounters(pls *model.Playlist, evaluated bool) error {
 	statsSql := Select(
 		"coalesce(sum(duration), 0) as duration",
 		"coalesce(sum(size), 0) as size",
@@ -269,12 +275,16 @@ func (r *playlistRepository) refreshCounters(pls *model.Playlist) error {
 	}
 
 	// Update playlist's total duration, size and count
+	now := time.Now()
 	upd := Update("playlist").
 		Set("duration", res.Duration).
 		Set("size", res.Size).
 		Set("song_count", res.Count).
-		Set("updated_at", time.Now()).
+		Set("updated_at", now).
 		Where(Eq{"id": pls.ID})
+	if evaluated {
+		upd = upd.Set("evaluated_at", now)
+	}
 	_, err = r.executeSQL(upd)
 	if err != nil {
 		return err
@@ -282,6 +292,10 @@ func (r *playlistRepository) refreshCounters(pls *model.Playlist) error {
 	pls.SongCount = int(res.Count)
 	pls.Duration = res.Duration
 	pls.Size = int64(res.Size)
+	pls.UpdatedAt = now
+	if evaluated {
+		pls.EvaluatedAt = &now
+	}
 	return nil
 }
 

@@ -133,15 +133,7 @@ func (api *Router) buildPlaylist(ctx context.Context, p model.Playlist) response
 	pls.SongCount = int32(p.SongCount)
 	pls.Duration = int32(p.Duration)
 	pls.Created = p.CreatedAt
-	if p.IsSmartPlaylist() {
-		if p.EvaluatedAt != nil {
-			pls.Changed = *p.EvaluatedAt
-		} else {
-			pls.Changed = time.Now()
-		}
-	} else {
-		pls.Changed = p.UpdatedAt
-	}
+	pls.Changed = p.UpdatedAt
 
 	if isClientInList(conf.Server.Subsonic.MinimalClients, clientNameFrom(ctx)) {
 		return pls

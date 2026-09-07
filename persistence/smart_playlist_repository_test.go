@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	. "github.com/Masterminds/squirrel"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -193,6 +194,26 @@ var _ = Describe("PlaylistRepository - Smart Playlists", func() {
 				})
 			})
 		})
+	})
+
+	It("persists one revision for counters and evaluation", func() {
+		playlist := &model.Playlist{Name: "Counter Revision", OwnerID: "userid"}
+		Expect(repo.Put(playlist)).To(Succeed())
+		DeferCleanup(func() { _ = repo.Delete(playlist.ID) })
+		original := playlist.UpdatedAt
+		r := repo.(*playlistRepository)
+		Expect(r.refreshPlaylistCounters(playlist, true)).To(Succeed())
+		Expect(playlist.UpdatedAt).To(BeTemporally(">", original))
+		Expect(playlist.EvaluatedAt).ToNot(BeNil())
+		Expect(*playlist.EvaluatedAt).To(Equal(playlist.UpdatedAt))
+		// Query the persisted markers without triggering another evaluation.
+		var stored struct {
+			UpdatedAt   time.Time
+			EvaluatedAt time.Time
+		}
+		Expect(r.queryOne(Select("updated_at", "evaluated_at").From("playlist").Where(Eq{"id": playlist.ID}), &stored)).To(Succeed())
+		Expect(stored.UpdatedAt).To(Equal(stored.EvaluatedAt))
+		Expect(stored.UpdatedAt).To(BeTemporally("~", playlist.UpdatedAt, time.Millisecond))
 	})
 
 	Describe("Playlist Track Sorting", func() {

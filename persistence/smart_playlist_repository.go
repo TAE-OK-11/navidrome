@@ -53,18 +53,10 @@ func (r *playlistRepository) refreshSmartPlaylist(pls *model.Playlist) bool {
 		return false
 	}
 
-	if err = r.refreshCounters(pls); err != nil {
+	if err = r.refreshPlaylistCounters(pls, true); err != nil {
 		log.Error(r.ctx, "Error updating smart playlist stats", "playlist", pls.Name, "id", pls.ID, err)
 		return false
 	}
-
-	now := time.Now()
-	updSql := Update(r.tableName).Set("evaluated_at", now).Where(Eq{"id": pls.ID})
-	if _, err = r.executeSQL(updSql); err != nil {
-		log.Error(r.ctx, "Error updating smart playlist", "playlist", pls.Name, "id", pls.ID, err)
-		return false
-	}
-	pls.EvaluatedAt = &now
 
 	log.Debug(r.ctx, "Refreshed playlist", "playlist", pls.Name, "id", pls.ID, "numTracks", pls.SongCount, "elapsed", time.Since(start))
 	return true

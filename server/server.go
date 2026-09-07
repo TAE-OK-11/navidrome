@@ -122,12 +122,25 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	}
 
 	handler := s.publicHandler()
-	server := newHTTPServer(handler, tlsEnabled, s.grpcServer != nil)
+	// Dual HTTP+HTTPS on one port needs h2c on the cleartext path (Tailscale
+	// http://host:4533) even though the listener also speaks TLS.
+	allowHTTP := tlsEnabled && conf.Server.AllowHTTP
+	server := newHTTPServer(handler, tlsEnabled && !allowHTTP, s.grpcServer != nil || allowHTTP)
 	h3 := s.startHTTP3(ctx, listenAddr, handler, tlsCert, tlsKey, server)
 
 	// Optional plaintext H2C listener for private overlays (WireGuard).
 	// gRPC-only on this port; REST stays on the main TLS listener.
 	plaintext := s.startPlaintextGRPC(ctx, listenAddr)
+
+	if allowHTTP {
+		dual, dualErr := newTLSOrHTTPListener(listener, tlsCert, tlsKey)
+		if dualErr != nil {
+			_ = listener.Close()
+			return fmt.Errorf("creating dual HTTP/HTTPS listener: %w", dualErr)
+		}
+		listener = dual
+		log.Info(ctx, "Cleartext HTTP allowed on TLS port (AllowHTTP); avoids 400 for plain http:// clients", "address", listenAddr)
+	}
 
 	errC := make(chan error, 3)
 	if h3 != nil {
@@ -139,10 +152,14 @@ func (s *Server) Run(ctx context.Context, addr string, port int, tlsCert string,
 	}
 	go func() {
 		var err error
-		if tlsEnabled {
+		switch {
+		case allowHTTP:
+			log.Info("Starting server with TLS + cleartext HTTP on the same port", "tlsCert", tlsCert, "tlsKey", tlsKey, "http3Enabled", http3Enabled, "publicGRPC", s.grpcServer != nil, "allowHTTP", true)
+			err = server.Serve(listener)
+		case tlsEnabled:
 			log.Info("Starting server with TLS (HTTPS) enabled", "tlsCert", tlsCert, "tlsKey", tlsKey, "http3Enabled", http3Enabled, "publicGRPC", s.grpcServer != nil)
 			err = server.ServeTLS(listener, tlsCert, tlsKey)
-		} else {
+		default:
 			err = server.Serve(listener)
 		}
 		if !errors.Is(err, http.ErrServerClosed) {

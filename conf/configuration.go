@@ -45,6 +45,11 @@ type configOptions struct {
 	BaseScheme                      string
 	TLSCert                         string
 	TLSKey                          string
+	// AllowHTTP keeps cleartext HTTP on the main port when TLSCert/TLSKey are
+	// set. Without it, Go answers plain HTTP with "400 Client sent an HTTP
+	// request to an HTTPS server". Useful for Tailscale/WireGuard clients that
+	// call http://host:4533 while HTTPS/HTTP/3 stay available on the same port.
+	AllowHTTP bool
 	UILoginBackgroundURL            string
 	UIWelcomeMessage                string
 	MaxSidebarPlaylists             int
@@ -811,6 +816,7 @@ func setViperDefaults() {
 	viper.SetDefault("baseurl", "")
 	viper.SetDefault("tlscert", "")
 	viper.SetDefault("tlskey", "")
+	viper.SetDefault("allowhttp", true)
 	viper.SetDefault("uiloginbackgroundurl", consts.DefaultUILoginBackgroundURL)
 	viper.SetDefault("uiwelcomemessage", "")
 	viper.SetDefault("maxsidebarplaylists", consts.DefaultMaxSidebarPlaylists)

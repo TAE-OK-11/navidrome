@@ -113,7 +113,7 @@ func (s *deezerAgent) GetAlbumImages(ctx context.Context, name, artist, _ string
 
 func (s *deezerAgent) searchAlbum(ctx context.Context, name, artist string) (*Album, error) {
 	albums, err := s.client.searchAlbums(ctx, name, artist, deezerAlbumSearchLimit)
-	if errors.Is(err, ErrNotFound) || len(albums) == 0 {
+	if errors.Is(err, ErrNotFound) {
 		return nil, agents.ErrNotFound
 	}
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *deezerAgent) searchAlbum(ctx context.Context, name, artist string) (*Al
 
 func (s *deezerAgent) searchArtist(ctx context.Context, name string) (*Artist, error) {
 	artists, err := s.client.searchArtists(ctx, name, deezerArtistSearchLimit)
-	if errors.Is(err, ErrNotFound) || len(artists) == 0 {
+	if errors.Is(err, ErrNotFound) {
 		return nil, agents.ErrNotFound
 	}
 	if err != nil {

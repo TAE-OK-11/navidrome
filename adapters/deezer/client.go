@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/navidrome/navidrome/core/agents"
 	"github.com/navidrome/navidrome/log"
 )
 
@@ -90,25 +91,45 @@ func (c *client) makeRequest(req *http.Request, response any) error {
 	}
 
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	const maxResponseBytes = 8 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return err
 	}
 
-	if resp.StatusCode != 200 {
-		return c.parseError(data)
+	if len(data) > maxResponseBytes {
+		return fmt.Errorf("deezer response exceeds %d bytes", maxResponseBytes)
+	}
+	if err := c.parseError(data); err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return agents.ErrRetryLater
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("deezer http status: %d", resp.StatusCode)
 	}
 
 	return json.Unmarshal(data, response)
 }
 
+// Deezer reports API errors with HTTP 200 as well as non-success statuses.
+// Preserve throttling as a temporary provider failure, never a negative match.
 func (c *client) parseError(data []byte) error {
-	var deezerError Error
-	err := json.Unmarshal(data, &deezerError)
-	if err != nil {
-		return err
+	var envelope struct {
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	return fmt.Errorf("deezer error(%d): %s", deezerError.Error.Code, deezerError.Error.Message)
+	if err := json.Unmarshal(data, &envelope); err != nil || envelope.Error == nil {
+		return nil
+	}
+	err := fmt.Errorf("deezer error(%d): %s", envelope.Error.Code, envelope.Error.Message)
+	if envelope.Error.Code == 4 {
+		return errors.Join(err, agents.ErrRetryLater)
+	}
+	return err
 }
 
 func (c *client) getRelatedArtists(ctx context.Context, artistID int) ([]Artist, error) {
@@ -193,7 +214,8 @@ func (c *client) getArtistBio(ctx context.Context, artistID int, lang string) (s
 		return "", fmt.Errorf("deezer: failed to fetch biography: %s", resp.Status)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	const maxResponseBytes = 8 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return "", err
 	}

@@ -28,14 +28,6 @@ type Artist struct {
 	Type          string `json:"type"`
 }
 
-type Error struct {
-	Error struct {
-		Type    string `json:"type"`
-		Message string `json:"message"`
-		Code    int    `json:"code"`
-	} `json:"error"`
-}
-
 type RelatedArtists struct {
 	Data  []Artist `json:"data"`
 	Total int      `json:"total"`

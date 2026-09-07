@@ -40,6 +40,8 @@ impl MapMediaConfig {
 #[derive(Debug, Serialize)]
 struct ScanArtist {
     name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    disambiguation: String,
     #[serde(rename = "sortArtistName", skip_serializing_if = "String::is_empty")]
     sort_artist_name: String,
     #[serde(rename = "orderArtistName", skip_serializing_if = "String::is_empty")]
@@ -126,7 +128,11 @@ struct ScanMediaFile {
     search_normalized: String,
 }
 
-pub fn map_to_json(tags: &HashMap<String, Vec<String>>, path: &Path, lyrics_json: Option<&str>) -> Option<String> {
+pub fn map_to_json(
+    tags: &HashMap<String, Vec<String>>,
+    path: &Path,
+    lyrics_json: Option<&str>,
+) -> Option<String> {
     map_to_json_with_pid(tags, path, lyrics_json, None, 0, "", None)
 }
 
@@ -256,8 +262,16 @@ fn map_album_tags(tags: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<St
         "albumversion",
         collect_tag_values(tags, &["albumversion", "musicbrainz_albumcomment"]),
     );
-    insert_album_tag(&mut out, "genre", split_tag_values(tags, "genre", &[";", "/", ","]));
-    insert_album_tag(&mut out, "mood", split_tag_values(tags, "mood", &[";", "/", ","]));
+    insert_album_tag(
+        &mut out,
+        "genre",
+        split_tag_values(tags, "genre", &[";", "/", ","]),
+    );
+    insert_album_tag(
+        &mut out,
+        "mood",
+        split_tag_values(tags, "mood", &[";", "/", ","]),
+    );
     insert_album_tag(
         &mut out,
         "tracktotal",
@@ -366,13 +380,48 @@ fn map_participants(
     out.insert("albumartist".to_owned(), album_artists);
 
     for (role, key, sort_key, mbid_key) in [
-        ("composer", "composer", "composersort", "musicbrainz_composerid"),
-        ("conductor", "conductor", "conductorsort", "musicbrainz_conductorid"),
-        ("lyricist", "lyricist", "lyricistsort", "musicbrainz_lyricistid"),
-        ("arranger", "arranger", "arrangersort", "musicbrainz_arrangerid"),
-        ("producer", "producer", "producersort", "musicbrainz_producerid"),
-        ("director", "director", "directorsort", "musicbrainz_directorid"),
-        ("engineer", "engineer", "engineersort", "musicbrainz_engineerid"),
+        (
+            "composer",
+            "composer",
+            "composersort",
+            "musicbrainz_composerid",
+        ),
+        (
+            "conductor",
+            "conductor",
+            "conductorsort",
+            "musicbrainz_conductorid",
+        ),
+        (
+            "lyricist",
+            "lyricist",
+            "lyricistsort",
+            "musicbrainz_lyricistid",
+        ),
+        (
+            "arranger",
+            "arranger",
+            "arrangersort",
+            "musicbrainz_arrangerid",
+        ),
+        (
+            "producer",
+            "producer",
+            "producersort",
+            "musicbrainz_producerid",
+        ),
+        (
+            "director",
+            "director",
+            "directorsort",
+            "musicbrainz_directorid",
+        ),
+        (
+            "engineer",
+            "engineer",
+            "engineersort",
+            "musicbrainz_engineerid",
+        ),
         ("mixer", "mixer", "mixersort", "musicbrainz_mixerid"),
         ("remixer", "remixer", "remixersort", "musicbrainz_remixerid"),
         ("djmixer", "djmixer", "djmixersort", "musicbrainz_djmixerid"),
@@ -392,7 +441,10 @@ fn map_participants(
     }
 
     if out["artist"].is_empty() && !display_artist.is_empty() {
-        out.insert("artist".to_owned(), vec![scan_artist(display_artist, "", "")]);
+        out.insert(
+            "artist".to_owned(),
+            vec![scan_artist(display_artist, "", "")],
+        );
     }
     out
 }
@@ -412,11 +464,26 @@ fn artists_from_tags(
     }
     let sorts = tag_values(tags, sort_key);
     let mbids = tag_values(tags, mbid_key);
+    // Picard's singular artist comments apply only to a single credit. Never
+    // attach one comment to a collaboration or guess at a multi-value mapping.
+    let comment_key = match single {
+        "artist" => "artistcomment",
+        "albumartist" => "albumartistcomment",
+        _ => "",
+    };
+    let comment = if names.len() == 1 {
+        match tag_values(tags, comment_key) {
+            Some([value]) => value.as_str(),
+            _ => "",
+        }
+    } else {
+        ""
+    };
     names
         .into_iter()
         .enumerate()
         .map(|(idx, name)| {
-            scan_artist(
+            let mut artist = scan_artist(
                 &name,
                 sorts
                     .and_then(|values| values.get(idx))
@@ -426,7 +493,9 @@ fn artists_from_tags(
                     .and_then(|values| values.get(idx))
                     .map(String::as_str)
                     .unwrap_or_default(),
-            )
+            );
+            artist.disambiguation = comment.to_owned();
+            artist
         })
         .fold(Vec::new(), |mut artists, artist| {
             if artists.iter().any(|existing| existing.name == artist.name) {
@@ -465,6 +534,7 @@ fn get_participant_values(
 fn scan_artist(name: &str, sort: &str, mbid: &str) -> ScanArtist {
     ScanArtist {
         name: name.to_owned(),
+        disambiguation: String::new(),
         sort_artist_name: sort.to_owned(),
         order_artist_name: sanitize_sort_no_article(name),
         mbz_artist_id: mbid.to_owned(),
@@ -477,6 +547,7 @@ fn fallback_album_artist(display_album_artist: &str, artist_role: &[ScanArtist])
         if artist.name == display_album_artist {
             return ScanArtist {
                 name: display_album_artist.to_owned(),
+                disambiguation: artist.disambiguation.clone(),
                 sort_artist_name: artist.sort_artist_name.clone(),
                 order_artist_name: artist.order_artist_name.clone(),
                 mbz_artist_id: artist.mbz_artist_id.clone(),
@@ -539,10 +610,7 @@ fn filtered_value_refs<'a>(tags: &'a HashMap<String, Vec<String>>, key: &str) ->
         .unwrap_or_default()
 }
 
-fn tag_values<'a>(
-    tags: &'a HashMap<String, Vec<String>>,
-    key: &str,
-) -> Option<&'a [String]> {
+fn tag_values<'a>(tags: &'a HashMap<String, Vec<String>>, key: &str) -> Option<&'a [String]> {
     let values = tags.get(key)?;
     if values.iter().any(|value| !value.is_empty()) {
         Some(values.as_slice())
@@ -714,6 +782,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn maps_single_artist_comments_and_preserves_fallback() {
+        let tags = HashMap::from([
+            ("artist".to_owned(), vec!["Death".to_owned()]),
+            (
+                "artistcomment".to_owned(),
+                vec!["US death metal band".to_owned()],
+            ),
+        ]);
+        let participants = map_participants(&tags, "Death", "Death", &MapMediaConfig::default());
+        assert_eq!(
+            participants["artist"][0].disambiguation,
+            "US death metal band"
+        );
+        assert_eq!(
+            participants["albumartist"][0].disambiguation,
+            "US death metal band"
+        );
+
+        let mut tags = tags;
+        tags.insert("albumartist".to_owned(), vec!["Death".to_owned()]);
+        tags.insert(
+            "albumartistcomment".to_owned(),
+            vec!["Detroit proto-punk band".to_owned()],
+        );
+        let participants = map_participants(&tags, "Death", "Death", &MapMediaConfig::default());
+        assert_eq!(
+            participants["albumartist"][0].disambiguation,
+            "Detroit proto-punk band"
+        );
+        assert_eq!(participants["artist"][0].name, "Death");
+    }
+
+    #[test]
+    fn does_not_guess_artist_comment_cardinality() {
+        for (names, comments) in [
+            (vec!["One", "Two"], vec!["One's comment"]),
+            (vec!["One feat. Two"], vec!["One's comment"]),
+            (vec!["One"], vec!["First comment", "Second comment"]),
+        ] {
+            let tags = HashMap::from([
+                (
+                    "artist".to_owned(),
+                    names.into_iter().map(str::to_owned).collect(),
+                ),
+                (
+                    "artistcomment".to_owned(),
+                    comments.into_iter().map(str::to_owned).collect(),
+                ),
+            ]);
+            let participants = map_participants(&tags, "One", "Album", &MapMediaConfig::default());
+            assert!(
+                participants["artist"]
+                    .iter()
+                    .all(|artist| artist.disambiguation.is_empty())
+            );
+        }
+    }
+
+    #[test]
     fn splits_feat_artists_into_participants() {
         let mut tags = HashMap::new();
         tags.insert("title".to_owned(), vec!["Song".to_owned()]);
@@ -733,10 +860,7 @@ mod tests {
         let mut tags = HashMap::new();
         tags.insert("title".to_owned(), vec!["Song".to_owned()]);
         tags.insert("album".to_owned(), vec!["Album".to_owned()]);
-        tags.insert(
-            "artist".to_owned(),
-            vec!["Someone feat. Else".to_owned()],
-        );
+        tags.insert("artist".to_owned(), vec!["Someone feat. Else".to_owned()]);
         let config = MapMediaConfig {
             artist_split_exceptions: vec!["Someone feat. Else".to_owned()],
             ..MapMediaConfig::with_defaults()

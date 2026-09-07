@@ -269,6 +269,42 @@ var _ = Describe("ArtistRepository", func() {
 		})
 
 		Describe("Basic Operations", func() {
+			It("persists disambiguation across get, list, index and untagged updates", func() {
+				artist, err := repo.Get("2")
+				Expect(err).ToNot(HaveOccurred())
+				originalComment := artist.Disambiguation
+				DeferCleanup(func() {
+					_, err := repo.(*artistRepository).executeSQL(squirrel.Update("artist").Set("disambiguation", originalComment).Where(squirrel.Eq{"id": artist.ID}))
+					Expect(err).ToNot(HaveOccurred())
+				})
+				artist.Disambiguation = "German electronic band"
+				Expect(repo.Put(artist, "disambiguation")).To(Succeed())
+				loaded, err := repo.Get("2")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(loaded.Disambiguation).To(Equal(artist.Disambiguation))
+				listed, err := repo.GetAll(model.QueryOptions{Filters: squirrel.Eq{"artist.id": "2"}})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(listed).To(HaveLen(1))
+				Expect(listed[0].Disambiguation).To(Equal(artist.Disambiguation))
+				indexes, err := repo.GetIndex(false, []int{1})
+				Expect(err).ToNot(HaveOccurred())
+				found := false
+				for _, index := range indexes {
+					for _, indexed := range index.Artists {
+						if indexed.ID == "2" {
+							found = true
+							Expect(indexed.Disambiguation).To(Equal(artist.Disambiguation))
+						}
+					}
+				}
+				Expect(found).To(BeTrue())
+				artist.Disambiguation = ""
+				Expect(repo.Put(artist, "name", "disambiguation")).To(Succeed())
+				loaded, err = repo.Get("2")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(loaded.Disambiguation).To(Equal("German electronic band"))
+			})
+
 			Describe("Count", func() {
 				It("returns the number of artists in the DB", func() {
 					Expect(repo.CountAll()).To(Equal(int64(4)))

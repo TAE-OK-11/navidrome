@@ -480,11 +480,28 @@ func (p *phaseFolders) createAlbumsFromMediaFiles(entry *folderEntry) {
 
 // createArtistsFromMediaFiles creates artists from the entry's tracks
 func (p *phaseFolders) createArtistsFromMediaFiles(entry *folderEntry) {
-	participants := make(model.Participants, len(entry.tracks)*3) // preallocate ~3 artists per track
+	participants := make(model.Participants)
+	var comments map[string]string
 	for _, track := range entry.tracks {
+		// Participant deduplication preserves the first credit, which can lack
+		// a comment supplied by another track or role for the same artist ID.
+		for _, credits := range track.Participants {
+			for _, artist := range credits {
+				comment := artist.Disambiguation
+				if comment != "" && (comments[artist.ID] == "" || comment < comments[artist.ID]) {
+					if comments == nil {
+						comments = make(map[string]string)
+					}
+					comments[artist.ID] = comment
+				}
+			}
+		}
 		participants.Merge(track.Participants)
 	}
 	entry.artists = participants.AllArtists()
+	for i := range entry.artists {
+		entry.artists[i].Disambiguation = comments[entry.artists[i].ID]
+	}
 }
 
 func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) {
@@ -527,7 +544,7 @@ func (p *phaseFolders) persistChanges(entry *folderEntry) (*folderEntry, error) 
 		artistIDs := make([]string, 0, len(entry.artists))
 		for i := range entry.artists {
 			err = artistRepo.Put(&entry.artists[i], "name",
-				"mbz_artist_id", "sort_artist_name", "order_artist_name", "full_text", "search_normalized", "updated_at")
+				"mbz_artist_id", "disambiguation", "sort_artist_name", "order_artist_name", "full_text", "search_normalized", "updated_at")
 			if err != nil {
 				log.Error(p.ctx, "Scanner: Error persisting artist to DB", "folder", entry.path, "artist", entry.artists[i].Name, err)
 				return err

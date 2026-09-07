@@ -128,6 +128,10 @@ func (a *dbArtist) PostMapArgs(m map[string]any) error {
 	if v, ok := m["mbz_artist_id"]; !ok || v.(string) == "" {
 		delete(m, "mbz_artist_id")
 	}
+	// Other tracks may omit the artist comment; do not erase known metadata.
+	if v, ok := m["disambiguation"]; !ok || v.(string) == "" {
+		delete(m, "disambiguation")
+	}
 	return nil
 }
 
@@ -249,6 +253,7 @@ func browseArtistColumnExprs() []string {
 		"artist.sort_artist_name",
 		"artist.order_artist_name",
 		"artist.mbz_artist_id",
+		"artist.disambiguation",
 		"artist.missing",
 		"artist.uploaded_image",
 		"artist.small_image_url",
@@ -267,6 +272,7 @@ func (r *artistRepository) selectArtistForIndex(options ...model.QueryOptions) S
 		"artist.order_artist_name",
 		"artist.sort_artist_name",
 		"artist.mbz_artist_id",
+		"artist.disambiguation",
 		"artist.uploaded_image",
 		"artist.updated_at",
 		"artist.small_image_url",

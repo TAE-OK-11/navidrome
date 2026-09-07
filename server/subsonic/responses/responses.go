@@ -250,9 +250,10 @@ type ArtistID3 struct {
 
 type OpenSubsonicArtistID3 struct {
 	// OpenSubsonic extensions
-	MusicBrainzId string        `xml:"musicBrainzId,attr,omitempty" json:"musicBrainzId"`
-	SortName      string        `xml:"sortName,attr,omitempty"      json:"sortName"`
-	Roles         Array[string] `xml:"roles,omitempty"              json:"roles"`
+	Disambiguation string        `xml:"disambiguation,attr" json:"disambiguation"`
+	MusicBrainzId  string        `xml:"musicBrainzId,attr,omitempty" json:"musicBrainzId"`
+	SortName       string        `xml:"sortName,attr,omitempty"      json:"sortName"`
+	Roles          Array[string] `xml:"roles,omitempty"              json:"roles"`
 }
 
 type AlbumID3 struct {

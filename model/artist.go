@@ -12,10 +12,11 @@ type Artist struct {
 	ID string `structs:"id" json:"id"`
 
 	// Data based on tags
-	Name            string `structs:"name" json:"name"`
-	SortArtistName  string `structs:"sort_artist_name" json:"sortArtistName,omitempty"`
-	OrderArtistName string `structs:"order_artist_name" json:"orderArtistName,omitempty"`
-	MbzArtistID     string `structs:"mbz_artist_id" json:"mbzArtistId,omitempty"`
+	Name             string `structs:"name" json:"name"`
+	SortArtistName   string `structs:"sort_artist_name" json:"sortArtistName,omitempty"`
+	OrderArtistName  string `structs:"order_artist_name" json:"orderArtistName,omitempty"`
+	MbzArtistID      string `structs:"mbz_artist_id" json:"mbzArtistId,omitempty"`
+	Disambiguation   string `structs:"disambiguation" json:"disambiguation,omitempty"`
 	SearchNormalized string `structs:"search_normalized" json:"-"`
 
 	// Data calculated from files

@@ -34,6 +34,10 @@ main:
     aliases: [ tpe1, artist, ©art, author, iart ]
   artistsort:
     aliases: [ tsop, artistsort, artistsort, soar, wm/artistsortorder ]
+  # Picard's _artistcomment / _albumartistcomment variables must be explicitly
+  # saved to these tags. They describe single-artist credits, not collaborations.
+  artistcomment:
+    aliases: [ artistcomment, txxx:artistcomment, ----:com.apple.itunes:artistcomment ]
   artists:
     aliases: [ txxx:artists, artists, ----:com.apple.itunes:artists, wm/artists ]
   artistssort:
@@ -72,6 +76,8 @@ main:
     aliases: [ tpe2, albumartist, album artist, album_artist, aart, wm/albumartist ]
   albumartistsort:
     aliases: [ tso2, txxx:albumartistsort, albumartistsort, soaa, wm/albumartistsortorder ]
+  albumartistcomment:
+    aliases: [ albumartistcomment, txxx:albumartistcomment, ----:com.apple.itunes:albumartistcomment ]
   albumartists:
     aliases: [ txxx:album artists, albumartists ]
   albumartistssort:

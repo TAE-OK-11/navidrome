@@ -74,6 +74,10 @@ func TestCatalogCacheKeysSeparateUsersAndRepresentations(t *testing.T) {
 	if entityResponseCacheKey(other, "song", "id") == original {
 		t.Fatal("transcoding settings omitted from response key")
 	}
+	other = r.WithContext(request.WithPlayer(r.Context(), model.Player{ReportRealPath: true}))
+	if entityResponseCacheKey(other, "song", "id") == original {
+		t.Fatal("real and synthetic file paths share a response")
+	}
 	other = r.Clone(r.Context())
 	other.Host = "other.example"
 	if entityResponseCacheKey(other, "song", "id") == original {

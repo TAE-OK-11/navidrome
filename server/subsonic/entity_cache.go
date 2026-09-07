@@ -43,10 +43,11 @@ func catalogUserKey(ctx context.Context) string {
 
 func entityResponseCacheKey(r *http.Request, kind, id string) string {
 	format, bitrate := getTranscoding(r.Context())
+	player, _ := request.PlayerFrom(r.Context())
 	// Rendered responses also vary by client compatibility, player settings and
 	// public origin. Quote variable segments to keep delimiters unambiguous.
 	return catalogUserKey(r.Context()) + "|" + strconv.Quote(clientNameFrom(r.Context())) +
-		"|" + strconv.Quote(format) + ":" + strconv.Itoa(bitrate) +
+		"|" + strconv.Quote(format) + ":" + strconv.Itoa(bitrate) + ":" + strconv.FormatBool(player.ReportRealPath) +
 		"|" + strconv.Quote(publicurl.PublicURL(r, "/", nil)) + "|" + kind + "|" + id
 }
 

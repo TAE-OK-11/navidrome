@@ -32,7 +32,10 @@ reconnecting indefinitely.
 The lifecycle registry now supports releasing registrations when resources are
 closed. Both supervisors and processes participate in shutdown, so supervision
 itself stops and historical worker generations are not retained indefinitely.
-Outbound integration no longer has a separate watcher/restart implementation or
+Indexing operations pin their complete batch sequence, commit and cleanup to one
+worker connection. A worker crash fails the operation; per-batch retry cannot
+silently commit only the tail of an incremental update on a replacement worker.
+Read-only searches retain transport retry. Outbound integration no longer has a separate watcher/restart implementation or
 an unbounded wait for in-flight HTTP calls on close. Remote HTTP operations are
 not automatically replayed after an ambiguous transport failure.
 
@@ -104,7 +107,7 @@ Worthwhile next measurements/design work:
   migrating their schema to typed protobuf fields.
 - Measure unary artwork IPC memory and consider streaming or local-file handoff
   if large artwork dominates. Preserve decoder limits and URL/DNS restrictions.
-- Add explicit transaction/generation identity to multi-RPC search mutations so
-  worker restarts cannot silently split an incremental indexing transaction.
+- If workers become independently restarted remote services, extend connection
+  pinning with explicit server generation/transaction IDs in the search protocol.
 - Test injected worker crashes, cancellation and mixed scan/playback load with
   production-sized data; tune admission without starving interactive artwork.

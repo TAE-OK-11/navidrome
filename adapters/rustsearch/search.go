@@ -292,6 +292,10 @@ func (e *Engine) RefreshIncremental(ctx context.Context, ds model.DataStore, sin
 		return e.rebuildLocked(ctx, ds, libraries)
 	}
 
+	ctx, err = beginIndexSession(ctx)
+	if err != nil {
+		return err
+	}
 	upserts := make([]document, 0, indexBatchSize)
 	deletes := make([]string, 0, indexBatchSize)
 	changed := int64(0)
@@ -446,6 +450,10 @@ func (e *Engine) Rebuild(ctx context.Context, ds model.DataStore) error {
 }
 
 func (e *Engine) rebuildLocked(ctx context.Context, ds model.DataStore, libraries model.Libraries) error {
+	ctx, err := beginIndexSession(ctx)
+	if err != nil {
+		return err
+	}
 	wasReady := e.ready.Load()
 	if _, err := e.roundTrip(ctx, request{Op: "begin_replace"}); err != nil {
 		return err
@@ -710,6 +718,11 @@ func (e *Engine) roundTrip(ctx context.Context, req request) (response, error) {
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return response{}, err
+	}
+	// Stateful multi-RPC mutations must fail as a unit on worker loss. Never
+	// retry a batch or reconnect it to a replacement worker with empty state.
+	if client := indexSession(ctx); client != nil {
+		return e.grpcRoundTripOnce(ctx, client, req)
 	}
 	e.gate.Lock()
 	if err := e.ensureWorker(); err != nil {

@@ -55,11 +55,18 @@ func IndexPath() string {
 
 // SearchClient returns the search gRPC client, or nil when unavailable.
 func SearchClient() gen.SearchClient {
-	conn, err := searchGRPC.Conn()
+	client, _ := SearchClientContext(context.Background())
+	return client
+}
+
+// SearchClientContext acquires one worker generation. Keep this client for an
+// entire indexing transaction; the supervisor closes it when that worker dies.
+func SearchClientContext(ctx context.Context) (gen.SearchClient, error) {
+	conn, err := searchGRPC.ConnContext(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return gen.NewSearchClient(conn)
+	return gen.NewSearchClient(conn), nil
 }
 
 // InvalidateGRPC closes the search worker so the next RPC starts a fresh process.

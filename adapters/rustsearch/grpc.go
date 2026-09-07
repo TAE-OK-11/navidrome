@@ -116,3 +116,24 @@ func toProtoDocuments(docs []document) []*gen.Document {
 	}
 	return out
 }
+
+// indexSessionKey pins all mutations and cleanup in one indexing operation to
+// the same worker connection. Reacquiring per batch can commit only the tail
+// of a delta after a crash has discarded earlier uncommitted batches.
+type indexSessionKey struct{}
+
+func indexSession(ctx context.Context) gen.SearchClient {
+	client, _ := ctx.Value(indexSessionKey{}).(gen.SearchClient)
+	return client
+}
+
+func beginIndexSession(ctx context.Context) (context.Context, error) {
+	if indexSession(ctx) != nil {
+		return ctx, nil
+	}
+	client, err := searchworker.SearchClientContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, indexSessionKey{}, client), nil
+}

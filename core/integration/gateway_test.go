@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -112,5 +113,13 @@ func TestGatewayFallbackRoundTrip(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestGatewaySignDoesNotDependOnWorker(t *testing.T) {
+	vector := loadSignVector(t)
+	g := &Gateway{workerExpected: true}
+	if got := g.Sign(context.Background(), vector.Params, vector.Secret); got != vector.Expected {
+		t.Fatalf("sign without worker = %s, want %s", got, vector.Expected)
 	}
 }

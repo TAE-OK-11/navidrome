@@ -161,29 +161,6 @@ func readLimitedBody(r io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-func (c *grpcClient) sign(ctx context.Context, params map[string]string, secret string) (string, error) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return "", errors.New("integration gRPC client closed")
-	}
-	client := c.client
-	c.inflight.Add(1)
-	c.mu.Unlock()
-	defer c.inflight.Done()
-	if client == nil {
-		return "", errors.New("integration gRPC client closed")
-	}
-	resp, err := client.Sign(ctx, &gen.SignRequest{Params: params, Secret: secret})
-	if err != nil {
-		return "", err
-	}
-	if resp.GetError() != "" {
-		return "", fmt.Errorf("integration sign: %s", resp.GetError())
-	}
-	return resp.GetApiSig(), nil
-}
-
 func grpcListenAddr() string {
 	if listen := strings.TrimSpace(os.Getenv("ND_INTEGRATIONGRPCLISTEN")); listen != "" {
 		return listen

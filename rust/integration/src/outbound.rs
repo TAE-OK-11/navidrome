@@ -133,8 +133,7 @@ impl Resolve for PublicOnlyResolver {
 
 async fn lookup_public(
     host: &str,
-) -> Result<Box<dyn Iterator<Item = SocketAddr> + Send>, Box<dyn std::error::Error + Send + Sync>>
-{
+) -> Result<Box<dyn Iterator<Item = SocketAddr> + Send>, Box<dyn std::error::Error + Send + Sync>> {
     let addrs = match tokio::net::lookup_host((host, 0)).await {
         Ok(iter) => iter.collect::<Vec<_>>(),
         Err(_) => tokio::net::lookup_host((host, 80)).await?.collect(),
@@ -246,17 +245,8 @@ impl Outbound for OutboundService {
                 let retry_after_ms = parse_retry_after(resp.headers());
                 let headers = header_map(resp.headers());
                 let max_body = Self::max_body(dest);
-                if let Some(len) = resp.content_length() {
-                    if len as usize > max_body {
-                        self.breaker_failure(dest).await;
-                        return Ok(Response::new(HttpResponse {
-                            error: format!("response exceeds size limit of {max_body} bytes"),
-                            ..Default::default()
-                        }));
-                    }
-                }
-                let body = match resp.bytes().await {
-                    Ok(bytes) => bytes,
+                let body = match read_bounded_body(resp, max_body).await {
+                    Ok(body) => body,
                     Err(err) => {
                         self.breaker_failure(dest).await;
                         return Ok(Response::new(HttpResponse {
@@ -265,13 +255,6 @@ impl Outbound for OutboundService {
                         }));
                     }
                 };
-                if body.len() > max_body {
-                    self.breaker_failure(dest).await;
-                    return Ok(Response::new(HttpResponse {
-                        error: format!("response exceeds size limit of {max_body} bytes"),
-                        ..Default::default()
-                    }));
-                }
                 if status >= 500 {
                     self.breaker_failure(dest).await;
                 } else {
@@ -280,7 +263,7 @@ impl Outbound for OutboundService {
                 Ok(Response::new(HttpResponse {
                     status,
                     headers,
-                    body: body.to_vec(),
+                    body,
                     error: String::new(),
                     retry_after_ms,
                 }))
@@ -318,6 +301,23 @@ impl Outbound for OutboundService {
             version: env!("CARGO_PKG_VERSION").into(),
         }))
     }
+}
+
+// Enforce the bound while receiving, including chunked and HTTP/2 bodies
+// without Content-Length. Collect directly into prost's Vec to avoid a second
+// full-body allocation/copy after reqwest has buffered the entire response.
+async fn read_bounded_body(mut resp: reqwest::Response, limit: usize) -> anyhow::Result<Vec<u8>> {
+    if resp.content_length().is_some_and(|len| len > limit as u64) {
+        anyhow::bail!("response exceeds size limit of {limit} bytes");
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if chunk.len() > limit - body.len() {
+            anyhow::bail!("response exceeds size limit of {limit} bytes");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 fn header_map(headers: &reqwest::header::HeaderMap) -> HashMap<String, String> {
@@ -359,5 +359,69 @@ mod literal_host_tests {
     fn allows_public_literal_and_hostname() {
         validate_artwork_url("http://8.8.8.8/img").expect("public literal");
         validate_artwork_url("https://cdn.example/cover.jpg").expect("hostname");
+    }
+}
+
+#[cfg(test)]
+mod body_limit_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn response(wire: &'static [u8]) -> reqwest::Response {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            let _ = conn.read(&mut request).await.unwrap();
+            conn.write_all(wire).await.unwrap();
+        });
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("http://{addr}/"))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn accepts_exact_limit_without_content_length() {
+        let resp = response(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nab\r\n2\r\ncd\r\n0\r\n\r\n",
+        )
+        .await;
+        assert_eq!(read_bounded_body(resp, 4).await.unwrap(), b"abcd");
+    }
+
+    #[tokio::test]
+    async fn rejects_chunked_overflow() {
+        let resp = response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nab\r\n3\r\ncde\r\n0\r\n\r\n").await;
+        assert!(
+            read_bounded_body(resp, 4)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("size limit")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_declared_overflow_before_reading_body() {
+        let resp = response(b"HTTP/1.1 200 OK\r\nContent-Length: 99999\r\n\r\n").await;
+        assert!(
+            read_bounded_body(resp, 4)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("size limit")
+        );
+    }
+
+    #[tokio::test]
+    async fn preserves_truncated_body_errors() {
+        let resp = response(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nab").await;
+        assert!(read_bounded_body(resp, 4).await.is_err());
     }
 }

@@ -34,7 +34,7 @@ func loadSignBenchVector(b *testing.B) signBenchVector {
 }
 
 // BenchmarkIntegrationGatewaySign exercises the outbound integration gateway
-// signing path (gRPC worker when ND_INTEGRATIONWORKERPATH is set, else Go fallback).
+// local signing path, independent of worker availability.
 func BenchmarkIntegrationGatewaySign(b *testing.B) {
 	vector := loadSignBenchVector(b)
 	ctx := context.Background()

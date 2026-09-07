@@ -25,7 +25,7 @@ var (
 
 // Gateway is the hub for all outbound HTTP. Adapters no longer own
 // point-to-point http.Client instances: they share this RoundTripper, which
-// prefers the Rust gRPC worker (async I/O, pooling, signing) and falls back
+// prefers the Rust gRPC worker (async I/O and pooling) and falls back
 // to Go net/http when the worker is unavailable. DestArtwork uses a separate
 // SSRF-safe fallback so image CDNs never skip the private-IP checks.
 //
@@ -204,31 +204,14 @@ func (g *Gateway) Close() {
 	}
 }
 
-func (g *Gateway) Sign(ctx context.Context, params map[string]string, secret string) string {
-	g.grpcMu.Lock()
-	client := g.grpc
-	g.grpcMu.Unlock()
-	if client != nil {
-		sig, err := client.sign(ctx, params, secret)
-		if err == nil && sig != "" {
-			return sig
-		}
-		if g.workerExpected && !allowHTTPFallback() {
-			log.Error(ctx, "Integration worker sign failed; refusing Go fallback in production", err)
-			return ""
-		}
-		if err != nil {
-			log.Warn(ctx, "Integration worker sign failed; using Go fallback", err)
-		}
-	} else if g.workerExpected && !allowHTTPFallback() {
-		log.Error(ctx, "Integration worker sign unavailable in production", nil)
-		return ""
-	}
+// Sign computes a small deterministic digest where the parameters already
+// live. A separate RPC adds latency and makes signing depend on worker health.
+func (g *Gateway) Sign(_ context.Context, params map[string]string, secret string) string {
 	return signAudioscrobbler(params, secret)
 }
 
-func Sign(ctx context.Context, params map[string]string, secret string) string {
-	return Get().Sign(ctx, params, secret)
+func Sign(_ context.Context, params map[string]string, secret string) string {
+	return signAudioscrobbler(params, secret)
 }
 
 func (g *Gateway) breaker(dest Destination) *circuitBreaker {

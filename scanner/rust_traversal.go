@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
-	"github.com/navidrome/navidrome/core/rustworker"
 	"github.com/navidrome/navidrome/core/scannerworker"
 	"github.com/navidrome/navidrome/core/scannerworker/gen"
 	"github.com/navidrome/navidrome/log"
@@ -74,26 +73,18 @@ func streamRustFolders(ctx context.Context, job *scanJob, targets []string) (<-c
 }
 
 func streamRustFoldersGRPC(ctx context.Context, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		cli := scannerworker.ScannerGRPC()
-		if cli == nil {
-			return nil, scannerworker.ErrWalkNoGRPC
-		}
-		warnings, err := streamRustFoldersGRPCOnce(ctx, cli, request, folders)
-		if err == nil {
-			return warnings, nil
-		}
-		lastErr = err
-		if !rustworker.IsTransportFailure(err) || attempt > 0 {
-			return warnings, err
-		}
-		scannerworker.InvalidateGRPC()
+	// A walk has observable incremental effects. Replaying after a transport
+	// failure can deliver duplicate folders and corrupt scan bookkeeping.
+	cli := scannerworker.ScannerGRPC()
+	if cli == nil {
+		return nil, scannerworker.ErrWalkNoGRPC
 	}
-	return nil, lastErr
+	return streamRustFoldersGRPCOnce(ctx, cli, request, folders)
 }
 
 func streamRustFoldersGRPCOnce(ctx context.Context, cli gen.ScannerClient, request rustScanRequest, folders chan<- *rustScanFolder) ([]string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	stream, err := cli.Walk(ctx, toProtoWalkRequest(request))
 	if err != nil {
 		return nil, err
@@ -104,7 +95,7 @@ func streamRustFoldersGRPCOnce(ctx context.Context, cli gen.ScannerClient, reque
 	for {
 		event, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return warnings, nil
+			return warnings, fmt.Errorf("Rust scanner walk ended without DONE: %w", io.ErrUnexpectedEOF)
 		}
 		if err != nil {
 			return warnings, fmt.Errorf("receiving Rust scanner walk event: %w", err)

@@ -28,25 +28,26 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 		results := make(chan *folderEntry)
 		go func() {
 			defer close(results)
-			if !streamRustFoldersInto(ctx, job, targetFolders, results) {
-				if !allowGoWalkerFallback() {
-					log.Error(ctx, "Rust filesystem traversal failed; Go walker is disabled outside tests",
-						"lib", job.lib.Name, "root", job.localRoot)
+			sent, err := streamRustFoldersInto(ctx, job, targetFolders, results)
+			if err == nil {
+				return
+			}
+			if sent > 0 || !allowGoWalkerFallback() || ctx.Err() != nil {
+				job.setWalkError(err)
+				return
+			}
+			log.Warn(ctx, "Rust filesystem traversal failed; falling back to Go walker", "lib", job.lib.Name, err)
+			goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
+			if goErr != nil {
+				job.setWalkError(goErr)
+				return
+			}
+			for folder := range goResults {
+				select {
+				case results <- folder:
+				case <-ctx.Done():
+					job.setWalkError(ctx.Err())
 					return
-				}
-				log.Warn(ctx, "Rust filesystem traversal failed; falling back to Go walker",
-					"lib", job.lib.Name, "root", job.localRoot)
-				goResults, goErr := walkDirTreeGo(ctx, job, targetFolders...)
-				if goErr != nil {
-					log.Error(ctx, "Go filesystem traversal failed", goErr)
-					return
-				}
-				for folder := range goResults {
-					select {
-					case results <- folder:
-					case <-ctx.Done():
-						return
-					}
 				}
 			}
 		}()
@@ -55,11 +56,12 @@ func walkDirTree(ctx context.Context, job *scanJob, targetFolders ...string) (<-
 	return walkDirTreeGo(ctx, job, targetFolders...)
 }
 
-// streamRustFoldersInto streams Rust walker output into results. It returns false when
-// traversal fails before any folder is emitted so callers can fall back to the Go walker.
-// The Rust worker emits folders in post-order (deepest first) with per-event flush when
-// walk_threads is 1, so Go can start Phase 1 processing while traversal continues.
-func streamRustFoldersInto(ctx context.Context, job *scanJob, targetFolders []string, results chan<- *folderEntry) bool {
+// streamRustFoldersInto preserves traversal failures through the channel adapter.
+// Cancel on every exit so malformed events or a stopped consumer release both
+// the Go receiver goroutine and the Rust producer blocked on backpressure.
+func streamRustFoldersInto(ctx context.Context, job *scanJob, targetFolders []string, results chan<- *folderEntry) (int, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	folderCh, errCh := streamRustFolders(ctx, job, targetFolders)
 	var sent int
 	var rustErr error
@@ -70,40 +72,26 @@ func streamRustFoldersInto(ctx context.Context, job *scanJob, targetFolders []st
 				folderCh = nil
 				continue
 			}
-			entry, convertErr := folderEntryFromRust(job, source)
-			if convertErr != nil {
-				log.Error(ctx, "Rust scanner returned invalid folder", convertErr)
-				return sent > 0
+			entry, err := folderEntryFromRust(job, source)
+			if err != nil {
+				return sent, err
 			}
 			select {
 			case results <- entry:
 				sent++
 			case <-ctx.Done():
-				return sent > 0
+				return sent, ctx.Err()
 			}
 		case err, ok := <-errCh:
-			if !ok {
-				errCh = nil
-				continue
-			}
-			if err != nil {
+			if ok {
 				rustErr = err
 			}
 			errCh = nil
 		case <-ctx.Done():
-			return sent > 0
+			return sent, ctx.Err()
 		}
 	}
-	if rustErr != nil {
-		if sent == 0 {
-			log.Error(ctx, "Rust filesystem traversal failed",
-				"lib", job.lib.Name, "root", job.localRoot, rustErr)
-			return false
-		}
-		log.Error(ctx, "Rust filesystem traversal failed after partial results",
-			"lib", job.lib.Name, "root", job.localRoot, "folders", sent, rustErr)
-	}
-	return true
+	return sent, rustErr
 }
 
 func walkDirTreeGo(ctx context.Context, job *scanJob, targetFolders ...string) (<-chan *folderEntry, error) {

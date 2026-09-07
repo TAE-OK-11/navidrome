@@ -31,6 +31,9 @@ func TestWalkDirTreeSkipsGoFallbackWhenDisabled(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("got %d folders, want none when Go walker fallback is disabled", n)
 	}
+	if job.walkError() == nil {
+		t.Fatal("failed traversal must prevent scan cleanup")
+	}
 }
 
 func TestWalkDirTreeFakeFSStillUsesGoWalker(t *testing.T) {

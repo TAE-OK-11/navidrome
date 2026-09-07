@@ -65,7 +65,20 @@ type scanJob struct {
 	knownHashes   map[string]string                 // folder path -> hash for Rust summary events
 	targetFolders []string                          // Specific folders to scan (including all descendants)
 	lock          sync.Mutex
+	walkErr       error // protected by lock; checked after traversal channel drains
 	numFolders    atomic.Int64
+}
+
+func (j *scanJob) setWalkError(err error) {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	j.walkErr = err
+}
+
+func (j *scanJob) walkError() error {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	return j.walkErr
 }
 
 type mediaFileBatchPutter interface {
@@ -205,7 +218,7 @@ func (p *phaseFolders) producer() ppl.Producer[*folderEntry] {
 				}
 				outputChan, walkErr := walkDirTree(groupCtx, job, job.targetFolders...)
 				if walkErr != nil {
-					log.Warn(p.ctx, "Scanner: Error scanning library", "lib", job.lib.Name, walkErr)
+					return walkErr
 				}
 				for folder := range pl.ReadOrDone(groupCtx, outputChan) {
 					job.numFolders.Add(1)
@@ -230,6 +243,12 @@ func (p *phaseFolders) producer() ppl.Producer[*folderEntry] {
 					} else {
 						log.Trace(p.ctx, "Scanner: Skipping up-to-date folder", "folder", folder.path, "lastUpdate", folder.modTime, "lib", job.lib.Name)
 					}
+				}
+				if err := groupCtx.Err(); err != nil {
+					return err
+				}
+				if err := job.walkError(); err != nil {
+					return fmt.Errorf("traversing library %q: %w", job.lib.Name, err)
 				}
 				return nil
 			})
@@ -655,6 +674,19 @@ func (p *phaseFolders) logFolder(entry *folderEntry) (*folderEntry, error) {
 }
 
 func (p *phaseFolders) finalize(err error) error {
+	// Unvisited folders are only evidence of deletion after a complete scan.
+	// Also protect against downstream pipeline failures and cancellation.
+	if err != nil {
+		return err
+	}
+	if err := p.ctx.Err(); err != nil {
+		return err
+	}
+	for _, job := range p.jobs {
+		if err := job.walkError(); err != nil {
+			return err
+		}
+	}
 	errF := p.ds.WithTx(func(tx model.DataStore) error {
 		for _, job := range p.jobs {
 			// Mark all folders that were not updated as missing

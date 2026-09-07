@@ -102,7 +102,7 @@ train db_tags ./persistence '^BenchmarkUnmarshalTags$' "${HEAVY_BENCHTIME}"
 train search_fts ./persistence '^BenchmarkSearchFTS5QueryCached$' "${LIGHT_BENCHTIME}"
 
 # Subsonic / native API hot paths
-train api_json ./server/subsonic '^BenchmarkSubsonicJSONMarshal$' "${HEAVY_BENCHTIME}"
+train api_json ./server/subsonic '^BenchmarkSubsonicResponseBuffer$/^encode_into_buffer$' "${HEAVY_BENCHTIME}"
 train api_auth ./server/subsonic '^BenchmarkAuthUserCacheHit$' "${LIGHT_BENCHTIME}"
 train api_urls ./core/publicurl '^BenchmarkImageURL$' "${LIGHT_BENCHTIME}"
 train api_sse ./server/events '^BenchmarkSSEWriteEvent$' "${LIGHT_BENCHTIME}"

@@ -34,3 +34,22 @@ func TestCloseAllReverseOrder(t *testing.T) {
 type fnCloser struct{ fn func() }
 
 func (c *fnCloser) Close() { c.fn() }
+
+func TestUnregisterReleasesClosedResources(t *testing.T) {
+	c := &testCloser{}
+	unregister := register(c, false)
+	unregister()
+	unregister()
+	CloseAll()
+	if c.closed != 0 {
+		t.Fatal("unregistered resource retained")
+	}
+}
+
+func TestCloserCanUnregisterDuringShutdown(t *testing.T) {
+	var unregister func()
+	c := &fnCloser{fn: func() { unregister() }}
+	unregister = register(c, false)
+	CloseAll()
+	unregister()
+}

@@ -18,9 +18,8 @@ func (e *Engine) startGRPC() error {
 }
 
 func (e *Engine) grpcRoundTrip(ctx context.Context, req request) (response, error) {
-	if e.grpc == nil {
-		return response{}, errors.New("search gRPC client closed")
-	}
+	// roundTrip checked readiness under e.gate. Do not read e.grpc here:
+	// shutdown/recovery can clear it concurrently; CallSearch owns the connection.
 	return searchworker.CallSearch(ctx, func(ctx context.Context, client gen.SearchClient) (response, error) {
 		return e.grpcRoundTripOnce(ctx, client, req)
 	})

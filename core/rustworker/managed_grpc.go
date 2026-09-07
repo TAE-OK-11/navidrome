@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/navidrome/navidrome/core/lifecycle"
 	"github.com/navidrome/navidrome/log"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
@@ -40,7 +41,8 @@ type ManagedGRPCConfig struct {
 
 // ManagedGRPC hosts one Rust gRPC worker process and recreates it after crashes.
 type ManagedGRPC struct {
-	cfg ManagedGRPCConfig
+	cfg        ManagedGRPCConfig
+	unregister func()
 
 	mu        sync.Mutex
 	proc      *GRPCProcess
@@ -52,7 +54,9 @@ type ManagedGRPC struct {
 
 // NewManagedGRPC returns a worker host that is not started until Conn is called.
 func NewManagedGRPC(cfg ManagedGRPCConfig) *ManagedGRPC {
-	return &ManagedGRPC{cfg: cfg}
+	m := &ManagedGRPC{cfg: cfg}
+	m.unregister = lifecycle.Register(m)
+	return m
 }
 
 // Conn returns a live gRPC connection, starting the worker on first use.
@@ -157,6 +161,9 @@ func (m *ManagedGRPC) invalidateConn(conn *grpc.ClientConn) {
 
 // Close shuts down the worker permanently.
 func (m *ManagedGRPC) Close() {
+	if m.unregister != nil {
+		m.unregister()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closed = true

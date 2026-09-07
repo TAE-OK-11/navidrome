@@ -97,17 +97,6 @@ func isBareOKResponse(payload *responses.Subsonic) bool {
 	return stripped == responses.Subsonic{}
 }
 
-func encodeJSON(buf *bytes.Buffer, value any) error {
-	// encoding/json: goccy mis-encodes anonymous embedded pointer structs
-	// (e.g. Child.OpenSubsonicChild) into invalid JSON.
-	b, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(b)
-	return err
-}
-
 type handler = func(*http.Request) (*responses.Subsonic, error)
 type handlerRaw = func(http.ResponseWriter, *http.Request) (*responses.Subsonic, error)
 

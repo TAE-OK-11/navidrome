@@ -1,3 +1,6 @@
+mod response_body;
+use response_body::{buffer_response_prefix, forward_raw_body};
+
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error as StdError;
@@ -1134,7 +1137,7 @@ async fn forward_response(
     } else if let Some(profile) = compress
         && response_content_length(&parts.headers).is_none()
     {
-        let (bytes, finished) = buffer_response_prefix(&mut body, API_COMPRESSION_MIN_SIZE).await?;
+        let (bytes, finished) = buffer_response_prefix(&mut body, API_COMPRESSION_MIN_SIZE, BRIDGE_BODY_COALESCE_WAIT).await?;
         let buffered = bytes.iter().map(Bytes::len).sum::<usize>();
         prefix = bytes;
         if finished {
@@ -1243,120 +1246,6 @@ fn response_content_length(headers: &HeaderMap) -> Option<usize> {
         .ok()?
         .parse::<usize>()
         .ok()
-}
-
-async fn buffer_response_prefix(
-    body: &mut hyper::body::Incoming,
-    target: usize,
-) -> Result<(VecDeque<Bytes>, bool)> {
-    let mut buffered = VecDeque::new();
-    let mut size = 0;
-    while size < target {
-        let Some(frame) = body.frame().await else {
-            return Ok((buffered, true));
-        };
-        if let Ok(data) = frame?.into_data()
-            && !data.is_empty()
-        {
-            size += data.len();
-            buffered.push_back(data);
-        }
-    }
-    Ok((buffered, false))
-}
-
-async fn flush_pending_body(
-    pending: &mut BytesMut,
-    send: &mut OutboundFrameSender,
-    frame_cap: usize,
-) -> Result<()> {
-    if pending.is_empty() {
-        return Ok(());
-    }
-    send.send(OutboundFrame::Body(pending.split().freeze(), false))
-        .await?;
-    *pending = BytesMut::with_capacity(frame_cap);
-    Ok(())
-}
-
-async fn append_coalesced_body(
-    pending: &mut BytesMut,
-    data: Bytes,
-    send: &mut OutboundFrameSender,
-    frame_cap: usize,
-) -> Result<()> {
-    let mut offset = 0;
-    while offset < data.len() {
-        if pending.len() == frame_cap {
-            flush_pending_body(pending, send, frame_cap).await?;
-        }
-        let space = frame_cap - pending.len();
-        let take = (data.len() - offset).min(space);
-        pending.extend_from_slice(&data[offset..offset + take]);
-        offset += take;
-        if pending.len() >= frame_cap {
-            flush_pending_body(pending, send, frame_cap).await?;
-        }
-    }
-    Ok(())
-}
-
-async fn forward_raw_body(
-    body: &mut hyper::body::Incoming,
-    mut prefix: VecDeque<Bytes>,
-    send: &mut OutboundFrameSender,
-    idle_timeout: Duration,
-    coalesce_wait: Duration,
-) -> Result<()> {
-    while let Some(data) = prefix.pop_front() {
-        send.send(OutboundFrame::Body(data, false)).await?;
-    }
-    let frame_cap = BRIDGE_MAX_FRAME_SIZE as usize;
-    let mut pending = BytesMut::with_capacity(frame_cap);
-    loop {
-        let wait = if pending.is_empty() {
-            idle_timeout
-        } else {
-            coalesce_wait.min(idle_timeout)
-        };
-        match tokio::time::timeout(wait, body.frame()).await {
-            Ok(Some(Ok(frame))) => {
-                if let Ok(data) = frame.into_data()
-                    && !data.is_empty()
-                {
-                    // Live/API paths still use a short coalesce window for
-                    // subsequent frames, but the first audio/data frame must
-                    // leave immediately — otherwise play-start TTFB waits the
-                    // full coalesce timer even when ffmpeg already produced
-                    // bytes.
-                    let first_frame = pending.is_empty();
-                    append_coalesced_body(&mut pending, data, send, frame_cap).await?;
-                    if first_frame
-                        && coalesce_wait < BRIDGE_BULK_BODY_COALESCE_WAIT
-                        && !pending.is_empty()
-                    {
-                        flush_pending_body(&mut pending, send, frame_cap).await?;
-                    }
-                }
-            }
-            Ok(Some(Err(error))) => {
-                let _ = flush_pending_body(&mut pending, send, frame_cap).await;
-                return Err(error).context("failed to read inherited HTTP/2 response body");
-            }
-            Ok(None) => {
-                flush_pending_body(&mut pending, send, frame_cap).await?;
-                return Ok(());
-            }
-            Err(_) if !pending.is_empty() => {
-                // Coalesce deadline: forward what we have so live audio and
-                // concurrent pings are not held behind a full 64 KiB frame.
-                flush_pending_body(&mut pending, send, frame_cap).await?;
-            }
-            Err(_) => {
-                return Err(anyhow::anyhow!("response body idle timeout"));
-            }
-        }
-    }
 }
 
 fn response_data_stream(

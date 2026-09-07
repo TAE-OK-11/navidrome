@@ -627,7 +627,7 @@ var _ = Describe("Transcode Endpoints", Ordered, func() {
 				Expect(w.Code).To(Equal(http.StatusInternalServerError))
 			})
 
-			It("returns 500 when transcoded stream is empty", func() {
+			It("aborts when transcoded stream is empty after headers", func() {
 				// Get a valid decision token
 				resp := doPostReq("getTranscodeDecision", mp3OnlyClient, "mediaId", flacTrackID, "mediaType", "song")
 				Expect(resp.Status).To(Equal(responses.StatusOK))
@@ -638,8 +638,9 @@ var _ = Describe("Transcode Endpoints", Ordered, func() {
 				streamerSpy.SimulateEmptyStream = true
 				defer func() { streamerSpy.SimulateEmptyStream = false }()
 
-				w := doRawReq("getTranscodeStream", "mediaId", flacTrackID, "mediaType", "song", "transcodeParams", token)
-				Expect(w.Code).To(Equal(http.StatusInternalServerError))
+				Expect(func() {
+					doRawReq("getTranscodeStream", "mediaId", flacTrackID, "mediaType", "song", "transcodeParams", token)
+				}).To(PanicWith(http.ErrAbortHandler))
 			})
 		})
 

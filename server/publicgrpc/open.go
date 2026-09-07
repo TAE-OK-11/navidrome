@@ -170,7 +170,8 @@ func (s *Service) Open(req *gen.OpenRequest, stream gen.Public_OpenServer) error
 	return status.Error(codes.InvalidArgument, "api must be subsonic or native")
 }
 
-func (s *Service) openSubsonic(ctx context.Context, req *gen.OpenRequest, stream gen.Public_OpenServer, username string) error {
+func (s *Service) openSubsonic(ctx context.Context, req *gen.OpenRequest, stream gen.Public_OpenServer, username string) (err error) {
+	defer recoverOpenAbort(&err)
 	opener, ok := s.invoker.(SubsonicOpener)
 	if !ok || opener == nil {
 		return status.Error(codes.Unavailable, "Subsonic streaming is not configured")
@@ -188,7 +189,8 @@ func (s *Service) openSubsonic(ctx context.Context, req *gen.OpenRequest, stream
 	return stream.Send(finalOpenChunk(sw))
 }
 
-func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream gen.Public_OpenServer, token string) error {
+func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream gen.Public_OpenServer, token string) (err error) {
+	defer recoverOpenAbort(&err)
 	if s.native == nil {
 		return status.Error(codes.Unavailable, "Native API invoker is not configured")
 	}
@@ -234,3 +236,16 @@ func (s *Service) openNative(ctx context.Context, req *gen.OpenRequest, stream g
 }
 
 const openChunkSize = 64 * 1024
+
+// HTTP handlers use ErrAbortHandler to truncate a committed media response.
+// Open calls those handlers directly, outside net/http's recovery boundary.
+// Translate only this control signal into a gRPC failure; never send Final.
+func recoverOpenAbort(err *error) {
+	if recovered := recover(); recovered != nil {
+		if cause, ok := recovered.(error); ok && errors.Is(cause, http.ErrAbortHandler) {
+			*err = status.Error(codes.Internal, "media stream aborted")
+			return
+		}
+		panic(recovered)
+	}
+}

@@ -203,16 +203,17 @@ var _ = Describe("MediaStreamer", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("keeps empty output a non-error, so callers still reply 200 with an empty body", func() {
+		It("aborts empty transcoder output after flushing headers", func() {
 			s := stream.NewStream(mf, "mp3", 128, io.NopCloser(bytes.NewReader(nil)))
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest(http.MethodGet, "/", nil)
-
-			n, err := s.Serve(ctx, w, r)
-
+			server := httptest.NewServer(serveHandler(s))
+			DeferCleanup(server.Close)
+			resp, err := http.Get(server.URL)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(n).To(BeZero())
-			Expect(w.Code).To(Equal(http.StatusOK))
+			defer resp.Body.Close()
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			data, err := io.ReadAll(resp.Body)
+			Expect(data).To(BeEmpty())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("aborts the response when the source fails after sending data", func() {

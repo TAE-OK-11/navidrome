@@ -176,17 +176,13 @@ var _ = Describe("stream.view (legacy streaming)", Ordered, func() {
 			streamerSpy.SimulateEmptyStream = false
 		})
 
-		It("returns 200 with empty body for stream endpoint", func() {
-			w := doRawReq("stream", "id", flacTrackID, "format", "opus")
-			Expect(w.Code).To(Equal(http.StatusOK))
-			Expect(w.Body.Len()).To(Equal(0))
+		It("aborts empty output for stream endpoint", func() {
+			Expect(func() { doRawReq("stream", "id", flacTrackID, "format", "opus") }).To(PanicWith(http.ErrAbortHandler))
 		})
 
-		It("returns 200 with empty body for download endpoint", func() {
+		It("aborts empty output for download endpoint", func() {
 			conf.Server.EnableDownloads = true
-			w := doRawReq("download", "id", flacTrackID, "format", "opus")
-			Expect(w.Code).To(Equal(http.StatusOK))
-			Expect(w.Body.Len()).To(Equal(0))
+			Expect(func() { doRawReq("download", "id", flacTrackID, "format", "opus") }).To(PanicWith(http.ErrAbortHandler))
 		})
 	})
 })

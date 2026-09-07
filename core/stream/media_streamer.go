@@ -276,16 +276,15 @@ func (s *Stream) Serve(ctx context.Context, w http.ResponseWriter, r *http.Reque
 			return c, nil //nolint:nilerr // client disconnect; not a server error
 		}
 		log.Error(ctx, "Error sending transcoded file", "id", id, "bytesSent", c, err)
-		if c > 0 {
-			// Truncated after payload started — abort without a Subsonic error body.
-			panic(http.ErrAbortHandler)
-		}
-		return c, nil //nolint:nilerr // 200 already committed; avoid corrupt trailer
+		// Headers are committed even when no audio arrived. A clean EOF would
+		// incorrectly signal success; abort the transport without an API error body.
+		panic(http.ErrAbortHandler)
 	}
 	if c == 0 {
 		log.Error(ctx, "Transcoding returned empty output, ffmpeg may have failed. "+
 			"Check that ffmpeg supports the requested codec. Enable Trace logging for ffmpeg stderr details",
 			"id", id, "format", s.ContentType())
+		panic(http.ErrAbortHandler)
 	} else {
 		if log.IsGreaterOrEqualTo(log.LevelTrace) {
 			log.Trace(ctx, "Success sending transcoded file", "id", id, "size", c)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/navidrome/navidrome/core/lifecycle"
@@ -42,7 +43,7 @@ type ManagedGRPCConfig struct {
 // ManagedGRPC hosts one Rust gRPC worker process and recreates it after crashes.
 type ManagedGRPC struct {
 	cfg        ManagedGRPCConfig
-	unregister func()
+	unregister atomic.Pointer[func()]
 
 	mu        sync.Mutex
 	proc      *GRPCProcess
@@ -55,7 +56,8 @@ type ManagedGRPC struct {
 // NewManagedGRPC returns a worker host that is not started until Conn is called.
 func NewManagedGRPC(cfg ManagedGRPCConfig) *ManagedGRPC {
 	m := &ManagedGRPC{cfg: cfg}
-	m.unregister = lifecycle.Register(m)
+	unregister := lifecycle.Register(m)
+	m.unregister.Store(&unregister)
 	return m
 }
 
@@ -161,8 +163,8 @@ func (m *ManagedGRPC) invalidateConn(conn *grpc.ClientConn) {
 
 // Close shuts down the worker permanently.
 func (m *ManagedGRPC) Close() {
-	if m.unregister != nil {
-		m.unregister()
+	if unregister := m.unregister.Load(); unregister != nil {
+		(*unregister)()
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

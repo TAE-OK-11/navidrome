@@ -59,7 +59,7 @@ type GRPCProcess struct {
 	Conn *grpc.ClientConn
 	Addr string
 
-	unregister func()
+	unregister atomic.Pointer[func()]
 	closeOnce  sync.Once
 	exited     atomic.Bool
 	waitOnce   sync.Once
@@ -116,7 +116,8 @@ func StartGRPC(ctx context.Context, binary string, listen string, extraEnv []str
 	}
 
 	proc := &GRPCProcess{Cmd: cmd, Conn: conn, Addr: addr}
-	proc.unregister = lifecycle.Register(proc)
+	unregister := lifecycle.Register(proc)
+	proc.unregister.Store(&unregister)
 	return proc, nil
 }
 
@@ -161,8 +162,8 @@ func (p *GRPCProcess) Close() {
 		return
 	}
 	p.closeOnce.Do(func() {
-		if p.unregister != nil {
-			p.unregister()
+		if unregister := p.unregister.Load(); unregister != nil {
+			(*unregister)()
 		}
 		// Conn is immutable after publication; concurrent callers may still hold it.
 		if p.Conn != nil {

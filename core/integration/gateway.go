@@ -115,10 +115,6 @@ func (g *Gateway) RoundTrip(req *http.Request) (*http.Response, error) {
 	return g.roundTripDest(req, DestinationFromHost(req.URL.Host))
 }
 
-func allowHTTPFallback() bool {
-	return false
-}
-
 func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Response, error) {
 	if req == nil {
 		return nil, errors.New("nil request")
@@ -127,7 +123,7 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 		dest = DestUnknown
 	}
 
-	if dest == DestUnknown && g.workerExpected && !allowHTTPFallback() {
+	if dest == DestUnknown && g.workerExpected {
 		host := ""
 		if req.URL != nil {
 			host = req.URL.Host
@@ -144,20 +140,12 @@ func (g *Gateway) roundTripDest(req *http.Request, dest Destination) (*http.Resp
 	client := g.grpc
 	g.grpcMu.Unlock()
 
-	useGRPC := client != nil && dest != DestUnknown
-	if useGRPC {
-		resp, err := client.roundTrip(req.Context(), dest, req)
-		if err == nil {
-			return resp, nil
-		}
-		if isWorkerCircuitOpen(err) {
-			return nil, err
-		}
-		if !allowHTTPFallback() {
-			return nil, err
-		}
-		log.Warn(req.Context(), "gRPC outbound failed, falling back to Go HTTP", "dest", dest, err)
-	} else if g.workerExpected && dest != DestUnknown && !allowHTTPFallback() {
+	// The worker owns network policy when configured. Its failures are
+	// returned directly; only explicitly disabled/test configurations use Go.
+	if client != nil && dest != DestUnknown {
+		return client.roundTrip(req.Context(), dest, req)
+	}
+	if g.workerExpected && dest != DestUnknown {
 		return nil, fmt.Errorf("%w: %s", errWorkerUnavailable, dest)
 	}
 

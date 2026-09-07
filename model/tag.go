@@ -22,30 +22,40 @@ type Tag struct {
 type TagList []Tag
 
 func (l TagList) GroupByFrequency() Tags {
-	grouped := map[string]map[string]int{}
-	values := map[string]string{}
-	for _, t := range l {
-		if m, ok := grouped[string(t.TagName)]; !ok {
-			grouped[string(t.TagName)] = map[string]int{t.ID: 1}
-		} else {
-			m[t.ID]++
-		}
-		values[t.ID] = t.TagValue
+	type frequency struct {
+		value string
+		count int
 	}
-
-	tags := Tags{}
-	for name, counts := range grouped {
-		idList := make([]string, 0, len(counts))
-		for tid := range counts {
-			idList = append(idList, tid)
+	type group struct {
+		positions map[string]int
+		values    []frequency
+	}
+	groups := make(map[TagName]*group)
+	for _, tag := range l {
+		g := groups[tag.TagName]
+		if g == nil {
+			g = &group{positions: make(map[string]int)}
+			groups[tag.TagName] = g
 		}
-		slices.SortFunc(idList, func(a, b string) int {
-			return cmp.Or(
-				cmp.Compare(counts[b], counts[a]),
-				cmp.Compare(values[a], values[b]),
-			)
-		})
-		tags[TagName(name)] = slice.Map(idList, func(id string) string { return values[id] })
+		i, exists := g.positions[tag.ID]
+		if !exists {
+			i = len(g.values)
+			g.positions[tag.ID] = i
+			g.values = append(g.values, frequency{})
+		}
+		g.values[i].value = tag.TagValue
+		g.values[i].count++
+	}
+	tags := make(Tags, len(groups))
+	for name, g := range groups {
+		// Keep file order for equally frequent values, including primary genres.
+		// Counts and values live together, avoiding map lookups in each comparison.
+		slices.SortStableFunc(g.values, func(a, b frequency) int { return cmp.Compare(b.count, a.count) })
+		values := make([]string, len(g.values))
+		for i, value := range g.values {
+			values[i] = value.value
+		}
+		tags[name] = values
 	}
 	return tags
 }

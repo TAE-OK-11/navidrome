@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,8 +59,10 @@ type GRPCProcess struct {
 	Conn *grpc.ClientConn
 	Addr string
 
-	waitOnce sync.Once
-	waitErr  error
+	closeOnce sync.Once
+	exited    atomic.Bool
+	waitOnce  sync.Once
+	waitErr   error
 }
 
 // StartGRPC launches binary with --grpc-worker --listen, waits for READY, and dials.
@@ -146,6 +149,7 @@ func (p *GRPCProcess) Wait() error {
 	p.waitOnce.Do(func() {
 		if p.Cmd != nil {
 			p.waitErr = p.Cmd.Wait()
+			p.exited.Store(true)
 		}
 	})
 	return p.waitErr
@@ -155,12 +159,15 @@ func (p *GRPCProcess) Close() {
 	if p == nil {
 		return
 	}
-	if p.Conn != nil {
-		_ = p.Conn.Close()
-		p.Conn = nil
-	}
-	Kill(p.Cmd)
-	_ = p.Wait()
+	p.closeOnce.Do(func() {
+		// Conn is immutable after publication; concurrent callers may still hold it.
+		if p.Conn != nil {
+			_ = p.Conn.Close()
+		}
+		Kill(p.Cmd)
+		_ = p.Wait()
+		p.exited.Store(true)
+	})
 }
 
 // WaitReady reads the worker's "READY <addr>" banner from stdout.

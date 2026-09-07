@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -56,4 +57,33 @@ func TestGRPCProcessWaitOnce(t *testing.T) {
 		t.Fatalf("second Wait should reuse first result, got %v", err)
 	}
 	proc.Close() // must not panic or hang after Wait
+}
+
+func TestGRPCProcessConcurrentCloseAndWait(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := DialGRPC("127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := &GRPCProcess{Cmd: cmd, Conn: conn}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = processGone(proc)
+			proc.Close()
+			_ = proc.Wait()
+		}()
+	}
+	wg.Wait()
+	if !processGone(proc) {
+		t.Fatal("closed process reported live")
+	}
+	if proc.Conn != conn {
+		t.Fatal("published connection was mutated")
+	}
 }

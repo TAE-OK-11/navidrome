@@ -59,6 +59,15 @@ func NewManagedGRPC(cfg ManagedGRPCConfig) *ManagedGRPC {
 // Concurrent callers share a single start via singleflight; the mutex is not
 // held across process spawn or the health RPC.
 func (m *ManagedGRPC) Conn() (*grpc.ClientConn, error) {
+	return m.ConnContext(context.Background())
+}
+
+// ConnContext lets each caller abandon a shared startup independently. The
+// startup itself is bounded by READY/health timeouts and remains reusable.
+func (m *ManagedGRPC) ConnContext(ctx context.Context) (*grpc.ClientConn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if m == nil {
 		return nil, errors.New("managed gRPC worker is nil")
 	}
@@ -78,13 +87,18 @@ func (m *ManagedGRPC) Conn() (*grpc.ClientConn, error) {
 	}
 	m.mu.Unlock()
 
-	v, err, _ := m.startSF.Do("start", func() (any, error) {
+	result := m.startSF.DoChan("start", func() (any, error) {
 		return m.ensureStarted()
 	})
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-result:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+		return r.Val.(*grpc.ClientConn), nil
 	}
-	return v.(*grpc.ClientConn), nil
 }
 
 // Warm starts the worker in the background so the first RPC avoids cold spawn.
@@ -115,7 +129,7 @@ func (m *ManagedGRPC) Adopt(proc *GRPCProcess) bool {
 	}
 	m.proc = proc
 	m.lastStart = time.Now()
-	go m.watchProcess()
+	go m.watchProcess(proc)
 	if proc.Cmd != nil && proc.Cmd.Process != nil {
 		log.Info("Rust "+m.cfg.Name+" gRPC worker adopted", "pid", proc.Cmd.Process.Pid, "listen", proc.Addr)
 	} else {
@@ -129,6 +143,16 @@ func (m *ManagedGRPC) Invalidate() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closeLocked()
+}
+
+// invalidateConn ignores failures from a superseded connection. Concurrent
+// failed RPCs must not kill the replacement installed by the first caller.
+func (m *ManagedGRPC) invalidateConn(conn *grpc.ClientConn) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.proc != nil && m.proc.Conn == conn {
+		m.closeLocked()
+	}
 }
 
 // Close shuts down the worker permanently.
@@ -183,7 +207,7 @@ func (m *ManagedGRPC) ensureStarted() (*grpc.ClientConn, error) {
 	}
 	m.proc = proc
 	m.lastStart = time.Now()
-	go m.watchProcess()
+	go m.watchProcess(proc)
 	if proc.Cmd != nil && proc.Cmd.Process != nil {
 		log.Info("Rust "+m.cfg.Name+" gRPC worker ready", "pid", proc.Cmd.Process.Pid, "listen", proc.Addr)
 	} else {
@@ -233,14 +257,14 @@ func (m *ManagedGRPC) workerEnv() []string {
 	return append(append([]string(nil), m.cfg.ExtraEnv...), m.cfg.ExtraEnvFn()...)
 }
 
-func (m *ManagedGRPC) watchProcess() {
-	m.mu.Lock()
-	proc := m.proc
-	m.mu.Unlock()
+func (m *ManagedGRPC) watchProcess(proc *GRPCProcess) {
 	if proc == nil || proc.Cmd == nil {
 		return
 	}
 	_ = proc.Wait()
+	// Reap the transport too: a dead worker's ClientConn otherwise reconnects
+	// forever after the manager drops its process handle.
+	proc.Close()
 
 	m.mu.Lock()
 	if m.closed || m.proc != proc {
@@ -283,13 +307,13 @@ func (m *ManagedGRPC) watchProcess() {
 }
 
 // processGone reports whether a managed process can no longer serve RPCs.
-// ProcessState is set only after Wait returns, so this catches the window
-// between exit and watchProcess clearing m.proc without probing signals.
+// Wait publishes exit atomically: exec.Cmd.ProcessState cannot be read while
+// another goroutine is inside Wait.
 func processGone(p *GRPCProcess) bool {
 	if p == nil || p.Conn == nil {
 		return true
 	}
-	if p.Cmd != nil && p.Cmd.ProcessState != nil {
+	if p.exited.Load() {
 		return true
 	}
 	return false
@@ -326,7 +350,7 @@ func CallGRPC[T any](m *ManagedGRPC, ctx context.Context, fn func(context.Contex
 	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		conn, err := m.Conn()
+		conn, err := m.ConnContext(ctx)
 		if err != nil {
 			return zero, err
 		}
@@ -342,7 +366,7 @@ func CallGRPC[T any](m *ManagedGRPC, ctx context.Context, fn func(context.Contex
 		if ctx.Err() != nil {
 			return zero, err
 		}
-		m.Invalidate()
+		m.invalidateConn(conn)
 	}
 	return zero, lastErr
 }

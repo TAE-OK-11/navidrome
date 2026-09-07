@@ -172,3 +172,63 @@ func TestProcessGone(t *testing.T) {
 		t.Fatal("live-looking process should not be gone")
 	}
 }
+
+func TestConnContextCanceledDoesNotStart(t *testing.T) {
+	m := NewManagedGRPC(ManagedGRPCConfig{Resolve: func() (string, error) {
+		t.Error("canceled caller started a worker")
+		return "", errors.New("unexpected")
+	}})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := m.ConnContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
+func TestConnContextCanAbandonSharedStartup(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	want := errors.New("resolver failed")
+	m := NewManagedGRPC(ManagedGRPCConfig{Resolve: func() (string, error) {
+		close(entered)
+		<-release
+		return "", want
+	}})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { _, err := m.ConnContext(ctx); result <- err }()
+	<-entered
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Error("caller blocked on shared startup")
+	}
+	close(release)
+	m.Close()
+}
+
+func TestStaleFailureDoesNotInvalidateReplacement(t *testing.T) {
+	old, err := DialGRPC("127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Close()
+	replacement, err := DialGRPC("127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManagedGRPC(ManagedGRPCConfig{Name: "replacement"})
+	defer m.Close()
+	if !m.Adopt(&GRPCProcess{Conn: replacement}) {
+		t.Fatal("adopt failed")
+	}
+	m.invalidateConn(old)
+	got, err := m.Conn()
+	if err != nil || got != replacement {
+		t.Fatalf("replacement lost: %v", err)
+	}
+}

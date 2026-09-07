@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
@@ -16,30 +15,17 @@ import (
 )
 
 func (api *Router) GetPlaylists(r *http.Request) (*responses.Subsonic, error) {
-	ctx := r.Context()
-	user, ok := request.UserFrom(ctx)
-	cacheKey := ""
-	if ok {
-		cacheKey = genreResponseCacheKey(user) + "|playlists"
-		now := time.Now()
-		if cached, hit := api.entityCache.get(cacheKey, now); hit {
-			return cached, nil
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "list", "playlists"), func(r *http.Request) (*responses.Subsonic, error) {
+		ctx := r.Context()
+		allPls, err := api.playlists.GetAll(ctx, model.QueryOptions{Sort: "name"})
+		if err != nil {
+			log.Error(ctx, err)
+			return nil, err
 		}
-	}
-
-	allPls, err := api.playlists.GetAll(ctx, model.QueryOptions{Sort: "name"})
-	if err != nil {
-		log.Error(r, err)
-		return nil, err
-	}
-	response := newResponse()
-	response.Playlists = &responses.Playlists{
-		Playlist: slice.MapWithArg(allPls, ctx, api.buildPlaylist),
-	}
-	if ok {
-		api.entityCache.put(cacheKey, time.Now(), response)
-	}
-	return response, nil
+		response := newResponse()
+		response.Playlists = &responses.Playlists{Playlist: slice.MapWithArg(allPls, ctx, api.buildPlaylist)}
+		return response, nil
+	})
 }
 
 func (api *Router) GetPlaylist(r *http.Request) (*responses.Subsonic, error) {

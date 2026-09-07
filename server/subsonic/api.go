@@ -3,10 +3,10 @@ package subsonic
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -214,7 +214,13 @@ func (api *Router) registerResponseCacheHooks() {
 	responsecache.RegisterPlaylistsInvalidator(func() {
 		api.entityCache.deleteBySuffix("|playlists")
 	})
-	responsecache.RegisterEntityInvalidator(api.entityCache.deleteByEntityID)
+	responsecache.RegisterEntityInvalidator(func(string) {
+		// Song annotations also appear in cached albums, artist albums and
+		// sorted lists. Clear these bounded snapshots together.
+		api.entityCache.invalidate(nil)
+		api.albumListCache.invalidate(nil)
+		api.artistIndexCache.invalidate(nil)
+	})
 }
 
 func (api *Router) routes() http.Handler {

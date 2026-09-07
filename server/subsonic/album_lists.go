@@ -6,13 +6,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/core/scrobbler"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
-	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
@@ -25,64 +23,16 @@ const (
 	albumListCacheLimit = 128
 )
 
-type albumListCacheEntry struct {
-	expires time.Time
-	albums  model.Albums
-	count   int64
+type albumListSnapshot struct {
+	albums model.Albums
+	count  int64
 }
-
 type albumListCache struct {
-	mu      sync.RWMutex
-	entries map[string]albumListCacheEntry
-}
-
-func (c *albumListCache) get(key string, now time.Time) (model.Albums, int64, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
-	if !ok || !now.Before(entry.expires) {
-		if ok {
-			c.mu.Lock()
-			delete(c.entries, key)
-			c.mu.Unlock()
-		}
-		return nil, 0, false
-	}
-	return entry.albums, entry.count, true
-}
-
-func (c *albumListCache) put(key string, now time.Time, albums model.Albums, count int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.entries == nil {
-		c.entries = make(map[string]albumListCacheEntry)
-	}
-	if _, exists := c.entries[key]; !exists && len(c.entries) >= albumListCacheLimit {
-		for candidate, value := range c.entries {
-			if !now.Before(value.expires) {
-				delete(c.entries, candidate)
-			}
-		}
-	}
-	if len(c.entries) >= albumListCacheLimit {
-		var oldestKey string
-		var oldestExpiry time.Time
-		for candidate, value := range c.entries {
-			if oldestKey == "" || value.expires.Before(oldestExpiry) {
-				oldestKey, oldestExpiry = candidate, value.expires
-			}
-		}
-		delete(c.entries, oldestKey)
-	}
-	c.entries[key] = albumListCacheEntry{albums: albums, count: count, expires: now.Add(albumListCacheTTL)}
+	catalogCache[albumListSnapshot]
 }
 
 func albumListCacheKey(r *http.Request, typ string, musicFolderIds []int, offset, size int, genre string, fromYear, toYear int) string {
-	user, ok := request.UserFrom(r.Context())
-	userKey := ""
-	if ok {
-		userKey = genreResponseCacheKey(user)
-	}
+	userKey := catalogUserKey(r.Context())
 	ids := append([]int(nil), musicFolderIds...)
 	slices.Sort(ids)
 	var key strings.Builder
@@ -101,7 +51,7 @@ func albumListCacheKey(r *http.Request, typ string, musicFolderIds []int, offset
 	}
 	if genre != "" {
 		key.WriteByte('|')
-		key.WriteString(genre)
+		key.WriteString(strconv.Quote(genre))
 	}
 	if fromYear != 0 || toYear != 0 {
 		key.WriteByte('|')
@@ -171,46 +121,39 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	opts.Max = min(p.IntOr("size", 10), 500)
 
 	cacheable := typ != "random" && typ != "recent" && typ != "frequent"
-	now := time.Now()
+	load := func(ctx context.Context) (albumListSnapshot, error) {
+		var albums model.Albums
+		var count int64
+		err := run.Parallel(
+			func() error {
+				var err error
+				albums, err = api.ds.Album(ctx).GetAll(opts)
+				if err != nil {
+					log.Error(ctx, "Error retrieving albums", err)
+					return newError(responses.ErrorGeneric, "internal error")
+				}
+				return nil
+			},
+			func() error {
+				var err error
+				count, err = api.ds.Album(ctx).CountAll(opts)
+				if err != nil {
+					log.Error(ctx, "Error counting albums", err)
+					return newError(responses.ErrorGeneric, "internal error")
+				}
+				return nil
+			},
+		)()
+		return albumListSnapshot{albums: albums, count: count}, err
+	}
+	var snapshot albumListSnapshot
 	if cacheable {
 		cacheKey := albumListCacheKey(r, typ, musicFolderIds, opts.Offset, opts.Max, genre, fromYear, toYear)
-		if albums, count, ok := api.albumListCache.get(cacheKey, now); ok {
-			return albums, count, nil
-		}
+		snapshot, err = api.albumListCache.load(r.Context(), cacheKey, albumListCacheLimit, albumListCacheTTL, load)
+	} else {
+		snapshot, err = load(r.Context())
 	}
-
-	var albums model.Albums
-	var count int64
-	err = run.Parallel(
-		func() error {
-			var err error
-			albums, err = api.ds.Album(r.Context()).GetAll(opts)
-			if err != nil {
-				log.Error(r, "Error retrieving albums", err)
-				return newError(responses.ErrorGeneric, "internal error")
-			}
-			return nil
-		},
-		func() error {
-			var err error
-			count, err = api.ds.Album(r.Context()).CountAll(opts)
-			if err != nil {
-				log.Error(r, "Error counting albums", err)
-				return newError(responses.ErrorGeneric, "internal error")
-			}
-			return nil
-		},
-	)()
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if cacheable {
-		cacheKey := albumListCacheKey(r, typ, musicFolderIds, opts.Offset, opts.Max, genre, fromYear, toYear)
-		api.albumListCache.put(cacheKey, now, albums, count)
-	}
-
-	return albums, count, nil
+	return snapshot.albums, snapshot.count, err
 }
 
 func (api *Router) GetAlbumList(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {

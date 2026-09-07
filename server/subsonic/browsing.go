@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/navidrome/navidrome/conf"
@@ -27,144 +26,30 @@ const (
 	genreResponseCacheLimit = 128
 )
 
-type genreResponseCacheEntry struct {
-	expires time.Time
-	value   *responses.Genres
-}
-
 type genreResponseCache struct {
-	mu      sync.RWMutex
-	entries map[string]genreResponseCacheEntry
-}
-
-type musicFoldersResponseCache struct {
-	mu      sync.Mutex
-	entries map[string]musicFoldersResponseCacheEntry
-}
-
-type musicFoldersResponseCacheEntry struct {
-	expires time.Time
-	value   *responses.MusicFolders
-}
-
-type artistIndexCacheEntry struct {
-	expires  time.Time
-	indexes  model.ArtistIndexes
-	modified int64
-}
-
-type artistIndexCache struct {
-	mu      sync.RWMutex
-	entries map[string]artistIndexCacheEntry
-}
-
-func (c *genreResponseCache) get(key string, now time.Time) (*responses.Genres, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
-	if !ok || !now.Before(entry.expires) {
-		if ok {
-			c.mu.Lock()
-			delete(c.entries, key)
-			c.mu.Unlock()
-		}
-		return nil, false
-	}
-	return entry.value, true
+	catalogCache[*responses.Genres]
 }
 
 func (c *genreResponseCache) put(key string, now time.Time, value *responses.Genres) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.entries == nil {
-		c.entries = make(map[string]genreResponseCacheEntry)
-	}
-	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
-		for existingKey, entry := range c.entries {
-			if !now.Before(entry.expires) {
-				delete(c.entries, existingKey)
-			}
-		}
-		if len(c.entries) >= genreResponseCacheLimit {
-			for existingKey := range c.entries {
-				delete(c.entries, existingKey)
-				break
-			}
-		}
-	}
-	c.entries[key] = genreResponseCacheEntry{value: value, expires: now.Add(genreResponseCacheTTL)}
+	c.store(key, now, value, genreResponseCacheLimit, genreResponseCacheTTL)
 }
 
-func (c *musicFoldersResponseCache) get(key string, now time.Time) (*responses.MusicFolders, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	entry, ok := c.entries[key]
-	if !ok || !now.Before(entry.expires) {
-		delete(c.entries, key)
-		return nil, false
-	}
-	return entry.value, true
+type musicFoldersResponseCache struct {
+	catalogCache[*responses.MusicFolders]
 }
 
 func (c *musicFoldersResponseCache) put(key string, now time.Time, value *responses.MusicFolders) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.entries == nil {
-		c.entries = make(map[string]musicFoldersResponseCacheEntry)
-	}
-	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
-		for existingKey, entry := range c.entries {
-			if !now.Before(entry.expires) {
-				delete(c.entries, existingKey)
-			}
-		}
-		if len(c.entries) >= genreResponseCacheLimit {
-			for existingKey := range c.entries {
-				delete(c.entries, existingKey)
-				break
-			}
-		}
-	}
 	copied := *value
-	copied.Folders = append([]responses.MusicFolder(nil), value.Folders...)
-	c.entries[key] = musicFoldersResponseCacheEntry{value: &copied, expires: now.Add(genreResponseCacheTTL)}
+	copied.Folders = slices.Clone(value.Folders)
+	c.store(key, now, &copied, genreResponseCacheLimit, genreResponseCacheTTL)
 }
 
-func (c *artistIndexCache) get(key string, now time.Time) (model.ArtistIndexes, int64, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
-	if !ok || !now.Before(entry.expires) {
-		if ok {
-			c.mu.Lock()
-			delete(c.entries, key)
-			c.mu.Unlock()
-		}
-		return nil, 0, false
-	}
-	return entry.indexes, entry.modified, true
+type artistIndexSnapshot struct {
+	indexes  model.ArtistIndexes
+	modified int64
 }
-
-func (c *artistIndexCache) put(key string, now time.Time, indexes model.ArtistIndexes, modified int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.entries == nil {
-		c.entries = make(map[string]artistIndexCacheEntry)
-	}
-	if _, exists := c.entries[key]; !exists && len(c.entries) >= genreResponseCacheLimit {
-		for existingKey, entry := range c.entries {
-			if !now.Before(entry.expires) {
-				delete(c.entries, existingKey)
-			}
-		}
-		if len(c.entries) >= genreResponseCacheLimit {
-			for existingKey := range c.entries {
-				delete(c.entries, existingKey)
-				break
-			}
-		}
-	}
-	c.entries[key] = artistIndexCacheEntry{indexes: indexes, modified: modified, expires: now.Add(genreResponseCacheTTL)}
+type artistIndexCache struct {
+	catalogCache[artistIndexSnapshot]
 }
 
 func artistIndexCacheKey(libIds []int, lastScan string) string {
@@ -244,22 +129,21 @@ func (api *Router) getArtist(r *http.Request, libIds []int, ifModifiedSince time
 
 	var indexes model.ArtistIndexes
 	if lastScan.After(ifModifiedSince) {
-		cacheKey := artistIndexCacheKey(libIds, lastScanStr)
-		now := time.Now()
-		if cached, modified, ok := api.artistIndexCache.get(cacheKey, now); ok {
-			return cached, modified, nil
+		cacheKey := catalogUserKey(r.Context()) + "|" + artistIndexCacheKey(libIds, lastScanStr)
+		snapshot, loadErr := api.artistIndexCache.load(ctx, cacheKey, genreResponseCacheLimit, genreResponseCacheTTL, func(ctx context.Context) (artistIndexSnapshot, error) {
+			indexes, err := api.ds.Artist(ctx).GetIndex(false, libIds, model.RoleAlbumArtist)
+			if err != nil {
+				return artistIndexSnapshot{}, err
+			}
+			if len(indexes) == 0 {
+				return artistIndexSnapshot{}, newError(responses.ErrorDataNotFound, "Library not found or empty")
+			}
+			return artistIndexSnapshot{indexes: indexes, modified: lastScan.UnixMilli()}, nil
+		})
+		if loadErr != nil {
+			return nil, 0, loadErr
 		}
-
-		indexes, err = api.ds.Artist(ctx).GetIndex(false, libIds, model.RoleAlbumArtist)
-		if err != nil {
-			log.Error(ctx, "Error retrieving Indexes", err)
-			return nil, 0, err
-		}
-		if len(indexes) == 0 {
-			log.Debug(ctx, "No artists found in library", "libId", libIds)
-			return nil, 0, newError(responses.ErrorDataNotFound, "Library not found or empty")
-		}
-		api.artistIndexCache.put(cacheKey, now, indexes, lastScan.UnixMilli())
+		return snapshot.indexes, snapshot.modified, nil
 	}
 
 	return indexes, lastScan.UnixMilli(), err
@@ -373,7 +257,7 @@ func (api *Router) GetMusicDirectory(r *http.Request) (*responses.Subsonic, erro
 func (api *Router) GetArtist(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
-	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "artist", id), func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "artist", id), func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadArtist(r, id)
 	})
 }
@@ -402,7 +286,7 @@ func (api *Router) loadArtist(r *http.Request, id string) (*responses.Subsonic, 
 func (api *Router) GetAlbum(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
-	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "album", id), func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "album", id), func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadAlbum(r, id)
 	})
 }
@@ -449,7 +333,7 @@ func (api *Router) GetAlbumInfo(r *http.Request) (*responses.Subsonic, error) {
 	if err != nil {
 		return nil, err
 	}
-	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "albumInfo", id), func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "albumInfo", id), func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadAlbumInfo(r, id)
 	})
 }
@@ -479,7 +363,7 @@ func (api *Router) loadAlbumInfo(r *http.Request, id string) (*responses.Subsoni
 func (api *Router) GetSong(r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
 	id, _ := p.String("id")
-	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "song", id), func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, entityResponseCacheKey(r, "song", id), func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadSong(r, id)
 	})
 }
@@ -571,7 +455,7 @@ func (api *Router) GetArtistInfo(r *http.Request) (*responses.Subsonic, error) {
 	count := p.IntOr("count", 20)
 	includeNotPresent := p.BoolOr("includeNotPresent", false)
 	cacheKey := entityResponseCacheKey(r, "artistInfo", id+"|"+strconv.Itoa(count)+"|"+strconv.FormatBool(includeNotPresent))
-	return api.cachedSubsonicResponse(r, cacheKey, func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, cacheKey, func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadArtistInfo(r, false)
 	})
 }
@@ -585,7 +469,7 @@ func (api *Router) GetArtistInfo2(r *http.Request) (*responses.Subsonic, error) 
 	count := p.IntOr("count", 20)
 	includeNotPresent := p.BoolOr("includeNotPresent", false)
 	cacheKey := entityResponseCacheKey(r, "artistInfo2", id+"|"+strconv.Itoa(count)+"|"+strconv.FormatBool(includeNotPresent))
-	return api.cachedSubsonicResponse(r, cacheKey, func() (*responses.Subsonic, error) {
+	return api.cachedSubsonicResponse(r, cacheKey, func(r *http.Request) (*responses.Subsonic, error) {
 		return api.loadArtistInfo(r, true)
 	})
 }

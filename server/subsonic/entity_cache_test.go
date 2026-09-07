@@ -1,6 +1,10 @@
 package subsonic
 
 import (
+	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/model/request"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -42,5 +46,43 @@ func TestEntityResponseCacheDeleteBySuffix(t *testing.T) {
 	}
 	if _, hit := cache.get("alice|song|1", now); !hit {
 		t.Fatal("expected song cache entry to remain")
+	}
+}
+
+func TestCatalogCacheKeysSeparateUsersAndRepresentations(t *testing.T) {
+	oldShare, oldHost := conf.Server.ShareURL, conf.Server.BaseHost
+	conf.Server.ShareURL, conf.Server.BaseHost = "", ""
+	t.Cleanup(func() { conf.Server.ShareURL, conf.Server.BaseHost = oldShare, oldHost })
+	r := httptest.NewRequest("GET", "https://music.example/rest/getSong", nil)
+	user := model.User{ID: "alice", Libraries: model.Libraries{{ID: 1}}}
+	r = r.WithContext(request.WithUser(r.Context(), user))
+	original := entityResponseCacheKey(r, "song", "id")
+	albumKey := albumListCacheKey(r, "starred", []int{1}, 0, 10, "", 0, 0)
+	user.ID = "bob"
+	other := r.WithContext(request.WithUser(r.Context(), user))
+	if entityResponseCacheKey(other, "song", "id") == original {
+		t.Fatal("users share rendered entity response")
+	}
+	if albumListCacheKey(other, "starred", []int{1}, 0, 10, "", 0, 0) == albumKey {
+		t.Fatal("users share annotated album lists")
+	}
+	other = r.WithContext(request.WithClient(r.Context(), "legacy-client"))
+	if entityResponseCacheKey(other, "song", "id") == original {
+		t.Fatal("clients share incompatible response representations")
+	}
+	other = r.WithContext(request.WithTranscoding(r.Context(), model.Transcoding{TargetFormat: "opus"}))
+	if entityResponseCacheKey(other, "song", "id") == original {
+		t.Fatal("transcoding settings omitted from response key")
+	}
+	other = r.Clone(r.Context())
+	other.Host = "other.example"
+	if entityResponseCacheKey(other, "song", "id") == original {
+		t.Fatal("origins share rendered artwork URLs")
+	}
+	user = model.User{ID: "alice", IsAdmin: true}
+	admin := catalogUserKey(request.WithUser(r.Context(), user))
+	user.ID = "bob"
+	if admin == catalogUserKey(request.WithUser(r.Context(), user)) {
+		t.Fatal("admin accounts share private responses")
 	}
 }

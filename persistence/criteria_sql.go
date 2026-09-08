@@ -22,6 +22,7 @@ const (
 	smartPlaylistJoinAlbumAnnotation smartPlaylistJoinType = 1 << iota
 	smartPlaylistJoinArtistAnnotation
 	smartPlaylistJoinAlbum
+	smartPlaylistJoinMediaFileAnnotation
 )
 
 func (j smartPlaylistJoinType) has(other smartPlaylistJoinType) bool {
@@ -91,12 +92,12 @@ var smartPlaylistFields = map[string]smartPlaylistField{
 	"samplerate":           {expr: "media_file.sample_rate"},
 	"bpm":                  {expr: "media_file.bpm"},
 	"channels":             {expr: "media_file.channels"},
-	"loved":                {expr: "annotation.starred", coalesceDefault: false},
-	"dateloved":            {expr: "annotation.starred_at"},
-	"lastplayed":           {expr: "annotation.play_date"},
-	"daterated":            {expr: "annotation.rated_at"},
-	"playcount":            {expr: "annotation.play_count", coalesceDefault: 0},
-	"rating":               {expr: "annotation.rating", coalesceDefault: 0},
+	"loved":                {expr: "annotation.starred", coalesceDefault: false, joinType: smartPlaylistJoinMediaFileAnnotation},
+	"dateloved":            {expr: "annotation.starred_at", joinType: smartPlaylistJoinMediaFileAnnotation},
+	"lastplayed":           {expr: "annotation.play_date", joinType: smartPlaylistJoinMediaFileAnnotation},
+	"daterated":            {expr: "annotation.rated_at", joinType: smartPlaylistJoinMediaFileAnnotation},
+	"playcount":            {expr: "annotation.play_count", coalesceDefault: 0, joinType: smartPlaylistJoinMediaFileAnnotation},
+	"rating":               {expr: "annotation.rating", coalesceDefault: 0, joinType: smartPlaylistJoinMediaFileAnnotation},
 	"averagerating":        {expr: "media_file.average_rating"},
 	"albumrating":          {expr: "album_annotation.rating", coalesceDefault: 0, joinType: smartPlaylistJoinAlbumAnnotation},
 	"albumloved":           {expr: "album_annotation.starred", coalesceDefault: false, joinType: smartPlaylistJoinAlbumAnnotation},

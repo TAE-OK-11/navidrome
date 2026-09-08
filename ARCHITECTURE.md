@@ -125,6 +125,33 @@ it does not imply zero-copy across TLS, QUIC or the entire Go/Rust bridge.
 Selective official fixes and OpenSubsonic additions are documented in
 [UPSTREAM_REVIEW.md](UPSTREAM_REVIEW.md).
 
+## Artwork and playlist closeout
+
+Embedded artwork extraction now transfers Lofty's selected picture buffer into
+its gRPC response instead of cloning it. Both borrowed and owned extraction use
+one allocation-free selection pass, preserving front-cover preference and size
+checks. This removes a full image copy inside Rust; protobuf IPC still copies.
+
+Rust reads local images through one opened handle and applies its byte cap while
+receiving, so file growth cannot bypass a prior metadata check. Go's animated
+fallback file reads now share the same configured receive limit as other image
+inputs. GIF processing validates the logical canvas before frame allocation and
+encodes each resized frame immediately, retaining frame timing while eliminating
+the vector of all resized RGBA frames. The resizer is reused between frames.
+
+Animated WebP/PNG share an ffmpeg runner that writes stdin and drains stdout and
+stderr concurrently. This removes the pipe deadlock caused by writing all input
+before reading output. Output is limited during receipt, retained diagnostics
+are capped at 64 KiB, and a 120-second total deadline covers both pipe processing
+and process exit. Errors and timeouts kill and reap the child. GIF output is also
+bounded while encoding, including errors deferred until encoder finalization.
+
+Smart playlist queries now join per-track user annotations only when filters or
+ordering reference them. Percentage-limit counts use filter dependencies alone,
+so annotation-based ordering does not add an unnecessary join to the count.
+Metadata-only playlists avoid these per-row annotation lookups altogether;
+annotation conditions retain playlist-owner scope and zero/default semantics.
+
 ## Why retain these boundaries
 
 Rust already owns the substantial parsing, image, indexing and QUIC workloads.

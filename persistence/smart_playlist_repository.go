@@ -110,11 +110,7 @@ func (r *playlistRepository) resolvePercentageLimit(pls *model.Playlist, rulesSQ
 		return nil
 	}
 
-	exprJoins := rulesSQL.ExpressionJoins()
-	countSq := Select("count(*) as count").From("media_file")
-	countSq = r.addMediaFileAnnotationJoin(countSq, userID)
-	countSq = r.addSmartPlaylistJoins(countSq, exprJoins, userID)
-	countSq = r.applyLibraryFilter(countSq, "media_file")
+	countSq := r.buildSmartPlaylistCountQuery(*rulesSQL, userID)
 
 	cond, err := rulesSQL.Where()
 	if err != nil {
@@ -134,14 +130,20 @@ func (r *playlistRepository) resolvePercentageLimit(pls *model.Playlist, rulesSQ
 	return nil
 }
 
+// buildSmartPlaylistCountQuery excludes sort-only joins: percentage limits count
+// matching tracks before ordering them.
+func (r *playlistRepository) buildSmartPlaylistCountQuery(rulesSQL smartPlaylistCriteria, userID string) SelectBuilder {
+	sq := Select("count(*) as count").From("media_file")
+	sq = r.addSmartPlaylistJoins(sq, rulesSQL.ExpressionJoins(), userID)
+	return r.applyLibraryFilter(sq, "media_file")
+}
+
 // buildSmartPlaylistQuery constructs the SQL query to select media files matching the smart playlist criteria,
 // including the joins its fields require and library filtering.
 func (r *playlistRepository) buildSmartPlaylistQuery(pls *model.Playlist, rulesSQL smartPlaylistCriteria, userID string) SelectBuilder {
 	orderBy := rulesSQL.OrderBy()
 	sq := Select("row_number() over (order by "+orderBy+") as id", "'"+pls.ID+"' as playlist_id", "media_file.id as media_file_id").
 		From("media_file")
-	sq = r.addMediaFileAnnotationJoin(sq, userID)
-
 	requiredJoins := rulesSQL.RequiredJoins()
 	sq = r.addSmartPlaylistJoins(sq, requiredJoins, userID)
 	sq = r.applyLibraryFilter(sq, "media_file")
@@ -159,6 +161,9 @@ func (r *playlistRepository) addMediaFileAnnotationJoin(sq SelectBuilder, userID
 
 // addSmartPlaylistJoins adds the left joins required by the criteria's fields.
 func (r *playlistRepository) addSmartPlaylistJoins(sq SelectBuilder, joins smartPlaylistJoinType, userID string) SelectBuilder {
+	if joins.has(smartPlaylistJoinMediaFileAnnotation) {
+		sq = r.addMediaFileAnnotationJoin(sq, userID)
+	}
 	if joins.has(smartPlaylistJoinAlbumAnnotation) {
 		sq = sq.LeftJoin("annotation AS album_annotation ON ("+
 			"album_annotation.item_id = media_file.album_id"+

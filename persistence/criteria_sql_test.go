@@ -346,7 +346,7 @@ var _ = Describe("Smart playlist criteria SQL", func() {
 		// refresh time with "no such column".
 		joinByTable := map[string]smartPlaylistJoinType{
 			"media_file":        smartPlaylistJoinNone,
-			"annotation":        smartPlaylistJoinNone,
+			"annotation":        smartPlaylistJoinMediaFileAnnotation,
 			"album":             smartPlaylistJoinAlbum,
 			"album_annotation":  smartPlaylistJoinAlbumAnnotation,
 			"artist_annotation": smartPlaylistJoinArtistAnnotation,

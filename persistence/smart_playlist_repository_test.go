@@ -25,6 +25,57 @@ var _ = Describe("PlaylistRepository - Smart Playlists", func() {
 		repo = NewPlaylistRepository(ctx, GetDBXBuilder())
 	})
 
+	Describe("annotation query joins", func() {
+		DescribeTable("only joins track annotations when used by the query",
+			func(expression criteria.Expression, sort string, selectionJoin, countJoin bool) {
+				r := repo.(*playlistRepository)
+				rules := newSmartPlaylistCriteria(criteria.Criteria{Expression: expression, Sort: sort})
+				for _, query := range []struct {
+					builder squirrel.SelectBuilder
+					joined  bool
+				}{
+					{r.buildSmartPlaylistQuery(&model.Playlist{ID: "test"}, rules, "playlist-owner"), selectionJoin},
+					{r.buildSmartPlaylistCountQuery(rules, "playlist-owner"), countJoin},
+				} {
+					sql, args, err := query.builder.ToSql()
+					Expect(err).ToNot(HaveOccurred())
+					if query.joined {
+						Expect(sql).To(ContainSubstring("LEFT JOIN annotation on (annotation.item_id = media_file.id AND annotation.item_type = 'media_file' AND annotation.user_id = ?)"))
+						Expect(args).To(ContainElement("playlist-owner"))
+					} else {
+						Expect(sql).ToNot(ContainSubstring("JOIN annotation on ("))
+					}
+				}
+			},
+			Entry("metadata filters and sort", criteria.All{criteria.Contains{"title": "Come Together"}}, "title", false, false),
+			Entry("track annotation sort only", criteria.All{criteria.Contains{"title": "Come Together"}}, "-rating", true, false),
+			Entry("track annotation filter", criteria.All{criteria.Is{"playcount": 0}}, "title", true, true),
+			Entry("nested track annotation filter", criteria.All{criteria.Any{criteria.Is{"loved": true}}}, "title", true, true),
+			Entry("album annotation does not require track annotations", criteria.All{criteria.Gt{"albumRating": 3}}, "-artistRating", false, false),
+		)
+
+		It("counts and selects metadata matches correctly without track annotations", func() {
+			r := repo.(*playlistRepository)
+			rules := newSmartPlaylistCriteria(criteria.Criteria{
+				Expression: criteria.All{criteria.Contains{"title": "Come Together"}},
+				Sort:       "title", LimitPercent: 50,
+			})
+			pls := &model.Playlist{ID: "test", Name: "Half of matching titles"}
+			Expect(r.resolvePercentageLimit(pls, &rules, "unannotated-owner")).To(Succeed())
+			Expect(rules.Limit).To(Equal(1))
+			sq, err := r.addCriteria(r.buildSmartPlaylistQuery(pls, rules, "unannotated-owner"), rules)
+			Expect(err).ToNot(HaveOccurred())
+			var tracks []struct {
+				ID          int
+				PlaylistID  string
+				MediaFileID string
+			}
+			Expect(r.queryAll(sq, &tracks)).To(Succeed())
+			Expect(tracks).To(HaveLen(1))
+			Expect([]string{"1002", "3002"}).To(ContainElement(tracks[0].MediaFileID))
+		})
+	})
+
 	Context("Smart Playlists", func() {
 		var rules *criteria.Criteria
 		BeforeEach(func() {

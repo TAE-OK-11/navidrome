@@ -9,10 +9,12 @@ FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/alpine:3.24.1 AS xx-build
 # v1.9.0
 ENV XX_VERSION=a5592eab7a57895e8d385394ff12241bc65ecd50
 
-RUN apk add -U --no-cache git
-RUN git clone https://github.com/tonistiigi/xx && \
+RUN apk add --no-cache git
+RUN git init xx && \
     cd xx && \
-    git checkout ${XX_VERSION} && \
+    git remote add origin https://github.com/tonistiigi/xx && \
+    git fetch --depth=1 origin "${XX_VERSION}" && \
+    git checkout --detach FETCH_HEAD && \
     mkdir -p /out && \
     cp src/xx-* /out/
 
@@ -67,7 +69,7 @@ ARG GO_PGO_ENABLED=true
 ARG GO_PGO_BENCHTIME=3s
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
+    --mount=from=ui-bundle,source=/build,target=./ui/build,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
     set -e
@@ -103,7 +105,8 @@ EOT
 ########################################################################################################################
 ### Build Navidrome binary for standalone distribution (static glibc, cross-compiled)
 FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27.1-trixie AS base
-RUN apt-get update && apt-get install -y clang lld
+RUN apt-get update && apt-get install -y --no-install-recommends clang lld && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=xx / /
 WORKDIR /workspace
 
@@ -126,7 +129,7 @@ ARG GO_PGO_ENABLED=true
 ARG GO_PGO_BENCHTIME=3s
 
 RUN --mount=type=bind,source=. \
-    --mount=from=ui,source=/build,target=./ui/build,ro \
+    --mount=from=ui-bundle,source=/build,target=./ui/build,ro \
     --mount=from=osxcross,src=/osxcross/SDK,target=/xx-sdk,ro \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/go/pkg/mod <<EOT
@@ -194,7 +197,7 @@ LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
 
 # Install runtime dependencies
 # - libwebp + symlinks: enables native WebP encoding via purego/dlopen
-RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux && \
+RUN apk add --no-cache ffmpeg mpv libwebp libwebpdemux libwebpmux && \
     for lib in libwebp libwebpdemux libwebpmux; do \
         target=$(ls /usr/lib/$lib.so.* 2>/dev/null | head -1) && \
         [ -n "$target" ] && ln -sf "$target" /usr/lib/$lib.so; \

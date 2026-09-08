@@ -24,6 +24,7 @@
 #   CARGO_BUILD_JOBS        parallel rustc jobs
 #   RUSTFLAGS               extra rustc flags (e.g. -C target-cpu=znver3)
 #   RUST_PGO_HOST_CPU       CPU for instrument+bench phases (default: x86-64)
+#   RUST_PGO_PROFDATA       optional absolute path to a compatible llvm-profdata
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
@@ -33,8 +34,9 @@ GO_ROUNDS="${RUST_PGO_GO_ROUNDS:-25}"
 PROFILE="${RUST_PROFILE:-release-fat}"
 GEN_PROFILE="${RUST_PGO_GEN_PROFILE:-release-pgo-gen}"
 PGO_HOST_CPU="${RUST_PGO_HOST_CPU:-x86-64}"
-MERGED="${PGO_DIR}/merged.profdata"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/rust/target}"
+mkdir -p "${TARGET_DIR}"
+TARGET_DIR="$(CDPATH= cd -- "${TARGET_DIR}" && pwd)"
 INSTR_TARGET="${TARGET_DIR}/pgo-instrument"
 FINAL_TARGET="${TARGET_DIR}/pgo-final"
 JOBS="${CARGO_BUILD_JOBS:-}"
@@ -88,12 +90,21 @@ pgo_use_rustflags() {
 HOST_RUSTFLAGS="$(pgo_host_rustflags)"
 USE_BASE="$(pgo_use_rustflags)"
 
-if ! command -v llvm-profdata >/dev/null 2>&1; then
-  echo "[rust-pgo] llvm-profdata not found; install LLVM tools (clang/llvm)" >&2
+# Use the LLVM tool shipped with the active Rust compiler, not the distribution's
+# potentially older LLVM. Resolve under the workspace toolchain override.
+RUST_SYSROOT="$(cd "${ROOT}/rust" && rustc --print sysroot)"
+RUST_HOST="$(cd "${ROOT}/rust" && rustc -vV | sed -n 's/^host: //p')"
+PROFDATA="${RUST_PGO_PROFDATA:-${RUST_SYSROOT}/lib/rustlib/${RUST_HOST}/bin/llvm-profdata}"
+if [ ! -x "${PROFDATA}" ]; then
+  echo "[rust-pgo] matching llvm-profdata missing: ${PROFDATA}" >&2
+  echo "[rust-pgo] install rustup component llvm-tools-preview for the workspace toolchain" >&2
   exit 1
 fi
 
 mkdir -p "${PGO_DIR}"
+# rustc runs from several crate directories. Profile paths must be absolute.
+PGO_DIR="$(CDPATH= cd -- "${PGO_DIR}" && pwd)"
+MERGED="${PGO_DIR}/merged.profdata"
 rm -f "${PGO_DIR}"/*.profraw "${MERGED}"
 
 # profile-generate + LTO off (also set in release-pgo-gen). codegen-units come
@@ -113,7 +124,7 @@ echo "[rust-pgo] phase 1: instrumented build (profile=${GEN_PROFILE}, bins=${PGO
   # shellcheck disable=SC2086
   CARGO_TARGET_DIR="${INSTR_TARGET}" \
     RUSTFLAGS="${GEN_FLAGS}" \
-    cargo_cmd build --locked --profile "${GEN_PROFILE}" ${PGO_BIN_ARGS}
+    cargo_cmd build --locked --target "${RUST_HOST}" --profile "${GEN_PROFILE}" ${PGO_BIN_ARGS}
 )
 
 echo "[rust-pgo] phase 2: collecting profiles (criterion ${BENCH_TIME}s)"
@@ -129,16 +140,12 @@ for bench in integration metadata scanner search; do
     cd "${bench_dir}"
     CARGO_TARGET_DIR="${INSTR_TARGET}" \
       RUSTFLAGS="${GEN_FLAGS}" \
-      cargo_cmd bench --profile "${GEN_PROFILE}" --locked --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
+      cargo_cmd bench --target "${RUST_HOST}" --profile "${GEN_PROFILE}" --locked --bench "${bench_name}" -- --measurement-time "${BENCH_TIME}"
   )
 done
 
-# Instrumented binary path: custom profiles still land under target/<profile>/.
-INTEGRATION_BIN="${INSTR_TARGET}/${GEN_PROFILE}/navidrome-integration"
-if [ ! -x "${INTEGRATION_BIN}" ]; then
-  # Older cargo layouts / fallback if profile dir naming differs.
-  INTEGRATION_BIN="${INSTR_TARGET}/release/navidrome-integration"
-fi
+# Explicit --target keeps host build tools out of instrumentation.
+INTEGRATION_BIN="${INSTR_TARGET}/${RUST_HOST}/${GEN_PROFILE}/navidrome-integration"
 if [ "${GO_ROUNDS}" != "0" ] && [ -x "${INTEGRATION_BIN}" ] && command -v go >/dev/null 2>&1; then
   echo "[rust-pgo] phase 2b: Go gRPC integration tests (${GO_ROUNDS} rounds)"
   (
@@ -160,7 +167,7 @@ if [ "${PROFRAW_COUNT}" = "0" ]; then
 fi
 
 echo "[rust-pgo] phase 3: merge ${PROFRAW_COUNT} profile(s)"
-llvm-profdata merge -o "${MERGED}" "${PGO_DIR}"/*.profraw
+"${PROFDATA}" merge -o "${MERGED}" "${PGO_DIR}"/*.profraw
 test -s "${MERGED}"
 
 # Missing-function warnings on cold transitive crates (e.g. unused tonic paths)
@@ -180,8 +187,8 @@ echo "[rust-pgo] phase 4: fat LTO + profile-use (profile=${PROFILE}, bins=${PGO_
   # shellcheck disable=SC2086
   CARGO_TARGET_DIR="${FINAL_TARGET}" \
     RUSTFLAGS="${USE_FLAGS}" \
-    cargo_cmd build --locked --profile "${PROFILE}" ${FINAL_BIN_ARGS}
+    cargo_cmd build --locked --target "${RUST_HOST}" --profile "${PROFILE}" ${FINAL_BIN_ARGS}
 )
 
 echo "[rust-pgo] done: ${MERGED} ($(wc -c <"${MERGED}") bytes)"
-echo "[rust-pgo] binaries: ${FINAL_TARGET}/${PROFILE}/"
+echo "[rust-pgo] binaries: ${FINAL_TARGET}/${RUST_HOST}/${PROFILE}/"

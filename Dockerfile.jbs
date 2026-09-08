@@ -133,13 +133,7 @@ WORKDIR /src
 RUN echo "NAVIDROME_CACHEBUST=${NAVIDROME_CACHEBUST}" >/dev/null && \
     git init . && \
     git remote add origin "${NAVIDROME_REPOSITORY}" && \
-    if git ls-remote --exit-code --heads origin "${NAVIDROME_REF}" >/dev/null 2>&1; then \
-      git fetch --depth=1 origin "refs/heads/${NAVIDROME_REF}"; \
-    elif git ls-remote --exit-code --tags origin "${NAVIDROME_REF}" >/dev/null 2>&1; then \
-      git fetch --depth=1 origin "refs/tags/${NAVIDROME_REF}"; \
-    else \
-      git fetch --depth=1 origin "${NAVIDROME_REF}"; \
-    fi && \
+    git fetch --depth=1 origin "${NAVIDROME_REF}" && \
     git checkout --detach FETCH_HEAD && \
     git rev-parse --short=12 HEAD > /src/.git_sha && \
     git show -s --format=%ct HEAD > /src/.git_epoch && \
@@ -216,7 +210,7 @@ RUN --mount=type=cache,target=/root/.cache/ccache,sharing=locked \
       --with-malloc-conf="background_thread:true,metadata_thp:disabled,narenas:2,dirty_decay_ms:5000,muzzy_decay_ms:10000,oversize_threshold:8388608,retain:false" && \
     make -j"${NAVIDROME_BUILD_CORES}" install && \
     find /usr/local/lib -name "libjemalloc.so.*" ! -type l -exec llvm-strip --strip-unneeded {} + && \
-    ccache -s || true
+    { ccache -s || true; }
 
 # =========================================================
 # libopus static
@@ -313,7 +307,7 @@ RUN --mount=type=cache,target=/root/.cache/ccache,sharing=locked \
     test -s /usr/local/lib/libmp3lame.a && \
     test -s /usr/local/include/lame/lame.h && \
     llvm-ranlib /usr/local/lib/libmp3lame.a && \
-    ccache -s || true
+    { ccache -s || true; }
 
 RUN mkdir -p /usr/local/lib/pkgconfig && \
     printf '%s\n' \
@@ -433,7 +427,7 @@ RUN --mount=type=cache,target=/root/.cache/ccache,sharing=locked \
     test -x /usr/local/bin/ffmpeg && \
     test -x /usr/local/bin/ffprobe && \
     llvm-strip --strip-unneeded /usr/local/bin/ffmpeg /usr/local/bin/ffprobe && \
-    ccache -s || true
+    { ccache -s || true; }
 
 # Validate enabled components using the component-name field rather than output spacing.
 RUN set -eu; \
@@ -525,7 +519,7 @@ FROM ${RUST_IMAGE} AS rust-toolchain
 
 ARG RUST_TOOLCHAIN
 
-RUN rustup toolchain install "${RUST_TOOLCHAIN}" && \
+RUN rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal --component llvm-tools-preview && \
     rustup default "${RUST_TOOLCHAIN}" && \
     rustc --version | grep -F "${RUST_TOOLCHAIN}"
 
@@ -1212,7 +1206,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
       CARGO_TARGET_DIR=/tmp/rust-workers-release \
       RUSTFLAGS="-C target-cpu=${RUST_TARGET_CPU}" \
       /build/release/rust-pgo-train.sh && \
-      RUST_OUT=/tmp/rust-workers-release/pgo-final/release-fat; \
+      RUST_OUT="/tmp/rust-workers-release/pgo-final/$(rustc -vV | sed -n 's/^host: //p')/release-fat"; \
     else \
       CARGO_BUILD_JOBS="${NAVIDROME_BUILD_CORES}" \
       CARGO_INCREMENTAL=0 \
@@ -1522,7 +1516,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       /usr/share/gcc* \
       /var/cache/debconf/* \
       /var/log/* && \
-    find /usr -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+    { find /usr -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true; }
 
 RUN mkdir -p /usr/share/zoneinfo/Asia
 

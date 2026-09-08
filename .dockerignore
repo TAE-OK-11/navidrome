@@ -17,3 +17,11 @@ cache
 music
 music.old
 !Dockerfile
+# Local build outputs and caches never belong in a Docker build context.
+.git
+**/target
+**/node_modules
+**/.cache
+**/*.test
+**/*.profraw
+**/*.profdata

@@ -15,6 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-scripts:
+    name: Build script regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check shell syntax and PGO orchestration
+        run: |
+          for script in release/*.sh; do sh -n "$script"; done
+          python3 release/test_pgo_scripts.py
+
   go:
     name: Go tests
     runs-on: ubuntu-latest

@@ -25,7 +25,7 @@
 #   DB / CGO sqlite | db_sqlite       | BenchmarkSQLiteHotPath
 #   DB / search     | db_tags         | BenchmarkUnmarshalTags
 #   DB / search     | search_fts      | BenchmarkSearchFTS5QueryCached
-#   API             | api_json        | BenchmarkSubsonicJSONMarshal
+#   API             | api_json        | BenchmarkSubsonicResponseBuffer/encode_into_buffer
 #   API             | api_auth        | BenchmarkAuthUserCacheHit
 #   API             | api_urls        | BenchmarkImageURL
 #   API             | api_sse         | BenchmarkSSEWriteEvent
@@ -73,14 +73,33 @@ train() {
   benchmark="$3"
   benchtime="$4"
   echo "[pgo] training ${name} (${package} ${benchmark}, benchtime=${benchtime})"
-  go test \
+  # Profiling normally leaves a package.test binary in the working directory.
+  # Keep it in the writable profile directory (Docker source mounts may be read-only).
+  binary="${PROFILE_DIR}/${name}.test"
+  log="${PROFILE_DIR}/${name}.log"
+  rm -f "${PROFILE_DIR}/${name}.pprof" "$binary"
+  if ! go test \
+    -pgo=off \
+    -o="$binary" \
     -run='^$' \
     -bench="${benchmark}" \
     -benchtime="${benchtime}" \
     -count=1 \
     -tags="${PGO_BUILD_TAGS}" \
     -cpuprofile="${PROFILE_DIR}/${name}.pprof" \
-    "${package}"
+    "${package}" >"$log" 2>&1; then
+    cat "$log" >&2
+    rm -f "$binary"
+    return 1
+  fi
+  cat "$log"
+  rm -f "$binary"
+  # A skipped/misspelled benchmark still exits successfully and can produce a
+  # nonempty startup profile. Require a completed measured workload as well.
+  if ! grep -Eq '^Benchmark[^[:space:]]+[[:space:]]+[0-9]+[[:space:]]+.*ns/op' "$log"; then
+    echo "[pgo] no completed benchmark for ${name}: ${benchmark}" >&2
+    return 1
+  fi
   test -s "${PROFILE_DIR}/${name}.pprof"
   PROFILE_FILES="${PROFILE_FILES} ${PROFILE_DIR}/${name}.pprof"
 }
@@ -130,7 +149,7 @@ train grpc_invoke ./server/publicgrpc '^BenchmarkPublicGRPCInvoke$' "${HEAVY_BEN
 train grpc_open ./server/publicgrpc '^BenchmarkPublicGRPCOpenStream$' "${HEAVY_BENCHTIME}"
 train grpc_h2_ping ./server/publicgrpc '^BenchmarkPublicGRPCHTTP2Ping$' "${LIGHT_BENCHTIME}"
 
-# Outbound integration gateway (gRPC worker when ND_INTEGRATIONWORKERPATH is set)
+# Local outbound request signing (no worker RPC).
 train integration_sign ./core/integration '^BenchmarkIntegrationGatewaySign$' "${LIGHT_BENCHTIME}"
 
 echo "[pgo] merging $(echo "${PROFILE_FILES}" | wc -w | tr -d ' ') profiles"

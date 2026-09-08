@@ -83,6 +83,48 @@ body Vec. This avoids the old complete-response buffer followed by another
 full-body copy. The RPC remains unary, so bounded complete-body buffering is
 still present at the Go/Rust boundary.
 
+### Catalog API and JSON responses
+
+Five independently implemented catalog caches now use one bounded typed cache.
+Entity, playlist, artist-index and album-list misses share one in-flight load
+per key. Each waiter can cancel independently; detached work has a 30-second
+bound. Invalidation advances a generation, so an older load cannot repopulate
+stale data after a mutation. Reads no longer upgrade locks to delete expired
+entries, avoiding a race that could delete a concurrently refreshed value.
+
+Annotated results and private playlists are scoped by user identity and current
+library access, rather than just library IDs. Rendered entities also include
+client, transcode settings and public origin. Entity mutations invalidate
+related artist/album/list snapshots because their payloads embed annotations.
+Token issuance and validation read current media revisions; ordinary Range/seek
+bursts retain the short-lived streaming metadata cache.
+
+JSON encoding writes directly into the reusable response buffer. A three-run
+local benchmark of the existing 100-song payload measured approximately
+658,626–659,211 bytes allocated per operation for Marshal + copy versus
+552,664–552,667 for direct Encoder output. The final newline is removed to
+preserve existing JSON/JSONP bytes, including HTML escaping and embedded fields.
+Runtime measurements were noisy; this is an allocation result, not a deployed
+latency claim. Reproduce with `BenchmarkSubsonicResponseBuffer`.
+
+### Rust HTTP/3 body forwarding
+
+Response body transfer is isolated in `rust/h3-gateway/src/response_body.rs`.
+Full frames and the first live frame retain their received Bytes storage;
+partial frames alone need coalescing copies. Allocation is lazy and H3 channel
+sends retain backpressure. The first live frame leaves immediately; subsequent
+frames share an absolute coalescing deadline rather than resetting the wait for
+each fragment. Compression prefix inspection has a total 2-ms lookahead budget
+so a slow dynamic API body does not indefinitely withhold response headers.
+Tests check storage reuse, frame ordering/caps, initial flush and body stalls.
+
+The storage handoff uses the documented
+[Bytes splitting semantics](https://docs.rs/bytes/1.12.1/bytes/struct.Bytes.html#method.split_to);
+it does not imply zero-copy across TLS, QUIC or the entire Go/Rust bridge.
+
+Selective official fixes and OpenSubsonic additions are documented in
+[UPSTREAM_REVIEW.md](UPSTREAM_REVIEW.md).
+
 ## Why retain these boundaries
 
 Rust already owns the substantial parsing, image, indexing and QUIC workloads.

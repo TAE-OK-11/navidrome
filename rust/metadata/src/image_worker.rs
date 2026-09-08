@@ -1,13 +1,17 @@
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use fast_image_resize as fir;
+use image::codecs::gif::GifEncoder;
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
-use image::codecs::gif::GifEncoder;
-use image::{AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageFormat, ImageReader, Limits};
+use image::{
+    AnimationDecoder, ExtendedColorType, Frame, ImageEncoder, ImageFormat, ImageReader, Limits,
+};
 use serde::{Deserialize, Serialize};
 
 const MAX_INPUT_BYTES: usize = 128 * 1024 * 1024;
@@ -201,16 +205,26 @@ fn read_input_bytes(request: &ImageRequest, input: &mut impl Read) -> Result<Vec
 
 fn read_image_file(path: &str) -> Result<Vec<u8>> {
     let path = Path::new(path);
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("reading image file {}", path.display()))?;
+    // Inspect and read the same opened file. A replacement path or file growth
+    // after metadata was inspected must not bypass the payload budget.
+    let file =
+        fs::File::open(path).with_context(|| format!("opening image file {}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("reading image file metadata {}", path.display()))?;
     if !metadata.is_file() {
         bail!("image path {} is not a regular file", path.display());
     }
-    let len = metadata.len() as usize;
-    if len == 0 || len > MAX_INPUT_BYTES {
+    let len = metadata.len();
+    if len == 0 || len > MAX_INPUT_BYTES as u64 {
         bail!("image file size {len} is outside the allowed range 1..={MAX_INPUT_BYTES}");
     }
-    fs::read(path).with_context(|| format!("reading image file {}", path.display()))
+    let encoded = read_bounded(file, MAX_INPUT_BYTES, len as usize)
+        .with_context(|| format!("reading image file {}", path.display()))?;
+    if encoded.is_empty() {
+        bail!("image file {} is empty", path.display());
+    }
+    Ok(encoded)
 }
 
 fn validate_request(request: &ImageRequest) -> Result<()> {
@@ -420,13 +434,9 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
             crop_width,
             crop_height,
         )?;
-        let source = fir::images::Image::from_vec_u8(
-            crop_width,
-            crop_height,
-            cropped,
-            fir::PixelType::U8x4,
-        )
-        .context("creating fill resize source")?;
+        let source =
+            fir::images::Image::from_vec_u8(crop_width, crop_height, cropped, fir::PixelType::U8x4)
+                .context("creating fill resize source")?;
         let mut resized = fir::images::Image::new(target_size, target_size, fir::PixelType::U8x4);
         let options = fir::ResizeOptions::new()
             .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
@@ -487,7 +497,12 @@ fn resize(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-fn fill_crop(src_width: u32, src_height: u32, dst_width: u32, dst_height: u32) -> (u32, u32, u32, u32) {
+fn fill_crop(
+    src_width: u32,
+    src_height: u32,
+    dst_width: u32,
+    dst_height: u32,
+) -> (u32, u32, u32, u32) {
     let src_aspect = f64::from(src_width) / f64::from(src_height);
     let dst_aspect = f64::from(dst_width) / f64::from(dst_height);
     if src_aspect > dst_aspect {
@@ -638,10 +653,27 @@ fn write_sniff(output: &mut impl Write, flags: SniffAnimationFlags) -> Result<()
 }
 
 fn resize_animated_gif(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
+    use image::ImageDecoder;
     use image::codecs::gif::GifDecoder;
 
-    let decoder = GifDecoder::new(Cursor::new(encoded)).context("decoding animated gif")?;
-    let mut resized_frames = Vec::new();
+    let mut decoder = GifDecoder::new(Cursor::new(encoded)).context("decoding animated gif")?;
+    let (width, height) = decoder.dimensions();
+    validate_dimensions(width, height)?;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_DIMENSION);
+    limits.max_image_height = Some(MAX_DIMENSION);
+    limits.max_alloc = Some(MAX_PIXELS * 8);
+    decoder
+        .set_limits(limits)
+        .context("limiting animated gif decoder")?;
+    let mut output = LimitedImageBuffer {
+        bytes: Vec::new(),
+        limit: MAX_OUTPUT_BYTES,
+        exceeded: false,
+    };
+    let mut encoder = GifEncoder::new(&mut output);
+    let mut frame_count = 0;
+    let mut resizer = fir::Resizer::new();
     for frame in decoder.into_frames() {
         let frame = frame.context("reading gif frame")?;
         let delay = frame.delay();
@@ -661,137 +693,245 @@ fn resize_animated_gif(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>
             fir::images::Image::new(resized_width, resized_height, fir::PixelType::U8x4);
         let options = fir::ResizeOptions::new()
             .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::CatmullRom));
-        fir::Resizer::new()
+        resizer
             .resize(&source, &mut resized, &options)
             .context("resizing animated gif frame")?;
         let buffer = image::RgbaImage::from_raw(resized_width, resized_height, resized.into_vec())
             .context("building animated gif frame buffer")?;
-        resized_frames.push(Frame::from_parts(buffer, 0, 0, delay));
+        // Encode each resized frame immediately instead of retaining every
+        // frame's RGBA buffer until the entire animation has been decoded.
+        encoder
+            .encode_frame(Frame::from_parts(buffer, 0, 0, delay))
+            .context("encoding animated gif frame")?;
+        frame_count += 1;
     }
-    if resized_frames.is_empty() {
+    drop(encoder);
+    if output.exceeded {
+        bail!("encoded animated gif exceeds output byte limit");
+    }
+    if frame_count == 0 {
         bail!("animated gif contains no frames");
     }
-    let mut output = Vec::new();
-    {
-        let mut encoder = GifEncoder::new(&mut output);
-        for frame in resized_frames {
-            encoder
-                .encode_frame(frame)
-                .context("encoding animated gif frame")?;
+    Ok(output.bytes)
+}
+
+struct LimitedImageBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+    // The underlying GIF encoder finalizes in Drop, which cannot report errors.
+    exceeded: bool,
+}
+
+impl Write for LimitedImageBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            self.exceeded = true;
+            return Err(io::Error::other("encoded image exceeds output byte limit"));
         }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
     }
-    if output.is_empty() || output.len() > MAX_OUTPUT_BYTES {
-        bail!(
-            "encoded animated gif size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
-            output.len()
-        );
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
-    Ok(output)
 }
 
 fn resize_animated_webp(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
     let scale = format!(
         "scale='min({0},iw)':'min({0},ih)':force_original_aspect_ratio=decrease",
         request.size
     );
     let quality = request.quality.to_string();
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            "pipe:0",
-            "-vf",
-            &scale,
-            "-loop",
-            "0",
-            "-c:v",
-            "libwebp_anim",
-            "-quality",
-            &quality,
-            "-f",
-            "webp",
-            "pipe:1",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("starting ffmpeg for animated WebP resize")?;
-    {
-        let mut stdin = child.stdin.take().context("ffmpeg stdin unavailable")?;
-        stdin
-            .write_all(encoded)
-            .context("writing animated WebP to ffmpeg")?;
-    }
-    let output = child
-        .wait_with_output()
-        .context("waiting for ffmpeg animated WebP resize")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("ffmpeg animated WebP resize failed: {stderr}");
-    }
-    if output.stdout.is_empty() || output.stdout.len() > MAX_OUTPUT_BYTES {
-        bail!(
-            "encoded animated WebP size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
-            output.stdout.len()
-        );
-    }
-    Ok(output.stdout)
+    let mut command = Command::new("ffmpeg");
+    command.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-vf",
+        &scale,
+        "-loop",
+        "0",
+        "-c:v",
+        "libwebp_anim",
+        "-quality",
+        &quality,
+        "-f",
+        "webp",
+        "pipe:1",
+    ]);
+    run_image_command(
+        &mut command,
+        encoded,
+        MAX_OUTPUT_BYTES,
+        Duration::from_secs(120),
+    )
+    .context("resizing animated WebP with ffmpeg")
 }
 
 fn resize_animated_png(encoded: &[u8], request: &ImageRequest) -> Result<Vec<u8>> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
     let scale = format!(
         "scale='min({0},iw)':'min({0},ih)':force_original_aspect_ratio=decrease",
         request.size
     );
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            "pipe:0",
-            "-vf",
-            &scale,
-            "-plays",
-            "0",
-            "-f",
-            "apng",
-            "pipe:1",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("starting ffmpeg for animated PNG resize")?;
-    {
-        let mut stdin = child.stdin.take().context("ffmpeg stdin unavailable")?;
-        stdin
-            .write_all(encoded)
-            .context("writing animated PNG to ffmpeg")?;
+    let mut command = Command::new("ffmpeg");
+    command.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-vf",
+        &scale,
+        "-plays",
+        "0",
+        "-f",
+        "apng",
+        "pipe:1",
+    ]);
+    run_image_command(
+        &mut command,
+        encoded,
+        MAX_OUTPUT_BYTES,
+        Duration::from_secs(120),
+    )
+    .context("resizing animated PNG with ffmpeg")
+}
+
+// A guard also cleans up on thread creation failure or an early I/O error.
+// It lives inside the scope so the child exits before scoped threads are joined.
+struct ImageChild(Child);
+
+impl Drop for ImageChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
     }
-    let output = child
-        .wait_with_output()
-        .context("waiting for ffmpeg animated PNG resize")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("ffmpeg animated PNG resize failed: {stderr}");
+}
+
+fn read_bounded(reader: impl Read, limit: usize, capacity_hint: usize) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(capacity_hint.min(limit));
+    reader.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > limit {
+        return Err(io::Error::other("image stream exceeds byte limit"));
     }
-    if output.stdout.is_empty() || output.stdout.len() > MAX_OUTPUT_BYTES {
-        bail!(
-            "encoded animated PNG size {} is outside the allowed range 1..={MAX_OUTPUT_BYTES}",
-            output.stdout.len()
+    Ok(bytes)
+}
+
+fn read_diagnostics(mut reader: impl Read) -> io::Result<Vec<u8>> {
+    // Retain a useful error message while continuing to drain the pipe, even
+    // when malformed inputs cause ffmpeg to print many repeated diagnostics.
+    let mut bytes = Vec::new();
+    reader.by_ref().take(64 * 1024).read_to_end(&mut bytes)?;
+    io::copy(&mut reader, &mut io::sink())?;
+    Ok(bytes)
+}
+
+fn run_image_command(
+    command: &mut Command,
+    encoded: &[u8],
+    output_limit: usize,
+    timeout: Duration,
+) -> Result<Vec<u8>> {
+    std::thread::scope(|scope| {
+        let mut child = ImageChild(
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .context("starting image encoder")?,
         );
-    }
-    Ok(output.stdout)
+        let mut stdin = child.0.stdin.take().context("encoder stdin unavailable")?;
+        let stdout = child
+            .0
+            .stdout
+            .take()
+            .context("encoder stdout unavailable")?;
+        let stderr = child
+            .0
+            .stderr
+            .take()
+            .context("encoder stderr unavailable")?;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let input_sender = sender.clone();
+        std::thread::Builder::new()
+            .name("image-stdin".into())
+            .spawn_scoped(scope, move || {
+                let result = stdin.write_all(encoded).map(|()| Vec::new());
+                // Close stdin before publishing completion so the encoder sees EOF.
+                drop(stdin);
+                let _ = input_sender.send((0, result));
+            })
+            .context("starting image input writer")?;
+        let output_sender = sender.clone();
+        std::thread::Builder::new()
+            .name("image-stdout".into())
+            .spawn_scoped(scope, move || {
+                let _ = output_sender.send((1, read_bounded(stdout, output_limit, 0)));
+            })
+            .context("starting image output reader")?;
+        std::thread::Builder::new()
+            .name("image-stderr".into())
+            .spawn_scoped(scope, move || {
+                let _ = sender.send((2, read_diagnostics(stderr)));
+            })
+            .context("starting image diagnostic reader")?;
+
+        let deadline = Instant::now() + timeout;
+        let mut output = Vec::new();
+        let mut diagnostics = Vec::new();
+        let mut io_error = None;
+        for _ in 0..3 {
+            let (pipe, result) = receiver
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .context("image encoder timed out or a pipe worker stopped")?;
+            match result {
+                Ok(bytes) if pipe == 1 => output = bytes,
+                Ok(bytes) if pipe == 2 => diagnostics = bytes,
+                Ok(_) => {}
+                Err(error) => {
+                    // In particular, stop encoding immediately at the output
+                    // limit so the stdin writer cannot remain blocked forever.
+                    let _ = child.0.kill();
+                    if io_error.is_none() || pipe == 1 {
+                        io_error = Some(error);
+                    }
+                }
+            }
+        }
+        // A process can close all three pipes but continue running. Poll its
+        // exit using the same deadline instead of blocking in wait indefinitely.
+        let status = loop {
+            if let Some(status) = child.0.try_wait().context("waiting for image encoder")? {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                bail!("image encoder timed out");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        if let Some(error) = io_error {
+            return Err(error).with_context(|| {
+                format!(
+                    "transferring image encoder data: {}",
+                    String::from_utf8_lossy(&diagnostics)
+                )
+            });
+        }
+        if !status.success() {
+            bail!(
+                "image encoder failed: {}",
+                String::from_utf8_lossy(&diagnostics)
+            );
+        }
+        if output.is_empty() {
+            bail!("image encoder returned empty output");
+        }
+        Ok(output)
+    })
 }
 
 fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
@@ -832,6 +972,144 @@ mod tests {
     use super::*;
     use image::{Rgba, RgbaImage};
 
+    #[test]
+    fn bounded_image_reader_rejects_growth_beyond_limit() {
+        let mut input = Cursor::new(b"123456789".as_slice());
+        assert!(read_bounded(&mut input, 4, 2).is_err());
+        assert_eq!(input.position(), 5, "must stop after the limit probe");
+        assert_eq!(read_bounded(Cursor::new(b"1234"), 4, 4).unwrap(), b"1234");
+    }
+
+    #[test]
+    fn encoded_image_writer_never_exceeds_limit() {
+        let mut output = LimitedImageBuffer {
+            bytes: Vec::new(),
+            limit: 4,
+            exceeded: false,
+        };
+        output.write_all(b"1234").unwrap();
+        assert!(output.write_all(b"5").is_err());
+        assert_eq!(output.bytes, b"1234");
+    }
+
+    #[test]
+    fn diagnostics_are_capped_but_pipe_is_fully_drained() {
+        let mut input = Cursor::new(vec![b'x'; 128 * 1024]);
+        assert_eq!(read_diagnostics(&mut input).unwrap().len(), 64 * 1024);
+        assert_eq!(input.position(), 128 * 1024);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn image_encoder_drains_output_while_feeding_large_input() {
+        // Output larger than a pipe must be consumed before this child begins
+        // reading stdin. Writing all stdin before draining stdout deadlocks.
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 131072 /dev/zero; exec cat"]);
+        let input = vec![b'x'; 256 * 1024];
+        let output =
+            run_image_command(&mut command, &input, 512 * 1024, Duration::from_secs(5)).unwrap();
+        assert_eq!(&output[..128 * 1024], vec![0; 128 * 1024]);
+        assert_eq!(&output[128 * 1024..], input);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn image_encoder_stops_when_output_exceeds_limit() {
+        let mut command = Command::new("cat");
+        let error = run_image_command(
+            &mut command,
+            &vec![b'x'; 256 * 1024],
+            1024,
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("byte limit"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn image_encoder_preserves_failure_diagnostics() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf 'invalid animation' >&2; exit 7"]);
+        let error = run_image_command(&mut command, &[], 1024, Duration::from_secs(5)).unwrap_err();
+        assert!(format!("{error:#}").contains("invalid animation"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn image_encoder_kills_and_reaps_hung_child() {
+        for close_pipes in [false, true] {
+            let mut command = Command::new("sh");
+            command.args([
+                "-c",
+                if close_pipes {
+                    "exec 0<&- 1>&- 2>&-; exec sleep 60"
+                } else {
+                    "exec sleep 60"
+                },
+            ]);
+            let started = Instant::now();
+            let error =
+                run_image_command(&mut command, &[], 1024, Duration::from_millis(100)).unwrap_err();
+            assert!(format!("{error:#}").contains("timed out"));
+            assert!(started.elapsed() < Duration::from_secs(5));
+        }
+    }
+
+    #[test]
+    fn animated_gif_rejects_oversized_canvas_before_decoding_frames() {
+        let mut input = Vec::new();
+        {
+            let mut encoder = GifEncoder::new(&mut input);
+            encoder
+                .encode_frame(Frame::new(RgbaImage::new(1, 1)))
+                .unwrap();
+        }
+        // Expand only the logical screen header, leaving a tiny valid frame.
+        input[6..8].copy_from_slice(&u16::MAX.to_le_bytes());
+        input[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        let request: ImageRequest = serde_json::from_str(r#"{"size":4}"#).unwrap();
+        let error = resize_animated_gif(&input, &request).unwrap_err();
+        assert!(format!("{error:#}").contains("exceed allowed limits"));
+    }
+
+    #[test]
+    fn animated_gif_preserves_frames_and_delays_while_resizing() {
+        use image::codecs::gif::GifDecoder;
+        let mut input = Vec::new();
+        {
+            let mut encoder = GifEncoder::new(&mut input);
+            for (color, delay) in [([255, 0, 0, 255], 100), ([0, 0, 255, 255], 250)] {
+                encoder
+                    .encode_frame(Frame::from_parts(
+                        RgbaImage::from_pixel(8, 4, Rgba(color)),
+                        0,
+                        0,
+                        image::Delay::from_numer_denom_ms(delay, 1),
+                    ))
+                    .unwrap();
+            }
+        }
+        let request: ImageRequest =
+            serde_json::from_str(r#"{"size":4,"animated_gif":true}"#).unwrap();
+        let output = resize_animated_gif(&input, &request).unwrap();
+        let frames = GifDecoder::new(Cursor::new(output))
+            .unwrap()
+            .into_frames()
+            .collect_frames()
+            .unwrap();
+        assert_eq!(frames.len(), 2);
+        for (frame, (color, delay)) in frames
+            .iter()
+            .zip([([255, 0, 0, 255], 100), ([0, 0, 255, 255], 250)])
+        {
+            assert_eq!(frame.buffer().dimensions(), (4, 2));
+            assert_eq!(frame.buffer().get_pixel(0, 0).0, color);
+            assert_eq!(frame.delay().numer_denom_ms(), (delay, 1));
+        }
+    }
+
     fn source_png(width: u32, height: u32) -> Vec<u8> {
         let image = RgbaImage::from_pixel(width, height, Rgba([30, 90, 180, 255]));
         let mut output = Vec::new();
@@ -843,10 +1121,7 @@ mod tests {
 
     #[test]
     fn reads_image_from_path() {
-        let dir = std::env::temp_dir().join(format!(
-            "navidrome-image-path-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("navidrome-image-path-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("source.png");

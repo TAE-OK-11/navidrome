@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"os"
 
 	"github.com/dustin/go-humanize"
 	"github.com/navidrome/navidrome/conf"
@@ -51,7 +52,7 @@ func maxImageReadBytes() int64 {
 		raw = conf.Server.MaxImageSize
 	}
 	size, err := humanize.ParseBytes(raw)
-	if err != nil || size == 0 || size > ^uint64(0)>>1 {
+	if err != nil || size == 0 || size >= ^uint64(0)>>1 {
 		return 20 << 20
 	}
 	return int64(size)
@@ -62,4 +63,27 @@ func capImageReader(r io.ReadCloser) io.ReadCloser {
 		io.Reader
 		io.Closer
 	}{Reader: io.LimitReader(r, maxImageReadBytes()), Closer: r}
+}
+
+// readImageBytes enforces the cap while receiving, including readers whose size
+// is unknown or changes. One extra byte distinguishes an exact fit from overflow.
+func readImageBytes(reader io.Reader) ([]byte, error) {
+	maxBytes := maxImageReadBytes()
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading image data: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("image exceeds maximum size of %d bytes", maxBytes)
+	}
+	return data, nil
+}
+
+func readImageFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return readImageBytes(file)
 }

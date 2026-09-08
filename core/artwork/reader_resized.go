@@ -108,13 +108,9 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 }
 
 func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader) (io.Reader, int, error) {
-	maxBytes := maxImageReadBytes()
-	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	data, err := readImageBytes(reader)
 	if err != nil {
-		return nil, 0, fmt.Errorf("reading image data: %w", err)
-	}
-	if int64(len(data)) > maxBytes {
-		return nil, 0, fmt.Errorf("image exceeds maximum size of %d bytes", maxBytes)
+		return nil, 0, err
 	}
 
 	// Sniff animation before decode — animated WebP/PNG may not decode via Go's image package.
@@ -220,7 +216,7 @@ func (a *resizedArtworkReader) resizeImageFromPath(ctx context.Context, path str
 				return nil, 0, ctx.Err()
 			}
 			log.Debug(ctx, "Rust animated WebP resize unavailable; returning original bytes", "error", err)
-			data, readErr := os.ReadFile(path)
+			data, readErr := readImageFile(path)
 			if readErr != nil {
 				return nil, 0, readErr
 			}
@@ -234,7 +230,7 @@ func (a *resizedArtworkReader) resizeImageFromPath(ctx context.Context, path str
 				return nil, 0, ctx.Err()
 			}
 			log.Debug(ctx, "Rust animated PNG resize unavailable; returning original bytes", "error", err)
-			data, readErr := os.ReadFile(path)
+			data, readErr := readImageFile(path)
 			if readErr != nil {
 				return nil, 0, readErr
 			}

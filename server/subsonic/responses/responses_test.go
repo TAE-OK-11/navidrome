@@ -164,7 +164,7 @@ var _ = Describe("Responses", func() {
 					ArtistImageUrl: "https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png",
 				}
 				artists[0].OpenSubsonicArtistID3 = &OpenSubsonicArtistID3{
-					Disambiguation: "French electronic duo",
+					Disambiguation: new("French electronic duo"),
 					MusicBrainzId:  "1234",
 					SortName:       "sort name",
 					Roles:          []string{"role1", "role2"},

@@ -153,7 +153,7 @@ func toOSArtistID3(ctx context.Context, a model.Artist) *responses.OpenSubsonicA
 		return nil
 	}
 	artist := responses.OpenSubsonicArtistID3{
-		Disambiguation: a.Disambiguation,
+		Disambiguation: new(a.Disambiguation),
 		MusicBrainzId:  a.MbzArtistID,
 		SortName:       sortName(a.SortArtistName, a.OrderArtistName),
 	}

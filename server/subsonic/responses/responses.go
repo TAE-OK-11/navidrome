@@ -250,7 +250,9 @@ type ArtistID3 struct {
 
 type OpenSubsonicArtistID3 struct {
 	// OpenSubsonic extensions
-	Disambiguation string        `xml:"disambiguation,attr" json:"disambiguation"`
+	// A non-nil pointer emits even an empty comment for supported clients.
+	// omitempty also lets encoding/xml skip the nil legacy extension block.
+	Disambiguation *string       `xml:"disambiguation,attr,omitempty" json:"disambiguation"`
 	MusicBrainzId  string        `xml:"musicBrainzId,attr,omitempty" json:"musicBrainzId"`
 	SortName       string        `xml:"sortName,attr,omitempty"      json:"sortName"`
 	Roles          Array[string] `xml:"roles,omitempty"              json:"roles"`

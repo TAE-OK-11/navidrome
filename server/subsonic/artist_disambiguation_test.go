@@ -15,8 +15,12 @@ func TestArtistDisambiguationHonorsLegacyClients(t *testing.T) {
 	defer func() { conf.Server.Subsonic.LegacyClients = old }()
 	artist := model.Artist{Name: "Death", Disambiguation: "US death metal band"}
 	result := toOSArtistID3(context.Background(), artist)
-	if result == nil || result.Disambiguation != artist.Disambiguation {
+	if result == nil || result.Disambiguation == nil || *result.Disambiguation != artist.Disambiguation {
 		t.Fatal("artist comment missing from OpenSubsonic response")
+	}
+	empty := toOSArtistID3(context.Background(), model.Artist{})
+	if empty == nil || empty.Disambiguation == nil || *empty.Disambiguation != "" {
+		t.Fatal("supported comment must be present even when metadata is empty")
 	}
 	if toOSArtistID3(request.WithClient(context.Background(), "legacy-test"), artist) != nil {
 		t.Fatal("extended artist fields emitted to a legacy client")

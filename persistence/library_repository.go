@@ -73,8 +73,16 @@ func (r *libraryRepository) GetPath(id int) (string, error) {
 	}
 }
 
-func (r *libraryRepository) Put(l *model.Library) error {
-	if l.ID == model.DefaultLibraryID {
+func (r *libraryRepository) Put(l *model.Library, colsToUpdate ...string) error {
+	cols := filterUpdateValues(map[string]any{
+		"name":              l.Name,
+		"path":              l.Path,
+		"remote_path":       l.RemotePath,
+		"default_new_users": l.DefaultNewUsers,
+	}, strconv.Itoa(l.ID), colsToUpdate...)
+	delete(cols, "id")
+	_, writesPath := cols["path"]
+	if l.ID == model.DefaultLibraryID && writesPath {
 		currentLib, err := r.Get(1)
 		// if we are creating it, it's ok.
 		if err == nil { // it exists, so we are updating it
@@ -88,17 +96,12 @@ func (r *libraryRepository) Put(l *model.Library) error {
 	l.UpdatedAt = time.Now()
 	if l.ID == 0 {
 		// Insert with autoassigned ID
+		writesPath = true
 		l.CreatedAt = time.Now()
 		err = r.db.Model(l).Insert()
 	} else {
 		// Try to update first
-		cols := map[string]any{
-			"name":              l.Name,
-			"path":              l.Path,
-			"remote_path":       l.RemotePath,
-			"default_new_users": l.DefaultNewUsers,
-			"updated_at":        l.UpdatedAt,
-		}
+		cols["updated_at"] = l.UpdatedAt
 		sq := Update(r.tableName).SetMap(cols).Where(Eq{"id": l.ID})
 		rowsAffected, updateErr := r.executeSQL(sq)
 		if updateErr != nil {
@@ -107,6 +110,7 @@ func (r *libraryRepository) Put(l *model.Library) error {
 
 		// If no rows were affected, the record doesn't exist, so insert it
 		if rowsAffected == 0 {
+			writesPath = true
 			l.CreatedAt = time.Now()
 			l.UpdatedAt = time.Now()
 			err = r.db.Model(l).Insert()
@@ -131,7 +135,9 @@ ON CONFLICT (user_id, library_id) DO NOTHING;`,
 
 	libLock.Lock()
 	defer libLock.Unlock()
-	libCache[l.ID] = l.Path
+	if writesPath {
+		libCache[l.ID] = l.Path
+	}
 	libCountValid = false
 	return nil
 }
@@ -382,7 +388,7 @@ func (r *libraryRepository) Update(id string, entity any, cols ...string) error 
 	}
 
 	lib.ID = idInt
-	return r.Put(lib)
+	return r.Put(lib, cols...)
 }
 
 var _ model.LibraryRepository = (*libraryRepository)(nil)

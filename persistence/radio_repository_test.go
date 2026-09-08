@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"time"
 
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/log"
@@ -78,6 +79,33 @@ var _ = Describe("RadioRepository", func() {
 			})
 		})
 
+		Describe("Update", func() {
+			It("only updates selected fields and preserves the cover and creation time", func() {
+				original, err := repo.Get(radioWithHomePage.ID)
+				Expect(err).ToNot(HaveOccurred())
+				original.UploadedImage = "radio-cover"
+				Expect(repo.Put(original)).To(Succeed())
+				patch := &model.Radio{Name: "Renamed", CreatedAt: time.Unix(1, 0)}
+				Expect(repo.(rest.Persistable).Update(original.ID, patch, "name", "createdAt")).To(Succeed())
+
+				saved, err := repo.Get(original.ID)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(saved.Name).To(Equal(patch.Name))
+				Expect(saved.StreamUrl).To(Equal(original.StreamUrl))
+				Expect(saved.HomePageUrl).To(Equal(original.HomePageUrl))
+				Expect(saved.UploadedImage).To(Equal(original.UploadedImage))
+				Expect(saved.CreatedAt).To(BeTemporally("==", original.CreatedAt))
+				Expect(saved.UpdatedAt).To(BeTemporally(">=", original.UpdatedAt))
+
+				Expect(repo.(rest.Persistable).Update(original.ID, &model.Radio{}, "homePageUrl")).To(Succeed())
+				saved, err = repo.Get(original.ID)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(saved.HomePageUrl).To(BeEmpty())
+				Expect(saved.Name).To(Equal(patch.Name))
+				Expect(saved.UploadedImage).To(Equal(original.UploadedImage))
+			})
+		})
+
 		Describe("Put", func() {
 			It("successfully updates item", func() {
 				err := repo.Put(&model.Radio{
@@ -121,6 +149,10 @@ var _ = Describe("RadioRepository", func() {
 			It("returns the number of radios in the DB", func() {
 				Expect(repo.CountAll()).To(Equal(int64(2)))
 			})
+		})
+
+		It("rejects partial updates by a non-admin", func() {
+			Expect(repo.(rest.Persistable).Update(radioWithHomePage.ID, &model.Radio{Name: "Renamed"}, "name")).To(Equal(rest.ErrPermissionDenied))
 		})
 
 		Describe("Delete", func() {

@@ -176,6 +176,36 @@ var _ = Describe("Library Service", func() {
 				})
 			})
 
+			It("validates partial edits against existing fields and preserves unselected values", func() {
+				libraryRepo.SetData(model.Libraries{{ID: 1, Name: "Original", Path: tempDir, RemotePath: "/remote", DefaultNewUsers: true, TotalSongs: 12}})
+				patch := &model.Library{Name: "Renamed", Path: "/ignored/nonexistent", TotalSongs: 999}
+				Expect(repo.Update("1", patch, "name", "totalSongs")).To(Succeed())
+				Expect(libraryRepo.Data[1].Name).To(Equal("Renamed"))
+				Expect(libraryRepo.Data[1].Path).To(Equal(tempDir))
+				Expect(libraryRepo.Data[1].RemotePath).To(Equal("/remote"))
+				Expect(libraryRepo.Data[1].DefaultNewUsers).To(BeTrue())
+				Expect(libraryRepo.Data[1].TotalSongs).To(Equal(12))
+				Expect(libraryRepo.PutColumns).To(Equal([]string{"name", "totalSongs"}))
+				Expect(watcherManager.libraryStates).To(BeEmpty())
+			})
+
+			It("accepts explicit zero values without clearing the name or path", func() {
+				libraryRepo.SetData(model.Libraries{{ID: 1, Name: "Original", Path: tempDir, RemotePath: "/remote", DefaultNewUsers: true}})
+				Expect(repo.Update("1", &model.Library{}, "remotePath", "defaultNewUsers")).To(Succeed())
+				Expect(libraryRepo.Data[1].Name).To(Equal("Original"))
+				Expect(libraryRepo.Data[1].Path).To(Equal(tempDir))
+				Expect(libraryRepo.Data[1].RemotePath).To(BeEmpty())
+				Expect(libraryRepo.Data[1].DefaultNewUsers).To(BeFalse())
+				Expect(libraryRepo.PutColumns).To(Equal([]string{"remotePath", "defaultNewUsers"}))
+				Expect(watcherManager.libraryStates).To(BeEmpty())
+			})
+
+			It("rejects an explicitly cleared required field", func() {
+				Expect(repo.Update("1", &model.Library{}, "name")).To(MatchError(ContainSubstring("ra.validation.required")))
+				Expect(libraryRepo.Data[1].Name).To(Equal("Original Library"))
+				Expect(libraryRepo.PutColumns).To(BeNil())
+			})
+
 			It("updates an existing library successfully", func() {
 				newTempDir, err := os.MkdirTemp("", "navidrome-library-update-")
 				Expect(err).NotTo(HaveOccurred())

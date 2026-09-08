@@ -14,9 +14,10 @@ import (
 
 type MockLibraryRepo struct {
 	model.LibraryRepository
-	Data  map[int]model.Library
-	Err   error
-	PutFn func(*model.Library) error // Allow custom Put behavior for testing
+	Data       map[int]model.Library
+	Err        error
+	PutFn      func(*model.Library) error // Allow custom Put behavior for testing
+	PutColumns []string
 }
 
 func (m *MockLibraryRepo) SetData(data model.Libraries) {
@@ -89,7 +90,8 @@ func (m *MockLibraryRepo) GetPath(id int) (string, error) {
 	return "", model.ErrNotFound
 }
 
-func (m *MockLibraryRepo) Put(library *model.Library) error {
+func (m *MockLibraryRepo) Put(library *model.Library, cols ...string) error {
+	m.PutColumns = slices.Clone(cols)
 	if m.PutFn != nil {
 		return m.PutFn(library)
 	}

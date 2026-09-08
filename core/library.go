@@ -204,7 +204,7 @@ func (r *libraryRepositoryWrapper) Save(entity any) (string, error) {
 	return strconv.Itoa(lib.ID), nil
 }
 
-func (r *libraryRepositoryWrapper) Update(id string, entity any, _ ...string) error {
+func (r *libraryRepositoryWrapper) Update(id string, entity any, cols ...string) error {
 	lib := entity.(*model.Library)
 	libID, err := strconv.Atoi(id)
 	if err != nil {
@@ -212,19 +212,37 @@ func (r *libraryRepositoryWrapper) Update(id string, entity any, _ ...string) er
 	}
 
 	lib.ID = libID
-	if err := r.validateLibrary(lib); err != nil {
-		return err
-	}
-
 	// Get the original library to check if path changed
 	originalLib, err := r.Get(libID)
 	if err != nil {
 		return r.mapError(err)
 	}
 
+	if len(cols) > 0 {
+		// Validate the resulting library and pass its complete path to the watcher,
+		// while leaving the database write restricted to the requested columns.
+		merged := *originalLib
+		for _, col := range cols {
+			switch strings.ReplaceAll(strings.ToLower(col), "_", "") {
+			case "name":
+				merged.Name = lib.Name
+			case "path":
+				merged.Path = lib.Path
+			case "remotepath":
+				merged.RemotePath = lib.RemotePath
+			case "defaultnewusers":
+				merged.DefaultNewUsers = lib.DefaultNewUsers
+			}
+		}
+		*lib = merged
+	}
+	if err := r.validateLibrary(lib); err != nil {
+		return err
+	}
+
 	pathChanged := originalLib.Path != lib.Path
 
-	err = r.LibraryRepository.Put(lib)
+	err = r.LibraryRepository.Put(lib, cols...)
 	if err != nil {
 		return r.mapError(err)
 	}

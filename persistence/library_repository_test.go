@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -117,6 +118,62 @@ var _ = Describe("LibraryRepository", func() {
 				Expect(savedLib.Name).To(Equal("New Library with ID"))
 				Expect(savedLib.Path).To(Equal("/music/new"))
 			})
+		})
+	})
+
+	Describe("Update", func() {
+		It("preserves omitted fields and the cached path on a partial update", func() {
+			lib := &model.Library{Name: "Original", Path: "/music/partial", RemotePath: "/remote/music", DefaultNewUsers: true}
+			Expect(repo.Put(lib)).To(Succeed())
+			Expect(repo.GetPath(lib.ID)).To(Equal(lib.Path))
+			_, err := conn.NewQuery("update library set updated_at = {:stamp} where id = {:id}").
+				Bind(dbx.Params{"stamp": time.Unix(1, 0), "id": lib.ID}).Execute()
+			Expect(err).ToNot(HaveOccurred())
+
+			patch := &model.Library{Name: "Renamed", CreatedAt: time.Unix(2, 0), UpdatedAt: time.Unix(2, 0), TotalSongs: 999}
+			Expect(repo.(*libraryRepository).Update(strconv.Itoa(lib.ID), patch, "name", "createdAt", "updatedAt", "totalSongs")).To(Succeed())
+
+			saved, err := repo.Get(lib.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(saved.Name).To(Equal("Renamed"))
+			Expect(saved.Path).To(Equal(lib.Path))
+			Expect(saved.RemotePath).To(Equal(lib.RemotePath))
+			Expect(saved.DefaultNewUsers).To(BeTrue())
+			Expect(saved.CreatedAt).To(BeTemporally("==", lib.CreatedAt))
+			Expect(saved.UpdatedAt).To(BeTemporally(">", time.Unix(2, 0)))
+			Expect(saved.TotalSongs).To(BeZero())
+			Expect(repo.GetPath(lib.ID)).To(Equal(lib.Path))
+		})
+
+		It("writes explicit zero values and refreshes the cache for a selected path", func() {
+			lib := &model.Library{Name: "Original", Path: "/music/partial", RemotePath: "/remote/music", DefaultNewUsers: true}
+			Expect(repo.Put(lib)).To(Succeed())
+			patch := &model.Library{Path: "/music/moved"}
+			Expect(repo.(*libraryRepository).Update(strconv.Itoa(lib.ID), patch, "path", "remotePath", "defaultNewUsers")).To(Succeed())
+
+			saved, err := repo.Get(lib.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(saved.Name).To(Equal(lib.Name))
+			Expect(saved.RemotePath).To(BeEmpty())
+			Expect(saved.DefaultNewUsers).To(BeFalse())
+			Expect(repo.GetPath(lib.ID)).To(Equal(patch.Path))
+		})
+
+		It("allows partial default-library edits while rejecting changes to its path", func() {
+			original, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() { Expect(repo.Put(original)).To(Succeed()) })
+			patch := &model.Library{Name: "Renamed default"}
+			Expect(repo.(*libraryRepository).Update("1", patch, "name")).To(Succeed())
+			Expect(repo.GetPath(model.DefaultLibraryID)).To(Equal(original.Path))
+			saved, err := repo.Get(model.DefaultLibraryID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(saved.Name).To(Equal(patch.Name))
+			Expect(saved.Path).To(Equal(original.Path))
+
+			patch.Path = original.Path + "/changed"
+			Expect(repo.(*libraryRepository).Update("1", patch, "path")).To(MatchError(ContainSubstring("path for library with ID 1 cannot be changed")))
+			Expect(repo.GetPath(model.DefaultLibraryID)).To(Equal(original.Path))
 		})
 	})
 

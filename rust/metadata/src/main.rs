@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use rayon::prelude::*;
 use lofty::aac::AacFile;
 use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, FileType, TaggedFile, TaggedFileExt};
@@ -16,6 +15,7 @@ use lofty::ogg::OpusFile;
 use lofty::ogg::tag::VorbisComments;
 use lofty::picture::{Picture, PictureType};
 use lofty::tag::{ItemKey, Tag};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use navidrome_metadata::{compute_pid, map_media, tag_clean};
@@ -298,12 +298,7 @@ pub(crate) fn handle_request(request: Request) -> Response {
     let parsed: Vec<(String, Result<Metadata>)> = request
         .files
         .par_iter()
-        .map(|input| {
-            (
-                input.key.clone(),
-                parse_file(&input.path, &request),
-            )
-        })
+        .map(|input| (input.key.clone(), parse_file(&input.path, &request)))
         .collect();
     for (key, outcome) in parsed {
         match outcome {
@@ -390,7 +385,9 @@ fn parse_file(path: &Path, request: &Request) -> Result<Metadata> {
     })
 }
 
-pub(crate) fn read_file(path: &Path) -> Result<(TaggedFile, String, Option<VorbisComments>, FileMetadata)> {
+pub(crate) fn read_file(
+    path: &Path,
+) -> Result<(TaggedFile, String, Option<VorbisComments>, FileMetadata)> {
     let mut raw_vorbis = None;
     let (tagged, codec, file_metadata) = match extension(path).as_str() {
         "flac" => {
@@ -487,25 +484,57 @@ fn unix_nanos(time: SystemTime) -> i64 {
 }
 
 pub(crate) fn picture_data<'a>(tagged: &'a TaggedFile, path: &Path) -> Result<&'a [u8]> {
-    let pictures = tagged
-        .tags()
-        .iter()
-        .flat_map(|tag| tag.pictures().iter())
-        .collect::<Vec<_>>();
-    let picture = preferred_picture(&pictures)
+    let (tag_index, picture_index) = preferred_picture(tagged.tags())
         .with_context(|| format!("no embedded picture found in {}", path.display()))?;
-    if picture.data().is_empty() {
-        bail!("embedded picture is empty in {}", path.display());
-    }
+    let picture = &tagged.tags()[tag_index].pictures()[picture_index];
+    validate_picture(picture, path, 0)?;
     Ok(picture.data())
 }
 
-fn preferred_picture<'a>(pictures: &[&'a Picture]) -> Option<&'a Picture> {
-    pictures
-        .iter()
-        .copied()
-        .find(|picture| picture.pic_type() == PictureType::CoverFront)
-        .or_else(|| pictures.first().copied())
+pub(crate) fn into_picture_data(
+    mut tagged: TaggedFile,
+    path: &Path,
+    max_bytes: i64,
+) -> Result<Vec<u8>> {
+    let (tag_index, picture_index) = preferred_picture(tagged.tags())
+        .with_context(|| format!("no embedded picture found in {}", path.display()))?;
+    let tag = &tagged.tags()[tag_index];
+    validate_picture(&tag.pictures()[picture_index], path, max_bytes)?;
+    let tag_type = tag.tag_type();
+    // Lofty exposes mutable tags by type. The selected tag remains present, and
+    // removing its picture transfers the parser-owned buffer into the RPC body.
+    Ok(tagged
+        .tag_mut(tag_type)
+        .expect("selected picture tag is present")
+        .remove_picture(picture_index)
+        .into_data())
+}
+
+fn validate_picture(picture: &Picture, path: &Path, max_bytes: i64) -> Result<()> {
+    if picture.data().is_empty() {
+        bail!("embedded picture is empty in {}", path.display());
+    }
+    if max_bytes > 0 && picture.data().len() as u64 > max_bytes as u64 {
+        bail!(
+            "embedded artwork exceeds maximum size of {} bytes",
+            max_bytes
+        );
+    }
+    Ok(())
+}
+
+fn preferred_picture(tags: &[Tag]) -> Option<(usize, usize)> {
+    let mut first = None;
+    for (tag_index, tag) in tags.iter().enumerate() {
+        for (picture_index, picture) in tag.pictures().iter().enumerate() {
+            let position = (tag_index, picture_index);
+            first.get_or_insert(position);
+            if picture.pic_type() == PictureType::CoverFront {
+                return Some(position);
+            }
+        }
+    }
+    first
 }
 
 fn extension(path: &Path) -> String {
@@ -632,16 +661,114 @@ mod tests {
         assert_eq!(PROTOCOL_VERSION, 1);
     }
 
+    fn tagged_pictures(pictures: Vec<(lofty::tag::TagType, Vec<Picture>)>) -> TaggedFile {
+        let mut tagged = TaggedFile::from(MpegFile::default());
+        for (tag_type, pictures) in pictures {
+            let mut tag = Tag::new(tag_type);
+            for picture in pictures {
+                tag.push_picture(picture);
+            }
+            tagged.insert_tag(tag);
+        }
+        tagged
+    }
+
     #[test]
-    fn prefers_front_cover_picture_data() {
-        let back = Picture::unchecked(vec![1, 2, 3])
-            .pic_type(PictureType::CoverBack)
-            .build();
+    fn transfers_preferred_picture_storage_across_tags() {
+        use lofty::tag::TagType;
         let front = Picture::unchecked(vec![4, 5, 6])
             .pic_type(PictureType::CoverFront)
             .build();
-        let pictures = [&back, &front];
-        assert_eq!(preferred_picture(&pictures).unwrap().data(), &[4, 5, 6]);
+        let storage = front.data().as_ptr();
+        let tagged = tagged_pictures(vec![
+            (
+                TagType::Id3v2,
+                vec![
+                    Picture::unchecked(vec![1, 2, 3])
+                        .pic_type(PictureType::CoverBack)
+                        .build(),
+                ],
+            ),
+            (
+                TagType::Ape,
+                vec![
+                    front,
+                    Picture::unchecked(vec![7, 8, 9])
+                        .pic_type(PictureType::CoverFront)
+                        .build(),
+                ],
+            ),
+        ]);
+        assert_eq!(
+            picture_data(&tagged, Path::new("song.mp3")).unwrap(),
+            &[4, 5, 6]
+        );
+        let body = into_picture_data(tagged, Path::new("song.mp3"), 3).unwrap();
+        assert_eq!(body, [4, 5, 6]);
+        assert_eq!(body.as_ptr(), storage);
+    }
+
+    #[test]
+    fn transfers_first_picture_when_front_cover_is_absent() {
+        use lofty::tag::TagType;
+        let first = Picture::unchecked(vec![1, 2, 3]).build();
+        let storage = first.data().as_ptr();
+        let tagged = tagged_pictures(vec![
+            (TagType::Id3v2, vec![first]),
+            (
+                TagType::Ape,
+                vec![Picture::unchecked(vec![4, 5, 6]).build()],
+            ),
+        ]);
+        let body = into_picture_data(tagged, Path::new("song.mp3"), 0).unwrap();
+        assert_eq!(body, [1, 2, 3]);
+        assert_eq!(body.as_ptr(), storage);
+    }
+
+    #[test]
+    fn rejects_missing_empty_and_oversized_preferred_pictures() {
+        use lofty::tag::TagType;
+        let path = Path::new("song.mp3");
+        let error = into_picture_data(tagged_pictures(vec![]), path, 0).unwrap_err();
+        assert!(error.to_string().contains("no embedded picture found"));
+        let empty_front = tagged_pictures(vec![(
+            TagType::Id3v2,
+            vec![
+                Picture::unchecked(vec![1, 2, 3]).build(),
+                Picture::unchecked(vec![])
+                    .pic_type(PictureType::CoverFront)
+                    .build(),
+            ],
+        )]);
+        assert!(
+            picture_data(&empty_front, path)
+                .unwrap_err()
+                .to_string()
+                .contains("embedded picture is empty")
+        );
+        assert!(
+            into_picture_data(empty_front, path, 0)
+                .unwrap_err()
+                .to_string()
+                .contains("embedded picture is empty")
+        );
+        for limit in [-1, 0, 2, 3] {
+            let tagged = tagged_pictures(vec![(
+                TagType::Id3v2,
+                vec![Picture::unchecked(vec![1, 2, 3]).build()],
+            )]);
+            let result = into_picture_data(tagged, path, limit);
+            if limit == 2 {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("exceeds maximum size of 2 bytes")
+                );
+            } else {
+                assert_eq!(result.unwrap(), [1, 2, 3]);
+            }
+        }
     }
 
     #[test]

@@ -16,7 +16,7 @@ use navidrome_metadata::tag_clean::TagMappingConfig;
 use tonic::{Request, Response, Status};
 
 use crate::image_worker::{self, ImageOutcome};
-use crate::{InputFile, Request as ExtractIn, handle_request, picture_data, read_file};
+use crate::{InputFile, Request as ExtractIn, handle_request, into_picture_data, read_file};
 
 pub struct MetadataService;
 
@@ -328,16 +328,9 @@ fn process_image_sync(req: ImageRequest) -> ImageResponse {
 
 fn extract_picture_sync(req: ExtractPictureRequest) -> ExtractPictureResponse {
     let path = PathBuf::from(&req.path);
-    match read_file(&path).and_then(|(tagged, _, _, _)| {
-        let picture = picture_data(&tagged, &path)?;
-        if req.max_bytes > 0 && picture.len() as i64 > req.max_bytes {
-            anyhow::bail!(
-                "embedded artwork exceeds maximum size of {} bytes",
-                req.max_bytes
-            );
-        }
-        Ok(picture.to_vec())
-    }) {
+    match read_file(&path)
+        .and_then(|(tagged, _, _, _)| into_picture_data(tagged, &path, req.max_bytes))
+    {
         Ok(body) => ExtractPictureResponse {
             ok: true,
             body,

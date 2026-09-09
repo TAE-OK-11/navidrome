@@ -109,9 +109,12 @@ var _ = Describe("resizeImage", func() {
 		It("resizes a static PNG normally", func() {
 			data := createStaticPNGBytes()
 			result, _, err := r.resizeImage(context.Background(), bytes.NewReader(data))
-			// Static PNG is 2x2, size 300 is larger, so should return nil (no upscale)
+			// Static PNG is 2x2: reuse the original bytes without upscaling.
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result).To(BeNil())
+			Expect(result).NotTo(BeNil())
+			output, err := io.ReadAll(result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(output).To(Equal(data))
 		})
 	})
 

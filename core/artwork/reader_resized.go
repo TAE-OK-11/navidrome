@@ -78,6 +78,9 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 		return nil, "", err
 	}
 	defer orig.Close()
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 
 	var resized io.Reader
 	var origSize int
@@ -85,6 +88,9 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 		resized, origSize, err = a.resizeImageFromPath(ctx, absPath)
 	} else {
 		resized, origSize, err = a.resizeImage(ctx, orig)
+	}
+	if ctx.Err() != nil {
+		return nil, "", ctx.Err()
 	}
 	if resized == nil {
 		log.Trace(ctx, "Image smaller than requested size", "artID", a.artID, "original", origSize, "resized", a.size, "square", a.square)
@@ -108,23 +114,34 @@ func (a *resizedArtworkReader) Reader(ctx context.Context) (io.ReadCloser, strin
 }
 
 func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader) (io.Reader, int, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
 	data, err := readImageBytes(reader)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Sniff animation before decode — animated WebP/PNG may not decode via Go's image package.
-	flags, sniffErr := persistentImageWorkers.sniffAnimation(ctx, data)
+	// JPEG cannot be animated. Avoid sending its entire payload over gRPC just
+	// to establish that; DecodeConfig below still validates the image header.
+	var flags imageAnimationFlags
+	var sniffErr error
+	if !bytes.HasPrefix(data, []byte{0xff, 0xd8, 0xff}) {
+		flags, sniffErr = persistentImageWorkers.sniffAnimation(ctx, data)
+	}
 	if sniffErr == nil {
 		if flags.AnimatedGIF {
-			if resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+			resized, err := persistentImageWorkers.resizeAnimatedGIF(ctx, data, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
 				return bytes.NewReader(resized), 0, nil
 			} else if ctx.Err() != nil {
 				return nil, 0, ctx.Err()
 			}
 			return nil, 0, fmt.Errorf("Rust animated GIF resize unavailable: %w", err)
 		} else if flags.AnimatedWebP {
-			if resized, err := persistentImageWorkers.resizeAnimatedWebP(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+			resized, err := persistentImageWorkers.resizeAnimatedWebP(ctx, data, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
 				return bytes.NewReader(resized), 0, nil
 			} else if ctx.Err() != nil {
 				return nil, 0, ctx.Err()
@@ -132,7 +149,8 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 			log.Debug(ctx, "Rust animated WebP resize unavailable; returning original bytes", "error", err)
 			return bytes.NewReader(data), 0, nil
 		} else if flags.AnimatedPNG {
-			if resized, err := persistentImageWorkers.resizeAnimatedPNG(ctx, data, a.size, conf.Server.CoverArtQuality); err == nil {
+			resized, err := persistentImageWorkers.resizeAnimatedPNG(ctx, data, a.size, conf.Server.CoverArtQuality)
+			if err == nil {
 				return bytes.NewReader(resized), 0, nil
 			} else if ctx.Err() != nil {
 				return nil, 0, ctx.Err()
@@ -154,7 +172,13 @@ func (a *resizedArtworkReader) resizeImage(ctx context.Context, reader io.Reader
 		return nil, 0, err
 	}
 
-	return resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)
+	resized, originalSize, err := resizeStaticImageWithConfigContext(ctx, data, config, format, a.size, a.square)
+	if err == nil && resized == nil {
+		// The complete original is already in memory. Reuse it instead of
+		// downloading or extracting the same artwork a second time.
+		return bytes.NewReader(data), originalSize, nil
+	}
+	return resized, originalSize, err
 }
 
 func localImageFilePath(path string) (string, bool) {
@@ -176,6 +200,14 @@ func localImageFilePath(path string) (string, bool) {
 }
 
 func (a *resizedArtworkReader) resolveLocalImagePath(ctx context.Context, path string) (string, bool) {
+	// Embedded artwork sources report the audio container's path, while their
+	// reader contains extracted image bytes. Only use the file fast path for
+	// recognized image extensions; other sources must use the supplied reader.
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".avif":
+	default:
+		return "", false
+	}
 	if abs, ok := localImageFilePath(path); ok {
 		return abs, true
 	}

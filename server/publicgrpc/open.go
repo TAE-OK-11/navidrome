@@ -101,6 +101,23 @@ func (w *streamWriter) Flush() {
 }
 
 func (w *streamWriter) sendBody(p []byte) (int, error) {
+	// Handlers may Write an entire cover or API response at once. Bound every
+	// message, not just ReadFrom, so a large write cannot exceed gRPC limits or
+	// monopolize a connection with one oversized message.
+	var total int
+	for len(p) > 0 {
+		size := min(len(p), openChunkSize)
+		n, err := w.sendChunk(p[:size])
+		total += n
+		if err != nil {
+			return total, err
+		}
+		p = p[size:]
+	}
+	return total, nil
+}
+
+func (w *streamWriter) sendChunk(p []byte) (int, error) {
 	if w.flushErr != nil {
 		return 0, w.flushErr
 	}

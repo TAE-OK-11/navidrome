@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/navidrome/navidrome/server/publicgrpc/gen"
+	"google.golang.org/protobuf/proto"
 )
 
 type recordingOpenStream struct {
@@ -20,9 +21,7 @@ func (s *recordingOpenStream) Send(chunk *gen.OpenChunk) error {
 	if s.err != nil && len(s.chunks) == s.failAt {
 		return s.err
 	}
-	copyChunk := *chunk
-	copyChunk.Data = bytes.Clone(chunk.Data)
-	s.chunks = append(s.chunks, &copyChunk)
+	s.chunks = append(s.chunks, proto.Clone(chunk).(*gen.OpenChunk))
 	return nil
 }
 

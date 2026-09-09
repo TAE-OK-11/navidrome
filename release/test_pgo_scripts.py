@@ -83,6 +83,37 @@ elif '-proto' in args:
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(list((self.path / "go-profiles").glob("*.test")))
 
+    def test_release_build_stops_on_training_or_lto_failure(self):
+        text = (ROOT / "Makefile").read_text()
+        recipe = text.split("build-release:", 1)[1].split(".PHONY: build-release", 1)[0]
+        command = recipe[recipe.index("\t@", recipe.index("\n") + 1):]
+        # Skip the separate chmod recipe and execute the actual build shell.
+        command = command.split("\n", 1)[1].strip().removeprefix("@")
+        command = command.replace("\\\n", " ").replace("$$", "$")
+        for key, value in {"GO_PGO_ENABLED": "true", "GO_BUILD_TAGS": "netgo,sqlite_fts5",
+                           "GO_PGO_BENCHTIME": "1s", "PGO_OUTPUT": str(self.path / "default.pgo"),
+                           "GIT_SHA": "test", "GIT_TAG": "test"}.items():
+            command = command.replace(f"$({key})", value)
+        self.tool("go", "Path(os.environ['TRACE']).write_text('unexpected final build')\n")
+        scripts = self.path / "release"
+        scripts.mkdir()
+        for failure in ("training", "thin", "fat", "none"):
+            with self.subTest(failure=failure):
+                self.trace.unlink(missing_ok=True)
+                for name, body in {
+                    "pgo-train.sh": "exit 17" if failure == "training" else "exit 0",
+                    "cgo-lto-env.sh": f'[ "$1" != "{failure}" ] || exit 18',
+                }.items():
+                    script = scripts / name
+                    script.write_text("#!/bin/sh\n" + body + "\n")
+                    script.chmod(0o755)
+                # A stale profile must not let failed training reach go build.
+                (self.path / "default.pgo").write_text("old profile")
+                result = subprocess.run(["sh", "-c", command], cwd=self.path,
+                                        env=self.env, capture_output=True, timeout=5)
+                self.assertEqual(result.returncode == 0, failure == "none", result.stderr)
+                self.assertEqual(self.trace.exists(), failure == "none")
+
     def fake_rust(self):
         sysroot = self.path / "sysroot"
         self.env['MOCK_SYSROOT'] = str(sysroot)

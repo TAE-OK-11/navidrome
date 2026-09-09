@@ -161,18 +161,21 @@ endif
 
 build-release: check_go_env buildjs ##@Build Build an optimized release binary (thin LTO profile + fat LTO + PGO)
 	@chmod +x ./release/cgo-lto-env.sh ./release/sqlite-cflags.sh ./release/pgo-train.sh
-	@if command -v clang >/dev/null 2>&1; then export CC="$${CC:-clang}" CXX="$${CXX:-clang++}"; fi; \
+	@set -eu; \
+	if command -v clang >/dev/null 2>&1; then export CC="$${CC:-clang}" CXX="$${CXX:-clang++}"; fi; \
 	if [ "$(GO_PGO_ENABLED)" = "true" ]; then \
 		echo "Collecting Go PGO profile with thin LTO (sqlite amalgamation CFLAGS enabled)..."; \
+		LTO_ENV="$$(./release/cgo-lto-env.sh thin)"; \
+		eval "$$LTO_ENV"; \
 		PGO_BUILD_TAGS="$(GO_BUILD_TAGS)" GO_PGO_BENCHTIME="$(GO_PGO_BENCHTIME)" PGO_OUTPUT="$(PGO_OUTPUT)" \
-			eval "$$(./release/cgo-lto-env.sh thin)" && \
 			CGO_ENABLED=1 ./release/pgo-train.sh; \
 		PGO_FLAG="-pgo=$(PGO_OUTPUT)"; \
 	else \
 		echo "Go PGO disabled; building with fat LTO only"; \
 		PGO_FLAG="-pgo=off"; \
 	fi; \
-	eval "$$(./release/cgo-lto-env.sh fat)" && \
+	LTO_ENV="$$(./release/cgo-lto-env.sh fat)"; \
+	eval "$$LTO_ENV"; \
 	CGO_ENABLED=1 go build \
 		$${PGO_FLAG} \
 		-trimpath \

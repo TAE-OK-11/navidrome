@@ -35,6 +35,9 @@ func newTranscodingProfileCache() *transcodingProfileCache {
 }
 
 func (c *transcodingProfileCache) get(ctx context.Context, ds model.DataStore, format string) *model.Transcoding {
+	if ctx.Err() != nil {
+		return nil
+	}
 	if value, found, ok := c.lookup(format, time.Now()); ok {
 		if !found {
 			return nil
@@ -42,7 +45,7 @@ func (c *transcodingProfileCache) get(ctx context.Context, ds model.DataStore, f
 		return &value
 	}
 
-	value, _, _ := c.group.Do(format, func() (any, error) {
+	result := c.group.DoChan(format, func() (any, error) {
 		if value, found, ok := c.lookup(format, time.Now()); ok {
 			if !found {
 				return nil, nil
@@ -63,11 +66,18 @@ func (c *transcodingProfileCache) get(ctx context.Context, ds model.DataStore, f
 		c.store(format, value, true, time.Now())
 		return value, nil
 	})
-	if value == nil {
+	select {
+	case <-ctx.Done():
+		// Let a canceled seek leave immediately; the bounded shared lookup
+		// can still populate the cache for the replacement playback request.
 		return nil
+	case value := <-result:
+		if value.Val == nil {
+			return nil
+		}
+		profile := value.Val.(model.Transcoding)
+		return &profile
 	}
-	profile := value.(model.Transcoding)
-	return &profile
 }
 
 func (c *transcodingProfileCache) lookup(format string, now time.Time) (model.Transcoding, bool, bool) {

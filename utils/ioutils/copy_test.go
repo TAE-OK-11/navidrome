@@ -70,7 +70,7 @@ func TestCopyUsesWriterReadFrom(t *testing.T) {
 
 type flushWriter struct {
 	io.Writer
-	flushes int
+	flushes          int
 	readerFromCalled bool
 }
 
@@ -96,5 +96,34 @@ func TestCopyFlushAvoidsReaderFromAndFlushesOnce(t *testing.T) {
 	}
 	if dst.flushes != 1 {
 		t.Fatalf("flushes=%d, want 1", dst.flushes)
+	}
+}
+
+// This reader represents an encoder producing small chunks with pauses between
+// reads. Each preceding write must be visible before we wait for another chunk.
+type pacedAudioReader struct {
+	t     *testing.T
+	dst   *flushWriter
+	reads int
+}
+
+func (r *pacedAudioReader) Read(p []byte) (int, error) {
+	if r.dst.flushes != r.reads {
+		r.t.Fatalf("encoder read %d began with only %d chunks flushed", r.reads+1, r.dst.flushes)
+	}
+	if r.reads == 3 {
+		return 0, io.EOF
+	}
+	r.reads++
+	return copy(p, "audio"), nil
+}
+
+func TestCopyFlushDrainsEveryChunkBeforeWaitingForEncoder(t *testing.T) {
+	var output bytes.Buffer
+	dst := &flushWriter{Writer: &output}
+	source := &pacedAudioReader{t: t, dst: dst}
+	n, err := CopyFlush(dst, source)
+	if err != nil || n != 15 || output.String() != "audioaudioaudio" {
+		t.Fatalf("copy = %d, %v, body=%q", n, err, output.String())
 	}
 }

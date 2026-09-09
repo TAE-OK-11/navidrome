@@ -64,8 +64,8 @@ func propagateExitError(r io.Reader, n int64) (int64, error) {
 // CopyFlush copies from r to w with a pooled buffer and never uses
 // io.ReaderFrom. Live/transcoded pipes must not go through ReadFrom: the
 // HTTP/2 stack buffers until a full DATA frame, delaying TTFB and seeks.
-// After the first successful write, Flush is called when available so
-// clients (and H3 bridges) see bytes immediately.
+// Flush each successful write before waiting for more encoder output. Flushing
+// only the first chunk leaves later small chunks buffered during encoder stalls.
 func CopyFlush(w io.Writer, r io.Reader) (int64, error) {
 	bufPtr := copyBufferPool.Get().(*[]byte)
 	defer copyBufferPool.Put(bufPtr)
@@ -82,7 +82,7 @@ type flusher interface {
 
 func copyFlushBuffer(w io.Writer, r io.Reader, buf []byte) (int64, error) {
 	var written int64
-	flushed := false
+	f, canFlush := w.(flusher)
 	for {
 		nr, er := r.Read(buf)
 		if nr > 0 {
@@ -94,11 +94,8 @@ func copyFlushBuffer(w io.Writer, r io.Reader, buf []byte) (int64, error) {
 			if nw != nr {
 				return written, io.ErrShortWrite
 			}
-			if !flushed {
-				if f, ok := w.(flusher); ok {
-					f.Flush()
-				}
-				flushed = true
+			if canFlush {
+				f.Flush()
 			}
 		}
 		if er != nil {

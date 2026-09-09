@@ -82,6 +82,7 @@ func isBridgeCoalescePath(path string) bool {
 type bridgeFrameWriter struct {
 	http.ResponseWriter
 	buf []byte
+	err error
 }
 
 func newBridgeFrameWriter(w http.ResponseWriter, path string) *bridgeFrameWriter {
@@ -95,24 +96,36 @@ func newBridgeFrameWriter(w http.ResponseWriter, path string) *bridgeFrameWriter
 }
 
 func (w *bridgeFrameWriter) flush() error {
+	if w.err != nil {
+		return w.err
+	}
 	if len(w.buf) == 0 {
 		return nil
 	}
-	_, err := w.ResponseWriter.Write(w.buf)
+	n, err := w.ResponseWriter.Write(w.buf)
+	if err == nil && n != len(w.buf) {
+		err = io.ErrShortWrite
+	}
 	w.buf = w.buf[:0]
+	w.err = err
 	return err
 }
 
 // Flush implements http.Flusher so callers can push a partial coalesce buffer
 // without waiting for a full 64 KiB frame.
 func (w *bridgeFrameWriter) Flush() {
-	_ = w.flush()
+	if w.flush() != nil {
+		return
+	}
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
 
 func (w *bridgeFrameWriter) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
 	total := len(p)
 	for len(p) > 0 {
 		if cap(w.buf)-len(w.buf) == 0 {

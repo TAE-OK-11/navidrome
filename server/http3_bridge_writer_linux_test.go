@@ -4,6 +4,7 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,7 @@ import (
 
 type recordingWriter struct {
 	httptest.ResponseRecorder
-	writes []int
+	writes  []int
 	flushed int
 }
 
@@ -124,3 +125,39 @@ var (
 	_ io.ReaderFrom = (*bridgeFrameWriter)(nil)
 	_ http.Flusher  = (*bridgeFrameWriter)(nil)
 )
+
+type failingBridgeWriter struct {
+	*httptest.ResponseRecorder
+	err    error
+	writes int
+}
+
+func (w *failingBridgeWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, w.err
+}
+
+func TestBridgeFrameWriterRetainsFlushFailures(t *testing.T) {
+	transportErr := errors.New("transport closed")
+	for _, writeErr := range []error{transportErr, nil} {
+		want := writeErr
+		if want == nil {
+			want = io.ErrShortWrite
+		}
+		rec := &failingBridgeWriter{ResponseRecorder: httptest.NewRecorder(), err: writeErr}
+		w := newBridgeFrameWriter(rec, "/rest/download")
+		if _, err := w.Write([]byte("last audio chunk")); err != nil {
+			t.Fatal(err)
+		}
+		w.Flush()
+		if err := w.flush(); !errors.Is(err, want) {
+			t.Fatalf("final flush lost failure: %v, want %v", err, want)
+		}
+		if n, err := w.Write([]byte("more")); n != 0 || !errors.Is(err, want) {
+			t.Fatalf("failed writer accepted more bytes: %d, %v", n, err)
+		}
+		if rec.writes != 1 {
+			t.Fatalf("retried failed response: writes=%d", rec.writes)
+		}
+	}
+}

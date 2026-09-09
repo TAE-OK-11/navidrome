@@ -234,7 +234,11 @@ func authenticatedHTTP3Bridge(token string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(rw, req)
 		if bfw != nil {
-			_ = bfw.flush()
+			if err := bfw.flush(); err != nil {
+				// Do not turn a failed final download chunk into a clean H2 EOF
+				// that the H3 companion would forward as successful completion.
+				panic(http.ErrAbortHandler)
+			}
 		}
 	})
 }

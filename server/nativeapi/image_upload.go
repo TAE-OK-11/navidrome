@@ -1,13 +1,10 @@
 package nativeapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -20,7 +17,6 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
-	_ "golang.org/x/image/webp"
 )
 
 func maxImageUploadSize() int64 {
@@ -67,25 +63,28 @@ func handleImageUpload(saveFn func(ctx context.Context, reader io.Reader, ext st
 			return
 		}
 		defer file.Close()
-		config, format, err := image.DecodeConfig(file)
+		data, err := io.ReadAll(io.LimitReader(file, maxImageSize+1))
 		if err != nil {
+			log.Error(ctx, "Error reading uploaded file bytes", err)
+			http.Error(w, "invalid image file", http.StatusBadRequest)
+			return
+		}
+		if int64(len(data)) > maxImageSize {
+			http.Error(w, "file too large or invalid form", http.StatusBadRequest)
+			return
+		}
+		info, err := artwork.ValidateUploadedImage(ctx, data)
+		if err != nil {
+			if strings.Contains(err.Error(), "exceed") {
+				log.Warn(ctx, "Uploaded image dimensions rejected", err)
+				http.Error(w, "image dimensions exceed allowed limits", http.StatusBadRequest)
+				return
+			}
 			log.Error(ctx, "Uploaded file is not a valid image", err)
 			http.Error(w, "invalid image file", http.StatusBadRequest)
 			return
 		}
-		if err := artwork.ValidateImageConfig(config); err != nil {
-			log.Warn(ctx, "Uploaded image dimensions rejected", "width", config.Width, "height", config.Height, err)
-			http.Error(w, "image dimensions exceed allowed limits", http.StatusBadRequest)
-			return
-		}
-		if seeker, ok := file.(io.Seeker); ok {
-			if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-				log.Error(ctx, "Error seeking file", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		ext := "." + format
+		ext := "." + info.Format
 		if ext == "." {
 			ext = strings.ToLower(filepath.Ext(header.Filename))
 		}
@@ -94,7 +93,7 @@ func handleImageUpload(saveFn func(ctx context.Context, reader io.Reader, ext st
 			http.Error(w, "could not determine image type", http.StatusBadRequest)
 			return
 		}
-		if err := saveFn(ctx, file, ext); err != nil {
+		if err := saveFn(ctx, bytes.NewReader(data), ext); err != nil {
 			if errors.Is(err, model.ErrNotAuthorized) {
 				http.Error(w, "not authorized", http.StatusForbidden)
 				return

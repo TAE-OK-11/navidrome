@@ -136,6 +136,8 @@ message ImageRequest {
   uint32 quality = 10;
   string format = 11;
   string path = 12;
+  // validate=true: decode headers only; return width/height/format (no resize body).
+  bool validate = 13;
 }
 
 message ImageResponse {
@@ -146,6 +148,10 @@ message ImageResponse {
   bool animated_webp = 5;
   bool animated_png = 6;
   bool has_animation_flags = 7;
+  // Populated when ImageRequest.validate is set (header-only inspect).
+  uint32 width = 8;
+  uint32 height = 9;
+  string detected_format = 10;
 }
 
 message ExtractPictureRequest {

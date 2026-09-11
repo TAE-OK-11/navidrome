@@ -287,6 +287,7 @@ fn process_image_sync(req: ImageRequest) -> ImageResponse {
     let request = image_worker::ImageRequest {
         mosaic: req.mosaic,
         sniff: req.sniff,
+        validate: req.validate,
         size: req.size,
         square: req.square,
         fill: req.fill,
@@ -316,6 +317,14 @@ fn process_image_sync(req: ImageRequest) -> ImageResponse {
             animated_webp: flags.animated_webp,
             animated_png: flags.animated_png,
             has_animation_flags: true,
+            ..Default::default()
+        },
+        Ok(ImageOutcome::Validate(info)) => ImageResponse {
+            ok: true,
+            width: info.width,
+            height: info.height,
+            detected_format: info.format,
+            error: String::new(),
             ..Default::default()
         },
         Err(error) => ImageResponse {

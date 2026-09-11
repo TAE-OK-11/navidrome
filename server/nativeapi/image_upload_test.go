@@ -65,7 +65,7 @@ var _ = Describe("image upload dimension limits", func() {
 		conf.Server.EnableArtworkUpload = true
 	})
 
-	It("rejects excessive DecodeConfig dimensions before save", func() {
+	It("rejects excessive image dimensions before save", func() {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		part, err := writer.CreateFormFile("image", "huge.png")

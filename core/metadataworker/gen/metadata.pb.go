@@ -986,19 +986,21 @@ func (x *ParseLyricsResponse) GetError() string {
 }
 
 type ImageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Payloads      [][]byte               `protobuf:"bytes,1,rep,name=payloads,proto3" json:"payloads,omitempty"`
-	Mosaic        bool                   `protobuf:"varint,2,opt,name=mosaic,proto3" json:"mosaic,omitempty"`
-	Sniff         bool                   `protobuf:"varint,3,opt,name=sniff,proto3" json:"sniff,omitempty"`
-	Size          uint32                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
-	Square        bool                   `protobuf:"varint,5,opt,name=square,proto3" json:"square,omitempty"`
-	Fill          bool                   `protobuf:"varint,6,opt,name=fill,proto3" json:"fill,omitempty"`
-	AnimatedGif   bool                   `protobuf:"varint,7,opt,name=animated_gif,json=animatedGif,proto3" json:"animated_gif,omitempty"`
-	AnimatedWebp  bool                   `protobuf:"varint,8,opt,name=animated_webp,json=animatedWebp,proto3" json:"animated_webp,omitempty"`
-	AnimatedPng   bool                   `protobuf:"varint,9,opt,name=animated_png,json=animatedPng,proto3" json:"animated_png,omitempty"`
-	Quality       uint32                 `protobuf:"varint,10,opt,name=quality,proto3" json:"quality,omitempty"`
-	Format        string                 `protobuf:"bytes,11,opt,name=format,proto3" json:"format,omitempty"`
-	Path          string                 `protobuf:"bytes,12,opt,name=path,proto3" json:"path,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Payloads     [][]byte               `protobuf:"bytes,1,rep,name=payloads,proto3" json:"payloads,omitempty"`
+	Mosaic       bool                   `protobuf:"varint,2,opt,name=mosaic,proto3" json:"mosaic,omitempty"`
+	Sniff        bool                   `protobuf:"varint,3,opt,name=sniff,proto3" json:"sniff,omitempty"`
+	Size         uint32                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	Square       bool                   `protobuf:"varint,5,opt,name=square,proto3" json:"square,omitempty"`
+	Fill         bool                   `protobuf:"varint,6,opt,name=fill,proto3" json:"fill,omitempty"`
+	AnimatedGif  bool                   `protobuf:"varint,7,opt,name=animated_gif,json=animatedGif,proto3" json:"animated_gif,omitempty"`
+	AnimatedWebp bool                   `protobuf:"varint,8,opt,name=animated_webp,json=animatedWebp,proto3" json:"animated_webp,omitempty"`
+	AnimatedPng  bool                   `protobuf:"varint,9,opt,name=animated_png,json=animatedPng,proto3" json:"animated_png,omitempty"`
+	Quality      uint32                 `protobuf:"varint,10,opt,name=quality,proto3" json:"quality,omitempty"`
+	Format       string                 `protobuf:"bytes,11,opt,name=format,proto3" json:"format,omitempty"`
+	Path         string                 `protobuf:"bytes,12,opt,name=path,proto3" json:"path,omitempty"`
+	// validate=true: decode headers only; return width/height/format (no resize body).
+	Validate      bool `protobuf:"varint,13,opt,name=validate,proto3" json:"validate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1117,6 +1119,13 @@ func (x *ImageRequest) GetPath() string {
 	return ""
 }
 
+func (x *ImageRequest) GetValidate() bool {
+	if x != nil {
+		return x.Validate
+	}
+	return false
+}
+
 type ImageResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Ok                bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
@@ -1126,8 +1135,12 @@ type ImageResponse struct {
 	AnimatedWebp      bool                   `protobuf:"varint,5,opt,name=animated_webp,json=animatedWebp,proto3" json:"animated_webp,omitempty"`
 	AnimatedPng       bool                   `protobuf:"varint,6,opt,name=animated_png,json=animatedPng,proto3" json:"animated_png,omitempty"`
 	HasAnimationFlags bool                   `protobuf:"varint,7,opt,name=has_animation_flags,json=hasAnimationFlags,proto3" json:"has_animation_flags,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Populated when ImageRequest.validate is set (header-only inspect).
+	Width          uint32 `protobuf:"varint,8,opt,name=width,proto3" json:"width,omitempty"`
+	Height         uint32 `protobuf:"varint,9,opt,name=height,proto3" json:"height,omitempty"`
+	DetectedFormat string `protobuf:"bytes,10,opt,name=detected_format,json=detectedFormat,proto3" json:"detected_format,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ImageResponse) Reset() {
@@ -1207,6 +1220,27 @@ func (x *ImageResponse) GetHasAnimationFlags() bool {
 		return x.HasAnimationFlags
 	}
 	return false
+}
+
+func (x *ImageResponse) GetWidth() uint32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *ImageResponse) GetHeight() uint32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *ImageResponse) GetDetectedFormat() string {
+	if x != nil {
+		return x.DetectedFormat
+	}
+	return ""
 }
 
 type ExtractPictureRequest struct {
@@ -1843,7 +1877,7 @@ const file_proto_navidrome_metadata_v1_metadata_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1f\n" +
 	"\vlyrics_json\x18\x02 \x01(\tR\n" +
 	"lyricsJson\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\xc9\x02\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xe5\x02\n" +
 	"\fImageRequest\x12\x1a\n" +
 	"\bpayloads\x18\x01 \x03(\fR\bpayloads\x12\x16\n" +
 	"\x06mosaic\x18\x02 \x01(\bR\x06mosaic\x12\x14\n" +
@@ -1857,7 +1891,8 @@ const file_proto_navidrome_metadata_v1_metadata_proto_rawDesc = "" +
 	"\aquality\x18\n" +
 	" \x01(\rR\aquality\x12\x16\n" +
 	"\x06format\x18\v \x01(\tR\x06format\x12\x12\n" +
-	"\x04path\x18\f \x01(\tR\x04path\"\xe4\x01\n" +
+	"\x04path\x18\f \x01(\tR\x04path\x12\x1a\n" +
+	"\bvalidate\x18\r \x01(\bR\bvalidate\"\xbb\x02\n" +
 	"\rImageResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x12\n" +
 	"\x04body\x18\x02 \x01(\fR\x04body\x12\x14\n" +
@@ -1865,7 +1900,11 @@ const file_proto_navidrome_metadata_v1_metadata_proto_rawDesc = "" +
 	"\fanimated_gif\x18\x04 \x01(\bR\vanimatedGif\x12#\n" +
 	"\ranimated_webp\x18\x05 \x01(\bR\fanimatedWebp\x12!\n" +
 	"\fanimated_png\x18\x06 \x01(\bR\vanimatedPng\x12.\n" +
-	"\x13has_animation_flags\x18\a \x01(\bR\x11hasAnimationFlags\"H\n" +
+	"\x13has_animation_flags\x18\a \x01(\bR\x11hasAnimationFlags\x12\x14\n" +
+	"\x05width\x18\b \x01(\rR\x05width\x12\x16\n" +
+	"\x06height\x18\t \x01(\rR\x06height\x12'\n" +
+	"\x0fdetected_format\x18\n" +
+	" \x01(\tR\x0edetectedFormat\"H\n" +
 	"\x15ExtractPictureRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1b\n" +
 	"\tmax_bytes\x18\x02 \x01(\x03R\bmaxBytes\"R\n" +

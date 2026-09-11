@@ -13,6 +13,7 @@ type imageWorkerRequest struct {
 	InputSizes   []int  `json:"input_sizes,omitempty"`
 	Mosaic       bool   `json:"mosaic,omitempty"`
 	Sniff        bool   `json:"sniff,omitempty"`
+	Validate     bool   `json:"validate,omitempty"`
 	Size         int    `json:"size"`
 	Square       bool   `json:"square"`
 	Fill         bool   `json:"fill,omitempty"` // center-crop fill mode for playlist tiles
@@ -28,6 +29,13 @@ type imageAnimationFlags struct {
 	AnimatedGIF  bool
 	AnimatedWebP bool
 	AnimatedPNG  bool
+}
+
+// ImageInfo is header-only metadata from ProcessImage validate mode.
+type ImageInfo struct {
+	Width  int
+	Height int
+	Format string
 }
 
 type imageWorkerPool struct{}
@@ -134,6 +142,10 @@ func (p *imageWorkerPool) sniffAnimationPath(ctx context.Context, path string) (
 	return sniffViaGRPC(ctx, nil, imageWorkerRequest{Sniff: true, Path: path})
 }
 
+func (p *imageWorkerPool) validateImage(ctx context.Context, data []byte) (ImageInfo, error) {
+	return validateViaGRPC(ctx, [][]byte{data}, imageWorkerRequest{Validate: true, InputSize: len(data)})
+}
+
 func (p *imageWorkerPool) resizeRequest(ctx context.Context, payloads [][]byte, request imageWorkerRequest) ([]byte, error) {
 	return resizeViaGRPC(ctx, payloads, request)
 }
@@ -143,6 +155,7 @@ func toProtoImageRequest(request imageWorkerRequest, payloads [][]byte) *gen.Ima
 		Payloads:     payloads,
 		Mosaic:       request.Mosaic,
 		Sniff:        request.Sniff,
+		Validate:     request.Validate,
 		Size:         uint32(max(request.Size, 0)),
 		Square:       request.Square,
 		Fill:         request.Fill,
@@ -173,5 +186,18 @@ func sniffViaGRPC(ctx context.Context, payloads [][]byte, request imageWorkerReq
 		AnimatedGIF:  resp.GetAnimatedGif(),
 		AnimatedWebP: resp.GetAnimatedWebp(),
 		AnimatedPNG:  resp.GetAnimatedPng(),
+	}, nil
+}
+
+func validateViaGRPC(ctx context.Context, payloads [][]byte, request imageWorkerRequest) (ImageInfo, error) {
+	var info ImageInfo
+	resp, err := metadataworker.ProcessImage(ctx, toProtoImageRequest(request, payloads))
+	if err != nil {
+		return info, err
+	}
+	return ImageInfo{
+		Width:  int(resp.GetWidth()),
+		Height: int(resp.GetHeight()),
+		Format: resp.GetDetectedFormat(),
 	}, nil
 }

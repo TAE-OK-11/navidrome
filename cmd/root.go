@@ -415,6 +415,7 @@ func init() {
 	rootCmd.Flags().String("tlscert", viper.GetString("tlscert"), "optional path to a TLS cert file (enables HTTPS listening)")
 	rootCmd.Flags().String("unixsocketperm", viper.GetString("unixsocketperm"), "optional file permission for the unix socket")
 	rootCmd.Flags().String("tlskey", viper.GetString("tlskey"), "optional path to a TLS key file (enables HTTPS listening)")
+	rootCmd.Flags().Bool("allowhttp", viper.GetBool("allowhttp"), "when TLS is enabled, also accept cleartext HTTP on the same port (avoids 400 for http://host:4533 via Tailscale)")
 
 	rootCmd.Flags().Duration("sessiontimeout", viper.GetDuration("sessiontimeout"), "how long Navidrome will wait before closing web ui idle sessions")
 	rootCmd.Flags().Duration("scaninterval", viper.GetDuration("scaninterval"), "how frequently to scan for changes in your music library")
@@ -434,6 +435,7 @@ func init() {
 	_ = viper.BindPFlag("tlscert", rootCmd.Flags().Lookup("tlscert"))
 	_ = viper.BindPFlag("unixsocketperm", rootCmd.Flags().Lookup("unixsocketperm"))
 	_ = viper.BindPFlag("tlskey", rootCmd.Flags().Lookup("tlskey"))
+	_ = viper.BindPFlag("allowhttp", rootCmd.Flags().Lookup("allowhttp"))
 	_ = viper.BindPFlag("baseurl", rootCmd.Flags().Lookup("baseurl"))
 
 	_ = viper.BindPFlag("sessiontimeout", rootCmd.Flags().Lookup("sessiontimeout"))

@@ -31,6 +31,9 @@ pub struct ImageRequest {
     pub mosaic: bool,
     #[serde(default)]
     pub sniff: bool,
+    /// Header-only inspect: return width/height/format without resize/encode.
+    #[serde(default)]
+    pub validate: bool,
     #[serde(default)]
     pub size: u32,
     #[serde(default)]
@@ -64,8 +67,16 @@ pub struct SniffAnimationFlags {
     pub animated_png: bool,
 }
 
+#[derive(Debug)]
+pub struct ValidateImageInfo {
+    pub width: u32,
+    pub height: u32,
+    pub format: String,
+}
+
 enum SniffResult {
     Animation(SniffAnimationFlags),
+    Validate(ValidateImageInfo),
     Bytes(Vec<u8>),
 }
 
@@ -91,6 +102,7 @@ impl OutputFormat {
 pub enum ImageOutcome {
     Bytes(Vec<u8>),
     Sniff(SniffAnimationFlags),
+    Validate(ValidateImageInfo),
 }
 
 pub fn process(mut request: ImageRequest, payloads: Vec<Vec<u8>>) -> Result<ImageOutcome> {
@@ -107,6 +119,14 @@ pub fn process(mut request: ImageRequest, payloads: Vec<Vec<u8>>) -> Result<Imag
             payloads.into_iter().next().unwrap_or_default()
         };
         return Ok(ImageOutcome::Sniff(sniff_animation(&encoded)));
+    }
+    if request.validate {
+        let encoded = if uses_path(&request) {
+            read_image_file(request.path.as_deref().unwrap_or_default())?
+        } else {
+            payloads.into_iter().next().unwrap_or_default()
+        };
+        return Ok(ImageOutcome::Validate(validate_image(&encoded)?));
     }
     if request.mosaic {
         return Ok(ImageOutcome::Bytes(compose_mosaic(&payloads, &request)?));
@@ -131,6 +151,12 @@ struct ImageResponse {
     animated_webp: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     animated_png: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
 }
 
 pub fn run() -> Result<()> {
@@ -161,6 +187,9 @@ pub fn run() -> Result<()> {
         let result = if request.sniff {
             let encoded = read_input_bytes(&request, &mut input)?;
             Ok(SniffResult::Animation(sniff_animation(&encoded)))
+        } else if request.validate {
+            let encoded = read_input_bytes(&request, &mut input)?;
+            validate_image(&encoded).map(SniffResult::Validate)
         } else if request.mosaic {
             let mut payloads = Vec::with_capacity(request.input_sizes.len());
             for &size in &request.input_sizes {
@@ -178,6 +207,7 @@ pub fn run() -> Result<()> {
 
         match result {
             Ok(SniffResult::Animation(flags)) => write_sniff(&mut output, flags)?,
+            Ok(SniffResult::Validate(info)) => write_validate(&mut output, info)?,
             Ok(SniffResult::Bytes(resized)) => write_success(&mut output, &resized)?,
             Err(error) => write_error(&mut output, format!("{error:#}"))?,
         }
@@ -231,13 +261,17 @@ fn validate_request(request: &ImageRequest) -> Result<()> {
     if request.mosaic && uses_path(request) {
         bail!("mosaic requests cannot use path mode");
     }
-    if request.sniff {
+    if request.sniff && request.validate {
+        bail!("sniff and validate are mutually exclusive");
+    }
+    if request.sniff || request.validate {
+        let kind = if request.sniff { "sniff" } else { "validate" };
         if uses_path(request) {
             return Ok(());
         }
         if request.input_size == 0 || request.input_size > MAX_INPUT_BYTES {
             bail!(
-                "sniff input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
+                "{kind} input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
                 request.input_size
             );
         }
@@ -636,6 +670,40 @@ fn sniff_animation(data: &[u8]) -> SniffAnimationFlags {
     }
 }
 
+fn validate_image(encoded: &[u8]) -> Result<ValidateImageInfo> {
+    if encoded.is_empty() || encoded.len() > MAX_INPUT_BYTES {
+        bail!(
+            "validate input size {} is outside the allowed range 1..={MAX_INPUT_BYTES}",
+            encoded.len()
+        );
+    }
+    let reader = ImageReader::new(Cursor::new(encoded))
+        .with_guessed_format()
+        .context("detecting image format")?;
+    let format = reader.format().context("detecting image format")?;
+    let format_name = upload_format_name(format)?;
+    let (width, height) = reader
+        .into_dimensions()
+        .context("reading image dimensions")?;
+    validate_dimensions(width, height)?;
+    Ok(ValidateImageInfo {
+        width,
+        height,
+        format: format_name.to_owned(),
+    })
+}
+
+fn upload_format_name(format: ImageFormat) -> Result<&'static str> {
+    // Match Go nativeapi registrations: jpeg/png/gif/webp only.
+    Ok(match format {
+        ImageFormat::Jpeg => "jpeg",
+        ImageFormat::Png => "png",
+        ImageFormat::Gif => "gif",
+        ImageFormat::WebP => "webp",
+        other => bail!("unsupported image format for upload validation: {other:?}"),
+    })
+}
+
 fn write_sniff(output: &mut impl Write, flags: SniffAnimationFlags) -> Result<()> {
     serde_json::to_writer(
         &mut *output,
@@ -646,6 +714,28 @@ fn write_sniff(output: &mut impl Write, flags: SniffAnimationFlags) -> Result<()
             animated_gif: Some(flags.animated_gif),
             animated_webp: Some(flags.animated_webp),
             animated_png: Some(flags.animated_png),
+            width: None,
+            height: None,
+            format: None,
+        },
+    )?;
+    output.write_all(b"\n")?;
+    Ok(())
+}
+
+fn write_validate(output: &mut impl Write, info: ValidateImageInfo) -> Result<()> {
+    serde_json::to_writer(
+        &mut *output,
+        &ImageResponse {
+            ok: true,
+            size: 0,
+            error: None,
+            animated_gif: None,
+            animated_webp: None,
+            animated_png: None,
+            width: Some(info.width),
+            height: Some(info.height),
+            format: Some(info.format),
         },
     )?;
     output.write_all(b"\n")?;
@@ -944,6 +1034,9 @@ fn write_success(output: &mut impl Write, image: &[u8]) -> Result<()> {
             animated_gif: None,
             animated_webp: None,
             animated_png: None,
+            width: None,
+            height: None,
+            format: None,
         },
     )?;
     output.write_all(b"\n")?;
@@ -961,6 +1054,9 @@ fn write_error(output: &mut impl Write, error: String) -> Result<()> {
             animated_gif: None,
             animated_webp: None,
             animated_png: None,
+            width: None,
+            height: None,
+            format: None,
         },
     )?;
     output.write_all(b"\n")?;
@@ -1135,6 +1231,7 @@ mod tests {
                 input_sizes: Vec::new(),
                 mosaic: false,
                 sniff: false,
+                validate: false,
                 size: 60,
                 square: false,
                 fill: false,
@@ -1159,6 +1256,7 @@ mod tests {
                     input_sizes: Vec::new(),
                     mosaic: false,
                     sniff: false,
+                    validate: false,
                     size: 60,
                     square: false,
                     fill: false,
@@ -1188,6 +1286,7 @@ mod tests {
                 input_sizes: Vec::new(),
                 mosaic: false,
                 sniff: false,
+                validate: false,
                 size: 120,
                 square: false,
                 fill: false,
@@ -1213,6 +1312,7 @@ mod tests {
                 input_sizes: Vec::new(),
                 mosaic: false,
                 sniff: false,
+                validate: false,
                 size: 20,
                 square: true,
                 fill: false,
@@ -1240,6 +1340,7 @@ mod tests {
                 input_sizes: Vec::new(),
                 mosaic: false,
                 sniff: false,
+                validate: false,
                 size: 20,
                 square: false,
                 fill: true,
@@ -1274,6 +1375,7 @@ mod tests {
                 input_sizes: tiles.iter().map(Vec::len).collect(),
                 mosaic: true,
                 sniff: false,
+                validate: false,
                 size: 40,
                 square: false,
                 fill: false,
@@ -1302,6 +1404,7 @@ mod tests {
                 input_sizes: vec![tile.len()],
                 mosaic: true,
                 sniff: false,
+                validate: false,
                 size: 40,
                 square: false,
                 fill: false,
@@ -1316,6 +1419,23 @@ mod tests {
         .unwrap();
         let decoded = image::load_from_memory(&output).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (20, 20));
+    }
+
+    #[test]
+    fn validate_image_returns_png_dimensions_without_resize() {
+        let input = source_png(64, 32);
+        let info = validate_image(&input).unwrap();
+        assert_eq!(info.width, 64);
+        assert_eq!(info.height, 32);
+        assert_eq!(info.format, "png");
+    }
+
+    #[test]
+    fn validate_image_rejects_pixel_budget() {
+        // 10_000 x 5_000 exceeds MAX_PIXELS (40_000_000).
+        assert!(validate_dimensions(10_000, 5_000).is_err());
+        let input = source_png(64, 32);
+        assert!(validate_image(&input).is_ok());
     }
 
     #[test]

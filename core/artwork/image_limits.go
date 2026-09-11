@@ -2,14 +2,22 @@ package artwork
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/dustin/go-humanize"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
+	"github.com/navidrome/navidrome/core/metadataworker"
+	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -86,4 +94,64 @@ func readImageFile(path string) ([]byte, error) {
 	}
 	defer file.Close()
 	return readImageBytes(file)
+}
+
+// maxValidateGRPCBytes keeps ProcessImage validate unary payloads under the
+// shared 64MiB local IPC message limit (see rustworker.maxGRPCMsgSize).
+const maxValidateGRPCBytes = (64 << 20) - (1 << 20)
+
+// ValidateUploadedImage inspects image headers via metadata ProcessImage
+// (validate mode). Falls back to Go image.DecodeConfig when the worker is
+// unavailable, the payload exceeds the gRPC budget, or image-rs cannot parse a
+// header-only / truncated body that DecodeConfig still accepts. Worker
+// dimension-limit rejections are preserved (no Go fallback).
+func ValidateUploadedImage(ctx context.Context, data []byte) (ImageInfo, error) {
+	if len(data) == 0 {
+		return ImageInfo{}, fmt.Errorf("empty image payload")
+	}
+	if len(data) <= maxValidateGRPCBytes {
+		info, err := persistentImageWorkers.validateImage(ctx, data)
+		if err == nil {
+			if err := ValidateImageConfig(image.Config{Width: info.Width, Height: info.Height}); err != nil {
+				return ImageInfo{}, err
+			}
+			if info.Format == "" {
+				return ImageInfo{}, fmt.Errorf("could not determine image type")
+			}
+			return info, nil
+		}
+		// Prefer the worker, but keep Go DecodeConfig parity for header-only /
+		// truncated payloads that image-rs cannot dimension yet. Preserve worker
+		// dimension-limit rejections (no Go fallback).
+		if errors.Is(err, metadataworker.ErrNoGRPC) || shouldFallbackValidate(err) {
+			return validateUploadedImageGo(data)
+		}
+		return ImageInfo{}, err
+	}
+	return validateUploadedImageGo(data)
+}
+
+func shouldFallbackValidate(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "exceed") {
+		return false
+	}
+	return true
+}
+
+func validateUploadedImageGo(data []byte) (ImageInfo, error) {
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return ImageInfo{}, err
+	}
+	if err := ValidateImageConfig(config); err != nil {
+		return ImageInfo{}, err
+	}
+	if format == "" {
+		return ImageInfo{}, fmt.Errorf("could not determine image type")
+	}
+	return ImageInfo{Width: config.Width, Height: config.Height, Format: format}, nil
 }
